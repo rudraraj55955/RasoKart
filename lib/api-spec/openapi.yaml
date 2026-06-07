@@ -1,22 +1,40 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: RPay Payment Gateway API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: merchants
+    description: Merchant management
+  - name: transactions
+    description: Transaction management
+  - name: withdrawals
+    description: Withdrawal requests
+  - name: api-keys
+    description: API key management
+  - name: webhooks
+    description: Webhook configuration
+  - name: callbacks
+    description: Callback logs
+  - name: settlements
+    description: Settlement reports
+  - name: users
+    description: User management
+  - name: dashboard
+    description: Dashboard statistics
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +42,629 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/register:
+    post:
+      operationId: registerMerchant
+      tags: [auth]
+      summary: Register merchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MerchantRegisterInput"
+      responses:
+        "201":
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/chart:
+    get:
+      operationId: getDashboardChart
+      tags: [dashboard]
+      summary: Get chart data for last 30 days
+      responses:
+        "200":
+          description: Chart data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChartDataPoint"
+
+  /merchants:
+    get:
+      operationId: listMerchants
+      tags: [merchants]
+      summary: List merchants
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected, all]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of merchants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantListResponse"
+
+  /merchants/{id}:
+    get:
+      operationId: getMerchant
+      tags: [merchants]
+      summary: Get merchant by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Merchant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Merchant"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /merchants/{id}/approve:
+    post:
+      operationId: approveMerchant
+      tags: [merchants]
+      summary: Approve merchant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Merchant approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Merchant"
+
+  /merchants/{id}/reject:
+    post:
+      operationId: rejectMerchant
+      tags: [merchants]
+      summary: Reject merchant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectInput"
+      responses:
+        "200":
+          description: Merchant rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Merchant"
+
+  /transactions:
+    get:
+      operationId: listTransactions
+      tags: [transactions]
+      summary: List transactions
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [deposit, withdrawal, all]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, success, failed, all]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+
+  /transactions/{id}:
+    get:
+      operationId: getTransaction
+      tags: [transactions]
+      summary: Get transaction by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /transactions/search/utr:
+    get:
+      operationId: searchByUtr
+      tags: [transactions]
+      summary: Search transaction by UTR/reference number
+      parameters:
+        - name: utr
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transaction found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /withdrawals:
+    get:
+      operationId: listWithdrawals
+      tags: [withdrawals]
+      summary: List withdrawal requests
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected, all]
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of withdrawals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WithdrawalListResponse"
+    post:
+      operationId: createWithdrawal
+      tags: [withdrawals]
+      summary: Create withdrawal request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WithdrawalInput"
+      responses:
+        "201":
+          description: Withdrawal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Withdrawal"
+
+  /withdrawals/{id}/approve:
+    post:
+      operationId: approveWithdrawal
+      tags: [withdrawals]
+      summary: Approve withdrawal request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Withdrawal approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Withdrawal"
+
+  /withdrawals/{id}/reject:
+    post:
+      operationId: rejectWithdrawal
+      tags: [withdrawals]
+      summary: Reject withdrawal request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectInput"
+      responses:
+        "200":
+          description: Withdrawal rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Withdrawal"
+
+  /api-keys:
+    get:
+      operationId: listApiKeys
+      tags: [api-keys]
+      summary: List API keys for current merchant
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiKey"
+    post:
+      operationId: generateApiKey
+      tags: [api-keys]
+      summary: Generate new API key pair
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyWithSecret"
+
+  /api-keys/{id}:
+    delete:
+      operationId: revokeApiKey
+      tags: [api-keys]
+      summary: Revoke API key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: API key revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /webhooks:
+    get:
+      operationId: getWebhookConfig
+      tags: [webhooks]
+      summary: Get webhook configuration
+      responses:
+        "200":
+          description: Webhook config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookConfig"
+    put:
+      operationId: updateWebhookConfig
+      tags: [webhooks]
+      summary: Update webhook configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookConfigInput"
+      responses:
+        "200":
+          description: Webhook config updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookConfig"
+
+  /callbacks:
+    get:
+      operationId: listCallbackLogs
+      tags: [callbacks]
+      summary: List callback logs
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [success, failed, all]
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of callback logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallbackLogListResponse"
+
+  /settlements:
+    get:
+      operationId: listSettlements
+      tags: [settlements]
+      summary: List settlements
+      parameters:
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of settlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementListResponse"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List users (admin only)
+      parameters:
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [admin, merchant, all]
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create admin user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    put:
+      operationId: updateUser
+      tags: [users]
+      summary: Update user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +675,463 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    MerchantRegisterInput:
+      type: object
+      required: [email, password, businessName, contactName, phone]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        businessName:
+          type: string
+        contactName:
+          type: string
+        phone:
+          type: string
+        website:
+          type: ["string", "null"]
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+
+    User:
+      type: object
+      required: [id, email, role, name, createdAt]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, merchant]
+        name:
+          type: string
+        isActive:
+          type: boolean
+        merchantId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    Merchant:
+      type: object
+      required: [id, businessName, contactName, email, phone, status, createdAt]
+      properties:
+        id:
+          type: integer
+        businessName:
+          type: string
+        contactName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        website:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        rejectionReason:
+          type: ["string", "null"]
+        totalDeposits:
+          type: number
+        totalWithdrawals:
+          type: number
+        balance:
+          type: number
+        createdAt:
+          type: string
+
+    MerchantListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Merchant"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    RejectInput:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+
+    Transaction:
+      type: object
+      required: [id, merchantId, type, status, amount, currency, utr, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        merchantName:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [deposit, withdrawal]
+        status:
+          type: string
+          enum: [pending, success, failed]
+        amount:
+          type: number
+        currency:
+          type: string
+        utr:
+          type: string
+        referenceId:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        metadata:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    TransactionListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    Withdrawal:
+      type: object
+      required: [id, merchantId, amount, currency, status, bankAccount, bankName, ifscCode, accountHolder, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        merchantName:
+          type: ["string", "null"]
+        amount:
+          type: number
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        bankAccount:
+          type: string
+        bankName:
+          type: string
+        ifscCode:
+          type: string
+        accountHolder:
+          type: string
+        rejectionReason:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    WithdrawalInput:
+      type: object
+      required: [amount, bankAccount, bankName, ifscCode, accountHolder]
+      properties:
+        amount:
+          type: number
+        bankAccount:
+          type: string
+        bankName:
+          type: string
+        ifscCode:
+          type: string
+        accountHolder:
+          type: string
+
+    WithdrawalListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Withdrawal"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    ApiKey:
+      type: object
+      required: [id, merchantId, keyPrefix, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        keyPrefix:
+          type: string
+        isActive:
+          type: boolean
+        lastUsedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    ApiKeyWithSecret:
+      type: object
+      required: [id, merchantId, apiKey, secretKey, keyPrefix, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        apiKey:
+          type: string
+        secretKey:
+          type: string
+        keyPrefix:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+
+    WebhookConfig:
+      type: object
+      required: [id, merchantId, url, isActive, events]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        url:
+          type: string
+        isActive:
+          type: boolean
+        events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    WebhookConfigInput:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+        isActive:
+          type: boolean
+        events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: ["string", "null"]
+
+    CallbackLog:
+      type: object
+      required: [id, merchantId, transactionId, url, status, httpStatus, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        transactionId:
+          type: ["integer", "null"]
+        url:
+          type: string
+        status:
+          type: string
+          enum: [success, failed]
+        httpStatus:
+          type: ["integer", "null"]
+        requestBody:
+          type: ["string", "null"]
+        responseBody:
+          type: ["string", "null"]
+        attempts:
+          type: integer
+        createdAt:
+          type: string
+
+    CallbackLogListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CallbackLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    Settlement:
+      type: object
+      required: [id, merchantId, amount, currency, status, periodFrom, periodTo, transactionCount, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        merchantName:
+          type: ["string", "null"]
+        amount:
+          type: number
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [pending, processed, failed]
+        periodFrom:
+          type: string
+        periodTo:
+          type: string
+        transactionCount:
+          type: integer
+        createdAt:
+          type: string
+
+    SettlementListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Settlement"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    UserListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    UserInput:
+      type: object
+      required: [email, password, name, role]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, merchant]
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        isActive:
+          type: boolean
+        role:
+          type: string
+          enum: [admin, merchant]
+
+    DashboardStats:
+      type: object
+      required: [totalDeposits, totalWithdrawals, pendingTransactions, successTransactions, failedTransactions, totalMerchants, pendingMerchants, totalBalance]
+      properties:
+        totalDeposits:
+          type: number
+        totalWithdrawals:
+          type: number
+        pendingTransactions:
+          type: integer
+        successTransactions:
+          type: integer
+        failedTransactions:
+          type: integer
+        totalMerchants:
+          type: integer
+        pendingMerchants:
+          type: integer
+        totalBalance:
+          type: number
+
+    ChartDataPoint:
+      type: object
+      required: [date, deposits, withdrawals]
+      properties:
+        date:
+          type: string
+        deposits:
+          type: number
+        withdrawals:
+          type: number
