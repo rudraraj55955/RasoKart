@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useListProviders, useCreateProvider, useUpdateProvider, useDeleteProvider, useSetProviderVisibility, useBulkSetProviderVisibility, getProviderMerchantVisibility, getGetProviderMerchantVisibilityQueryKey } from "@workspace/api-client-react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
+import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search, GripVertical } from "lucide-react";
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   live:         { label: "Live",        color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
@@ -35,6 +36,16 @@ const DEFAULT_FORM: FormState = { name: "", slug: "", category: "upi", status: "
 
 function slugify(s: string) { return s.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""); }
 
+async function apiPut(path: string, body: object) {
+  const res = await fetch(`/api${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export default function AdminProviders() {
   const qc = useQueryClient();
 
@@ -42,23 +53,44 @@ export default function AdminProviders() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // Create / Edit dialog
+  // Create / Edit / Delete dialog
   const [dialog, setDialog] = useState<"create" | "edit" | "delete" | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
 
   // Visibility drawer
-  const [visDrawer, setVisDrawer] = useState<any | null>(null);  // selected provider
+  const [visDrawer, setVisDrawer] = useState<any | null>(null);
   const [merchantSearch, setMerchantSearch] = useState("");
   const [selectedMerchants, setSelectedMerchants] = useState<Set<number>>(new Set());
+
+  // Drag-to-reorder state
+  const [localIds, setLocalIds] = useState<number[]>([]);
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const dragId = useRef<number | null>(null);
+  const isFiltering = !!(search || categoryFilter !== "all" || statusFilter !== "all");
 
   const { data, isLoading, refetch } = useListProviders({
     category: categoryFilter !== "all" ? categoryFilter : undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
   });
-  const providers = (data?.data ?? []).filter(p =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.slug.includes(search.toLowerCase())
-  );
+
+  const allData = data?.data ?? [];
+
+  // Initialise / sync local order when data arrives
+  useEffect(() => {
+    if (allData.length > 0) {
+      setLocalIds(prev => {
+        // Merge: keep existing order for known ids, append new ones
+        const known = new Set(prev);
+        const newIds = allData.map(p => p.id).filter(id => !known.has(id));
+        return [...prev.filter(id => allData.some(p => p.id === id)), ...newIds];
+      });
+    }
+  }, [JSON.stringify(allData.map(p => p.id))]);
+
+  const providers = isFiltering
+    ? allData.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.slug.includes(search.toLowerCase()))
+    : localIds.map(id => allData.find(p => p.id === id)).filter(Boolean) as typeof allData;
 
   // Mutations
   const createMut = useCreateProvider();
@@ -66,6 +98,12 @@ export default function AdminProviders() {
   const deleteMut = useDeleteProvider();
   const setVisMut = useSetProviderVisibility();
   const bulkVisMut = useBulkSetProviderVisibility();
+
+  const reorderMut = useMutation({
+    mutationFn: (order: number[]) => apiPut("/providers/reorder", { order }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Sort order saved"); },
+    onError: () => toast.error("Failed to save sort order"),
+  });
 
   // Merchant visibility drawer data
   const { data: merchantVisData, isLoading: visLoading, refetch: refetchVis } = useQuery({
@@ -78,8 +116,7 @@ export default function AdminProviders() {
   );
 
   // Stats
-  const allProviders = data?.data ?? [];
-  const statsByStatus = allProviders.reduce((acc: Record<string, number>, p) => {
+  const statsByStatus = allData.reduce((acc: Record<string, number>, p) => {
     acc[p.status] = (acc[p.status] ?? 0) + 1;
     return acc;
   }, {});
@@ -145,6 +182,36 @@ export default function AdminProviders() {
     });
   }
 
+  // Drag handlers
+  function handleDragStart(id: number) {
+    dragId.current = id;
+  }
+
+  function handleDragOver(e: React.DragEvent, id: number) {
+    e.preventDefault();
+    if (dragId.current !== id) setDragOverId(id);
+  }
+
+  function handleDrop(targetId: number) {
+    const sourceId = dragId.current;
+    if (!sourceId || sourceId === targetId) return;
+    const newOrder = [...localIds];
+    const fromIdx = newOrder.indexOf(sourceId);
+    const toIdx = newOrder.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, sourceId);
+    setLocalIds(newOrder);
+    setDragOverId(null);
+    dragId.current = null;
+    reorderMut.mutate(newOrder);
+  }
+
+  function handleDragEnd() {
+    dragId.current = null;
+    setDragOverId(null);
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -204,6 +271,11 @@ export default function AdminProviders() {
           </SelectContent>
         </Select>
       </div>
+      {!isFiltering && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <GripVertical className="w-3 h-3" /> Drag rows to reorder — sort order is saved automatically
+        </p>
+      )}
 
       {/* Providers table */}
       <Card className="bg-card border-border/50">
@@ -211,6 +283,7 @@ export default function AdminProviders() {
           <Table>
             <TableHeader>
               <TableRow className="border-border/50">
+                {!isFiltering && <TableHead className="w-8" />}
                 <TableHead>#</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
@@ -222,22 +295,36 @@ export default function AdminProviders() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
+                Array.from({ length: 6 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: isFiltering ? 7 : 8 }).map((_, j) => (
                       <TableCell key={j}><div className="h-4 bg-muted/40 rounded animate-pulse" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : providers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">No providers found</TableCell>
+                  <TableCell colSpan={isFiltering ? 7 : 8} className="text-center py-12 text-muted-foreground">No providers found</TableCell>
                 </TableRow>
               ) : (
                 providers.map(p => {
                   const meta = STATUS_META[p.status] ?? STATUS_META.disabled;
+                  const isDragTarget = dragOverId === p.id;
                   return (
-                    <TableRow key={p.id} className="border-border/30 hover:bg-muted/20">
+                    <TableRow
+                      key={p.id}
+                      className={`border-border/30 hover:bg-muted/20 transition-colors ${isDragTarget ? "bg-primary/5 border-t-primary/40" : ""}`}
+                      draggable={!isFiltering}
+                      onDragStart={() => handleDragStart(p.id)}
+                      onDragOver={e => handleDragOver(e, p.id)}
+                      onDrop={() => handleDrop(p.id)}
+                      onDragEnd={handleDragEnd}
+                    >
+                      {!isFiltering && (
+                        <TableCell className="w-8 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground">
+                          <GripVertical className="w-4 h-4" />
+                        </TableCell>
+                      )}
                       <TableCell className="text-muted-foreground text-sm">{p.id}</TableCell>
                       <TableCell>
                         <div>

@@ -58,6 +58,7 @@ import type {
   ListMerchantFeaturesParams,
   ListMerchantsParams,
   ListPlanHistoryParams,
+  ListProvidersAdminParams,
   ListProvidersParams,
   ListQrCodesParams,
   ListSettlementsParams,
@@ -92,6 +93,7 @@ import type {
   ProviderInput,
   ProviderListResponse,
   ProviderMerchantVisibility,
+  ProviderReorderInput,
   ProviderVisibilityInput,
   QrCode,
   QrCodeInput,
@@ -7323,6 +7325,161 @@ export const useCreateLedgerAdjustment = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreateLedgerAdjustmentMutationOptions(options));
+    }
+
+export const getListProvidersAdminUrl = (params?: ListProvidersAdminParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/providers/admin?${stringifiedParams}` : `/api/providers/admin`
+}
+
+/**
+ * @summary List all providers with visibility stats (admin only)
+ */
+export const listProvidersAdmin = async (params?: ListProvidersAdminParams, options?: RequestInit): Promise<ProviderListResponse> => {
+
+  return customFetch<ProviderListResponse>(getListProvidersAdminUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProvidersAdminQueryKey = (params?: ListProvidersAdminParams,) => {
+    return [
+    `/api/providers/admin`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListProvidersAdminQueryOptions = <TData = Awaited<ReturnType<typeof listProvidersAdmin>>, TError = ErrorType<unknown>>(params?: ListProvidersAdminParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProvidersAdmin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProvidersAdminQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProvidersAdmin>>> = ({ signal }) => listProvidersAdmin(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProvidersAdmin>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListProvidersAdminQueryResult = NonNullable<Awaited<ReturnType<typeof listProvidersAdmin>>>
+export type ListProvidersAdminQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all providers with visibility stats (admin only)
+ */
+
+export function useListProvidersAdmin<TData = Awaited<ReturnType<typeof listProvidersAdmin>>, TError = ErrorType<unknown>>(
+ params?: ListProvidersAdminParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProvidersAdmin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListProvidersAdminQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getReorderProvidersUrl = () => {
+
+
+
+
+  return `/api/providers/reorder`
+}
+
+/**
+ * @summary Batch update sort order for providers (admin only)
+ */
+export const reorderProviders = async (providerReorderInput: ProviderReorderInput, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getReorderProvidersUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      providerReorderInput,)
+  }
+);}
+
+
+
+
+export const getReorderProvidersMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderProviders>>, TError,{data: BodyType<ProviderReorderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reorderProviders>>, TError,{data: BodyType<ProviderReorderInput>}, TContext> => {
+
+const mutationKey = ['reorderProviders'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderProviders>>, {data: BodyType<ProviderReorderInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  reorderProviders(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReorderProvidersMutationResult = NonNullable<Awaited<ReturnType<typeof reorderProviders>>>
+    export type ReorderProvidersMutationBody = BodyType<ProviderReorderInput>
+    export type ReorderProvidersMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Batch update sort order for providers (admin only)
+ */
+export const useReorderProviders = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderProviders>>, TError,{data: BodyType<ProviderReorderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reorderProviders>>,
+        TError,
+        {data: BodyType<ProviderReorderInput>},
+        TContext
+      > => {
+      return useMutation(getReorderProvidersMutationOptions(options));
     }
 
 export const getListProvidersUrl = (params?: ListProvidersParams,) => {

@@ -376,14 +376,22 @@ export async function seed() {
   const provCount = await db.select({ c: count() }).from(providersTable);
   if (provCount[0].c === 0) {
     const PROVIDERS = [
-      { name: "UPI ID",          slug: "upi_id",        category: "upi",     status: "live",         description: "Collect payments via any UPI ID",             sortOrder: 1 },
-      { name: "Google Pay",      slug: "google_pay",    category: "upi",     status: "live",         description: "Google Pay for Business",                      sortOrder: 2 },
-      { name: "PhonePe",         slug: "phonepe",       category: "upi",     status: "live",         description: "PhonePe Business payments",                    sortOrder: 3 },
-      { name: "Paytm",           slug: "paytm",         category: "upi",     status: "live",         description: "Paytm Business gateway",                       sortOrder: 4 },
-      { name: "BharatPe",        slug: "bharatpe",      category: "upi",     status: "live",         description: "BharatPe merchant QR payments",                sortOrder: 5 },
-      { name: "Freecharge",      slug: "freecharge",    category: "upi",     status: "coming_soon",  description: "Freecharge UPI — coming soon",                 sortOrder: 6 },
-      { name: "YONO SBI",        slug: "yono_sbi",      category: "bank",    status: "testing",      description: "SBI YONO merchant collection",                 sortOrder: 7 },
-      { name: "HDFC SmartHub",   slug: "hdfc_smarthub", category: "bank",    status: "testing",      description: "HDFC SmartHub Vyapar merchant solution",       sortOrder: 8 },
+      { name: "UPI ID",                 slug: "upi_id",          category: "upi",     status: "live",         description: "Collect payments via any UPI virtual payment address",          sortOrder: 1  },
+      { name: "Google Pay Business",    slug: "google_pay",      category: "upi",     status: "live",         description: "Google Pay for Business — fast UPI collections",                sortOrder: 2  },
+      { name: "PhonePe Business",       slug: "phonepe",         category: "upi",     status: "live",         description: "PhonePe Business UPI merchant payments",                        sortOrder: 3  },
+      { name: "Paytm Business",         slug: "paytm",           category: "upi",     status: "live",         description: "Paytm for Business — UPI, wallet, and net banking",             sortOrder: 4  },
+      { name: "BharatPe",               slug: "bharatpe",        category: "upi",     status: "live",         description: "BharatPe QR — zero MDR UPI collections",                       sortOrder: 5  },
+      { name: "Amazon Pay",             slug: "amazon_pay",      category: "upi",     status: "live",         description: "Amazon Pay UPI merchant checkout",                              sortOrder: 6  },
+      { name: "MobiKwik",               slug: "mobikwik",        category: "upi",     status: "live",         description: "MobiKwik merchant payment gateway",                             sortOrder: 7  },
+      { name: "Freecharge",             slug: "freecharge",      category: "upi",     status: "coming_soon",  description: "Freecharge Business UPI — launching soon",                     sortOrder: 8  },
+      { name: "YONO SBI",               slug: "yono_sbi",        category: "bank",    status: "testing",      description: "SBI YONO merchant collection account",                         sortOrder: 9  },
+      { name: "HDFC SmartHub Vyapar",   slug: "hdfc_smarthub",   category: "bank",    status: "testing",      description: "HDFC SmartHub Vyapar all-in-one merchant solution",             sortOrder: 10 },
+      { name: "ICICI iMobile Pay",      slug: "icici_imobile",   category: "bank",    status: "coming_soon",  description: "ICICI Bank iMobile Pay merchant collection",                   sortOrder: 11 },
+      { name: "Axis Bank Pay",          slug: "axis_pay",        category: "bank",    status: "coming_soon",  description: "Axis Bank merchant payment gateway",                            sortOrder: 12 },
+      { name: "Kotak 811",              slug: "kotak_811",       category: "bank",    status: "coming_soon",  description: "Kotak Mahindra 811 merchant digital payments",                  sortOrder: 13 },
+      { name: "Razorpay",               slug: "razorpay",        category: "gateway", status: "coming_soon",  description: "Razorpay full-stack payment gateway (cards, UPI, wallets)",    sortOrder: 14 },
+      { name: "Cashfree Payments",      slug: "cashfree",        category: "gateway", status: "coming_soon",  description: "Cashfree multi-mode payment gateway",                          sortOrder: 15 },
+      { name: "PayU",                   slug: "payu",            category: "gateway", status: "coming_soon",  description: "PayU merchant payment gateway",                                sortOrder: 16 },
     ];
     for (const p of PROVIDERS) {
       await db.insert(providersTable).values(p).onConflictDoUpdate({ target: providersTable.slug, set: { name: p.name, status: p.status, sortOrder: p.sortOrder } });

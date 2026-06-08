@@ -2175,6 +2175,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /providers/admin:
+    get:
+      operationId: listProvidersAdmin
+      tags: [providers]
+      summary: List all providers with visibility stats (admin only)
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Provider list with visibility stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderListResponse"
+
+  /providers/reorder:
+    put:
+      operationId: reorderProviders
+      tags: [providers]
+      summary: Batch update sort order for providers (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderReorderInput"
+      responses:
+        "200":
+          description: Sort order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
   /providers:
     get:
       operationId: listProviders
@@ -3977,3 +4016,12 @@ components:
         email: { type: string }
         visible: { type: boolean }
         source: { type: string }
+
+    ProviderReorderInput:
+      type: object
+      required: [order]
+      properties:
+        order:
+          type: array
+          items: { type: integer }
+          description: Provider IDs in the desired display order

@@ -2278,6 +2278,46 @@ export const CreateLedgerAdjustmentBody = zod.object({
 
 
 /**
+ * @summary List all providers with visibility stats (admin only)
+ */
+export const ListProvidersAdminQueryParams = zod.object({
+  "category": zod.coerce.string().optional(),
+  "status": zod.coerce.string().optional()
+})
+
+export const ListProvidersAdminResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "logoUrl": zod.string().nullish(),
+  "category": zod.string(),
+  "status": zod.string(),
+  "description": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "visibleCount": zod.number().nullish(),
+  "hiddenCount": zod.number().nullish(),
+  "globalVisible": zod.boolean().nullish()
+})),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary Batch update sort order for providers (admin only)
+ */
+export const ReorderProvidersBody = zod.object({
+  "order": zod.array(zod.number()).describe('Provider IDs in the desired display order')
+})
+
+export const ReorderProvidersResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
  * @summary List providers (merchant gets visible ones; admin gets all)
  */
 export const ListProvidersQueryParams = zod.object({

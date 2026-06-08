@@ -148,9 +148,11 @@ export default function MerchantConnect() {
                         <Button
                           size="sm"
                           className="w-full"
-                          onClick={() => setConnectDialog(p)}
+                          disabled={p.status !== "live"}
+                          onClick={() => p.status === "live" && setConnectDialog(p)}
+                          title={p.status !== "live" ? "Available soon" : undefined}
                         >
-                          Connect
+                          {p.status === "live" ? "Connect" : "Coming Soon"}
                         </Button>
                       </CardContent>
                     </Card>

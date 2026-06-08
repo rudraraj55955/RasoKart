@@ -44,6 +44,57 @@ async function resolveVisible(providerId: number, merchantId: number, providerSt
   return providerStatus === "live" || providerStatus === "testing";
 }
 
+/** Shared helper: load all providers with admin stats */
+async function loadAdminProviders(category?: string, status?: string) {
+  const all = await db.select().from(providersTable).orderBy(asc(providersTable.sortOrder), asc(providersTable.id));
+  const withStats = await Promise.all(all.map(async (p) => {
+    const [visRows, globalRow] = await Promise.all([
+      db.select({ visible: providerVisibilityTable.visible, merchantId: providerVisibilityTable.merchantId })
+        .from(providerVisibilityTable)
+        .where(eq(providerVisibilityTable.providerId, p.id)),
+      db.select({ visible: providerVisibilityTable.visible })
+        .from(providerVisibilityTable)
+        .where(and(eq(providerVisibilityTable.providerId, p.id), isNull(providerVisibilityTable.merchantId)))
+        .limit(1),
+    ]);
+    const merchantRows = visRows.filter(r => r.merchantId !== null);
+    const visibleCount = merchantRows.filter(r => r.visible).length;
+    const hiddenCount = merchantRows.filter(r => !r.visible).length;
+    const globalVisible: boolean | null = globalRow[0]?.visible ?? null;
+    return mapProvider(p, { visibleCount, hiddenCount, globalVisible });
+  }));
+  let result = withStats;
+  if (category) result = result.filter(p => p.category === category);
+  if (status) result = result.filter(p => p.status === status);
+  return result;
+}
+
+// GET /api/providers/admin — explicit admin endpoint (alias for admin view)
+router.get("/admin", requireAdmin, async (req, res, next) => {
+  try {
+    const category = req.query.category as string | undefined;
+    const status = req.query.status as string | undefined;
+    const result = await loadAdminProviders(category, status);
+    res.json({ data: result, total: result.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/providers/reorder — batch update sortOrder (admin only)
+router.put("/reorder", requireAdmin, async (req, res, next) => {
+  try {
+    const { order } = req.body; // array of provider ids in new order
+    if (!Array.isArray(order)) { res.status(400).json({ error: "order (array of ids) is required" }); return; }
+    for (let i = 0; i < order.length; i++) {
+      await db.update(providersTable).set({ sortOrder: i + 1, updatedAt: new Date() }).where(eq(providersTable.id, parseInt(order[i])));
+    }
+    res.json({ message: "Sort order updated" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/providers
 router.get("/", async (req, res, next) => {
   try {
@@ -52,39 +103,18 @@ router.get("/", async (req, res, next) => {
     const status = req.query.status as string | undefined;
 
     if (user.role === "admin") {
-      // Admin: return all providers with visibility stats
-      const all = await db.select().from(providersTable).orderBy(asc(providersTable.sortOrder), asc(providersTable.id));
-
-      // For each provider, count merchant-specific visibility rows and get global rule
-      const withStats = await Promise.all(all.map(async (p) => {
-        const [visRows, globalRow] = await Promise.all([
-          db.select({ visible: providerVisibilityTable.visible, merchantId: providerVisibilityTable.merchantId })
-            .from(providerVisibilityTable)
-            .where(eq(providerVisibilityTable.providerId, p.id)),
-          db.select({ visible: providerVisibilityTable.visible })
-            .from(providerVisibilityTable)
-            .where(and(eq(providerVisibilityTable.providerId, p.id), isNull(providerVisibilityTable.merchantId)))
-            .limit(1),
-        ]);
-        const merchantRows = visRows.filter(r => r.merchantId !== null);
-        const visibleCount = merchantRows.filter(r => r.visible).length;
-        const hiddenCount = merchantRows.filter(r => !r.visible).length;
-        const globalVisible: boolean | null = globalRow[0]?.visible ?? null;
-        return mapProvider(p, { visibleCount, hiddenCount, globalVisible });
-      }));
-
-      let result = withStats;
-      if (category) result = result.filter(p => p.category === category);
-      if (status) result = result.filter(p => p.status === status);
+      const result = await loadAdminProviders(category, status);
       res.json({ data: result, total: result.length });
       return;
     }
 
     // Merchant: return only visible providers
     const merchantId: number = user.merchantId!;
-    const all = await db.select().from(providersTable)
-      .where(status ? eq(providersTable.status, status) : undefined)
-      .orderBy(asc(providersTable.sortOrder), asc(providersTable.id));
+    let all = await db.select().from(providersTable).orderBy(asc(providersTable.sortOrder), asc(providersTable.id));
+
+    // Apply filters
+    if (category) all = all.filter(p => p.category === category);
+    if (status) all = all.filter(p => p.status === status);
 
     const visible = await Promise.all(
       all.map(async (p) => ({ provider: p, visible: await resolveVisible(p.id, merchantId, p.status) }))

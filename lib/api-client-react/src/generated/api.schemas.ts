@@ -1260,6 +1260,11 @@ export interface ProviderMerchantVisibility {
   source: string;
 }
 
+export interface ProviderReorderInput {
+  /** Provider IDs in the desired display order */
+  order: number[];
+}
+
 export type ListMerchantsParams = {
 status?: ListMerchantsStatus;
 search?: string;
@@ -1487,6 +1492,11 @@ dateFrom?: string;
 dateTo?: string;
 page?: number;
 limit?: number;
+};
+
+export type ListProvidersAdminParams = {
+category?: string;
+status?: string;
 };
 
 export type ListProvidersParams = {
