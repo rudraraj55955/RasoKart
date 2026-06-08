@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable } from "@workspace/db";
+import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
@@ -263,6 +263,46 @@ router.post("/:id/plan/renew", async (req, res) => {
     .where(eq(merchantPlansTable.merchantId, id)).returning();
   await logPlanHistory({ merchantId: id, fromPlanId: existing[0].planId, toPlanId: existing[0].planId, action: "renewed", adminId: user.id, adminEmail: user.email, notes });
   res.json({ ...result, expiresAt: result.expiresAt ?? null });
+});
+
+// GET /api/merchants/:id/invoices (admin only)
+router.get("/:id/invoices", async (req, res) => {
+  const merchantId = parseInt(req.params.id as string);
+  const { status, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+  const offset = (pageNum - 1) * limitNum;
+
+  const conditions = [eq(invoicesTable.merchantId, merchantId)];
+  if (status && status !== "all") conditions.push(eq(invoicesTable.status, status));
+  const where = and(...conditions);
+
+  const [{ total }] = await db.select({ total: count() }).from(invoicesTable).where(where);
+  const rows = await db.select({
+    inv: invoicesTable,
+    planName: plansTable.name,
+  })
+    .from(invoicesTable)
+    .leftJoin(plansTable, eq(invoicesTable.planId, plansTable.id))
+    .where(where)
+    .orderBy(desc(invoicesTable.createdAt))
+    .limit(limitNum).offset(offset);
+
+  const data = rows.map(r => ({
+    ...r.inv,
+    amount: r.inv.amount,
+    paidAt: r.inv.paidAt?.toISOString() ?? null,
+    dueDate: r.inv.dueDate?.toISOString() ?? null,
+    periodFrom: r.inv.periodFrom?.toISOString() ?? null,
+    periodTo: r.inv.periodTo?.toISOString() ?? null,
+    createdAt: r.inv.createdAt.toISOString(),
+    updatedAt: r.inv.updatedAt.toISOString(),
+    planName: r.planName ?? null,
+    merchantName: null,
+    merchantEmail: null,
+  }));
+
+  res.json({ data, total, page: pageNum, limit: limitNum });
 });
 
 export default router;

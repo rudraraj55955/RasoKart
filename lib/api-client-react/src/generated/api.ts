@@ -1532,6 +1532,83 @@ export const useRenewMerchantPlan = <TError = ErrorType<unknown>,
       return useMutation(getRenewMerchantPlanMutationOptions(options));
     }
 
+export const getListMerchantInvoicesUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/invoices`
+}
+
+/**
+ * @summary List invoices for a specific merchant (admin only)
+ */
+export const listMerchantInvoices = async (id: number, options?: RequestInit): Promise<InvoiceListResponse> => {
+
+  return customFetch<InvoiceListResponse>(getListMerchantInvoicesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMerchantInvoicesQueryKey = (id: number,) => {
+    return [
+    `/api/merchants/${id}/invoices`
+    ] as const;
+    }
+
+
+export const getListMerchantInvoicesQueryOptions = <TData = Awaited<ReturnType<typeof listMerchantInvoices>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMerchantInvoicesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMerchantInvoices>>> = ({ signal }) => listMerchantInvoices(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMerchantInvoices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMerchantInvoicesQueryResult = NonNullable<Awaited<ReturnType<typeof listMerchantInvoices>>>
+export type ListMerchantInvoicesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List invoices for a specific merchant (admin only)
+ */
+
+export function useListMerchantInvoices<TData = Awaited<ReturnType<typeof listMerchantInvoices>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMerchantInvoicesQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getListInvoicesUrl = (params?: ListInvoicesParams,) => {
   const normalizedParams = new URLSearchParams();
 

@@ -399,6 +399,40 @@ export const RenewMerchantPlanResponse = zod.object({
 
 
 /**
+ * @summary List invoices for a specific merchant (admin only)
+ */
+export const ListMerchantInvoicesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListMerchantInvoicesResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "merchantEmail": zod.string().nullish(),
+  "planId": zod.number().nullish(),
+  "planName": zod.string().nullish(),
+  "invoiceNumber": zod.string(),
+  "amount": zod.string(),
+  "currency": zod.string(),
+  "period": zod.string().nullish(),
+  "periodFrom": zod.string().nullish(),
+  "periodTo": zod.string().nullish(),
+  "status": zod.enum(['draft', 'issued', 'paid', 'void']),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary List invoices (admin sees all, merchant sees own)
  */
 export const listInvoicesQueryPageDefault = 1;

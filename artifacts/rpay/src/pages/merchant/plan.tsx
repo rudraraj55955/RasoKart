@@ -1,10 +1,10 @@
-import { useGetMyPlan, useGetMyPlanUsage, useGetMyPlanHistory } from "@workspace/api-client-react";
+import { useGetMyPlan, useGetMyPlanUsage, useGetMyPlanHistory, useListInvoices } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  CreditCard, Clock, CheckCircle2, XCircle, Shield, Webhook, KeyRound, Percent,
-  TrendingUp, Infinity, AlertTriangle, ChevronRight, History, Lock
+  CreditCard, Clock, CheckCircle2, Shield, Webhook, KeyRound, Percent,
+  TrendingUp, Infinity, AlertTriangle, ChevronRight, History, Lock, Receipt
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -31,10 +31,18 @@ const ACTION_META: Record<string, { label: string; color: string }> = {
   removed: { label: "Removed", color: "text-muted-foreground" },
 };
 
+const INVOICE_STATUS_STYLE: Record<string, string> = {
+  paid: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  pending: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  overdue: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+  void: "bg-muted/30 text-muted-foreground border-border/40",
+};
+
 export default function MerchantPlanPage() {
   const { data: plan } = useGetMyPlan();
   const { data: usage } = useGetMyPlanUsage();
   const { data: history } = useGetMyPlanHistory();
+  const { data: invoicesData } = useListInvoices({});
 
   const isExpiringSoon = plan && !plan.isExpired && plan.daysUntilExpiry != null && plan.daysUntilExpiry <= 7;
   const tierColor = plan?.planName === "Platinum" ? "text-yellow-400" :
@@ -86,14 +94,15 @@ export default function MerchantPlanPage() {
                   </div>
                 </div>
                 <div className="text-right space-y-1 sm:shrink-0">
-                  {plan.price && plan.price !== "0" && (
-                    <p className="text-2xl font-bold">₹{parseInt(plan.price).toLocaleString()}<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
-                  )}
-                  {plan.price === "0" && plan.planName !== "Custom" && (
+                  {plan.monthlyFee && plan.monthlyFee !== "0" ? (
+                    <p className="text-2xl font-bold">₹{parseInt(plan.monthlyFee).toLocaleString()}<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
+                  ) : plan.planName === "Custom" ? (
+                    <p className="text-sm text-muted-foreground">Contact sales</p>
+                  ) : (
                     <p className="text-lg font-bold text-emerald-400">Free</p>
                   )}
-                  {plan.planName === "Custom" && (
-                    <p className="text-sm text-muted-foreground">Contact sales</p>
+                  {plan.yearlyFee && plan.yearlyFee !== "0" && (
+                    <p className="text-xs text-muted-foreground">₹{parseInt(plan.yearlyFee).toLocaleString()}/yr</p>
                   )}
                 </div>
               </div>
@@ -313,6 +322,58 @@ export default function MerchantPlanPage() {
           )}
         </>
       )}
+
+      {/* Invoice History */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Receipt className="w-4 h-4 text-primary" /> Billing Invoices
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!invoicesData || invoicesData.data.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No invoices yet.</p>
+          ) : (
+            <div className="overflow-x-auto -mx-2">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border/40">
+                    <th className="text-left pb-2 px-2 font-medium">Invoice #</th>
+                    <th className="text-left pb-2 px-2 font-medium">Period</th>
+                    <th className="text-right pb-2 px-2 font-medium">Amount</th>
+                    <th className="text-center pb-2 px-2 font-medium">Status</th>
+                    <th className="text-right pb-2 px-2 font-medium">Due</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoicesData.data.slice(0, 10).map((inv) => (
+                    <tr key={inv.id} className="border-b border-border/20 hover:bg-muted/10">
+                      <td className="py-2 px-2 font-mono text-xs text-muted-foreground">{inv.invoiceNumber}</td>
+                      <td className="py-2 px-2 text-muted-foreground">
+                        {inv.periodFrom && inv.periodTo
+                          ? `${format(new Date(inv.periodFrom), "MMM d")} – ${format(new Date(inv.periodTo), "MMM d, yyyy")}`
+                          : inv.period ?? "—"}
+                      </td>
+                      <td className="py-2 px-2 text-right font-medium">₹{parseFloat(inv.amount).toLocaleString()}</td>
+                      <td className="py-2 px-2 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${INVOICE_STATUS_STYLE[inv.status] ?? "border-border/40 text-muted-foreground"}`}>
+                          {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-right text-muted-foreground text-xs">
+                        {inv.dueDate ? format(new Date(inv.dueDate), "MMM d, yyyy") : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {invoicesData.total > 10 && (
+                <p className="text-xs text-muted-foreground text-center pt-3">{invoicesData.total - 10} more invoices not shown</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Plan History */}
       <Card>

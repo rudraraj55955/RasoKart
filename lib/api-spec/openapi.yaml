@@ -465,6 +465,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/MerchantPlan"
 
+  /merchants/{id}/invoices:
+    get:
+      operationId: listMerchantInvoices
+      tags: [merchants]
+      summary: List invoices for a specific merchant (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice list for merchant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceListResponse"
+
   /invoices:
     get:
       operationId: listInvoices

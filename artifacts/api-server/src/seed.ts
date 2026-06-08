@@ -145,6 +145,11 @@ export async function seed() {
     totalWithdrawals: "116500",
   }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved" } }).returning();
 
+  // Link user accounts to their merchant rows so merchant-facing routes work
+  if (m1) await db.update(usersTable).set({ merchantId: m1.id }).where(eq(usersTable.email, "merchant@demo.com"));
+  if (m2) await db.update(usersTable).set({ merchantId: m2.id }).where(eq(usersTable.email, "merchant2@demo.com"));
+  console.log("Merchants seeded");
+
   // assign plans
   const [starterPlan] = await db.select({ id: plansTable.id }).from(plansTable).where(eq(plansTable.name, "Starter")).limit(1);
   const [goldPlan] = await db.select({ id: plansTable.id }).from(plansTable).where(eq(plansTable.name, "Gold")).limit(1);

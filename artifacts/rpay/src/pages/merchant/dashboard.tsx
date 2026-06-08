@@ -124,13 +124,17 @@ export default function MerchantDashboard() {
               <CreditCard className="w-4 h-4 text-primary" />
               <CardTitle className="text-base">Active Plan</CardTitle>
               <Badge variant="outline" className={`ml-1 ${myPlan.isExpired ? "text-rose-400 border-rose-500/30" : "text-primary border-primary/40"}`}>{myPlan.planName}</Badge>
-              {myPlan.isExpired && <Badge variant="destructive" className="text-xs">Expired</Badge>}
-              {myPlan.expiresAt && !myPlan.isExpired && (
+              {myPlan.status === "suspended" && <Badge className="text-xs bg-orange-500/20 text-orange-400 border-orange-500/30">Suspended</Badge>}
+              {myPlan.isExpired && myPlan.status !== "suspended" && <Badge variant="destructive" className="text-xs">Expired</Badge>}
+              {myPlan.expiresAt && !myPlan.isExpired && myPlan.status !== "suspended" && (
                 <span className={`ml-auto text-xs ${isExpiringSoon ? "text-amber-400" : "text-muted-foreground"}`}>
                   Expires {format(new Date(myPlan.expiresAt), "MMM d, yyyy")}
                 </span>
               )}
-              {!myPlan.expiresAt && <span className="ml-auto text-xs text-emerald-400">No expiry</span>}
+              {!myPlan.expiresAt && myPlan.status !== "suspended" && <span className="ml-auto text-xs text-emerald-400">No expiry</span>}
+              {myPlan.monthlyFee && myPlan.monthlyFee !== "0" && (
+                <span className="ml-auto text-xs text-muted-foreground">₹{parseInt(myPlan.monthlyFee).toLocaleString()}/mo</span>
+              )}
               <Link href="/merchant/plan">
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground ml-1">
                   View Details <ChevronRight className="w-3 h-3 ml-0.5" />
