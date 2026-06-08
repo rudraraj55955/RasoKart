@@ -12,3 +12,4 @@ export * from "./plans";
 export * from "./merchantPlans";
 export * from "./qrCodes";
 export * from "./virtualAccounts";
+export * from "./auditLogs";

@@ -979,3 +979,108 @@ export const DeleteVirtualAccountResponse = zod.object({
 })
 
 
+/**
+ * @summary Get API monitoring statistics
+ */
+export const GetApiMonitoringStatsResponse = zod.object({
+  "totalRequests": zod.number(),
+  "successRequests": zod.number(),
+  "failedRequests": zod.number(),
+  "successRate": zod.number(),
+  "totalApiKeys": zod.number(),
+  "activeApiKeys": zod.number(),
+  "recentErrors": zod.array(zod.object({
+  "url": zod.string().optional(),
+  "status": zod.string().optional(),
+  "httpStatus": zod.number().nullish(),
+  "merchantName": zod.string().nullish(),
+  "createdAt": zod.string().optional()
+}))
+})
+
+
+/**
+ * @summary List admin audit logs
+ */
+export const ListAdminAuditLogsQueryParams = zod.object({
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional(),
+  "action": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional()
+})
+
+export const ListAdminAuditLogsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "adminId": zod.number(),
+  "adminEmail": zod.string(),
+  "action": zod.string(),
+  "targetType": zod.string(),
+  "targetId": zod.number().nullish(),
+  "details": zod.string().nullish(),
+  "ipAddress": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Create audit log entry
+ */
+export const CreateAdminAuditLogBody = zod.object({
+  "action": zod.string(),
+  "targetType": zod.string(),
+  "targetId": zod.number().nullish(),
+  "details": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get merchant volume breakdown
+ */
+export const GetDashboardMerchantVolumesResponse = zod.object({
+  "data": zod.array(zod.object({
+  "merchantId": zod.number(),
+  "merchantName": zod.string(),
+  "totalDeposits": zod.number(),
+  "totalWithdrawals": zod.number(),
+  "txCount": zod.number()
+}))
+})
+
+
+/**
+ * @summary Get admin notifications
+ */
+export const GetDashboardNotificationsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "message": zod.string(),
+  "severity": zod.enum(['info', 'warning', 'error']),
+  "link": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary Get risk monitoring stats
+ */
+export const GetDashboardRiskResponse = zod.object({
+  "highValueCount": zod.number(),
+  "failedRatePercent": zod.number(),
+  "suspiciousCount": zod.number(),
+  "topFailingMerchants": zod.array(zod.object({
+  "merchantId": zod.number().optional(),
+  "merchantName": zod.string().optional(),
+  "failedCount": zod.number().optional(),
+  "failedRate": zod.number().optional()
+}))
+})
+
+

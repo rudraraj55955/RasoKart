@@ -15,6 +15,8 @@ import connectionsRouter from "./connections";
 import plansRouter from "./plans";
 import qrCodesRouter from "./qrCodes";
 import virtualAccountsRouter from "./virtualAccounts";
+import apiMonitoringRouter from "./apiMonitoring";
+import auditLogsRouter from "./auditLogs";
 
 const router: IRouter = Router();
 
@@ -34,5 +36,7 @@ router.use("/connections", connectionsRouter);
 router.use("/plans", plansRouter);
 router.use("/qr-codes", qrCodesRouter);
 router.use("/virtual-accounts", virtualAccountsRouter);
+router.use("/api-monitoring", apiMonitoringRouter);
+router.use("/audit-logs", auditLogsRouter);
 
 export default router;

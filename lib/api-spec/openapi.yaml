@@ -1119,6 +1119,101 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
 
+  /api-monitoring:
+    get:
+      operationId: getApiMonitoringStats
+      tags: [dashboard]
+      summary: Get API monitoring statistics
+      responses:
+        "200":
+          description: API monitoring stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiMonitoringStats"
+
+  /audit-logs:
+    get:
+      operationId: listAdminAuditLogs
+      tags: [dashboard]
+      summary: List admin audit logs
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Audit log list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuditLogListResponse"
+    post:
+      operationId: createAdminAuditLog
+      tags: [dashboard]
+      summary: Create audit log entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuditLogInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuditLog"
+
+  /dashboard/merchants:
+    get:
+      operationId: getDashboardMerchantVolumes
+      tags: [dashboard]
+      summary: Get merchant volume breakdown
+      responses:
+        "200":
+          description: Merchant volumes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantVolumeListResponse"
+
+  /dashboard/notifications:
+    get:
+      operationId: getDashboardNotifications
+      tags: [dashboard]
+      summary: Get admin notifications
+      responses:
+        "200":
+          description: Admin notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminNotificationListResponse"
+
+  /dashboard/risk:
+    get:
+      operationId: getDashboardRisk
+      tags: [dashboard]
+      summary: Get risk monitoring stats
+      responses:
+        "200":
+          description: Risk stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRiskStats"
+
 components:
   schemas:
     HealthStatus:
@@ -1902,3 +1997,154 @@ components:
           type: integer
         limit:
           type: integer
+
+    ApiMonitoringStats:
+      type: object
+      required: [totalRequests, successRequests, failedRequests, successRate, totalApiKeys, activeApiKeys, recentErrors]
+      properties:
+        totalRequests:
+          type: integer
+        successRequests:
+          type: integer
+        failedRequests:
+          type: integer
+        successRate:
+          type: number
+        totalApiKeys:
+          type: integer
+        activeApiKeys:
+          type: integer
+        recentErrors:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              status: { type: string }
+              httpStatus: { type: ["integer", "null"] }
+              merchantName: { type: ["string", "null"] }
+              createdAt: { type: string }
+
+    AdminAuditLog:
+      type: object
+      required: [id, adminId, adminEmail, action, targetType, createdAt]
+      properties:
+        id:
+          type: integer
+        adminId:
+          type: integer
+        adminEmail:
+          type: string
+        action:
+          type: string
+        targetType:
+          type: string
+        targetId:
+          type: ["integer", "null"]
+        details:
+          type: ["string", "null"]
+        ipAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    AdminAuditLogInput:
+      type: object
+      required: [action, targetType]
+      properties:
+        action:
+          type: string
+        targetType:
+          type: string
+        targetId:
+          type: ["integer", "null"]
+        details:
+          type: ["string", "null"]
+
+    AdminAuditLogListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuditLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    MerchantVolume:
+      type: object
+      required: [merchantId, merchantName, totalDeposits, totalWithdrawals, txCount]
+      properties:
+        merchantId:
+          type: integer
+        merchantName:
+          type: string
+        totalDeposits:
+          type: number
+        totalWithdrawals:
+          type: number
+        txCount:
+          type: integer
+
+    MerchantVolumeListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MerchantVolume"
+
+    AdminNotification:
+      type: object
+      required: [id, type, message, severity, createdAt]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, error]
+        link:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    AdminNotificationListResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminNotification"
+        total:
+          type: integer
+
+    AdminRiskStats:
+      type: object
+      required: [highValueCount, failedRatePercent, suspiciousCount, topFailingMerchants]
+      properties:
+        highValueCount:
+          type: integer
+        failedRatePercent:
+          type: number
+        suspiciousCount:
+          type: integer
+        topFailingMerchants:
+          type: array
+          items:
+            type: object
+            properties:
+              merchantId: { type: integer }
+              merchantName: { type: string }
+              failedCount: { type: integer }
+              failedRate: { type: number }

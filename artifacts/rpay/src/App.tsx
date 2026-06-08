@@ -25,6 +25,11 @@ import AdminUsers from "@/pages/admin/users";
 import AdminPlans from "@/pages/admin/plans";
 import AdminQrCodes from "@/pages/admin/qr-codes";
 import AdminVirtualAccounts from "@/pages/admin/virtual-accounts";
+import AdminDeposits from "@/pages/admin/deposits";
+import AdminWebhookLogs from "@/pages/admin/webhook-logs";
+import AdminApiMonitoring from "@/pages/admin/api-monitoring";
+import AdminAuditLogs from "@/pages/admin/audit-logs";
+import AdminUserRoles from "@/pages/admin/user-roles";
 
 // Merchant Pages
 import MerchantDashboard from "@/pages/merchant/dashboard";
@@ -87,74 +92,35 @@ function Router() {
       <Route path="/merchant/pending" component={MerchantPending} />
 
       {/* Admin Routes */}
-      <Route path="/admin/dashboard">
-        <AdminRoute component={AdminDashboard} />
-      </Route>
-      <Route path="/admin/merchants">
-        <AdminRoute component={AdminMerchants} />
-      </Route>
-      <Route path="/admin/transactions">
-        <AdminRoute component={AdminTransactions} />
-      </Route>
-      <Route path="/admin/withdrawals">
-        <AdminRoute component={AdminWithdrawals} />
-      </Route>
-      <Route path="/admin/settlements">
-        <AdminRoute component={AdminSettlements} />
-      </Route>
-      <Route path="/admin/callbacks">
-        <AdminRoute component={AdminCallbacks} />
-      </Route>
-      <Route path="/admin/users">
-        <AdminRoute component={AdminUsers} />
-      </Route>
-      <Route path="/admin/plans">
-        <AdminRoute component={AdminPlans} />
-      </Route>
-      <Route path="/admin/qr-codes">
-        <AdminRoute component={AdminQrCodes} />
-      </Route>
-      <Route path="/admin/virtual-accounts">
-        <AdminRoute component={AdminVirtualAccounts} />
-      </Route>
+      <Route path="/admin/dashboard"><AdminRoute component={AdminDashboard} /></Route>
+      <Route path="/admin/merchants"><AdminRoute component={AdminMerchants} /></Route>
+      <Route path="/admin/transactions"><AdminRoute component={AdminTransactions} /></Route>
+      <Route path="/admin/withdrawals"><AdminRoute component={AdminWithdrawals} /></Route>
+      <Route path="/admin/settlements"><AdminRoute component={AdminSettlements} /></Route>
+      <Route path="/admin/callbacks"><AdminRoute component={AdminCallbacks} /></Route>
+      <Route path="/admin/users"><AdminRoute component={AdminUsers} /></Route>
+      <Route path="/admin/plans"><AdminRoute component={AdminPlans} /></Route>
+      <Route path="/admin/qr-codes"><AdminRoute component={AdminQrCodes} /></Route>
+      <Route path="/admin/virtual-accounts"><AdminRoute component={AdminVirtualAccounts} /></Route>
+      <Route path="/admin/deposits"><AdminRoute component={AdminDeposits} /></Route>
+      <Route path="/admin/webhook-logs"><AdminRoute component={AdminWebhookLogs} /></Route>
+      <Route path="/admin/api-monitoring"><AdminRoute component={AdminApiMonitoring} /></Route>
+      <Route path="/admin/audit-logs"><AdminRoute component={AdminAuditLogs} /></Route>
+      <Route path="/admin/user-roles"><AdminRoute component={AdminUserRoles} /></Route>
 
       {/* Merchant Routes */}
-      <Route path="/merchant/dashboard">
-        <MerchantRoute component={MerchantDashboard} />
-      </Route>
-      <Route path="/merchant/transactions">
-        <MerchantRoute component={MerchantTransactions} />
-      </Route>
-      <Route path="/merchant/withdrawals">
-        <MerchantRoute component={MerchantWithdrawals} />
-      </Route>
-      <Route path="/merchant/api-keys">
-        <MerchantRoute component={MerchantApiKeys} />
-      </Route>
-      <Route path="/merchant/webhook">
-        <MerchantRoute component={MerchantWebhook} />
-      </Route>
-      <Route path="/merchant/callbacks">
-        <MerchantRoute component={MerchantCallbacks} />
-      </Route>
-      <Route path="/merchant/settlements">
-        <MerchantRoute component={MerchantSettlements} />
-      </Route>
-      <Route path="/merchant/products">
-        <MerchantRoute component={MerchantProducts} />
-      </Route>
-      <Route path="/merchant/connect">
-        <MerchantRoute component={MerchantConnect} />
-      </Route>
-      <Route path="/merchant/virtual-accounts">
-        <MerchantRoute component={MerchantVirtualAccounts} />
-      </Route>
-      <Route path="/merchant/qr-codes">
-        <MerchantRoute component={MerchantQrCodes} />
-      </Route>
-      <Route path="/merchant/api-docs">
-        <PublicPage component={MerchantApiDocs} />
-      </Route>
+      <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>
+      <Route path="/merchant/transactions"><MerchantRoute component={MerchantTransactions} /></Route>
+      <Route path="/merchant/withdrawals"><MerchantRoute component={MerchantWithdrawals} /></Route>
+      <Route path="/merchant/api-keys"><MerchantRoute component={MerchantApiKeys} /></Route>
+      <Route path="/merchant/webhook"><MerchantRoute component={MerchantWebhook} /></Route>
+      <Route path="/merchant/callbacks"><MerchantRoute component={MerchantCallbacks} /></Route>
+      <Route path="/merchant/settlements"><MerchantRoute component={MerchantSettlements} /></Route>
+      <Route path="/merchant/products"><MerchantRoute component={MerchantProducts} /></Route>
+      <Route path="/merchant/connect"><MerchantRoute component={MerchantConnect} /></Route>
+      <Route path="/merchant/virtual-accounts"><MerchantRoute component={MerchantVirtualAccounts} /></Route>
+      <Route path="/merchant/qr-codes"><MerchantRoute component={MerchantQrCodes} /></Route>
+      <Route path="/merchant/api-docs"><PublicPage component={MerchantApiDocs} /></Route>
 
       <Route component={NotFound} />
     </Switch>

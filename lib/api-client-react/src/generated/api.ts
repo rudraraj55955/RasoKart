@@ -20,8 +20,14 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AdminAuditLog,
+  AdminAuditLogInput,
+  AdminAuditLogListResponse,
+  AdminNotificationListResponse,
+  AdminRiskStats,
   ApiKey,
   ApiKeyWithSecret,
+  ApiMonitoringStats,
   AssignPlanInput,
   AuthResponse,
   CallbackLogListResponse,
@@ -29,6 +35,7 @@ import type {
   DashboardStats,
   ErrorResponse,
   HealthStatus,
+  ListAdminAuditLogsParams,
   ListCallbackLogsParams,
   ListMerchantsParams,
   ListQrCodesParams,
@@ -46,6 +53,7 @@ import type {
   MerchantPlanWithDetails,
   MerchantProduct,
   MerchantRegisterInput,
+  MerchantVolumeListResponse,
   MessageResponse,
   Plan,
   PlanInput,
@@ -3830,4 +3838,467 @@ export const useDeleteVirtualAccount = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteVirtualAccountMutationOptions(options));
     }
+
+export const getGetApiMonitoringStatsUrl = () => {
+
+
+
+
+  return `/api/api-monitoring`
+}
+
+/**
+ * @summary Get API monitoring statistics
+ */
+export const getApiMonitoringStats = async ( options?: RequestInit): Promise<ApiMonitoringStats> => {
+
+  return customFetch<ApiMonitoringStats>(getGetApiMonitoringStatsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetApiMonitoringStatsQueryKey = () => {
+    return [
+    `/api/api-monitoring`
+    ] as const;
+    }
+
+
+export const getGetApiMonitoringStatsQueryOptions = <TData = Awaited<ReturnType<typeof getApiMonitoringStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiMonitoringStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiMonitoringStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiMonitoringStats>>> = ({ signal }) => getApiMonitoringStats({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiMonitoringStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetApiMonitoringStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getApiMonitoringStats>>>
+export type GetApiMonitoringStatsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get API monitoring statistics
+ */
+
+export function useGetApiMonitoringStats<TData = Awaited<ReturnType<typeof getApiMonitoringStats>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiMonitoringStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetApiMonitoringStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAdminAuditLogsUrl = (params?: ListAdminAuditLogsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/audit-logs?${stringifiedParams}` : `/api/audit-logs`
+}
+
+/**
+ * @summary List admin audit logs
+ */
+export const listAdminAuditLogs = async (params?: ListAdminAuditLogsParams, options?: RequestInit): Promise<AdminAuditLogListResponse> => {
+
+  return customFetch<AdminAuditLogListResponse>(getListAdminAuditLogsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminAuditLogsQueryKey = (params?: ListAdminAuditLogsParams,) => {
+    return [
+    `/api/audit-logs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAdminAuditLogsQueryOptions = <TData = Awaited<ReturnType<typeof listAdminAuditLogs>>, TError = ErrorType<unknown>>(params?: ListAdminAuditLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminAuditLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminAuditLogsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminAuditLogs>>> = ({ signal }) => listAdminAuditLogs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminAuditLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminAuditLogsQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminAuditLogs>>>
+export type ListAdminAuditLogsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List admin audit logs
+ */
+
+export function useListAdminAuditLogs<TData = Awaited<ReturnType<typeof listAdminAuditLogs>>, TError = ErrorType<unknown>>(
+ params?: ListAdminAuditLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminAuditLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminAuditLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAdminAuditLogUrl = () => {
+
+
+
+
+  return `/api/audit-logs`
+}
+
+/**
+ * @summary Create audit log entry
+ */
+export const createAdminAuditLog = async (adminAuditLogInput: AdminAuditLogInput, options?: RequestInit): Promise<AdminAuditLog> => {
+
+  return customFetch<AdminAuditLog>(getCreateAdminAuditLogUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminAuditLogInput,)
+  }
+);}
+
+
+
+
+export const getCreateAdminAuditLogMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminAuditLog>>, TError,{data: BodyType<AdminAuditLogInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAdminAuditLog>>, TError,{data: BodyType<AdminAuditLogInput>}, TContext> => {
+
+const mutationKey = ['createAdminAuditLog'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAdminAuditLog>>, {data: BodyType<AdminAuditLogInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAdminAuditLog(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAdminAuditLogMutationResult = NonNullable<Awaited<ReturnType<typeof createAdminAuditLog>>>
+    export type CreateAdminAuditLogMutationBody = BodyType<AdminAuditLogInput>
+    export type CreateAdminAuditLogMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create audit log entry
+ */
+export const useCreateAdminAuditLog = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAdminAuditLog>>, TError,{data: BodyType<AdminAuditLogInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAdminAuditLog>>,
+        TError,
+        {data: BodyType<AdminAuditLogInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAdminAuditLogMutationOptions(options));
+    }
+
+export const getGetDashboardMerchantVolumesUrl = () => {
+
+
+
+
+  return `/api/dashboard/merchants`
+}
+
+/**
+ * @summary Get merchant volume breakdown
+ */
+export const getDashboardMerchantVolumes = async ( options?: RequestInit): Promise<MerchantVolumeListResponse> => {
+
+  return customFetch<MerchantVolumeListResponse>(getGetDashboardMerchantVolumesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardMerchantVolumesQueryKey = () => {
+    return [
+    `/api/dashboard/merchants`
+    ] as const;
+    }
+
+
+export const getGetDashboardMerchantVolumesQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardMerchantVolumes>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardMerchantVolumes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardMerchantVolumesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardMerchantVolumes>>> = ({ signal }) => getDashboardMerchantVolumes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardMerchantVolumes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardMerchantVolumesQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardMerchantVolumes>>>
+export type GetDashboardMerchantVolumesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get merchant volume breakdown
+ */
+
+export function useGetDashboardMerchantVolumes<TData = Awaited<ReturnType<typeof getDashboardMerchantVolumes>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardMerchantVolumes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardMerchantVolumesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetDashboardNotificationsUrl = () => {
+
+
+
+
+  return `/api/dashboard/notifications`
+}
+
+/**
+ * @summary Get admin notifications
+ */
+export const getDashboardNotifications = async ( options?: RequestInit): Promise<AdminNotificationListResponse> => {
+
+  return customFetch<AdminNotificationListResponse>(getGetDashboardNotificationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardNotificationsQueryKey = () => {
+    return [
+    `/api/dashboard/notifications`
+    ] as const;
+    }
+
+
+export const getGetDashboardNotificationsQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardNotifications>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardNotificationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardNotifications>>> = ({ signal }) => getDashboardNotifications({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardNotifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardNotificationsQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardNotifications>>>
+export type GetDashboardNotificationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get admin notifications
+ */
+
+export function useGetDashboardNotifications<TData = Awaited<ReturnType<typeof getDashboardNotifications>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardNotificationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetDashboardRiskUrl = () => {
+
+
+
+
+  return `/api/dashboard/risk`
+}
+
+/**
+ * @summary Get risk monitoring stats
+ */
+export const getDashboardRisk = async ( options?: RequestInit): Promise<AdminRiskStats> => {
+
+  return customFetch<AdminRiskStats>(getGetDashboardRiskUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardRiskQueryKey = () => {
+    return [
+    `/api/dashboard/risk`
+    ] as const;
+    }
+
+
+export const getGetDashboardRiskQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardRisk>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardRisk>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardRiskQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardRisk>>> = ({ signal }) => getDashboardRisk({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardRisk>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardRiskQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardRisk>>>
+export type GetDashboardRiskQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get risk monitoring stats
+ */
+
+export function useGetDashboardRisk<TData = Awaited<ReturnType<typeof getDashboardRisk>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardRisk>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardRiskQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 

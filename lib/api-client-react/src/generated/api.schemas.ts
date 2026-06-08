@@ -566,6 +566,107 @@ export interface VaTransactionListResponse {
   limit: number;
 }
 
+export type ApiMonitoringStatsRecentErrorsItem = {
+  url?: string;
+  status?: string;
+  /** @nullable */
+  httpStatus?: number | null;
+  /** @nullable */
+  merchantName?: string | null;
+  createdAt?: string;
+};
+
+export interface ApiMonitoringStats {
+  totalRequests: number;
+  successRequests: number;
+  failedRequests: number;
+  successRate: number;
+  totalApiKeys: number;
+  activeApiKeys: number;
+  recentErrors: ApiMonitoringStatsRecentErrorsItem[];
+}
+
+export interface AdminAuditLog {
+  id: number;
+  adminId: number;
+  adminEmail: string;
+  action: string;
+  targetType: string;
+  /** @nullable */
+  targetId?: number | null;
+  /** @nullable */
+  details?: string | null;
+  /** @nullable */
+  ipAddress?: string | null;
+  createdAt: string;
+}
+
+export interface AdminAuditLogInput {
+  action: string;
+  targetType: string;
+  /** @nullable */
+  targetId?: number | null;
+  /** @nullable */
+  details?: string | null;
+}
+
+export interface AdminAuditLogListResponse {
+  data: AdminAuditLog[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface MerchantVolume {
+  merchantId: number;
+  merchantName: string;
+  totalDeposits: number;
+  totalWithdrawals: number;
+  txCount: number;
+}
+
+export interface MerchantVolumeListResponse {
+  data: MerchantVolume[];
+}
+
+export type AdminNotificationSeverity = typeof AdminNotificationSeverity[keyof typeof AdminNotificationSeverity];
+
+
+export const AdminNotificationSeverity = {
+  info: 'info',
+  warning: 'warning',
+  error: 'error',
+} as const;
+
+export interface AdminNotification {
+  id: string;
+  type: string;
+  message: string;
+  severity: AdminNotificationSeverity;
+  /** @nullable */
+  link?: string | null;
+  createdAt: string;
+}
+
+export interface AdminNotificationListResponse {
+  data: AdminNotification[];
+  total: number;
+}
+
+export type AdminRiskStatsTopFailingMerchantsItem = {
+  merchantId?: number;
+  merchantName?: string;
+  failedCount?: number;
+  failedRate?: number;
+};
+
+export interface AdminRiskStats {
+  highValueCount: number;
+  failedRatePercent: number;
+  suspiciousCount: number;
+  topFailingMerchants: AdminRiskStatsTopFailingMerchantsItem[];
+}
+
 export type ListMerchantsParams = {
 status?: ListMerchantsStatus;
 search?: string;
@@ -715,4 +816,11 @@ export const ListVirtualAccountsStatus = {
   closed: 'closed',
   all: 'all',
 } as const;
+
+export type ListAdminAuditLogsParams = {
+page?: number;
+limit?: number;
+action?: string;
+search?: string;
+};
 

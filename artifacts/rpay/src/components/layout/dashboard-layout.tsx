@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/auth-context";
 import { UserRole } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DashboardLayoutProps {
@@ -20,16 +20,50 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
   const isAdmin = user?.role === UserRole.admin;
 
   const adminNav = [
-    { title: "Overview", icon: LayoutDashboard, href: "/admin/dashboard" },
-    { title: "Merchants", icon: Store, href: "/admin/merchants" },
-    { title: "Transactions", icon: ArrowRightLeft, href: "/admin/transactions" },
-    { title: "Withdrawals", icon: Landmark, href: "/admin/withdrawals" },
-    { title: "Settlements", icon: FileText, href: "/admin/settlements" },
-    { title: "Callbacks", icon: Webhook, href: "/admin/callbacks" },
-    { title: "Plans", icon: CreditCard, href: "/admin/plans" },
-    { title: "QR Management", icon: QrCode, href: "/admin/qr-codes" },
-    { title: "Virtual Accounts", icon: Building2, href: "/admin/virtual-accounts" },
-    { title: "Team", icon: Users, href: "/admin/users" },
+    {
+      group: "Overview",
+      items: [
+        { title: "Dashboard", icon: LayoutDashboard, href: "/admin/dashboard" },
+      ],
+    },
+    {
+      group: "Merchants",
+      items: [
+        { title: "Merchants", icon: Store, href: "/admin/merchants" },
+        { title: "Plans", icon: CreditCard, href: "/admin/plans" },
+      ],
+    },
+    {
+      group: "Payments",
+      items: [
+        { title: "Deposits", icon: ArrowDownLeft, href: "/admin/deposits" },
+        { title: "Withdrawals", icon: Landmark, href: "/admin/withdrawals" },
+        { title: "Settlements", icon: FileText, href: "/admin/settlements" },
+        { title: "Transactions", icon: ArrowRightLeft, href: "/admin/transactions" },
+      ],
+    },
+    {
+      group: "Instruments",
+      items: [
+        { title: "Dynamic QR", icon: QrCode, href: "/admin/qr-codes" },
+        { title: "Virtual Accounts", icon: Building2, href: "/admin/virtual-accounts" },
+      ],
+    },
+    {
+      group: "Monitoring",
+      items: [
+        { title: "Webhook Logs", icon: Webhook, href: "/admin/webhook-logs" },
+        { title: "Callback Logs", icon: Activity, href: "/admin/callbacks" },
+        { title: "API Monitoring", icon: Activity, href: "/admin/api-monitoring" },
+      ],
+    },
+    {
+      group: "Administration",
+      items: [
+        { title: "Audit Logs", icon: Shield, href: "/admin/audit-logs" },
+        { title: "User Roles", icon: UserCog, href: "/admin/user-roles" },
+      ],
+    },
   ];
 
   const merchantNav = [
@@ -51,7 +85,6 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
     { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
   ];
 
-  const navItems = publicMode ? publicNav : (isAdmin ? adminNav : merchantNav);
   const portalLabel = publicMode ? "Developer Docs" : (isAdmin ? "Admin Console" : "Merchant Portal");
 
   return (
@@ -68,27 +101,62 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
             </div>
           </SidebarHeader>
           <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupLabel>Menu</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {navItems.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={location === item.href}
-                        tooltip={item.title}
-                      >
-                        <Link href={item.href} className="flex items-center gap-3">
-                          <item.icon className="w-4 h-4" />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            {publicMode ? (
+              <SidebarGroup>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {publicNav.map((item) => (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.title}>
+                          <Link href={item.href} className="flex items-center gap-3">
+                            <item.icon className="w-4 h-4" />
+                            <span>{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ) : isAdmin ? (
+              adminNav.map((group) => (
+                <SidebarGroup key={group.group}>
+                  <SidebarGroupLabel>{group.group}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {group.items.map((item) => (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.title}>
+                            <Link href={item.href} className="flex items-center gap-3">
+                              <item.icon className="w-4 h-4" />
+                              <span>{item.title}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ))
+            ) : (
+              <SidebarGroup>
+                <SidebarGroupLabel>Menu</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {merchantNav.map((item) => (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.title}>
+                          <Link href={item.href} className="flex items-center gap-3">
+                            <item.icon className="w-4 h-4" />
+                            <span>{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
           </SidebarContent>
           <SidebarFooter className="p-4">
             {user ? (
