@@ -115,17 +115,20 @@ router.post("/", requireAdmin, async (req, res) => {
         createdBy: user.id,
       }).returning();
 
-      if (balanceBefore > 0 && invoiceAmount > 0) {
+      // Only deduct when merchant has sufficient funds — ensures DB balance and
+      // ledger running balance always agree (no Math.max divergence).
+      if (invoiceAmount > 0 && balanceBefore >= invoiceAmount) {
         await tx.update(merchantsTable)
           .set({ balance: sql`${merchantsTable.balance} - ${invoiceAmount}::numeric`, updatedAt: new Date() })
           .where(eq(merchantsTable.id, merchantId));
 
+        // balanceAfter is exact: same value used in both DB write and ledger entry.
         await tx.insert(ledgerEntriesTable).values({
           merchantId,
           type: "fee",
           amount: (-invoiceAmount).toFixed(2),
           balanceBefore: balanceBefore.toFixed(2),
-          balanceAfter: Math.max(0, balanceAfter).toFixed(2),
+          balanceAfter: balanceAfter.toFixed(2),
           referenceType: "invoice",
           referenceId: created.id,
           description: `Fee charged — ${planName ? `${planName} plan` : "subscription"} invoice ${invoiceNumber}`,
