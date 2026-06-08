@@ -15,5 +15,10 @@ export interface MerchantPlanWithDetails {
   description?: string | null;
   pricing: string;
   features: string;
+  dynamicQrLimit: number;
+  staticQrLimit: number;
+  virtualAccountLimit: number;
+  paymentLinkLimit: number;
+  payoutLimit: number;
   assignedAt: string;
 }

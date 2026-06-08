@@ -71,6 +71,7 @@ import type {
   MessageResponse,
   Plan,
   PlanInput,
+  PlanUsage,
   QrCode,
   QrCodeInput,
   QrCodeListResponse,
@@ -3031,6 +3032,83 @@ export function useGetMyPlan<TData = Awaited<ReturnType<typeof getMyPlan>>, TErr
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMyPlanQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyPlanUsageUrl = () => {
+
+
+
+
+  return `/api/plans/me/usage`
+}
+
+/**
+ * @summary Get current merchant's plan usage counts
+ */
+export const getMyPlanUsage = async ( options?: RequestInit): Promise<PlanUsage> => {
+
+  return customFetch<PlanUsage>(getGetMyPlanUsageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyPlanUsageQueryKey = () => {
+    return [
+    `/api/plans/me/usage`
+    ] as const;
+    }
+
+
+export const getGetMyPlanUsageQueryOptions = <TData = Awaited<ReturnType<typeof getMyPlanUsage>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyPlanUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyPlanUsageQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyPlanUsage>>> = ({ signal }) => getMyPlanUsage({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyPlanUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyPlanUsageQueryResult = NonNullable<Awaited<ReturnType<typeof getMyPlanUsage>>>
+export type GetMyPlanUsageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get current merchant's plan usage counts
+ */
+
+export function useGetMyPlanUsage<TData = Awaited<ReturnType<typeof getMyPlanUsage>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyPlanUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyPlanUsageQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

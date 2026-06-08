@@ -13,10 +13,58 @@ import {
   qrCodesTable,
   virtualAccountsTable,
   accountDetailsTable,
+  plansTable,
+  merchantPlansTable,
 } from "@workspace/db";
+
+const PLAN_TIERS = [
+  {
+    name: "Starter",
+    description: "Perfect for individuals and small businesses getting started.",
+    pricing: JSON.stringify({ qr: { monthly: 0, perTx: 2 }, va: { monthly: 0, perTx: 5 } }),
+    features: JSON.stringify(["5 Dynamic QR Codes", "5 Static QR Codes", "2 Virtual Accounts", "3 Payment Links", "Email Support"]),
+    dynamicQrLimit: 5, staticQrLimit: 5, virtualAccountLimit: 2, paymentLinkLimit: 3, payoutLimit: 5,
+  },
+  {
+    name: "Startup",
+    description: "For growing startups that need more capacity.",
+    pricing: JSON.stringify({ qr: { monthly: 999, perTx: 1.5 }, va: { monthly: 999, perTx: 3 } }),
+    features: JSON.stringify(["20 Dynamic QR Codes", "20 Static QR Codes", "5 Virtual Accounts", "10 Payment Links", "Priority Support"]),
+    dynamicQrLimit: 20, staticQrLimit: 20, virtualAccountLimit: 5, paymentLinkLimit: 10, payoutLimit: 20,
+  },
+  {
+    name: "Business",
+    description: "Built for established businesses with high transaction volumes.",
+    pricing: JSON.stringify({ qr: { monthly: 2999, perTx: 1 }, va: { monthly: 2999, perTx: 2 } }),
+    features: JSON.stringify(["50 Dynamic QR Codes", "50 Static QR Codes", "15 Virtual Accounts", "30 Payment Links", "Dedicated Support", "Advanced Analytics"]),
+    dynamicQrLimit: 50, staticQrLimit: 50, virtualAccountLimit: 15, paymentLinkLimit: 30, payoutLimit: 50,
+  },
+  {
+    name: "Business Plus",
+    description: "Enhanced capacity for high-growth businesses.",
+    pricing: JSON.stringify({ qr: { monthly: 5999, perTx: 0.75 }, va: { monthly: 5999, perTx: 1.5 } }),
+    features: JSON.stringify(["100 Dynamic QR Codes", "100 Static QR Codes", "30 Virtual Accounts", "50 Payment Links", "SLA Support", "Custom Webhooks", "Advanced Analytics"]),
+    dynamicQrLimit: 100, staticQrLimit: 100, virtualAccountLimit: 30, paymentLinkLimit: 50, payoutLimit: 100,
+  },
+  {
+    name: "Enterprise",
+    description: "Unlimited scale for large enterprises with custom requirements.",
+    pricing: JSON.stringify({ qr: { monthly: 0, perTx: 0.5 }, va: { monthly: 0, perTx: 1 } }),
+    features: JSON.stringify(["Unlimited Dynamic QR Codes", "Unlimited Static QR Codes", "100 Virtual Accounts", "200 Payment Links", "24/7 Dedicated Support", "Custom Integration", "SLA Guarantee"]),
+    dynamicQrLimit: 999, staticQrLimit: 999, virtualAccountLimit: 100, paymentLinkLimit: 200, payoutLimit: 999,
+  },
+];
 
 export async function seed() {
   console.log("Seeding database...");
+
+  // ── Plan tiers ────────────────────────────────────────────────────────────
+  // Upsert by name so re-seeding is idempotent.
+  for (const tier of PLAN_TIERS) {
+    await db.insert(plansTable).values(tier)
+      .onConflictDoUpdate({ target: plansTable.name, set: tier });
+  }
+  console.log("Plans seeded");
 
   // ── Users & Merchants ────────────────────────────────────────────────────
   // These tables have unique constraints on email → safe to upsert every boot.
@@ -67,6 +115,18 @@ export async function seed() {
     .insert(merchantsTable)
     .values({ businessName: "FastCash Ltd", contactName: "Amit Kumar", email: "amit@fastcash.in", phone: "+91-7654321098", status: "rejected", rejectionReason: "Incomplete documentation" })
     .onConflictDoUpdate({ target: merchantsTable.email, set: { status: "rejected" } });
+
+  // Assign plans to approved/pending merchants so limit enforcement works
+  const [starterPlan] = await db.select({ id: plansTable.id }).from(plansTable).where(eq(plansTable.name, "Starter")).limit(1);
+  const [businessPlan] = await db.select({ id: plansTable.id }).from(plansTable).where(eq(plansTable.name, "Business")).limit(1);
+  if (starterPlan) {
+    await db.insert(merchantPlansTable).values({ merchantId: merchant1.id, planId: starterPlan.id })
+      .onConflictDoUpdate({ target: merchantPlansTable.merchantId, set: { planId: starterPlan.id } });
+  }
+  if (businessPlan) {
+    await db.insert(merchantPlansTable).values({ merchantId: merchant2.id, planId: businessPlan.id })
+      .onConflictDoUpdate({ target: merchantPlansTable.merchantId, set: { planId: businessPlan.id } });
+  }
 
   console.log("Merchants seeded");
 

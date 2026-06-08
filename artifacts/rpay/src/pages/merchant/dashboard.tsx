@@ -1,16 +1,51 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
+
+interface UsageRowProps {
+  label: string;
+  used: number;
+  limit: number;
+}
+
+function UsageRow({ label, used, limit }: UsageRowProps) {
+  const isUnlimited = limit >= 999;
+  const pct = isUnlimited ? 0 : Math.min(100, (used / limit) * 100);
+  const isNearLimit = !isUnlimited && pct >= 80;
+  const isAtLimit = !isUnlimited && used >= limit;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={`font-medium tabular-nums ${isAtLimit ? "text-rose-400" : isNearLimit ? "text-amber-400" : "text-foreground"}`}>
+          {isUnlimited ? (
+            <span className="flex items-center gap-1">{used} / <Infinity className="w-3.5 h-3.5 text-emerald-400" /></span>
+          ) : `${used} / ${limit}`}
+        </span>
+      </div>
+      {!isUnlimited && (
+        <div className="h-1.5 w-full rounded-full bg-muted/50">
+          <div
+            className={`h-1.5 rounded-full transition-all ${isAtLimit ? "bg-rose-500" : isNearLimit ? "bg-amber-400" : "bg-primary"}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function MerchantDashboard() {
   const { data: user } = useGetMe();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: chartData, isLoading: chartLoading } = useGetDashboardChart();
   const { data: myPlan } = useGetMyPlan();
+  const { data: usage } = useGetMyPlanUsage();
 
   return (
     <div className="space-y-6">
@@ -59,41 +94,37 @@ export default function MerchantDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-primary" />
-              <CardTitle className="text-base">Your Plan</CardTitle>
+              <CardTitle className="text-base">Active Plan</CardTitle>
               <Badge variant="outline" className="ml-auto text-primary border-primary/40">{myPlan.planName}</Badge>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {(() => {
-                let pricing: { qr?: { monthly?: number; perTx?: number }; va?: { monthly?: number; perTx?: number } } = {};
-                let features: string[] = [];
-                try { pricing = JSON.parse(myPlan.pricing); } catch {}
-                try { features = JSON.parse(myPlan.features); } catch {}
-                return (
-                  <>
-                    <div className="space-y-1.5">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">QR Pricing</p>
-                      {pricing.qr?.monthly != null && <p className="text-sm">Monthly fee: <span className="font-semibold">₹{pricing.qr.monthly}</span></p>}
-                      {pricing.qr?.perTx != null && <p className="text-sm">Per transaction: <span className="font-semibold">₹{pricing.qr.perTx}</span></p>}
-                    </div>
-                    <div className="space-y-1.5">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">VA Pricing</p>
-                      {pricing.va?.monthly != null && <p className="text-sm">Monthly fee: <span className="font-semibold">₹{pricing.va.monthly}</span></p>}
-                      {pricing.va?.perTx != null && <p className="text-sm">Per transaction: <span className="font-semibold">₹{pricing.va.perTx}</span></p>}
-                    </div>
-                    <div className="space-y-1.5">
+            {usage ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
+                <UsageRow label="Dynamic QR Codes" used={usage.dynamicQr.used} limit={usage.dynamicQr.limit} />
+                <UsageRow label="Static QR Codes" used={usage.staticQr.used} limit={usage.staticQr.limit} />
+                <UsageRow label="Virtual Accounts" used={usage.virtualAccount.used} limit={usage.virtualAccount.limit} />
+                <UsageRow label="Payment Links" used={usage.paymentLink.used} limit={usage.paymentLink.limit} />
+                <UsageRow label="Payouts" used={usage.payout.used} limit={usage.payout.limit} />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {(() => {
+                  let features: string[] = [];
+                  try { features = JSON.parse(myPlan.features); } catch {}
+                  return (
+                    <div className="col-span-full space-y-1.5">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Features</p>
-                      <ul className="space-y-0.5">
-                        {features.slice(0, 4).map((f, i) => (
+                      <ul className="flex flex-wrap gap-x-6 gap-y-1">
+                        {features.slice(0, 6).map((f, i) => (
                           <li key={i} className="text-sm text-muted-foreground">• {f}</li>
                         ))}
                       </ul>
                     </div>
-                  </>
-                );
-              })()}
-            </div>
+                  );
+                })()}
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : (

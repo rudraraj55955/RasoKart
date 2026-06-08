@@ -429,6 +429,11 @@ export interface Plan {
   description?: string | null;
   pricing: string;
   features: string;
+  dynamicQrLimit: number;
+  staticQrLimit: number;
+  virtualAccountLimit: number;
+  paymentLinkLimit: number;
+  payoutLimit: number;
   createdAt: string;
   updatedAt?: string;
 }
@@ -442,6 +447,11 @@ export interface MerchantPlanWithDetails {
   description?: string | null;
   pricing: string;
   features: string;
+  dynamicQrLimit: number;
+  staticQrLimit: number;
+  virtualAccountLimit: number;
+  paymentLinkLimit: number;
+  payoutLimit: number;
   assignedAt: string;
 }
 
@@ -451,6 +461,44 @@ export interface PlanInput {
   description?: string | null;
   pricing: string;
   features: string;
+  dynamicQrLimit?: number;
+  staticQrLimit?: number;
+  virtualAccountLimit?: number;
+  paymentLinkLimit?: number;
+  payoutLimit?: number;
+}
+
+export type PlanUsageDynamicQr = {
+  used: number;
+  limit: number;
+};
+
+export type PlanUsageStaticQr = {
+  used: number;
+  limit: number;
+};
+
+export type PlanUsageVirtualAccount = {
+  used: number;
+  limit: number;
+};
+
+export type PlanUsagePaymentLink = {
+  used: number;
+  limit: number;
+};
+
+export type PlanUsagePayout = {
+  used: number;
+  limit: number;
+};
+
+export interface PlanUsage {
+  dynamicQr: PlanUsageDynamicQr;
+  staticQr: PlanUsageStaticQr;
+  virtualAccount: PlanUsageVirtualAccount;
+  paymentLink: PlanUsagePaymentLink;
+  payout: PlanUsagePayout;
 }
 
 export type QrCodeType = typeof QrCodeType[keyof typeof QrCodeType];

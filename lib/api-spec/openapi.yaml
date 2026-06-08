@@ -893,6 +893,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /plans/me/usage:
+    get:
+      operationId: getMyPlanUsage
+      tags: [plans]
+      summary: Get current merchant's plan usage counts
+      responses:
+        "200":
+          description: Plan usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanUsage"
+        "404":
+          description: No plan assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /plans:
     get:
       operationId: listPlans
@@ -2111,7 +2130,7 @@ components:
 
     Plan:
       type: object
-      required: [id, name, pricing, features, createdAt]
+      required: [id, name, pricing, features, dynamicQrLimit, staticQrLimit, virtualAccountLimit, paymentLinkLimit, payoutLimit, createdAt]
       properties:
         id:
           type: integer
@@ -2123,6 +2142,16 @@ components:
           type: string
         features:
           type: string
+        dynamicQrLimit:
+          type: integer
+        staticQrLimit:
+          type: integer
+        virtualAccountLimit:
+          type: integer
+        paymentLinkLimit:
+          type: integer
+        payoutLimit:
+          type: integer
         createdAt:
           type: string
         updatedAt:
@@ -2130,7 +2159,7 @@ components:
 
     MerchantPlanWithDetails:
       type: object
-      required: [id, merchantId, planId, planName, pricing, features, assignedAt]
+      required: [id, merchantId, planId, planName, pricing, features, dynamicQrLimit, staticQrLimit, virtualAccountLimit, paymentLinkLimit, payoutLimit, assignedAt]
       properties:
         id:
           type: integer
@@ -2146,6 +2175,16 @@ components:
           type: string
         features:
           type: string
+        dynamicQrLimit:
+          type: integer
+        staticQrLimit:
+          type: integer
+        virtualAccountLimit:
+          type: integer
+        paymentLinkLimit:
+          type: integer
+        payoutLimit:
+          type: integer
         assignedAt:
           type: string
 
@@ -2161,6 +2200,51 @@ components:
           type: string
         features:
           type: string
+        dynamicQrLimit:
+          type: integer
+        staticQrLimit:
+          type: integer
+        virtualAccountLimit:
+          type: integer
+        paymentLinkLimit:
+          type: integer
+        payoutLimit:
+          type: integer
+
+    PlanUsage:
+      type: object
+      required: [dynamicQr, staticQr, virtualAccount, paymentLink, payout]
+      properties:
+        dynamicQr:
+          type: object
+          required: [used, limit]
+          properties:
+            used: { type: integer }
+            limit: { type: integer }
+        staticQr:
+          type: object
+          required: [used, limit]
+          properties:
+            used: { type: integer }
+            limit: { type: integer }
+        virtualAccount:
+          type: object
+          required: [used, limit]
+          properties:
+            used: { type: integer }
+            limit: { type: integer }
+        paymentLink:
+          type: object
+          required: [used, limit]
+          properties:
+            used: { type: integer }
+            limit: { type: integer }
+        payout:
+          type: object
+          required: [used, limit]
+          properties:
+            used: { type: integer }
+            limit: { type: integer }
 
     QrCode:
       type: object

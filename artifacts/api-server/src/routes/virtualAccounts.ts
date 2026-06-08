@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, virtualAccountsTable, merchantsTable, transactionsTable } from "@workspace/db";
 import { eq, and, ilike, count, sql, or, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 
 const router = Router();
 router.use(requireAuth);
@@ -44,6 +45,10 @@ router.post("/", async (req, res) => {
   if (!accountNumber || !ifsc || !bankName || !accountHolder) {
     res.status(400).json({ error: "accountNumber, ifsc, bankName, accountHolder required" }); return;
   }
+
+  // Enforce plan limits
+  const limitCheck = await checkPlanLimit(merchantId, "virtualAccount");
+  if (!limitCheck.allowed) { rejectWithLimitError(res, limitCheck.message!); return; }
   const [row] = await db.insert(virtualAccountsTable)
     .values({ merchantId, accountNumber, ifsc, bankName, accountHolder, label: label ?? null, balance: balance ?? "0.00" })
     .returning();

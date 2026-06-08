@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, qrCodesTable, merchantsTable, merchantConnectionsTable } from "@workspace/db";
 import { eq, and, ilike, count, sql, or, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 
 const PROVIDER_VPA_SUFFIX: Record<string, string> = {
   phonepe: "ybl",
@@ -90,6 +91,11 @@ router.post("/", async (req, res) => {
   const merchantId = user.merchantId!;
   const { type, label, amount, orderId, expiresAt } = req.body;
   if (!type) { res.status(400).json({ error: "type required" }); return; }
+
+  // Enforce plan limits
+  const limitType = type === "dynamic" ? "dynamicQr" : "staticQr";
+  const limitCheck = await checkPlanLimit(merchantId, limitType);
+  if (!limitCheck.allowed) { rejectWithLimitError(res, limitCheck.message!); return; }
 
   // Fetch active connection to auto-generate UPI payload
   const connections = await db.select()

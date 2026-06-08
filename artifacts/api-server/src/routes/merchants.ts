@@ -127,6 +127,11 @@ router.get("/:id/plan", async (req, res) => {
     description: plan!.description ?? null,
     pricing: plan!.pricing,
     features: plan!.features,
+    dynamicQrLimit: plan!.dynamicQrLimit,
+    staticQrLimit: plan!.staticQrLimit,
+    virtualAccountLimit: plan!.virtualAccountLimit,
+    paymentLinkLimit: plan!.paymentLinkLimit,
+    payoutLimit: plan!.payoutLimit,
     assignedAt: mp.assignedAt,
   });
 });

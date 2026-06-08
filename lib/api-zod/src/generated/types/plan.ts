@@ -13,6 +13,11 @@ export interface Plan {
   description?: string | null;
   pricing: string;
   features: string;
+  dynamicQrLimit: number;
+  staticQrLimit: number;
+  virtualAccountLimit: number;
+  paymentLinkLimit: number;
+  payoutLimit: number;
   createdAt: string;
   updatedAt?: string;
 }

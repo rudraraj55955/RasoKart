@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, withdrawalsTable, merchantsTable } from "@workspace/db";
 import { eq, and, count, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 
 const router = Router();
 router.use(requireAuth);
@@ -58,6 +59,11 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }
+
+  // Enforce plan payout limits
+  const limitCheck = await checkPlanLimit(user.merchantId!, "payout");
+  if (!limitCheck.allowed) { rejectWithLimitError(res, limitCheck.message!); return; }
+
   const [withdrawal] = await db.insert(withdrawalsTable).values({
     merchantId: user.merchantId!,
     amount: String(amount),
