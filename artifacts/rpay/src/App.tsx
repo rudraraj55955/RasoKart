@@ -48,6 +48,7 @@ import MerchantProducts from "@/pages/merchant/products";
 import MerchantConnect from "@/pages/merchant/connect";
 import MerchantApiDocs from "@/pages/merchant/api-docs";
 import MerchantVirtualAccounts from "@/pages/merchant/virtual-accounts";
+import MerchantPlanPage from "@/pages/merchant/plan";
 import MerchantQrCodes from "@/pages/merchant/qr-codes";
 import MerchantDeposits from "@/pages/merchant/deposits";
 
@@ -132,6 +133,7 @@ function Router() {
       <Route path="/merchant/virtual-accounts"><MerchantRoute component={MerchantVirtualAccounts} /></Route>
       <Route path="/merchant/qr-codes"><MerchantRoute component={MerchantQrCodes} /></Route>
       <Route path="/merchant/deposits"><MerchantRoute component={MerchantDeposits} /></Route>
+      <Route path="/merchant/plan"><MerchantRoute component={MerchantPlanPage} /></Route>
       <Route path="/merchant/api-docs"><PublicPage component={MerchantApiDocs} /></Route>
 
       <Route component={NotFound} />

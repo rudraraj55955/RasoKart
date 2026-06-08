@@ -13,6 +13,7 @@ export interface MerchantPlanWithDetails {
   planName: string;
   /** @nullable */
   description?: string | null;
+  price: string;
   pricing: string;
   features: string;
   dynamicQrLimit: number;
@@ -20,5 +21,18 @@ export interface MerchantPlanWithDetails {
   virtualAccountLimit: number;
   paymentLinkLimit: number;
   payoutLimit: number;
+  dailyTransactionLimit: number;
+  monthlyTransactionLimit: number;
+  settlementFee: string;
+  depositFee: string;
+  apiAccess: boolean;
+  webhookAccess: boolean;
   assignedAt: string;
+  /** @nullable */
+  expiresAt?: string | null;
+  isExpired: boolean;
+  /** @nullable */
+  daysUntilExpiry?: number | null;
+  /** @nullable */
+  notes?: string | null;
 }

@@ -5,16 +5,30 @@
  * RPay Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { PlanUsageDailyTransaction } from './planUsageDailyTransaction';
 import type { PlanUsageDynamicQr } from './planUsageDynamicQr';
+import type { PlanUsageMonthlyTransaction } from './planUsageMonthlyTransaction';
 import type { PlanUsagePaymentLink } from './planUsagePaymentLink';
 import type { PlanUsagePayout } from './planUsagePayout';
 import type { PlanUsageStaticQr } from './planUsageStaticQr';
 import type { PlanUsageVirtualAccount } from './planUsageVirtualAccount';
 
 export interface PlanUsage {
+  planName?: string;
+  isExpired?: boolean;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  daysUntilExpiry?: number | null;
+  apiAccess?: boolean;
+  webhookAccess?: boolean;
+  settlementFee?: string;
+  depositFee?: string;
   dynamicQr: PlanUsageDynamicQr;
   staticQr: PlanUsageStaticQr;
   virtualAccount: PlanUsageVirtualAccount;
   paymentLink: PlanUsagePaymentLink;
   payout: PlanUsagePayout;
+  dailyTransaction: PlanUsageDailyTransaction;
+  monthlyTransaction: PlanUsageMonthlyTransaction;
 }

@@ -1,14 +1,104 @@
 import { ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserRole } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DashboardLayoutProps {
   children: ReactNode;
   publicMode?: boolean;
+}
+
+function MerchantSidebar() {
+  const [location] = useLocation();
+  const { data: usage } = useGetMyPlanUsage();
+
+  const navGroups = [
+    {
+      group: "Overview",
+      items: [
+        { title: "Dashboard", icon: LayoutDashboard, href: "/merchant/dashboard", locked: false, lockReason: null },
+        { title: "My Plan", icon: CreditCard, href: "/merchant/plan", locked: false, lockReason: null },
+      ],
+    },
+    {
+      group: "Payments",
+      items: [
+        { title: "Deposits", icon: ArrowDownLeft, href: "/merchant/deposits", locked: false, lockReason: null },
+        { title: "Transactions", icon: ArrowRightLeft, href: "/merchant/transactions", locked: false, lockReason: null },
+        { title: "Withdrawals", icon: Landmark, href: "/merchant/withdrawals", locked: false, lockReason: null },
+        { title: "Settlements", icon: FileText, href: "/merchant/settlements", locked: false, lockReason: null },
+      ],
+    },
+    {
+      group: "Products",
+      items: [
+        { title: "Virtual Accounts", icon: Building2, href: "/merchant/virtual-accounts", locked: false, lockReason: null },
+        { title: "Dynamic QR", icon: QrCode, href: "/merchant/qr-codes", locked: false, lockReason: null },
+        { title: "Plans & Pricing", icon: Package, href: "/merchant/products", locked: false, lockReason: null },
+      ],
+    },
+    {
+      group: "Integration",
+      items: [
+        { title: "Connect", icon: Plug, href: "/merchant/connect", locked: false, lockReason: null },
+        {
+          title: "API Keys", icon: KeyRound, href: "/merchant/api-keys",
+          locked: usage !== undefined && !usage.apiAccess,
+          lockReason: "API access is not included in your current plan. Upgrade to unlock."
+        },
+        {
+          title: "Webhooks", icon: Webhook, href: "/merchant/webhook",
+          locked: usage !== undefined && !usage.webhookAccess,
+          lockReason: "Webhook access is not included in your current plan. Upgrade to unlock."
+        },
+        { title: "Callbacks", icon: FileText, href: "/merchant/callbacks", locked: false, lockReason: null },
+        { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs", locked: false, lockReason: null },
+      ],
+    },
+  ];
+
+  return (
+    <>
+      {navGroups.map((group) => (
+        <SidebarGroup key={group.group}>
+          <SidebarGroupLabel>{group.group}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {group.items.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  {item.locked ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-3 px-2 py-1.5 rounded-md text-sm text-muted-foreground/50 cursor-not-allowed w-full">
+                          <item.icon className="w-4 h-4 shrink-0" />
+                          <span className="flex-1">{item.title}</span>
+                          <Lock className="w-3 h-3 shrink-0 text-muted-foreground/40" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs text-xs">
+                        {item.lockReason}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.title}>
+                      <Link href={item.href} className="flex items-center gap-3">
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  )}
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+    </>
+  );
 }
 
 export function DashboardLayout({ children, publicMode = false }: DashboardLayoutProps) {
@@ -76,42 +166,6 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
     },
   ];
 
-  const merchantNav = [
-    {
-      group: "Overview",
-      items: [
-        { title: "Dashboard", icon: LayoutDashboard, href: "/merchant/dashboard" },
-      ],
-    },
-    {
-      group: "Payments",
-      items: [
-        { title: "Deposits", icon: ArrowDownLeft, href: "/merchant/deposits" },
-        { title: "Transactions", icon: ArrowRightLeft, href: "/merchant/transactions" },
-        { title: "Withdrawals", icon: Landmark, href: "/merchant/withdrawals" },
-        { title: "Settlements", icon: FileText, href: "/merchant/settlements" },
-      ],
-    },
-    {
-      group: "Products",
-      items: [
-        { title: "Virtual Accounts", icon: Building2, href: "/merchant/virtual-accounts" },
-        { title: "Dynamic QR", icon: QrCode, href: "/merchant/qr-codes" },
-        { title: "Plans & Pricing", icon: Package, href: "/merchant/products" },
-      ],
-    },
-    {
-      group: "Integration",
-      items: [
-        { title: "Connect", icon: Plug, href: "/merchant/connect" },
-        { title: "API Keys", icon: KeyRound, href: "/merchant/api-keys" },
-        { title: "Webhooks", icon: Webhook, href: "/merchant/webhook" },
-        { title: "Callbacks", icon: FileText, href: "/merchant/callbacks" },
-        { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
-      ],
-    },
-  ];
-
   const publicNav = [
     { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
   ];
@@ -170,25 +224,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
                 </SidebarGroup>
               ))
             ) : (
-              merchantNav.map((group) => (
-                <SidebarGroup key={group.group}>
-                  <SidebarGroupLabel>{group.group}</SidebarGroupLabel>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {group.items.map((item) => (
-                        <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.title}>
-                            <Link href={item.href} className="flex items-center gap-3">
-                              <item.icon className="w-4 h-4" />
-                              <span>{item.title}</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              ))
+              <MerchantSidebar />
             )}
           </SidebarContent>
           <SidebarFooter className="p-4">

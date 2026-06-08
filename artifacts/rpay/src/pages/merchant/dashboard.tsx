@@ -2,15 +2,13 @@ import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, use
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
+import { Link } from "wouter";
 
-interface UsageRowProps {
-  label: string;
-  used: number;
-  limit: number;
-}
+interface UsageRowProps { label: string; used: number; limit: number; }
 
 function UsageRow({ label, used, limit }: UsageRowProps) {
   const isUnlimited = limit >= 999;
@@ -23,17 +21,14 @@ function UsageRow({ label, used, limit }: UsageRowProps) {
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">{label}</span>
         <span className={`font-medium tabular-nums ${isAtLimit ? "text-rose-400" : isNearLimit ? "text-amber-400" : "text-foreground"}`}>
-          {isUnlimited ? (
-            <span className="flex items-center gap-1">{used} / <Infinity className="w-3.5 h-3.5 text-emerald-400" /></span>
-          ) : `${used} / ${limit}`}
+          {isUnlimited
+            ? <span className="flex items-center gap-1">{used} / <Infinity className="w-3.5 h-3.5 text-emerald-400" /></span>
+            : `${used} / ${limit}`}
         </span>
       </div>
       {!isUnlimited && (
         <div className="h-1.5 w-full rounded-full bg-muted/50">
-          <div
-            className={`h-1.5 rounded-full transition-all ${isAtLimit ? "bg-rose-500" : isNearLimit ? "bg-amber-400" : "bg-primary"}`}
-            style={{ width: `${pct}%` }}
-          />
+          <div className={`h-1.5 rounded-full transition-all ${isAtLimit ? "bg-rose-500" : isNearLimit ? "bg-amber-400" : "bg-primary"}`} style={{ width: `${pct}%` }} />
         </div>
       )}
     </div>
@@ -46,6 +41,8 @@ export default function MerchantDashboard() {
   const { data: chartData, isLoading: chartLoading } = useGetDashboardChart();
   const { data: myPlan } = useGetMyPlan();
   const { data: usage } = useGetMyPlanUsage();
+
+  const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
 
   return (
     <div className="space-y-6">
@@ -89,13 +86,56 @@ export default function MerchantDashboard() {
         </div>
       ) : null}
 
+      {/* Expiry alerts */}
+      {myPlan?.isExpired && (
+        <Card className="border-rose-500/40 bg-rose-950/20">
+          <CardContent className="py-4 flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-rose-400 font-medium">Plan Expired</p>
+              <p className="text-xs text-rose-400/70">Your {myPlan.planName} plan has expired. New QR codes, virtual accounts, and payouts are restricted.</p>
+            </div>
+            <Link href="/merchant/plan">
+              <Button size="sm" variant="outline" className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 shrink-0">View Plan</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {isExpiringSoon && !myPlan?.isExpired && (
+        <Card className="border-amber-500/40 bg-amber-950/20">
+          <CardContent className="py-4 flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-amber-400 font-medium">Plan Expiring Soon</p>
+              <p className="text-xs text-amber-400/70">Your {myPlan?.planName} plan expires in {myPlan?.daysUntilExpiry} day{myPlan?.daysUntilExpiry === 1 ? "" : "s"}. Contact support to renew.</p>
+            </div>
+            <Link href="/merchant/plan">
+              <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 shrink-0">View Plan</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       {myPlan ? (
-        <Card className="border-primary/30 bg-primary/5">
+        <Card className={`border ${myPlan.isExpired ? "border-rose-500/30 bg-rose-950/10" : "border-primary/30 bg-primary/5"}`}>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-primary" />
               <CardTitle className="text-base">Active Plan</CardTitle>
-              <Badge variant="outline" className="ml-auto text-primary border-primary/40">{myPlan.planName}</Badge>
+              <Badge variant="outline" className={`ml-1 ${myPlan.isExpired ? "text-rose-400 border-rose-500/30" : "text-primary border-primary/40"}`}>{myPlan.planName}</Badge>
+              {myPlan.isExpired && <Badge variant="destructive" className="text-xs">Expired</Badge>}
+              {myPlan.expiresAt && !myPlan.isExpired && (
+                <span className={`ml-auto text-xs ${isExpiringSoon ? "text-amber-400" : "text-muted-foreground"}`}>
+                  Expires {format(new Date(myPlan.expiresAt), "MMM d, yyyy")}
+                </span>
+              )}
+              {!myPlan.expiresAt && <span className="ml-auto text-xs text-emerald-400">No expiry</span>}
+              <Link href="/merchant/plan">
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground ml-1">
+                  View Details <ChevronRight className="w-3 h-3 ml-0.5" />
+                </Button>
+              </Link>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
@@ -106,6 +146,7 @@ export default function MerchantDashboard() {
                 <UsageRow label="Virtual Accounts" used={usage.virtualAccount.used} limit={usage.virtualAccount.limit} />
                 <UsageRow label="Payment Links" used={usage.paymentLink.used} limit={usage.paymentLink.limit} />
                 <UsageRow label="Payouts" used={usage.payout.used} limit={usage.payout.limit} />
+                <UsageRow label="Transactions Today" used={usage.dailyTransaction.used} limit={usage.dailyTransaction.limit} />
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -123,6 +164,23 @@ export default function MerchantDashboard() {
                     </div>
                   );
                 })()}
+              </div>
+            )}
+
+            {/* Feature access badges */}
+            {usage && (
+              <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap gap-2">
+                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border ${usage.apiAccess ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-rose-500/30 bg-rose-500/10 text-rose-400"}`}>
+                  {usage.apiAccess ? null : <Lock className="w-3 h-3" />}
+                  API {usage.apiAccess ? "Enabled" : "Locked"}
+                </div>
+                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border ${usage.webhookAccess ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-rose-500/30 bg-rose-500/10 text-rose-400"}`}>
+                  {usage.webhookAccess ? null : <Lock className="w-3 h-3" />}
+                  Webhooks {usage.webhookAccess ? "Enabled" : "Locked"}
+                </div>
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border border-border/50 text-muted-foreground">
+                  Settlement: {usage.settlementFee}%
+                </div>
               </div>
             )}
           </CardContent>
@@ -157,52 +215,15 @@ export default function MerchantDashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(val) => format(new Date(val), "MMM d")}
-                  stroke="hsl(var(--muted-foreground))"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  dy={10}
-                />
-                <YAxis
-                  tickFormatter={(val) => `₹${val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val}`}
-                  stroke="hsl(var(--muted-foreground))"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  dx={-10}
-                />
-                <Tooltip
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}
-                  itemStyle={{ color: 'hsl(var(--foreground))' }}
-                  labelFormatter={(val) => format(new Date(val), "MMM d, yyyy")}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="deposits"
-                  name="Deposits"
-                  stroke="hsl(var(--chart-1))"
-                  fillOpacity={1}
-                  fill="url(#colorDeposits)"
-                  strokeWidth={2}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="withdrawals"
-                  name="Withdrawals"
-                  stroke="hsl(var(--chart-5))"
-                  fillOpacity={1}
-                  fill="url(#colorWithdrawals)"
-                  strokeWidth={2}
-                />
+                <XAxis dataKey="date" tickFormatter={(val) => format(new Date(val), "MMM d")} stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} dy={10} />
+                <YAxis tickFormatter={(val) => `₹${val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val}`} stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} dx={-10} />
+                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} labelFormatter={(val) => format(new Date(val), "MMM d, yyyy")} />
+                <Area type="monotone" dataKey="deposits" name="Deposits" stroke="hsl(var(--chart-1))" fillOpacity={1} fill="url(#colorDeposits)" strokeWidth={2} />
+                <Area type="monotone" dataKey="withdrawals" name="Withdrawals" stroke="hsl(var(--chart-5))" fillOpacity={1} fill="url(#colorWithdrawals)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-              No data available
-            </div>
+            <div className="w-full h-full flex items-center justify-center text-muted-foreground">No data available</div>
           )}
         </CardContent>
       </Card>

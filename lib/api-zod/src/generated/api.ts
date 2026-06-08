@@ -170,6 +170,7 @@ export const GetMerchantPlanResponse = zod.object({
   "planId": zod.number(),
   "planName": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.string(),
   "pricing": zod.string(),
   "features": zod.string(),
   "dynamicQrLimit": zod.number(),
@@ -177,7 +178,17 @@ export const GetMerchantPlanResponse = zod.object({
   "virtualAccountLimit": zod.number(),
   "paymentLinkLimit": zod.number(),
   "payoutLimit": zod.number(),
-  "assignedAt": zod.string()
+  "dailyTransactionLimit": zod.number(),
+  "monthlyTransactionLimit": zod.number(),
+  "settlementFee": zod.string(),
+  "depositFee": zod.string(),
+  "apiAccess": zod.boolean(),
+  "webhookAccess": zod.boolean(),
+  "assignedAt": zod.string(),
+  "expiresAt": zod.string().nullish(),
+  "isExpired": zod.boolean(),
+  "daysUntilExpiry": zod.number().nullish(),
+  "notes": zod.string().nullish()
 })
 
 
@@ -232,6 +243,29 @@ export const RejectMerchantResponse = zod.object({
 
 
 /**
+ * @summary Get plan history for a merchant (admin only)
+ */
+export const GetMerchantPlanHistoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetMerchantPlanHistoryResponseItem = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "fromPlanId": zod.number().nullish(),
+  "toPlanId": zod.number().nullish(),
+  "toPlanName": zod.string().nullish(),
+  "action": zod.string(),
+  "assignedBy": zod.number().nullish(),
+  "adminEmail": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "businessName": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const GetMerchantPlanHistoryResponse = zod.array(GetMerchantPlanHistoryResponseItem)
+
+
+/**
  * @summary Assign plan to merchant (admin only)
  */
 export const AssignMerchantPlanParams = zod.object({
@@ -239,7 +273,9 @@ export const AssignMerchantPlanParams = zod.object({
 })
 
 export const AssignMerchantPlanBody = zod.object({
-  "planId": zod.number()
+  "planId": zod.number(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish()
 })
 
 export const AssignMerchantPlanResponse = zod.object({
@@ -762,6 +798,7 @@ export const GetMyPlanResponse = zod.object({
   "planId": zod.number(),
   "planName": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.string(),
   "pricing": zod.string(),
   "features": zod.string(),
   "dynamicQrLimit": zod.number(),
@@ -769,7 +806,17 @@ export const GetMyPlanResponse = zod.object({
   "virtualAccountLimit": zod.number(),
   "paymentLinkLimit": zod.number(),
   "payoutLimit": zod.number(),
-  "assignedAt": zod.string()
+  "dailyTransactionLimit": zod.number(),
+  "monthlyTransactionLimit": zod.number(),
+  "settlementFee": zod.string(),
+  "depositFee": zod.string(),
+  "apiAccess": zod.boolean(),
+  "webhookAccess": zod.boolean(),
+  "assignedAt": zod.string(),
+  "expiresAt": zod.string().nullish(),
+  "isExpired": zod.boolean(),
+  "daysUntilExpiry": zod.number().nullish(),
+  "notes": zod.string().nullish()
 })
 
 
@@ -777,6 +824,14 @@ export const GetMyPlanResponse = zod.object({
  * @summary Get current merchant's plan usage counts
  */
 export const GetMyPlanUsageResponse = zod.object({
+  "planName": zod.string().optional(),
+  "isExpired": zod.boolean().optional(),
+  "expiresAt": zod.string().nullish(),
+  "daysUntilExpiry": zod.number().nullish(),
+  "apiAccess": zod.boolean().optional(),
+  "webhookAccess": zod.boolean().optional(),
+  "settlementFee": zod.string().optional(),
+  "depositFee": zod.string().optional(),
   "dynamicQr": zod.object({
   "used": zod.number(),
   "limit": zod.number()
@@ -796,7 +851,63 @@ export const GetMyPlanUsageResponse = zod.object({
   "payout": zod.object({
   "used": zod.number(),
   "limit": zod.number()
+}),
+  "dailyTransaction": zod.object({
+  "used": zod.number(),
+  "limit": zod.number()
+}),
+  "monthlyTransaction": zod.object({
+  "used": zod.number(),
+  "limit": zod.number()
 })
+})
+
+
+/**
+ * @summary Get current merchant's plan change history
+ */
+export const GetMyPlanHistoryResponseItem = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "fromPlanId": zod.number().nullish(),
+  "toPlanId": zod.number().nullish(),
+  "toPlanName": zod.string().nullish(),
+  "action": zod.string(),
+  "assignedBy": zod.number().nullish(),
+  "adminEmail": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "businessName": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const GetMyPlanHistoryResponse = zod.array(GetMyPlanHistoryResponseItem)
+
+
+/**
+ * @summary List all plan history (admin only)
+ */
+export const ListPlanHistoryQueryParams = zod.object({
+  "merchantId": zod.coerce.number().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListPlanHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "fromPlanId": zod.number().nullish(),
+  "toPlanId": zod.number().nullish(),
+  "toPlanName": zod.string().nullish(),
+  "action": zod.string(),
+  "assignedBy": zod.number().nullish(),
+  "adminEmail": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "businessName": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
 })
 
 
@@ -807,6 +918,7 @@ export const ListPlansResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.string(),
   "pricing": zod.string(),
   "features": zod.string(),
   "dynamicQrLimit": zod.number(),
@@ -814,6 +926,13 @@ export const ListPlansResponseItem = zod.object({
   "virtualAccountLimit": zod.number(),
   "paymentLinkLimit": zod.number(),
   "payoutLimit": zod.number(),
+  "dailyTransactionLimit": zod.number(),
+  "monthlyTransactionLimit": zod.number(),
+  "settlementFee": zod.string(),
+  "depositFee": zod.string(),
+  "apiAccess": zod.boolean(),
+  "webhookAccess": zod.boolean(),
+  "isActive": zod.boolean(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
@@ -826,13 +945,21 @@ export const ListPlansResponse = zod.array(ListPlansResponseItem)
 export const CreatePlanBody = zod.object({
   "name": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.string().optional(),
   "pricing": zod.string(),
   "features": zod.string(),
   "dynamicQrLimit": zod.number().optional(),
   "staticQrLimit": zod.number().optional(),
   "virtualAccountLimit": zod.number().optional(),
   "paymentLinkLimit": zod.number().optional(),
-  "payoutLimit": zod.number().optional()
+  "payoutLimit": zod.number().optional(),
+  "dailyTransactionLimit": zod.number().optional(),
+  "monthlyTransactionLimit": zod.number().optional(),
+  "settlementFee": zod.string().optional(),
+  "depositFee": zod.string().optional(),
+  "apiAccess": zod.boolean().optional(),
+  "webhookAccess": zod.boolean().optional(),
+  "isActive": zod.boolean().optional()
 })
 
 
@@ -846,19 +973,28 @@ export const UpdatePlanParams = zod.object({
 export const UpdatePlanBody = zod.object({
   "name": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.string().optional(),
   "pricing": zod.string(),
   "features": zod.string(),
   "dynamicQrLimit": zod.number().optional(),
   "staticQrLimit": zod.number().optional(),
   "virtualAccountLimit": zod.number().optional(),
   "paymentLinkLimit": zod.number().optional(),
-  "payoutLimit": zod.number().optional()
+  "payoutLimit": zod.number().optional(),
+  "dailyTransactionLimit": zod.number().optional(),
+  "monthlyTransactionLimit": zod.number().optional(),
+  "settlementFee": zod.string().optional(),
+  "depositFee": zod.string().optional(),
+  "apiAccess": zod.boolean().optional(),
+  "webhookAccess": zod.boolean().optional(),
+  "isActive": zod.boolean().optional()
 })
 
 export const UpdatePlanResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "description": zod.string().nullish(),
+  "price": zod.string(),
   "pricing": zod.string(),
   "features": zod.string(),
   "dynamicQrLimit": zod.number(),
@@ -866,6 +1002,13 @@ export const UpdatePlanResponse = zod.object({
   "virtualAccountLimit": zod.number(),
   "paymentLinkLimit": zod.number(),
   "payoutLimit": zod.number(),
+  "dailyTransactionLimit": zod.number(),
+  "monthlyTransactionLimit": zod.number(),
+  "settlementFee": zod.string(),
+  "depositFee": zod.string(),
+  "apiAccess": zod.boolean(),
+  "webhookAccess": zod.boolean(),
+  "isActive": zod.boolean(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })

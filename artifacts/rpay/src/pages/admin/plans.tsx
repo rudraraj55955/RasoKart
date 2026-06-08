@@ -8,7 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Pencil, Trash2, PlusCircle, Search, Infinity } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { Pencil, Trash2, PlusCircle, Search, Infinity, KeyRound, Webhook, Percent, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { Plan } from "@workspace/api-client-react";
 
@@ -20,13 +23,14 @@ function parsePricing(raw: string): PricingObj {
 }
 
 function LimitCell({ value }: { value: number }) {
-  if (value >= 999) return <span className="flex items-center gap-1 text-emerald-400"><Infinity className="w-3.5 h-3.5" />Unlimited</span>;
+  if (value >= 999) return <span className="flex items-center gap-1 text-emerald-400"><Infinity className="w-3.5 h-3.5" /></span>;
   return <span>{value}</span>;
 }
 
 interface PlanFormState {
   name: string;
   description: string;
+  price: string;
   pricing: PricingObj;
   features: string;
   dynamicQrLimit: number;
@@ -34,12 +38,22 @@ interface PlanFormState {
   virtualAccountLimit: number;
   paymentLinkLimit: number;
   payoutLimit: number;
+  dailyTransactionLimit: number;
+  monthlyTransactionLimit: number;
+  settlementFee: string;
+  depositFee: string;
+  apiAccess: boolean;
+  webhookAccess: boolean;
+  isActive: boolean;
 }
 
 const DEFAULT_FORM: PlanFormState = {
-  name: "", description: "", pricing: DEFAULT_PRICING, features: "",
+  name: "", description: "", price: "0", pricing: DEFAULT_PRICING, features: "",
   dynamicQrLimit: 10, staticQrLimit: 10, virtualAccountLimit: 5,
   paymentLinkLimit: 10, payoutLimit: 20,
+  dailyTransactionLimit: 999, monthlyTransactionLimit: 9999,
+  settlementFee: "2.0", depositFee: "0.0",
+  apiAccess: true, webhookAccess: true, isActive: true,
 };
 
 export default function AdminPlans() {
@@ -58,20 +72,16 @@ export default function AdminPlans() {
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.description ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const setFormField = <K extends keyof PlanFormState>(key: K, value: PlanFormState[K]) =>
+  const setField = <K extends keyof PlanFormState>(key: K, value: PlanFormState[K]) =>
     setForm(f => ({ ...f, [key]: value }));
 
-  const openCreate = () => {
-    setEditPlan(null);
-    setForm(DEFAULT_FORM);
-    setDialogOpen(true);
-  };
-
+  const openCreate = () => { setEditPlan(null); setForm(DEFAULT_FORM); setDialogOpen(true); };
   const openEdit = (plan: Plan) => {
     setEditPlan(plan);
     setForm({
       name: plan.name,
       description: plan.description ?? "",
+      price: plan.price ?? "0",
       pricing: parsePricing(plan.pricing),
       features: plan.features,
       dynamicQrLimit: plan.dynamicQrLimit,
@@ -79,6 +89,13 @@ export default function AdminPlans() {
       virtualAccountLimit: plan.virtualAccountLimit,
       paymentLinkLimit: plan.paymentLinkLimit,
       payoutLimit: plan.payoutLimit,
+      dailyTransactionLimit: plan.dailyTransactionLimit,
+      monthlyTransactionLimit: plan.monthlyTransactionLimit,
+      settlementFee: plan.settlementFee,
+      depositFee: plan.depositFee,
+      apiAccess: plan.apiAccess,
+      webhookAccess: plan.webhookAccess,
+      isActive: plan.isActive,
     });
     setDialogOpen(true);
   };
@@ -86,6 +103,7 @@ export default function AdminPlans() {
   const buildPayload = () => ({
     name: form.name,
     description: form.description || null,
+    price: form.price || "0",
     pricing: JSON.stringify(form.pricing),
     features: form.features || "[]",
     dynamicQrLimit: form.dynamicQrLimit,
@@ -93,6 +111,13 @@ export default function AdminPlans() {
     virtualAccountLimit: form.virtualAccountLimit,
     paymentLinkLimit: form.paymentLinkLimit,
     payoutLimit: form.payoutLimit,
+    dailyTransactionLimit: form.dailyTransactionLimit,
+    monthlyTransactionLimit: form.monthlyTransactionLimit,
+    settlementFee: form.settlementFee,
+    depositFee: form.depositFee,
+    apiAccess: form.apiAccess,
+    webhookAccess: form.webhookAccess,
+    isActive: form.isActive,
   });
 
   const handleSave = () => {
@@ -125,7 +150,7 @@ export default function AdminPlans() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Plans</h1>
-          <p className="text-muted-foreground mt-1">Manage subscription plans and feature limits</p>
+          <p className="text-muted-foreground mt-1">Manage subscription plans, feature limits, and fees</p>
         </div>
         <Button onClick={openCreate} size="sm"><PlusCircle className="w-4 h-4 mr-2" />Create Plan</Button>
       </div>
@@ -141,11 +166,15 @@ export default function AdminPlans() {
             <TableHeader>
               <TableRow>
                 <TableHead>Plan</TableHead>
-                <TableHead className="text-right">Dynamic QR</TableHead>
-                <TableHead className="text-right">Static QR</TableHead>
-                <TableHead className="text-right">Virtual Accounts</TableHead>
-                <TableHead className="text-right">Payment Links</TableHead>
+                <TableHead className="text-right">Price/mo</TableHead>
+                <TableHead className="text-right">DQR</TableHead>
+                <TableHead className="text-right">VA</TableHead>
                 <TableHead className="text-right">Payouts</TableHead>
+                <TableHead className="text-right">Daily Tx</TableHead>
+                <TableHead className="text-right">Settlement</TableHead>
+                <TableHead className="text-center">API</TableHead>
+                <TableHead className="text-center">WH</TableHead>
+                <TableHead className="text-center">Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -153,26 +182,40 @@ export default function AdminPlans() {
               {isLoading ? (
                 [1,2,3,4,5].map(i => (
                   <TableRow key={i}>
-                    {[1,2,3,4,5,6,7].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
+                    {[1,2,3,4,5,6,7,8,9,10,11].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
                   </TableRow>
                 ))
               ) : filteredPlans?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">No plans found</TableCell>
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-10">No plans found</TableCell>
                 </TableRow>
               ) : filteredPlans?.map(plan => (
                 <TableRow key={plan.id}>
                   <TableCell>
                     <div>
                       <p className="font-medium">{plan.name}</p>
-                      {plan.description && <p className="text-xs text-muted-foreground mt-0.5">{plan.description}</p>}
+                      {plan.description && <p className="text-xs text-muted-foreground mt-0.5 max-w-xs truncate">{plan.description}</p>}
                     </div>
                   </TableCell>
+                  <TableCell className="text-right font-mono text-sm">
+                    {plan.price === "0" ? <span className="text-emerald-400">Free</span> : `₹${parseInt(plan.price).toLocaleString()}`}
+                  </TableCell>
                   <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.dynamicQrLimit} /></TableCell>
-                  <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.staticQrLimit} /></TableCell>
                   <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.virtualAccountLimit} /></TableCell>
-                  <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.paymentLinkLimit} /></TableCell>
                   <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.payoutLimit} /></TableCell>
+                  <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.dailyTransactionLimit} /></TableCell>
+                  <TableCell className="text-right font-mono text-sm">{plan.settlementFee}%</TableCell>
+                  <TableCell className="text-center">
+                    {plan.apiAccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" /> : <XCircle className="w-4 h-4 text-muted-foreground mx-auto" />}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {plan.webhookAccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" /> : <XCircle className="w-4 h-4 text-muted-foreground mx-auto" />}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant={plan.isActive ? "outline" : "secondary"} className={plan.isActive ? "text-emerald-400 border-emerald-500/30" : ""}>
+                      {plan.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(plan)}><Pencil className="w-3.5 h-3.5" /></Button>
@@ -187,60 +230,122 @@ export default function AdminPlans() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editPlan ? "Edit Plan" : "Create Plan"}</DialogTitle></DialogHeader>
           <div className="space-y-5 py-2">
+
+            {/* Basic */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5 col-span-2 sm:col-span-1">
+              <div className="space-y-1.5">
                 <Label>Plan Name *</Label>
-                <Input placeholder="e.g. Starter, Business..." value={form.name} onChange={e => setFormField("name", e.target.value)} />
+                <Input placeholder="e.g. Starter, Silver, Gold..." value={form.name} onChange={e => setField("name", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Monthly Price (₹)</Label>
+                <Input type="number" min={0} placeholder="0 = Free" value={form.price} onChange={e => setField("price", e.target.value)} />
+              </div>
+              <div className="space-y-1.5 col-span-2">
+                <Label>Description</Label>
+                <Textarea placeholder="Brief description..." rows={2} value={form.description} onChange={e => setField("description", e.target.value)} />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Textarea placeholder="Brief description..." rows={2} value={form.description} onChange={e => setFormField("description", e.target.value)} />
-            </div>
 
+            <Separator />
+
+            {/* Feature Limits */}
             <div>
-              <p className="text-sm font-medium mb-3 text-foreground">Feature Limits</p>
+              <p className="text-sm font-semibold mb-3">Feature Limits <span className="text-muted-foreground font-normal">(set 999 = unlimited)</span></p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Dynamic QR Limit</Label>
-                  <Input type="number" min={0} value={form.dynamicQrLimit} onChange={e => setFormField("dynamicQrLimit", parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Static QR Limit</Label>
-                  <Input type="number" min={0} value={form.staticQrLimit} onChange={e => setFormField("staticQrLimit", parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Virtual Account Limit</Label>
-                  <Input type="number" min={0} value={form.virtualAccountLimit} onChange={e => setFormField("virtualAccountLimit", parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Payment Link Limit</Label>
-                  <Input type="number" min={0} value={form.paymentLinkLimit} onChange={e => setFormField("paymentLinkLimit", parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Payout Limit</Label>
-                  <Input type="number" min={0} value={form.payoutLimit} onChange={e => setFormField("payoutLimit", parseInt(e.target.value) || 0)} />
-                </div>
+                {[
+                  { label: "Dynamic QR Limit", key: "dynamicQrLimit" as const },
+                  { label: "Static QR Limit", key: "staticQrLimit" as const },
+                  { label: "Virtual Account Limit", key: "virtualAccountLimit" as const },
+                  { label: "Payment Link Limit", key: "paymentLinkLimit" as const },
+                  { label: "Payout Limit", key: "payoutLimit" as const },
+                ].map(({ label, key }) => (
+                  <div key={key} className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">{label}</Label>
+                    <Input type="number" min={0} value={form[key] as number} onChange={e => setField(key, parseInt(e.target.value) || 0)} />
+                  </div>
+                ))}
               </div>
-              <p className="text-xs text-muted-foreground mt-2">Set to 999 for "unlimited".</p>
             </div>
 
+            {/* Transaction Limits */}
             <div>
-              <p className="text-sm font-medium mb-3 text-foreground">Pricing</p>
+              <p className="text-sm font-semibold mb-3">Transaction Limits</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Daily Transaction Limit</Label>
+                  <Input type="number" min={0} value={form.dailyTransactionLimit} onChange={e => setField("dailyTransactionLimit", parseInt(e.target.value) || 0)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Monthly Transaction Limit</Label>
+                  <Input type="number" min={0} value={form.monthlyTransactionLimit} onChange={e => setField("monthlyTransactionLimit", parseInt(e.target.value) || 0)} />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Fees */}
+            <div>
+              <p className="text-sm font-semibold mb-3">Fees</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1 text-xs text-muted-foreground"><Percent className="w-3 h-3" /> Settlement Fee (%)</Label>
+                  <Input placeholder="e.g. 1.5" value={form.settlementFee} onChange={e => setField("settlementFee", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1 text-xs text-muted-foreground"><Percent className="w-3 h-3" /> Deposit Fee (%)</Label>
+                  <Input placeholder="e.g. 0.5" value={form.depositFee} onChange={e => setField("depositFee", e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Feature Access */}
+            <div>
+              <p className="text-sm font-semibold mb-3">Feature Access</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-muted-foreground" />
+                    <Label className="text-sm cursor-pointer">API Access</Label>
+                  </div>
+                  <Switch checked={form.apiAccess} onCheckedChange={v => setField("apiAccess", v)} />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
+                  <div className="flex items-center gap-2">
+                    <Webhook className="w-4 h-4 text-muted-foreground" />
+                    <Label className="text-sm cursor-pointer">Webhooks</Label>
+                  </div>
+                  <Switch checked={form.webhookAccess} onCheckedChange={v => setField("webhookAccess", v)} />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
+                  <Label className="text-sm cursor-pointer">Plan Active</Label>
+                  <Switch checked={form.isActive} onCheckedChange={v => setField("isActive", v)} />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Pricing */}
+            <div>
+              <p className="text-sm font-semibold mb-3">Per-Transaction Pricing</p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2 p-3 rounded-lg bg-muted/30">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">QR Pricing</p>
                   <div className="space-y-2">
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Monthly (₹)</Label>
-                      <Input type="number" value={form.pricing.qr.monthly} onChange={e => setFormField("pricing", { ...form.pricing, qr: { ...form.pricing.qr, monthly: parseFloat(e.target.value) || 0 } })} />
+                      <Input type="number" value={form.pricing.qr.monthly} onChange={e => setField("pricing", { ...form.pricing, qr: { ...form.pricing.qr, monthly: parseFloat(e.target.value) || 0 } })} />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Per Transaction (₹)</Label>
-                      <Input type="number" value={form.pricing.qr.perTx} onChange={e => setFormField("pricing", { ...form.pricing, qr: { ...form.pricing.qr, perTx: parseFloat(e.target.value) || 0 } })} />
+                      <Input type="number" value={form.pricing.qr.perTx} onChange={e => setField("pricing", { ...form.pricing, qr: { ...form.pricing.qr, perTx: parseFloat(e.target.value) || 0 } })} />
                     </div>
                   </div>
                 </div>
@@ -249,11 +354,11 @@ export default function AdminPlans() {
                   <div className="space-y-2">
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Monthly (₹)</Label>
-                      <Input type="number" value={form.pricing.va.monthly} onChange={e => setFormField("pricing", { ...form.pricing, va: { ...form.pricing.va, monthly: parseFloat(e.target.value) || 0 } })} />
+                      <Input type="number" value={form.pricing.va.monthly} onChange={e => setField("pricing", { ...form.pricing, va: { ...form.pricing.va, monthly: parseFloat(e.target.value) || 0 } })} />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground">Per Transaction (₹)</Label>
-                      <Input type="number" value={form.pricing.va.perTx} onChange={e => setFormField("pricing", { ...form.pricing, va: { ...form.pricing.va, perTx: parseFloat(e.target.value) || 0 } })} />
+                      <Input type="number" value={form.pricing.va.perTx} onChange={e => setField("pricing", { ...form.pricing, va: { ...form.pricing.va, perTx: parseFloat(e.target.value) || 0 } })} />
                     </div>
                   </div>
                 </div>
@@ -262,13 +367,16 @@ export default function AdminPlans() {
 
             <div className="space-y-1.5">
               <Label>Features (JSON array)</Label>
-              <Textarea placeholder='["Unlimited QR", "Priority Support"]' rows={2} value={form.features} onChange={e => setFormField("features", e.target.value)} />
-              <p className="text-xs text-muted-foreground">JSON array of feature strings shown to merchants</p>
+              <Textarea placeholder='["API Access", "Priority Support", "Custom Webhooks"]' rows={2} value={form.features} onChange={e => setField("features", e.target.value)} />
+              <p className="text-xs text-muted-foreground">JSON array of feature strings shown to merchants on their plan page</p>
             </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={!form.name.trim() || isPending}>{editPlan ? "Update Plan" : "Create Plan"}</Button>
+            <Button onClick={handleSave} disabled={!form.name.trim() || isPending}>
+              {isPending ? "Saving..." : editPlan ? "Update Plan" : "Create Plan"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

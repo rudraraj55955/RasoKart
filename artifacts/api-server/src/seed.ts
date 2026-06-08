@@ -20,38 +20,58 @@ import {
 const PLAN_TIERS = [
   {
     name: "Starter",
-    description: "Perfect for individuals and small businesses getting started.",
+    description: "Free trial plan for individuals getting started.",
+    price: "0",
     pricing: JSON.stringify({ qr: { monthly: 0, perTx: 2 }, va: { monthly: 0, perTx: 5 } }),
-    features: JSON.stringify(["5 Dynamic QR Codes", "5 Static QR Codes", "2 Virtual Accounts", "3 Payment Links", "Email Support"]),
+    features: JSON.stringify(["5 Dynamic QR Codes", "2 Virtual Accounts", "Email Support"]),
     dynamicQrLimit: 5, staticQrLimit: 5, virtualAccountLimit: 2, paymentLinkLimit: 3, payoutLimit: 5,
+    dailyTransactionLimit: 50, monthlyTransactionLimit: 500,
+    settlementFee: "3.0", depositFee: "1.0",
+    apiAccess: false, webhookAccess: false, isActive: true,
   },
   {
-    name: "Startup",
-    description: "For growing startups that need more capacity.",
+    name: "Silver",
+    description: "For growing businesses that need more capacity and API access.",
+    price: "999",
     pricing: JSON.stringify({ qr: { monthly: 999, perTx: 1.5 }, va: { monthly: 999, perTx: 3 } }),
-    features: JSON.stringify(["20 Dynamic QR Codes", "20 Static QR Codes", "5 Virtual Accounts", "10 Payment Links", "Priority Support"]),
-    dynamicQrLimit: 20, staticQrLimit: 20, virtualAccountLimit: 5, paymentLinkLimit: 10, payoutLimit: 20,
+    features: JSON.stringify(["25 Dynamic QR Codes", "10 Virtual Accounts", "API Access", "Priority Support"]),
+    dynamicQrLimit: 25, staticQrLimit: 25, virtualAccountLimit: 10, paymentLinkLimit: 15, payoutLimit: 50,
+    dailyTransactionLimit: 200, monthlyTransactionLimit: 3000,
+    settlementFee: "2.0", depositFee: "0.5",
+    apiAccess: true, webhookAccess: true, isActive: true,
   },
   {
-    name: "Business",
+    name: "Gold",
     description: "Built for established businesses with high transaction volumes.",
-    pricing: JSON.stringify({ qr: { monthly: 2999, perTx: 1 }, va: { monthly: 2999, perTx: 2 } }),
-    features: JSON.stringify(["50 Dynamic QR Codes", "50 Static QR Codes", "15 Virtual Accounts", "30 Payment Links", "Dedicated Support", "Advanced Analytics"]),
-    dynamicQrLimit: 50, staticQrLimit: 50, virtualAccountLimit: 15, paymentLinkLimit: 30, payoutLimit: 50,
+    price: "2499",
+    pricing: JSON.stringify({ qr: { monthly: 2499, perTx: 1 }, va: { monthly: 2499, perTx: 2 } }),
+    features: JSON.stringify(["100 Dynamic QR Codes", "30 Virtual Accounts", "API Access", "Webhooks", "Dedicated Support", "Advanced Analytics"]),
+    dynamicQrLimit: 100, staticQrLimit: 100, virtualAccountLimit: 30, paymentLinkLimit: 50, payoutLimit: 200,
+    dailyTransactionLimit: 1000, monthlyTransactionLimit: 15000,
+    settlementFee: "1.5", depositFee: "0.25",
+    apiAccess: true, webhookAccess: true, isActive: true,
   },
   {
-    name: "Business Plus",
-    description: "Enhanced capacity for high-growth businesses.",
-    pricing: JSON.stringify({ qr: { monthly: 5999, perTx: 0.75 }, va: { monthly: 5999, perTx: 1.5 } }),
-    features: JSON.stringify(["100 Dynamic QR Codes", "100 Static QR Codes", "30 Virtual Accounts", "50 Payment Links", "SLA Support", "Custom Webhooks", "Advanced Analytics"]),
-    dynamicQrLimit: 100, staticQrLimit: 100, virtualAccountLimit: 30, paymentLinkLimit: 50, payoutLimit: 100,
+    name: "Platinum",
+    description: "High-volume plan with priority limits and lowest fees.",
+    price: "4999",
+    pricing: JSON.stringify({ qr: { monthly: 4999, perTx: 0.75 }, va: { monthly: 4999, perTx: 1.5 } }),
+    features: JSON.stringify(["500 Dynamic QR Codes", "100 Virtual Accounts", "API Access", "Webhooks", "SLA Support", "Custom Integration"]),
+    dynamicQrLimit: 500, staticQrLimit: 500, virtualAccountLimit: 100, paymentLinkLimit: 200, payoutLimit: 999,
+    dailyTransactionLimit: 5000, monthlyTransactionLimit: 75000,
+    settlementFee: "1.0", depositFee: "0.1",
+    apiAccess: true, webhookAccess: true, isActive: true,
   },
   {
-    name: "Enterprise",
-    description: "Unlimited scale for large enterprises with custom requirements.",
+    name: "Custom",
+    description: "Unlimited scale for large enterprises with negotiated terms.",
+    price: "0",
     pricing: JSON.stringify({ qr: { monthly: 0, perTx: 0.5 }, va: { monthly: 0, perTx: 1 } }),
-    features: JSON.stringify(["Unlimited Dynamic QR Codes", "Unlimited Static QR Codes", "100 Virtual Accounts", "200 Payment Links", "24/7 Dedicated Support", "Custom Integration", "SLA Guarantee"]),
-    dynamicQrLimit: 999, staticQrLimit: 999, virtualAccountLimit: 100, paymentLinkLimit: 200, payoutLimit: 999,
+    features: JSON.stringify(["Unlimited QR Codes", "Unlimited Virtual Accounts", "Full API Access", "24/7 Support", "Custom SLA", "Dedicated Manager"]),
+    dynamicQrLimit: 999, staticQrLimit: 999, virtualAccountLimit: 999, paymentLinkLimit: 999, payoutLimit: 999,
+    dailyTransactionLimit: 999, monthlyTransactionLimit: 999,
+    settlementFee: "0.5", depositFee: "0.0",
+    apiAccess: true, webhookAccess: true, isActive: true,
   },
 ];
 
@@ -116,16 +136,18 @@ export async function seed() {
     .values({ businessName: "FastCash Ltd", contactName: "Amit Kumar", email: "amit@fastcash.in", phone: "+91-7654321098", status: "rejected", rejectionReason: "Incomplete documentation" })
     .onConflictDoUpdate({ target: merchantsTable.email, set: { status: "rejected" } });
 
-  // Assign plans to approved/pending merchants so limit enforcement works
+  // Assign plans to merchants so limit enforcement works
   const [starterPlan] = await db.select({ id: plansTable.id }).from(plansTable).where(eq(plansTable.name, "Starter")).limit(1);
-  const [businessPlan] = await db.select({ id: plansTable.id }).from(plansTable).where(eq(plansTable.name, "Business")).limit(1);
+  const [goldPlan] = await db.select({ id: plansTable.id }).from(plansTable).where(eq(plansTable.name, "Gold")).limit(1);
   if (starterPlan) {
-    await db.insert(merchantPlansTable).values({ merchantId: merchant1.id, planId: starterPlan.id })
-      .onConflictDoUpdate({ target: merchantPlansTable.merchantId, set: { planId: starterPlan.id } });
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+    await db.insert(merchantPlansTable).values({ merchantId: merchant1.id, planId: starterPlan.id, expiresAt })
+      .onConflictDoUpdate({ target: merchantPlansTable.merchantId, set: { planId: starterPlan.id, expiresAt } });
   }
-  if (businessPlan) {
-    await db.insert(merchantPlansTable).values({ merchantId: merchant2.id, planId: businessPlan.id })
-      .onConflictDoUpdate({ target: merchantPlansTable.merchantId, set: { planId: businessPlan.id } });
+  if (goldPlan) {
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year
+    await db.insert(merchantPlansTable).values({ merchantId: merchant2.id, planId: goldPlan.id, expiresAt })
+      .onConflictDoUpdate({ target: merchantPlansTable.merchantId, set: { planId: goldPlan.id, expiresAt } });
   }
 
   console.log("Merchants seeded");

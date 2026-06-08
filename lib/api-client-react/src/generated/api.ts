@@ -48,6 +48,7 @@ import type {
   ListCallbackLogsParams,
   ListMerchantFeaturesParams,
   ListMerchantsParams,
+  ListPlanHistoryParams,
   ListQrCodesParams,
   ListSettlementsParams,
   ListTransactionsParams,
@@ -70,6 +71,8 @@ import type {
   MerchantVolumeListResponse,
   MessageResponse,
   Plan,
+  PlanHistory,
+  PlanHistoryListResponse,
   PlanInput,
   PlanUsage,
   QrCode,
@@ -1012,6 +1015,83 @@ export const useRejectMerchant = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRejectMerchantMutationOptions(options));
     }
+
+export const getGetMerchantPlanHistoryUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/plan/history`
+}
+
+/**
+ * @summary Get plan history for a merchant (admin only)
+ */
+export const getMerchantPlanHistory = async (id: number, options?: RequestInit): Promise<PlanHistory[]> => {
+
+  return customFetch<PlanHistory[]>(getGetMerchantPlanHistoryUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMerchantPlanHistoryQueryKey = (id: number,) => {
+    return [
+    `/api/merchants/${id}/plan/history`
+    ] as const;
+    }
+
+
+export const getGetMerchantPlanHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getMerchantPlanHistory>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlanHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMerchantPlanHistoryQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMerchantPlanHistory>>> = ({ signal }) => getMerchantPlanHistory(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlanHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMerchantPlanHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getMerchantPlanHistory>>>
+export type GetMerchantPlanHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get plan history for a merchant (admin only)
+ */
+
+export function useGetMerchantPlanHistory<TData = Awaited<ReturnType<typeof getMerchantPlanHistory>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlanHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMerchantPlanHistoryQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getAssignMerchantPlanUrl = (id: number,) => {
 
@@ -3109,6 +3189,167 @@ export function useGetMyPlanUsage<TData = Awaited<ReturnType<typeof getMyPlanUsa
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMyPlanUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyPlanHistoryUrl = () => {
+
+
+
+
+  return `/api/plans/me/history`
+}
+
+/**
+ * @summary Get current merchant's plan change history
+ */
+export const getMyPlanHistory = async ( options?: RequestInit): Promise<PlanHistory[]> => {
+
+  return customFetch<PlanHistory[]>(getGetMyPlanHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyPlanHistoryQueryKey = () => {
+    return [
+    `/api/plans/me/history`
+    ] as const;
+    }
+
+
+export const getGetMyPlanHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getMyPlanHistory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyPlanHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyPlanHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyPlanHistory>>> = ({ signal }) => getMyPlanHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyPlanHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyPlanHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getMyPlanHistory>>>
+export type GetMyPlanHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get current merchant's plan change history
+ */
+
+export function useGetMyPlanHistory<TData = Awaited<ReturnType<typeof getMyPlanHistory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyPlanHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyPlanHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListPlanHistoryUrl = (params?: ListPlanHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/plans/history?${stringifiedParams}` : `/api/plans/history`
+}
+
+/**
+ * @summary List all plan history (admin only)
+ */
+export const listPlanHistory = async (params?: ListPlanHistoryParams, options?: RequestInit): Promise<PlanHistoryListResponse> => {
+
+  return customFetch<PlanHistoryListResponse>(getListPlanHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPlanHistoryQueryKey = (params?: ListPlanHistoryParams,) => {
+    return [
+    `/api/plans/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPlanHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listPlanHistory>>, TError = ErrorType<unknown>>(params?: ListPlanHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPlanHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPlanHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPlanHistory>>> = ({ signal }) => listPlanHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPlanHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPlanHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof listPlanHistory>>>
+export type ListPlanHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all plan history (admin only)
+ */
+
+export function useListPlanHistory<TData = Awaited<ReturnType<typeof listPlanHistory>>, TError = ErrorType<unknown>>(
+ params?: ListPlanHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPlanHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPlanHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

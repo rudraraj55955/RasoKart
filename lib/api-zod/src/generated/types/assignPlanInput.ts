@@ -8,4 +8,8 @@
 
 export interface AssignPlanInput {
   planId: number;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
 }

@@ -1,1 +1,5 @@
 - [Express inline middleware TS2345](express-inline-middleware.md) — inline middleware args cause `req.params[id]` to be `string | string[]`; use `req.params['id'] as string` cast.
+- [Plan billing enforcement](plan-billing.md) — feature gating via planLimits.ts; Starter has no API/webhook access; usage endpoint drives sidebar lock badges and dashboard bars.
+- [Seed vs plan history](seed-plan-history.md) — seed directly inserts merchantPlans rows (no planHistory entry); history only logs when admin assigns via the API route.
+- [TS null vs undefined narrowing](ts-null-narrowing.md) — use `!= null` (not `!== null`) for optional nullable OpenAPI fields like daysUntilExpiry to satisfy strict TypeScript.
+- [Canonical plan tiers](canonical-plan-tiers.md) — 5 tiers: Starter (free, no API/webhooks), Silver, Gold, Platinum (full access), Custom; legacy Startup/Business/Enterprise were deleted from DB.

@@ -292,6 +292,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/Merchant"
 
+  /merchants/{id}/plan/history:
+    get:
+      operationId: getMerchantPlanHistory
+      tags: [merchants]
+      summary: Get plan history for a merchant (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Plan history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanHistory"
+
   /merchants/{id}/assign-plan:
     post:
       operationId: assignMerchantPlan
@@ -911,6 +932,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /plans/me/history:
+    get:
+      operationId: getMyPlanHistory
+      tags: [plans]
+      summary: Get current merchant's plan change history
+      responses:
+        "200":
+          description: Plan history entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanHistory"
+
+  /plans/history:
+    get:
+      operationId: listPlanHistory
+      tags: [plans]
+      summary: List all plan history (admin only)
+      parameters:
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Plan history list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanHistoryListResponse"
 
   /plans:
     get:
@@ -1688,6 +1750,10 @@ components:
       properties:
         planId:
           type: integer
+        expiresAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
 
     MerchantPlan:
       type: object
@@ -2142,7 +2208,7 @@ components:
 
     Plan:
       type: object
-      required: [id, name, pricing, features, dynamicQrLimit, staticQrLimit, virtualAccountLimit, paymentLinkLimit, payoutLimit, createdAt]
+      required: [id, name, price, pricing, features, dynamicQrLimit, staticQrLimit, virtualAccountLimit, paymentLinkLimit, payoutLimit, dailyTransactionLimit, monthlyTransactionLimit, settlementFee, depositFee, apiAccess, webhookAccess, isActive, createdAt]
       properties:
         id:
           type: integer
@@ -2150,6 +2216,8 @@ components:
           type: string
         description:
           type: ["string", "null"]
+        price:
+          type: string
         pricing:
           type: string
         features:
@@ -2164,6 +2232,20 @@ components:
           type: integer
         payoutLimit:
           type: integer
+        dailyTransactionLimit:
+          type: integer
+        monthlyTransactionLimit:
+          type: integer
+        settlementFee:
+          type: string
+        depositFee:
+          type: string
+        apiAccess:
+          type: boolean
+        webhookAccess:
+          type: boolean
+        isActive:
+          type: boolean
         createdAt:
           type: string
         updatedAt:
@@ -2171,7 +2253,7 @@ components:
 
     MerchantPlanWithDetails:
       type: object
-      required: [id, merchantId, planId, planName, pricing, features, dynamicQrLimit, staticQrLimit, virtualAccountLimit, paymentLinkLimit, payoutLimit, assignedAt]
+      required: [id, merchantId, planId, planName, price, pricing, features, dynamicQrLimit, staticQrLimit, virtualAccountLimit, paymentLinkLimit, payoutLimit, dailyTransactionLimit, monthlyTransactionLimit, settlementFee, depositFee, apiAccess, webhookAccess, assignedAt, isExpired]
       properties:
         id:
           type: integer
@@ -2183,6 +2265,8 @@ components:
           type: string
         description:
           type: ["string", "null"]
+        price:
+          type: string
         pricing:
           type: string
         features:
@@ -2197,8 +2281,28 @@ components:
           type: integer
         payoutLimit:
           type: integer
+        dailyTransactionLimit:
+          type: integer
+        monthlyTransactionLimit:
+          type: integer
+        settlementFee:
+          type: string
+        depositFee:
+          type: string
+        apiAccess:
+          type: boolean
+        webhookAccess:
+          type: boolean
         assignedAt:
           type: string
+        expiresAt:
+          type: ["string", "null"]
+        isExpired:
+          type: boolean
+        daysUntilExpiry:
+          type: ["integer", "null"]
+        notes:
+          type: ["string", "null"]
 
     PlanInput:
       type: object
@@ -2208,6 +2312,8 @@ components:
           type: string
         description:
           type: ["string", "null"]
+        price:
+          type: string
         pricing:
           type: string
         features:
@@ -2222,11 +2328,41 @@ components:
           type: integer
         payoutLimit:
           type: integer
+        dailyTransactionLimit:
+          type: integer
+        monthlyTransactionLimit:
+          type: integer
+        settlementFee:
+          type: string
+        depositFee:
+          type: string
+        apiAccess:
+          type: boolean
+        webhookAccess:
+          type: boolean
+        isActive:
+          type: boolean
 
     PlanUsage:
       type: object
-      required: [dynamicQr, staticQr, virtualAccount, paymentLink, payout]
+      required: [dynamicQr, staticQr, virtualAccount, paymentLink, payout, dailyTransaction, monthlyTransaction]
       properties:
+        planName:
+          type: string
+        isExpired:
+          type: boolean
+        expiresAt:
+          type: ["string", "null"]
+        daysUntilExpiry:
+          type: ["integer", "null"]
+        apiAccess:
+          type: boolean
+        webhookAccess:
+          type: boolean
+        settlementFee:
+          type: string
+        depositFee:
+          type: string
         dynamicQr:
           type: object
           required: [used, limit]
@@ -2257,6 +2393,60 @@ components:
           properties:
             used: { type: integer }
             limit: { type: integer }
+        dailyTransaction:
+          type: object
+          required: [used, limit]
+          properties:
+            used: { type: integer }
+            limit: { type: integer }
+        monthlyTransaction:
+          type: object
+          required: [used, limit]
+          properties:
+            used: { type: integer }
+            limit: { type: integer }
+
+    PlanHistory:
+      type: object
+      required: [id, merchantId, action, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        fromPlanId:
+          type: ["integer", "null"]
+        toPlanId:
+          type: ["integer", "null"]
+        toPlanName:
+          type: ["string", "null"]
+        action:
+          type: string
+        assignedBy:
+          type: ["integer", "null"]
+        adminEmail:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        businessName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    PlanHistoryListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanHistory"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
 
     QrCode:
       type: object

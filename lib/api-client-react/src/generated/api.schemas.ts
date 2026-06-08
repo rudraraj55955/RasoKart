@@ -95,6 +95,10 @@ export interface RejectInput {
 
 export interface AssignPlanInput {
   planId: number;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
 }
 
 export interface MerchantPlan {
@@ -427,6 +431,7 @@ export interface Plan {
   name: string;
   /** @nullable */
   description?: string | null;
+  price: string;
   pricing: string;
   features: string;
   dynamicQrLimit: number;
@@ -434,6 +439,13 @@ export interface Plan {
   virtualAccountLimit: number;
   paymentLinkLimit: number;
   payoutLimit: number;
+  dailyTransactionLimit: number;
+  monthlyTransactionLimit: number;
+  settlementFee: string;
+  depositFee: string;
+  apiAccess: boolean;
+  webhookAccess: boolean;
+  isActive: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -445,6 +457,7 @@ export interface MerchantPlanWithDetails {
   planName: string;
   /** @nullable */
   description?: string | null;
+  price: string;
   pricing: string;
   features: string;
   dynamicQrLimit: number;
@@ -452,13 +465,27 @@ export interface MerchantPlanWithDetails {
   virtualAccountLimit: number;
   paymentLinkLimit: number;
   payoutLimit: number;
+  dailyTransactionLimit: number;
+  monthlyTransactionLimit: number;
+  settlementFee: string;
+  depositFee: string;
+  apiAccess: boolean;
+  webhookAccess: boolean;
   assignedAt: string;
+  /** @nullable */
+  expiresAt?: string | null;
+  isExpired: boolean;
+  /** @nullable */
+  daysUntilExpiry?: number | null;
+  /** @nullable */
+  notes?: string | null;
 }
 
 export interface PlanInput {
   name: string;
   /** @nullable */
   description?: string | null;
+  price?: string;
   pricing: string;
   features: string;
   dynamicQrLimit?: number;
@@ -466,6 +493,13 @@ export interface PlanInput {
   virtualAccountLimit?: number;
   paymentLinkLimit?: number;
   payoutLimit?: number;
+  dailyTransactionLimit?: number;
+  monthlyTransactionLimit?: number;
+  settlementFee?: string;
+  depositFee?: string;
+  apiAccess?: boolean;
+  webhookAccess?: boolean;
+  isActive?: boolean;
 }
 
 export type PlanUsageDynamicQr = {
@@ -493,12 +527,62 @@ export type PlanUsagePayout = {
   limit: number;
 };
 
+export type PlanUsageDailyTransaction = {
+  used: number;
+  limit: number;
+};
+
+export type PlanUsageMonthlyTransaction = {
+  used: number;
+  limit: number;
+};
+
 export interface PlanUsage {
+  planName?: string;
+  isExpired?: boolean;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  daysUntilExpiry?: number | null;
+  apiAccess?: boolean;
+  webhookAccess?: boolean;
+  settlementFee?: string;
+  depositFee?: string;
   dynamicQr: PlanUsageDynamicQr;
   staticQr: PlanUsageStaticQr;
   virtualAccount: PlanUsageVirtualAccount;
   paymentLink: PlanUsagePaymentLink;
   payout: PlanUsagePayout;
+  dailyTransaction: PlanUsageDailyTransaction;
+  monthlyTransaction: PlanUsageMonthlyTransaction;
+}
+
+export interface PlanHistory {
+  id: number;
+  merchantId: number;
+  /** @nullable */
+  fromPlanId?: number | null;
+  /** @nullable */
+  toPlanId?: number | null;
+  /** @nullable */
+  toPlanName?: string | null;
+  action: string;
+  /** @nullable */
+  assignedBy?: number | null;
+  /** @nullable */
+  adminEmail?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  businessName?: string | null;
+  createdAt: string;
+}
+
+export interface PlanHistoryListResponse {
+  data: PlanHistory[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export type QrCodeType = typeof QrCodeType[keyof typeof QrCodeType];
@@ -1019,6 +1103,12 @@ export const ListUsersRole = {
   merchant: 'merchant',
   all: 'all',
 } as const;
+
+export type ListPlanHistoryParams = {
+merchantId?: number;
+page?: number;
+limit?: number;
+};
 
 export type ListQrCodesParams = {
 type?: ListQrCodesType;

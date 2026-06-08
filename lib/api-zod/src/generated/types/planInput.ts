@@ -10,6 +10,7 @@ export interface PlanInput {
   name: string;
   /** @nullable */
   description?: string | null;
+  price?: string;
   pricing: string;
   features: string;
   dynamicQrLimit?: number;
@@ -17,4 +18,11 @@ export interface PlanInput {
   virtualAccountLimit?: number;
   paymentLinkLimit?: number;
   payoutLimit?: number;
+  dailyTransactionLimit?: number;
+  monthlyTransactionLimit?: number;
+  settlementFee?: string;
+  depositFee?: string;
+  apiAccess?: boolean;
+  webhookAccess?: boolean;
+  isActive?: boolean;
 }
