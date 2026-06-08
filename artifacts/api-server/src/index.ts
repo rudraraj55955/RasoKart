@@ -27,12 +27,14 @@ async function main() {
     process.exit(1);
   }
 
-  // Idempotent seed — safe to run on every boot
+  // Idempotent seed — guard: fatal if it fails so the server never boots
+  // without baseline admin credentials and demo data
   try {
     await seed();
     logger.info("Database seed complete");
   } catch (err) {
-    logger.warn({ err }, "Seed encountered an error (non-fatal)");
+    logger.error({ err }, "Seed failed — cannot start server without baseline data");
+    process.exit(1);
   }
 
   app.listen(port, (err) => {
