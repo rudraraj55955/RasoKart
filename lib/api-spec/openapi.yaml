@@ -2652,6 +2652,10 @@ components:
           type: number
         balance:
           type: number
+        currentPlanName:
+          type: ["string", "null"]
+        currentPlanStatus:
+          type: ["string", "null"]
         createdAt:
           type: string
 

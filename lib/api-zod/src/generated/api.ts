@@ -128,6 +128,8 @@ export const ListMerchantsResponse = zod.object({
   "totalDeposits": zod.number().optional(),
   "totalWithdrawals": zod.number().optional(),
   "balance": zod.number().optional(),
+  "currentPlanName": zod.string().nullish(),
+  "currentPlanStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -155,6 +157,8 @@ export const GetMerchantResponse = zod.object({
   "totalDeposits": zod.number().optional(),
   "totalWithdrawals": zod.number().optional(),
   "balance": zod.number().optional(),
+  "currentPlanName": zod.string().nullish(),
+  "currentPlanStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -220,6 +224,8 @@ export const ApproveMerchantResponse = zod.object({
   "totalDeposits": zod.number().optional(),
   "totalWithdrawals": zod.number().optional(),
   "balance": zod.number().optional(),
+  "currentPlanName": zod.string().nullish(),
+  "currentPlanStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -247,6 +253,8 @@ export const RejectMerchantResponse = zod.object({
   "totalDeposits": zod.number().optional(),
   "totalWithdrawals": zod.number().optional(),
   "balance": zod.number().optional(),
+  "currentPlanName": zod.string().nullish(),
+  "currentPlanStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -270,6 +278,8 @@ export const SuspendMerchantResponse = zod.object({
   "totalDeposits": zod.number().optional(),
   "totalWithdrawals": zod.number().optional(),
   "balance": zod.number().optional(),
+  "currentPlanName": zod.string().nullish(),
+  "currentPlanStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -293,6 +303,8 @@ export const UnsuspendMerchantResponse = zod.object({
   "totalDeposits": zod.number().optional(),
   "totalWithdrawals": zod.number().optional(),
   "balance": zod.number().optional(),
+  "currentPlanName": zod.string().nullish(),
+  "currentPlanStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 

@@ -21,5 +21,9 @@ export interface Merchant {
   totalDeposits?: number;
   totalWithdrawals?: number;
   balance?: number;
+  /** @nullable */
+  currentPlanName?: string | null;
+  /** @nullable */
+  currentPlanStatus?: string | null;
   createdAt: string;
 }

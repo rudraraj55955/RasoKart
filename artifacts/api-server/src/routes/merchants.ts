@@ -68,9 +68,30 @@ router.get("/", requireAdmin, async (req, res) => {
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [{ total }] = await db.select({ total: count() }).from(merchantsTable).where(where);
-  const data = await db.select().from(merchantsTable).where(where).limit(limitNum).offset(offset).orderBy(sql`${merchantsTable.createdAt} DESC`);
 
-  res.json({ data: data.map(serializeMerchant), total, page: pageNum, limit: limitNum });
+  const rows = await db
+    .select({
+      merchant: merchantsTable,
+      currentPlanName: plansTable.name,
+      currentPlanStatus: merchantPlansTable.status,
+    })
+    .from(merchantsTable)
+    .leftJoin(merchantPlansTable, eq(merchantPlansTable.merchantId, merchantsTable.id))
+    .leftJoin(plansTable, eq(plansTable.id, merchantPlansTable.planId))
+    .where(where)
+    .limit(limitNum).offset(offset)
+    .orderBy(sql`${merchantsTable.createdAt} DESC`);
+
+  res.json({
+    data: rows.map(r => ({
+      ...serializeMerchant(r.merchant),
+      currentPlanName: r.currentPlanName ?? null,
+      currentPlanStatus: r.currentPlanStatus ?? null,
+    })),
+    total,
+    page: pageNum,
+    limit: limitNum,
+  });
 });
 
 // GET /api/merchants/:id  (admin, or the merchant viewing their own profile)

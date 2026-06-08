@@ -87,27 +87,36 @@ export default function AdminMerchants() {
     const id = assignPlanMerchant.id;
     const notes = actionNotes || null;
 
+    const afterSuccess = (msg: string, extra?: () => void) => {
+      toast.success(msg);
+      invalidatePlanData(id);
+      qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+      setConfirmAction(null);
+      setActionNotes("");
+      extra?.();
+    };
+
     if (action === "upgrade" || action === "downgrade") {
       if (!selectedPlanId) return;
       const mutation = action === "upgrade" ? upgradeMutation : downgradeMutation;
       mutation.mutate({ id, data: { planId: parseInt(selectedPlanId), notes } }, {
-        onSuccess: () => { toast.success(`Plan ${action}d`); invalidatePlanData(id); setConfirmAction(null); setActionNotes(""); setSelectedPlanId(""); },
+        onSuccess: () => afterSuccess(`Plan ${action}d`, () => setSelectedPlanId("")),
         onError: () => toast.error(`Failed to ${action} plan`),
       });
     } else if (action === "suspend") {
       suspendPlanMutation.mutate({ id, data: { notes } }, {
-        onSuccess: () => { toast.success("Plan suspended"); invalidatePlanData(id); setConfirmAction(null); setActionNotes(""); },
+        onSuccess: () => afterSuccess("Plan suspended"),
         onError: () => toast.error("Failed to suspend plan"),
       });
     } else if (action === "reinstate") {
       reinstatePlanMutation.mutate({ id, data: { notes } }, {
-        onSuccess: () => { toast.success("Plan reinstated"); invalidatePlanData(id); setConfirmAction(null); setActionNotes(""); },
+        onSuccess: () => afterSuccess("Plan reinstated"),
         onError: () => toast.error("Failed to reinstate plan"),
       });
     } else if (action === "renew") {
       const defaultExpiry = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
       renewMutation.mutate({ id, data: { expiresAt: renewExpiresAt || defaultExpiry, notes } }, {
-        onSuccess: () => { toast.success("Plan renewed"); invalidatePlanData(id); setConfirmAction(null); setActionNotes(""); setRenewExpiresAt(""); },
+        onSuccess: () => afterSuccess("Plan renewed", () => setRenewExpiresAt("")),
         onError: () => toast.error("Failed to renew plan"),
       });
     }
@@ -178,6 +187,7 @@ export default function AdminMerchants() {
         toast.success("Plan assigned successfully");
         qc.invalidateQueries({ queryKey: ["getMerchantPlan", assignPlanMerchant.id] });
         qc.invalidateQueries({ queryKey: ["getMerchantPlanHistory", assignPlanMerchant.id] });
+        qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
         closeAssignPlan();
       },
       onError: () => toast.error("Failed to assign plan"),
@@ -238,6 +248,7 @@ export default function AdminMerchants() {
                 <TableHead>Business</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Plan</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -247,12 +258,12 @@ export default function AdminMerchants() {
               {isLoading ? (
                 [1,2,3,4,5].map(i => (
                   <TableRow key={i}>
-                    {[1,2,3,4,5,6].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
+                    {[1,2,3,4,5,6,7].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
                   </TableRow>
                 ))
               ) : merchants.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10">No merchants found</TableCell>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">No merchants found</TableCell>
                 </TableRow>
               ) : merchants.map(merchant => (
                 <TableRow key={merchant.id}>
@@ -269,6 +280,23 @@ export default function AdminMerchants() {
                     </div>
                   </TableCell>
                   <TableCell><StatusBadge status={merchant.status} /></TableCell>
+                  <TableCell>
+                    {merchant.currentPlanName ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium">{merchant.currentPlanName}</span>
+                        {merchant.currentPlanStatus && merchant.currentPlanStatus !== "active" && (
+                          <Badge
+                            variant="outline"
+                            className={`text-xs py-0 ${PLAN_SUB_STATUS_COLOR[merchant.currentPlanStatus] ?? ""}`}
+                          >
+                            {merchant.currentPlanStatus}
+                          </Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">No plan</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right font-mono text-sm">₹{Number(merchant.balance).toLocaleString()}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{format(new Date(merchant.createdAt), "MMM d, yyyy")}</TableCell>
                   <TableCell className="text-right">
@@ -294,7 +322,7 @@ export default function AdminMerchants() {
                         </Button>
                       )}
                       <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => openAssignPlan(merchant.id, merchant.businessName)}>
-                        <CreditCard className="w-4 h-4 mr-1" /> Plan
+                        <CreditCard className="w-4 h-4 mr-1" /> {merchant.currentPlanName ? "Change Plan" : "Assign Plan"}
                       </Button>
                     </div>
                   </TableCell>
