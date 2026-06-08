@@ -1,7 +1,13 @@
 import { Router } from "express";
-import { db, settlementsTable, merchantsTable, ledgerEntriesTable } from "@workspace/db";
+import { db, settlementsTable, merchantsTable, ledgerEntriesTable, usersTable } from "@workspace/db";
 import { eq, and, count, sql, gte, lte, sum } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { createNotification } from "../helpers/notifications";
+
+async function getUserIdForMerchant(merchantId: number): Promise<number | null> {
+  const [u] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.merchantId, merchantId)).limit(1);
+  return u?.id ?? null;
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -222,6 +228,7 @@ router.post("/:id/process", requireAdmin, async (req, res) => {
 });
 
 // POST /api/settlements/:id/approve  (admin: processing → approved, deduct balance atomically)
+
 router.post("/:id/approve", requireAdmin, async (req, res) => {
   const user = (req as any).user;
   const id = parseId(req.params.id);
@@ -291,6 +298,17 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     return;
   }
 
+  // Settlement approved — notify the merchant
+  void getUserIdForMerchant(s.merchantId).then(uid => {
+    if (uid) createNotification({
+      userId: uid,
+      type: "settlement_approved",
+      title: "Settlement Approved",
+      body: `Your settlement of ₹${requestedAmt.toLocaleString("en-IN")} has been approved. Disbursement will be initiated shortly.`,
+      metadata: { settlementId: updated.id, amount: requestedAmt },
+    }).catch(() => {});
+  });
+
   res.json(mapSettlement(updated));
 });
 
@@ -318,6 +336,17 @@ router.post("/:id/reject", requireAdmin, async (req, res) => {
     res.status(409).json({ error: "Settlement status changed — concurrent modification detected" });
     return;
   }
+
+  // Settlement rejected — notify the merchant
+  void getUserIdForMerchant(s.merchantId).then(uid => {
+    if (uid) createNotification({
+      userId: uid,
+      type: "settlement_rejected",
+      title: "Settlement Rejected",
+      body: `Your settlement of ₹${Number(s.requestedAmount ?? s.amount).toLocaleString("en-IN")} was rejected. Reason: ${remark}`,
+      metadata: { settlementId: id, remark },
+    }).catch(() => {});
+  });
 
   res.json(mapSettlement(updated));
 });
@@ -386,6 +415,17 @@ router.post("/:id/mark-paid", requireAdmin, async (req, res) => {
     res.status(409).json({ error: "Settlement status changed — concurrent modification detected" });
     return;
   }
+
+  // Settlement paid — notify the merchant
+  void getUserIdForMerchant(s.merchantId).then(uid => {
+    if (uid) createNotification({
+      userId: uid,
+      type: "settlement_paid",
+      title: "Settlement Paid",
+      body: `Your settlement of ₹${Number(s.requestedAmount ?? s.amount).toLocaleString("en-IN")} has been paid. Reference: ${referenceNumber.trim()}`,
+      metadata: { settlementId: id, referenceNumber: referenceNumber.trim() },
+    }).catch(() => {});
+  });
 
   res.json(mapSettlement(updated));
 });

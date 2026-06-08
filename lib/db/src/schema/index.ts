@@ -21,3 +21,4 @@ export * from "./invoices";
 export * from "./ledgerEntries";
 export * from "./providers";
 export * from "./providerVisibility";
+export * from "./notifications";

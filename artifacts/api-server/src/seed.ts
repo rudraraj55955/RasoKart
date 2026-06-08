@@ -17,6 +17,7 @@ import {
   merchantPlansTable,
   ledgerEntriesTable,
   providersTable,
+  notificationsTable,
 } from "@workspace/db";
 
 const PLAN_TIERS = [
@@ -397,6 +398,76 @@ export async function seed() {
       await db.insert(providersTable).values(p).onConflictDoUpdate({ target: providersTable.slug, set: { name: p.name, status: p.status, sortOrder: p.sortOrder } });
     }
     console.log("Providers seeded");
+  }
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  const notifCount = await db.select({ c: count() }).from(notificationsTable);
+  if (notifCount[0].c === 0) {
+    // Seed a few sample notifications for merchant1 (user ID will be merchant1's user)
+    const [m1User] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, "merchant@demo.com")).limit(1);
+    const [m2User] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, "merchant2@demo.com")).limit(1);
+    if (m1User && m2User) {
+      const NOTIF_SAMPLES = [
+        {
+          userId: m1User.id,
+          type: "settlement_paid",
+          title: "Settlement Paid",
+          body: "Your settlement of ₹12,500 has been paid. Reference: REF20240601001",
+          metadata: { settlementId: 1, referenceNumber: "REF20240601001" },
+          isRead: true,
+          createdAt: new Date(Date.now() - 20 * 86400000),
+        },
+        {
+          userId: m1User.id,
+          type: "settlement_approved",
+          title: "Settlement Approved",
+          body: "Your settlement of ₹7,300 has been approved. Disbursement will be initiated shortly.",
+          metadata: { settlementId: 5, amount: 7300 },
+          isRead: true,
+          createdAt: new Date(Date.now() - 5 * 86400000),
+        },
+        {
+          userId: m1User.id,
+          type: "plan_expiring",
+          title: "Plan Expiring in 7 Days",
+          body: "Your Starter plan expires soon. Contact support to renew before your access is interrupted.",
+          metadata: { planName: "Starter", daysLeft: 7 },
+          isRead: false,
+          createdAt: new Date(Date.now() - 1 * 86400000),
+        },
+        {
+          userId: m1User.id,
+          type: "system_notice",
+          title: "Scheduled Maintenance",
+          body: "RPay will undergo scheduled maintenance on June 15, 2026 between 2:00 AM – 4:00 AM IST. Payments will be unaffected.",
+          metadata: { broadcastBy: "admin@rpay.com" },
+          isRead: false,
+          createdAt: new Date(Date.now() - 3 * 3600000),
+        },
+        {
+          userId: m2User.id,
+          type: "settlement_paid",
+          title: "Settlement Paid",
+          body: "Your settlement of ₹9,750 has been paid. Reference: REF20240607001",
+          metadata: { referenceNumber: "REF20240607001" },
+          isRead: false,
+          createdAt: new Date(Date.now() - 1 * 86400000),
+        },
+        {
+          userId: m2User.id,
+          type: "system_notice",
+          title: "Scheduled Maintenance",
+          body: "RPay will undergo scheduled maintenance on June 15, 2026 between 2:00 AM – 4:00 AM IST. Payments will be unaffected.",
+          metadata: { broadcastBy: "admin@rpay.com" },
+          isRead: false,
+          createdAt: new Date(Date.now() - 3 * 3600000),
+        },
+      ];
+      for (const n of NOTIF_SAMPLES) {
+        await db.insert(notificationsTable).values(n);
+      }
+      console.log("Notifications seeded");
+    }
   }
 
   console.log("Seed complete.");

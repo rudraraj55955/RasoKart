@@ -12,8 +12,9 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search, GripVertical, Megaphone } from "lucide-react";
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   live:         { label: "Live",        color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
@@ -46,12 +47,38 @@ async function apiPut(path: string, body: object) {
   return res.json();
 }
 
+async function apiPost(path: string, body: object) {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export default function AdminProviders() {
   const qc = useQueryClient();
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  // Broadcast dialog
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState("");
+  const [broadcastBody, setBroadcastBody] = useState("");
+
+  const broadcastMut = useMutation({
+    mutationFn: (data: { title: string; body: string }) => apiPost("/notifications/broadcast", data),
+    onSuccess: (res: { count: number }) => {
+      toast.success(`Notification sent to ${res.count} merchant(s)`);
+      setBroadcastOpen(false);
+      setBroadcastTitle("");
+      setBroadcastBody("");
+    },
+    onError: () => toast.error("Failed to send broadcast"),
+  });
 
   // Create / Edit / Delete dialog
   const [dialog, setDialog] = useState<"create" | "edit" | "delete" | null>(null);
@@ -223,6 +250,9 @@ export default function AdminProviders() {
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
             <RefreshCw className="w-4 h-4" /> Refresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setBroadcastOpen(true)} className="gap-2">
+            <Megaphone className="w-4 h-4" /> Broadcast
           </Button>
           <Button size="sm" onClick={openCreate} className="gap-2">
             <Plus className="w-4 h-4" /> Add Provider
@@ -459,6 +489,51 @@ export default function AdminProviders() {
             <Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleteMut.isPending}>
               {deleteMut.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Broadcast Dialog */}
+      <Dialog open={broadcastOpen} onOpenChange={open => { if (!open) { setBroadcastOpen(false); setBroadcastTitle(""); setBroadcastBody(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Megaphone className="w-4 h-4" /> Broadcast Notification
+            </DialogTitle>
+            <DialogDescription>
+              Send a system notice to <strong>all active merchants</strong>. They will see it in their notification centre.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Title</Label>
+              <Input
+                value={broadcastTitle}
+                onChange={e => setBroadcastTitle(e.target.value)}
+                placeholder="Scheduled Maintenance"
+                maxLength={120}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Message</Label>
+              <Textarea
+                value={broadcastBody}
+                onChange={e => setBroadcastBody(e.target.value)}
+                placeholder="Write the notification body here…"
+                rows={4}
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground text-right">{broadcastBody.length}/500</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBroadcastOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => broadcastMut.mutate({ title: broadcastTitle.trim(), body: broadcastBody.trim() })}
+              disabled={!broadcastTitle.trim() || !broadcastBody.trim() || broadcastMut.isPending}
+            >
+              {broadcastMut.isPending ? "Sending…" : "Send to All Merchants"}
             </Button>
           </DialogFooter>
         </DialogContent>

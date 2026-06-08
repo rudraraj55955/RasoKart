@@ -2456,3 +2456,86 @@ export const GetProviderMerchantVisibilityResponseItem = zod.object({
 export const GetProviderMerchantVisibilityResponse = zod.array(GetProviderMerchantVisibilityResponseItem)
 
 
+/**
+ * @summary List notifications for current user
+ */
+export const ListNotificationsQueryParams = zod.object({
+  "isRead": zod.enum(['true', 'false']).optional(),
+  "type": zod.coerce.string().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListNotificationsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "type": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "metadata": zod.unknown().optional(),
+  "isRead": zod.boolean(),
+  "readAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "unread": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Mark all notifications as read
+ */
+export const MarkAllNotificationsReadResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Broadcast a system notice to one or all merchants (admin only)
+ */
+export const BroadcastNotificationBody = zod.object({
+  "merchantId": zod.number().nullish(),
+  "title": zod.string(),
+  "body": zod.string()
+})
+
+export const BroadcastNotificationResponse = zod.object({
+  "message": zod.string(),
+  "count": zod.number()
+})
+
+
+/**
+ * @summary Trigger plan-expiry notification check (admin only)
+ */
+export const CheckPlanExpiryResponse = zod.object({
+  "message": zod.string(),
+  "notificationsSent": zod.number(),
+  "expiringCount": zod.number(),
+  "expiredCount": zod.number()
+})
+
+
+/**
+ * @summary Mark a single notification as read
+ */
+export const MarkNotificationReadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const MarkNotificationReadResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "type": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "metadata": zod.unknown().optional(),
+  "isRead": zod.boolean(),
+  "readAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+

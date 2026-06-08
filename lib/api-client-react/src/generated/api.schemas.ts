@@ -1265,6 +1265,44 @@ export interface ProviderReorderInput {
   order: number[];
 }
 
+export interface Notification {
+  id: number;
+  userId: number;
+  type: string;
+  title: string;
+  body: string;
+  metadata?: unknown;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface NotificationListResponse {
+  data: Notification[];
+  total: number;
+  unread: number;
+  page: number;
+  limit: number;
+}
+
+export interface BroadcastNotificationInput {
+  merchantId?: number | null;
+  title: string;
+  body: string;
+}
+
+export interface BroadcastNotificationResult {
+  message: string;
+  count: number;
+}
+
+export interface ExpiryCheckResult {
+  message: string;
+  notificationsSent: number;
+  expiringCount: number;
+  expiredCount: number;
+}
+
 export type ListMerchantsParams = {
 status?: ListMerchantsStatus;
 search?: string;
@@ -1503,4 +1541,19 @@ export type ListProvidersParams = {
 category?: string;
 status?: string;
 };
+
+export type ListNotificationsParams = {
+isRead?: ListNotificationsIsRead;
+type?: string;
+page?: number;
+limit?: number;
+};
+
+export type ListNotificationsIsRead = typeof ListNotificationsIsRead[keyof typeof ListNotificationsIsRead];
+
+
+export const ListNotificationsIsRead = {
+  true: 'true',
+  false: 'false',
+} as const;
 

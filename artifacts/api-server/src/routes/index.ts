@@ -22,6 +22,7 @@ import accountDetailsRouter from "./accountDetails";
 import invoicesRouter from "./invoices";
 import ledgerRouter from "./ledger";
 import providersRouter from "./providers";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use("/account-details", accountDetailsRouter);
 router.use("/invoices", invoicesRouter);
 router.use("/ledger", ledgerRouter);
 router.use("/providers", providersRouter);
+router.use("/notifications", notificationsRouter);
 
 export default router;

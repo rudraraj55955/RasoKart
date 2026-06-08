@@ -49,6 +49,8 @@ tags:
     description: Merchant balance ledger entries
   - name: providers
     description: Payment provider catalogue and visibility control
+  - name: notifications
+    description: In-app notification centre for merchants and admins
 paths:
   /healthz:
     get:
@@ -2359,6 +2361,101 @@ paths:
                 items:
                   $ref: "#/components/schemas/ProviderMerchantVisibility"
 
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications for current user
+      parameters:
+        - name: isRead
+          in: query
+          schema: { type: string, enum: ["true", "false"] }
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Paginated notification list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      responses:
+        "200":
+          description: All marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /notifications/broadcast:
+    post:
+      operationId: broadcastNotification
+      tags: [notifications]
+      summary: Broadcast a system notice to one or all merchants (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BroadcastNotificationInput"
+      responses:
+        "200":
+          description: Broadcast result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastNotificationResult"
+
+  /notifications/check-expiry:
+    get:
+      operationId: checkPlanExpiry
+      tags: [notifications]
+      summary: Trigger plan-expiry notification check (admin only)
+      responses:
+        "200":
+          description: Check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpiryCheckResult"
+
+  /notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark a single notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -4025,3 +4122,58 @@ components:
           type: array
           items: { type: integer }
           description: Provider IDs in the desired display order
+
+    Notification:
+      type: object
+      required: [id, userId, type, title, body, isRead, createdAt]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        type: { type: string }
+        title: { type: string }
+        body: { type: string }
+        metadata: {}
+        isRead: { type: boolean }
+        readAt:
+          type: string
+          nullable: true
+        createdAt: { type: string }
+
+    NotificationListResponse:
+      type: object
+      required: [data, total, unread, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        total: { type: integer }
+        unread: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    BroadcastNotificationInput:
+      type: object
+      required: [title, body]
+      properties:
+        merchantId:
+          type: integer
+          nullable: true
+        title: { type: string }
+        body: { type: string }
+
+    BroadcastNotificationResult:
+      type: object
+      required: [message, count]
+      properties:
+        message: { type: string }
+        count: { type: integer }
+
+    ExpiryCheckResult:
+      type: object
+      required: [message, notificationsSent, expiringCount, expiredCount]
+      properties:
+        message: { type: string }
+        notificationsSent: { type: integer }
+        expiringCount: { type: integer }
+        expiredCount: { type: integer }
