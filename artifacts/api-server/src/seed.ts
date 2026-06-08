@@ -18,6 +18,8 @@ import {
   ledgerEntriesTable,
   providersTable,
   notificationsTable,
+  reconciliationRunsTable,
+  reconciliationItemsTable,
 } from "@workspace/db";
 
 const PLAN_TIERS = [
@@ -467,6 +469,93 @@ export async function seed() {
         await db.insert(notificationsTable).values(n);
       }
       console.log("Notifications seeded");
+    }
+  }
+
+  // ── Reconciliation demo run ──────────────────────────────────────────────────
+  {
+    const [existing] = await db
+      .select({ id: reconciliationRunsTable.id })
+      .from(reconciliationRunsTable)
+      .limit(1);
+
+    if (!existing) {
+      const [m1] = await db.select({ id: merchantsTable.id }).from(merchantsTable).limit(1);
+      if (m1) {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+        const today = new Date().toISOString().slice(0, 10);
+
+        const [run] = await db.insert(reconciliationRunsTable).values({
+          merchantId: null,
+          dateFrom: thirtyDaysAgo,
+          dateTo: today,
+          totalDeposits: 8,
+          totalSettlements: 6,
+          totalMatched: 5,
+          totalUnmatched: 4,
+          matchedAmount: "87500.00",
+          unmatchedAmount: "22300.00",
+          status: "complete",
+          createdBy: null,
+          notes: "Demo seed run",
+        }).returning();
+
+        // Fetch real transactions and settlements to link in seed items
+        const txns = await db
+          .select({ id: transactionsTable.id, amount: transactionsTable.amount, utr: transactionsTable.utr, merchantId: transactionsTable.merchantId })
+          .from(transactionsTable)
+          .limit(8);
+        const setts = await db
+          .select({ id: settlementsTable.id, amount: settlementsTable.requestedAmount, merchantId: settlementsTable.merchantId })
+          .from(settlementsTable)
+          .limit(6);
+
+        const items = [];
+        // 5 matched pairs
+        for (let i = 0; i < Math.min(5, txns.length, setts.length); i++) {
+          items.push({
+            runId: run.id,
+            transactionId: txns[i].id,
+            settlementId: setts[i].id,
+            merchantId: txns[i].merchantId,
+            status: "matched",
+            amount: Number(txns[i].amount).toFixed(2),
+            matchedAt: new Date(),
+            notes: `Deposit UTR: ${txns[i].utr}`,
+          });
+        }
+        // 3 unmatched deposits
+        for (let i = 5; i < Math.min(8, txns.length); i++) {
+          items.push({
+            runId: run.id,
+            transactionId: txns[i].id,
+            settlementId: null,
+            merchantId: txns[i].merchantId,
+            status: "unmatched_deposit",
+            amount: Number(txns[i].amount).toFixed(2),
+            matchedAt: null,
+            notes: `No matching settlement found for UTR: ${txns[i].utr}`,
+          });
+        }
+        // 1 unmatched settlement
+        if (setts.length >= 6) {
+          items.push({
+            runId: run.id,
+            transactionId: null,
+            settlementId: setts[5].id,
+            merchantId: setts[5].merchantId,
+            status: "unmatched_settlement",
+            amount: Number(setts[5].amount ?? "5000").toFixed(2),
+            matchedAt: null,
+            notes: `No matching deposit found for settlement #${setts[5].id}`,
+          });
+        }
+
+        if (items.length > 0) {
+          await db.insert(reconciliationItemsTable).values(items);
+        }
+        console.log("Reconciliation run seeded");
+      }
     }
   }
 

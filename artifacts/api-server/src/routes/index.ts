@@ -23,6 +23,7 @@ import invoicesRouter from "./invoices";
 import ledgerRouter from "./ledger";
 import providersRouter from "./providers";
 import notificationsRouter from "./notifications";
+import reconciliationRouter from "./reconciliation";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use("/invoices", invoicesRouter);
 router.use("/ledger", ledgerRouter);
 router.use("/providers", providersRouter);
 router.use("/notifications", notificationsRouter);
+router.use("/reconciliation", reconciliationRouter);
 
 export default router;

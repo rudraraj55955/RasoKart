@@ -65,6 +65,8 @@ import type {
   ListProvidersAdminParams,
   ListProvidersParams,
   ListQrCodesParams,
+  ListReconciliationRunItemsParams,
+  ListReconciliationRunsParams,
   ListSettlementsParams,
   ListTransactionsParams,
   ListUsersParams,
@@ -105,6 +107,10 @@ import type {
   QrCodeInput,
   QrCodeListResponse,
   QrCodeUpdateInput,
+  ReconciliationItemListResponse,
+  ReconciliationRun,
+  ReconciliationRunInput,
+  ReconciliationRunListResponse,
   RejectInput,
   RenewPlanInput,
   SearchByUtrParams,
@@ -8296,6 +8302,250 @@ export function useCheckPlanExpiry<TData = Awaited<ReturnType<typeof checkPlanEx
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getCheckPlanExpiryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRunReconciliationUrl = () => {
+
+
+
+
+  return `/api/reconciliation/run`
+}
+
+/**
+ * @summary Trigger a reconciliation run (admin only)
+ */
+export const runReconciliation = async (reconciliationRunInput: ReconciliationRunInput, options?: RequestInit): Promise<ReconciliationRun> => {
+
+  return customFetch<ReconciliationRun>(getRunReconciliationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reconciliationRunInput,)
+  }
+);}
+
+
+
+
+export const getRunReconciliationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runReconciliation>>, TError,{data: BodyType<ReconciliationRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runReconciliation>>, TError,{data: BodyType<ReconciliationRunInput>}, TContext> => {
+
+const mutationKey = ['runReconciliation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runReconciliation>>, {data: BodyType<ReconciliationRunInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  runReconciliation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunReconciliationMutationResult = NonNullable<Awaited<ReturnType<typeof runReconciliation>>>
+    export type RunReconciliationMutationBody = BodyType<ReconciliationRunInput>
+    export type RunReconciliationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Trigger a reconciliation run (admin only)
+ */
+export const useRunReconciliation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runReconciliation>>, TError,{data: BodyType<ReconciliationRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runReconciliation>>,
+        TError,
+        {data: BodyType<ReconciliationRunInput>},
+        TContext
+      > => {
+      return useMutation(getRunReconciliationMutationOptions(options));
+    }
+
+export const getListReconciliationRunsUrl = (params?: ListReconciliationRunsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reconciliation/runs?${stringifiedParams}` : `/api/reconciliation/runs`
+}
+
+/**
+ * @summary Paginated reconciliation run history (admin only)
+ */
+export const listReconciliationRuns = async (params?: ListReconciliationRunsParams, options?: RequestInit): Promise<ReconciliationRunListResponse> => {
+
+  return customFetch<ReconciliationRunListResponse>(getListReconciliationRunsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListReconciliationRunsQueryKey = (params?: ListReconciliationRunsParams,) => {
+    return [
+    `/api/reconciliation/runs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListReconciliationRunsQueryOptions = <TData = Awaited<ReturnType<typeof listReconciliationRuns>>, TError = ErrorType<unknown>>(params?: ListReconciliationRunsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReconciliationRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListReconciliationRunsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listReconciliationRuns>>> = ({ signal }) => listReconciliationRuns(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listReconciliationRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListReconciliationRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listReconciliationRuns>>>
+export type ListReconciliationRunsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Paginated reconciliation run history (admin only)
+ */
+
+export function useListReconciliationRuns<TData = Awaited<ReturnType<typeof listReconciliationRuns>>, TError = ErrorType<unknown>>(
+ params?: ListReconciliationRunsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReconciliationRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListReconciliationRunsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListReconciliationRunItemsUrl = (id: number,
+    params?: ListReconciliationRunItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reconciliation/runs/${id}/items?${stringifiedParams}` : `/api/reconciliation/runs/${id}/items`
+}
+
+/**
+ * @summary Line items for a reconciliation run (admin only)
+ */
+export const listReconciliationRunItems = async (id: number,
+    params?: ListReconciliationRunItemsParams, options?: RequestInit): Promise<ReconciliationItemListResponse> => {
+
+  return customFetch<ReconciliationItemListResponse>(getListReconciliationRunItemsUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListReconciliationRunItemsQueryKey = (id: number,
+    params?: ListReconciliationRunItemsParams,) => {
+    return [
+    `/api/reconciliation/runs/${id}/items`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListReconciliationRunItemsQueryOptions = <TData = Awaited<ReturnType<typeof listReconciliationRunItems>>, TError = ErrorType<ErrorResponse>>(id: number,
+    params?: ListReconciliationRunItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReconciliationRunItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListReconciliationRunItemsQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listReconciliationRunItems>>> = ({ signal }) => listReconciliationRunItems(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listReconciliationRunItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListReconciliationRunItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listReconciliationRunItems>>>
+export type ListReconciliationRunItemsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Line items for a reconciliation run (admin only)
+ */
+
+export function useListReconciliationRunItems<TData = Awaited<ReturnType<typeof listReconciliationRunItems>>, TError = ErrorType<ErrorResponse>>(
+ id: number,
+    params?: ListReconciliationRunItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReconciliationRunItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListReconciliationRunItemsQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

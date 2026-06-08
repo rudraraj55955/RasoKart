@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/auth-context";
 import { UserRole, useGetMyPlanUsage } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
@@ -160,6 +160,12 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
         { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
         { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
         { title: "Merchant Access", icon: LayoutGrid, href: "/admin/merchant-access" },
+      ],
+    },
+    {
+      group: "Finance",
+      items: [
+        { title: "Reconciliation", icon: GitMerge, href: "/admin/reconciliation" },
       ],
     },
     {

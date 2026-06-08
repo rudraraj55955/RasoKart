@@ -51,6 +51,8 @@ tags:
     description: Payment provider catalogue and visibility control
   - name: notifications
     description: In-app notification centre for merchants and admins
+  - name: reconciliation
+    description: Deposit-to-settlement reconciliation engine
 paths:
   /healthz:
     get:
@@ -2432,6 +2434,90 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExpiryCheckResult"
 
+  /reconciliation/run:
+    post:
+      operationId: runReconciliation
+      tags: [reconciliation]
+      summary: Trigger a reconciliation run (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReconciliationRunInput"
+      responses:
+        "201":
+          description: Completed reconciliation run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationRun"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /reconciliation/runs:
+    get:
+      operationId: listReconciliationRuns
+      tags: [reconciliation]
+      summary: Paginated reconciliation run history (admin only)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: merchantId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Run list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationRunListResponse"
+
+  /reconciliation/runs/{id}/items:
+    get:
+      operationId: listReconciliationRunItems
+      tags: [reconciliation]
+      summary: Line items for a reconciliation run (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: merchantId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Item list with run summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationItemListResponse"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /notifications/{id}/read:
     post:
       operationId: markNotificationRead
@@ -4168,6 +4254,103 @@ components:
       properties:
         message: { type: string }
         count: { type: integer }
+
+    ReconciliationRunInput:
+      type: object
+      required: [dateFrom, dateTo]
+      properties:
+        dateFrom:
+          type: string
+          description: Start date (YYYY-MM-DD)
+        dateTo:
+          type: string
+          description: End date (YYYY-MM-DD)
+        merchantId:
+          type: integer
+          nullable: true
+
+    ReconciliationRun:
+      type: object
+      required: [id, dateFrom, dateTo, runAt, totalDeposits, totalMatched, totalUnmatched, totalSettlements, matchedAmount, unmatchedAmount, status, createdAt]
+      properties:
+        id: { type: integer }
+        merchantId:
+          type: integer
+          nullable: true
+        merchantName:
+          type: string
+          nullable: true
+        dateFrom: { type: string }
+        dateTo: { type: string }
+        runAt: { type: string }
+        totalDeposits: { type: integer }
+        totalMatched: { type: integer }
+        totalUnmatched: { type: integer }
+        totalSettlements: { type: integer }
+        matchedAmount: { type: number }
+        unmatchedAmount: { type: number }
+        status: { type: string }
+        createdBy:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt: { type: string }
+
+    ReconciliationRunListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationRun"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    ReconciliationItem:
+      type: object
+      required: [id, runId, merchantId, status, amount, createdAt]
+      properties:
+        id: { type: integer }
+        runId: { type: integer }
+        transactionId:
+          type: integer
+          nullable: true
+        settlementId:
+          type: integer
+          nullable: true
+        merchantId: { type: integer }
+        merchantName:
+          type: string
+          nullable: true
+        status: { type: string }
+        amount: { type: number }
+        matchedAt:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        transaction: {}
+        settlement: {}
+        createdAt: { type: string }
+
+    ReconciliationItemListResponse:
+      type: object
+      required: [run, data, total, page, limit]
+      properties:
+        run:
+          $ref: "#/components/schemas/ReconciliationRun"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationItem"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
 
     ExpiryCheckResult:
       type: object

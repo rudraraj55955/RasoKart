@@ -2520,6 +2520,110 @@ export const CheckPlanExpiryResponse = zod.object({
 
 
 /**
+ * @summary Trigger a reconciliation run (admin only)
+ */
+export const RunReconciliationBody = zod.object({
+  "dateFrom": zod.string().describe('Start date (YYYY-MM-DD)'),
+  "dateTo": zod.string().describe('End date (YYYY-MM-DD)'),
+  "merchantId": zod.number().nullish()
+})
+
+
+/**
+ * @summary Paginated reconciliation run history (admin only)
+ */
+export const listReconciliationRunsQueryPageDefault = 1;
+export const listReconciliationRunsQueryLimitDefault = 20;
+
+export const ListReconciliationRunsQueryParams = zod.object({
+  "page": zod.coerce.number().default(listReconciliationRunsQueryPageDefault),
+  "limit": zod.coerce.number().default(listReconciliationRunsQueryLimitDefault),
+  "merchantId": zod.coerce.number().optional()
+})
+
+export const ListReconciliationRunsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number().nullish(),
+  "merchantName": zod.string().nullish(),
+  "dateFrom": zod.string(),
+  "dateTo": zod.string(),
+  "runAt": zod.string(),
+  "totalDeposits": zod.number(),
+  "totalMatched": zod.number(),
+  "totalUnmatched": zod.number(),
+  "totalSettlements": zod.number(),
+  "matchedAmount": zod.number(),
+  "unmatchedAmount": zod.number(),
+  "status": zod.string(),
+  "createdBy": zod.number().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Line items for a reconciliation run (admin only)
+ */
+export const ListReconciliationRunItemsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const listReconciliationRunItemsQueryPageDefault = 1;
+export const listReconciliationRunItemsQueryLimitDefault = 50;
+
+export const ListReconciliationRunItemsQueryParams = zod.object({
+  "page": zod.coerce.number().default(listReconciliationRunItemsQueryPageDefault),
+  "limit": zod.coerce.number().default(listReconciliationRunItemsQueryLimitDefault),
+  "status": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.number().optional()
+})
+
+export const ListReconciliationRunItemsResponse = zod.object({
+  "run": zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number().nullish(),
+  "merchantName": zod.string().nullish(),
+  "dateFrom": zod.string(),
+  "dateTo": zod.string(),
+  "runAt": zod.string(),
+  "totalDeposits": zod.number(),
+  "totalMatched": zod.number(),
+  "totalUnmatched": zod.number(),
+  "totalSettlements": zod.number(),
+  "matchedAmount": zod.number(),
+  "unmatchedAmount": zod.number(),
+  "status": zod.string(),
+  "createdBy": zod.number().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+}),
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "runId": zod.number(),
+  "transactionId": zod.number().nullish(),
+  "settlementId": zod.number().nullish(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "status": zod.string(),
+  "amount": zod.number(),
+  "matchedAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "transaction": zod.unknown().optional(),
+  "settlement": zod.unknown().optional(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Mark a single notification as read
  */
 export const MarkNotificationReadParams = zod.object({

@@ -1296,6 +1296,64 @@ export interface BroadcastNotificationResult {
   count: number;
 }
 
+export interface ReconciliationRunInput {
+  /** Start date (YYYY-MM-DD) */
+  dateFrom: string;
+  /** End date (YYYY-MM-DD) */
+  dateTo: string;
+  merchantId?: number | null;
+}
+
+export interface ReconciliationRun {
+  id: number;
+  merchantId?: number | null;
+  merchantName?: string | null;
+  dateFrom: string;
+  dateTo: string;
+  runAt: string;
+  totalDeposits: number;
+  totalMatched: number;
+  totalUnmatched: number;
+  totalSettlements: number;
+  matchedAmount: number;
+  unmatchedAmount: number;
+  status: string;
+  createdBy?: number | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface ReconciliationRunListResponse {
+  data: ReconciliationRun[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ReconciliationItem {
+  id: number;
+  runId: number;
+  transactionId?: number | null;
+  settlementId?: number | null;
+  merchantId: number;
+  merchantName?: string | null;
+  status: string;
+  amount: number;
+  matchedAt?: string | null;
+  notes?: string | null;
+  transaction?: unknown;
+  settlement?: unknown;
+  createdAt: string;
+}
+
+export interface ReconciliationItemListResponse {
+  run: ReconciliationRun;
+  data: ReconciliationItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface ExpiryCheckResult {
   message: string;
   notificationsSent: number;
@@ -1556,4 +1614,17 @@ export const ListNotificationsIsRead = {
   true: 'true',
   false: 'false',
 } as const;
+
+export type ListReconciliationRunsParams = {
+page?: number;
+limit?: number;
+merchantId?: number;
+};
+
+export type ListReconciliationRunItemsParams = {
+page?: number;
+limit?: number;
+status?: string;
+merchantId?: number;
+};
 

@@ -40,6 +40,7 @@ import AdminProviders from "@/pages/admin/providers";
 import AdminVisibilityRules from "@/pages/admin/visibility-rules";
 import AdminMerchantAccess from "@/pages/admin/merchant-access";
 import AdminLedger from "@/pages/admin/ledger";
+import AdminReconciliation from "@/pages/admin/reconciliation";
 
 // Merchant Pages
 import MerchantDashboard from "@/pages/merchant/dashboard";
@@ -134,6 +135,7 @@ function Router() {
       <Route path="/admin/visibility-rules"><AdminRoute component={AdminVisibilityRules} /></Route>
       <Route path="/admin/merchant-access"><AdminRoute component={AdminMerchantAccess} /></Route>
       <Route path="/admin/ledger"><AdminRoute component={AdminLedger} /></Route>
+      <Route path="/admin/reconciliation"><AdminRoute component={AdminReconciliation} /></Route>
 
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>
