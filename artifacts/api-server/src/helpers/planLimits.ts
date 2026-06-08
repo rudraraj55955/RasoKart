@@ -90,8 +90,13 @@ export async function checkPlanLimit(
     case "payout": {
       limit = plan.payoutLimit;
       label = "Payouts";
+      const payoutMonthStart = new Date(); payoutMonthStart.setDate(1); payoutMonthStart.setHours(0, 0, 0, 0);
       const [{ total }] = await db.select({ total: count() }).from(withdrawalsTable)
-        .where(and(eq(withdrawalsTable.merchantId, merchantId), ne(withdrawalsTable.status, "rejected")));
+        .where(and(
+          eq(withdrawalsTable.merchantId, merchantId),
+          ne(withdrawalsTable.status, "rejected"),
+          gte(withdrawalsTable.createdAt, payoutMonthStart),
+        ));
       used = total;
       break;
     }
@@ -164,11 +169,15 @@ export async function getMerchantPlanUsage(merchantId: number) {
     .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "static"), ne(qrCodesTable.status, "expired")));
   const [vaCount] = await db.select({ total: count() }).from(virtualAccountsTable)
     .where(and(eq(virtualAccountsTable.merchantId, merchantId), eq(virtualAccountsTable.status, "active")));
-  const [payoutCount] = await db.select({ total: count() }).from(withdrawalsTable)
-    .where(and(eq(withdrawalsTable.merchantId, merchantId), ne(withdrawalsTable.status, "rejected")));
-
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+
+  const [payoutCount] = await db.select({ total: count() }).from(withdrawalsTable)
+    .where(and(
+      eq(withdrawalsTable.merchantId, merchantId),
+      ne(withdrawalsTable.status, "rejected"),
+      gte(withdrawalsTable.createdAt, monthStart),
+    ));
   const [dailyTxCount] = await db.select({ total: count() }).from(transactionsTable)
     .where(and(eq(transactionsTable.merchantId, merchantId), gte(transactionsTable.createdAt, todayStart)));
   const [monthlyTxCount] = await db.select({ total: count() }).from(transactionsTable)
