@@ -216,7 +216,7 @@ router.post("/:id/process", requireAdmin, async (req, res) => {
   res.json(mapSettlement(updated));
 });
 
-// POST /api/settlements/:id/approve  (admin: processing → approved, deduct balance)
+// POST /api/settlements/:id/approve  (admin: processing → approved, deduct balance atomically)
 router.post("/:id/approve", requireAdmin, async (req, res) => {
   const user = (req as any).user;
   const id = parseId(req.params.id);
@@ -233,15 +233,36 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
 
   const requestedAmt = Number(s.requestedAmount ?? s.amount);
 
-  // Deduct merchant balance
-  await db.update(merchantsTable)
-    .set({ balance: sql`${merchantsTable.balance} - ${requestedAmt}::numeric` })
-    .where(eq(merchantsTable.id, s.merchantId));
+  let updated: typeof settlementsTable.$inferSelect;
+  try {
+    updated = await db.transaction(async (tx) => {
+      // Re-validate balance at approval time inside transaction
+      const [merchant] = await tx.select({ balance: merchantsTable.balance })
+        .from(merchantsTable)
+        .where(eq(merchantsTable.id, s.merchantId))
+        .limit(1);
 
-  const [updated] = await db.update(settlementsTable)
-    .set({ status: "approved", adminRemark: remark, processedBy: user.id })
-    .where(eq(settlementsTable.id, id))
-    .returning();
+      if (!merchant || Number(merchant.balance) < requestedAmt) {
+        throw Object.assign(new Error("Insufficient balance at time of approval"), { statusCode: 400 });
+      }
+
+      // Atomically deduct balance and update settlement status
+      await tx.update(merchantsTable)
+        .set({ balance: sql`${merchantsTable.balance} - ${requestedAmt}::numeric` })
+        .where(eq(merchantsTable.id, s.merchantId));
+
+      const [result] = await tx.update(settlementsTable)
+        .set({ status: "approved", adminRemark: remark, processedBy: user.id })
+        .where(eq(settlementsTable.id, id))
+        .returning();
+
+      return result;
+    });
+  } catch (err: any) {
+    const code = err?.statusCode ?? 500;
+    res.status(code).json({ error: err?.message ?? "Approval failed" });
+    return;
+  }
 
   res.json(mapSettlement(updated));
 });

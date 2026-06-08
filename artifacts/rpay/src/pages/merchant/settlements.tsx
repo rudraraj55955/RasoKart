@@ -4,6 +4,7 @@ import {
   useCreateSettlement,
   useGetMe,
   useGetMerchant,
+  useListWithdrawals,
   getListSettlementsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -31,6 +32,7 @@ export default function MerchantSettlements() {
   const { data: me } = useGetMe();
   const { data: merchantData } = useGetMerchant(me?.merchantId ?? 0);
   const { data, isLoading } = useListSettlements({ page, limit: 20 });
+  const { data: withdrawalsData } = useListWithdrawals({ limit: 1 });
 
   const createMutation = useCreateSettlement({
     mutation: {
@@ -59,6 +61,7 @@ export default function MerchantSettlements() {
   };
 
   const balance = merchantData ? Number(merchantData.balance) : 0;
+  const latestWithdrawal = withdrawalsData?.data?.[0];
 
   const exportCsv = () => {
     if (!data?.data) return;
@@ -209,6 +212,33 @@ export default function MerchantSettlements() {
             <div className="flex items-center justify-between rounded-lg border border-border p-3 bg-muted/30">
               <span className="text-sm text-muted-foreground">Available Balance</span>
               <span className="font-bold text-lg text-primary">₹{balance.toLocaleString()}</span>
+            </div>
+
+            {/* Payout account — pre-filled from most recent withdrawal */}
+            <div className="rounded-lg border border-border p-3 bg-muted/20 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Payout Account</p>
+              {latestWithdrawal ? (
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Account Holder</span>
+                    <span className="font-medium">{latestWithdrawal.accountHolder}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Bank</span>
+                    <span className="font-medium">{latestWithdrawal.bankName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Account No.</span>
+                    <span className="font-mono font-medium">{"•".repeat(Math.max(0, (latestWithdrawal.bankAccount ?? "").length - 4))}{(latestWithdrawal.bankAccount ?? "").slice(-4)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">IFSC</span>
+                    <span className="font-mono font-medium">{latestWithdrawal.ifscCode}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-amber-400">No bank account on file. Please submit a withdrawal request first to register your bank details.</p>
+              )}
             </div>
 
             <div className="space-y-2">
