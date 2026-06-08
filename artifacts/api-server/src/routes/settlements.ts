@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, settlementsTable, merchantsTable, ledgerEntriesTable, usersTable } from "@workspace/db";
+import { db, settlementsTable, merchantsTable, ledgerEntriesTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, sql, gte, lte, sum } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createNotification } from "../helpers/notifications";
@@ -126,6 +126,20 @@ router.get("/export/csv", requireAdmin, async (req, res) => {
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", "attachment; filename=\"settlements.csv\"");
   res.send(csv);
+
+  const user = (req as any).user;
+  void db.insert(auditLogsTable).values({
+    adminId: user.id,
+    adminEmail: user.email,
+    action: "csv_export",
+    targetType: "settlements",
+    targetId: null,
+    details: JSON.stringify({
+      rowCount: filtered.length,
+      filters: { merchantId: merchantId ?? null, status: status ?? null, search: search ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null },
+    }),
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
 });
 
 // POST /api/settlements  (merchant creates settlement request)

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, merchantsTable, qrCodesTable, virtualAccountsTable, ledgerEntriesTable } from "@workspace/db";
+import { db, transactionsTable, merchantsTable, qrCodesTable, virtualAccountsTable, ledgerEntriesTable, auditLogsTable } from "@workspace/db";
 import { eq, ilike, and, count, sum, sql, gte, lte, or } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
@@ -266,6 +266,19 @@ router.get("/export/csv", async (req, res) => {
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", "attachment; filename=\"transactions.csv\"");
   res.send(csv);
+
+  void db.insert(auditLogsTable).values({
+    adminId: user.id,
+    adminEmail: user.email,
+    action: "csv_export",
+    targetType: "transactions",
+    targetId: null,
+    details: JSON.stringify({
+      rowCount: rows.length,
+      filters: { type: type ?? null, status: status ?? null, search: search ?? null, merchantId: merchantId ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null },
+    }),
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
 });
 
 // GET /api/transactions/search/utr

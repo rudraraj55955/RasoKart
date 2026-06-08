@@ -19,6 +19,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   plan_deleted:       { label: "Plan Deleted",        color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   user_created:       { label: "User Created",        color: "bg-primary/10 text-primary border-primary/20" },
   user_role_changed:  { label: "Role Changed",        color: "bg-purple-500/10 text-purple-400 border-purple-500/20" },
+  csv_export:         { label: "CSV Export",          color: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
