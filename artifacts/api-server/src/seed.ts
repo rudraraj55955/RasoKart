@@ -1,8 +1,7 @@
 import bcrypt from "bcryptjs";
 import { db, usersTable, merchantsTable, transactionsTable, withdrawalsTable, callbackLogsTable, settlementsTable, apiKeysTable, webhooksTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 
-async function seed() {
+export async function seed() {
   console.log("Seeding database...");
 
   // Admin user
@@ -14,7 +13,7 @@ async function seed() {
     role: "admin",
     isActive: true,
   }).onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: adminHash, name: "Super Admin" } }).returning();
-  console.log("Admin created:", admin.email);
+  console.log("Admin:", admin.email);
 
   // Merchant 1: approved
   const [merchant1] = await db.insert(merchantsTable).values({
@@ -59,16 +58,16 @@ async function seed() {
   }).onConflictDoUpdate({ target: usersTable.email, set: { merchantId: merchant2.id } });
 
   // Merchant 3: rejected
-  const [merchant3] = await db.insert(merchantsTable).values({
+  await db.insert(merchantsTable).values({
     businessName: "FastCash Ltd",
     contactName: "Amit Kumar",
     email: "amit@fastcash.in",
     phone: "+91-7654321098",
     status: "rejected",
     rejectionReason: "Incomplete documentation",
-  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "rejected" } }).returning();
+  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "rejected" } });
 
-  console.log("Merchants created");
+  console.log("Merchants seeded");
 
   // Transactions
   const txData = [
@@ -142,7 +141,6 @@ async function seed() {
     keyPrefix: "rpay_live_abc123de...",
     isActive: true,
   }).onConflictDoNothing();
-  console.log("API key seeded");
 
   // Webhook
   await db.insert(webhooksTable).values({
@@ -152,7 +150,6 @@ async function seed() {
     events: ["payment.success", "payment.failed", "withdrawal.approved"],
     secret: "wh_secret_abc123",
   }).onConflictDoNothing();
-  console.log("Webhook seeded");
 
   // Callback logs
   for (let i = 0; i < 8; i++) {
@@ -170,7 +167,6 @@ async function seed() {
       createdAt: d,
     });
   }
-  console.log("Callback logs seeded");
 
   // Settlements
   for (let i = 0; i < 3; i++) {
@@ -190,12 +186,13 @@ async function seed() {
       updatedAt: to,
     });
   }
-  console.log("Settlements seeded");
-  console.log("All seeding complete!");
-  process.exit(0);
+
+  console.log("Seed complete.");
 }
 
-seed().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Standalone runner (pnpm --filter @workspace/api-server run seed)
+if (process.argv[1] && process.argv[1].includes("seed")) {
+  seed()
+    .then(() => process.exit(0))
+    .catch((e) => { console.error(e); process.exit(1); });
+}
