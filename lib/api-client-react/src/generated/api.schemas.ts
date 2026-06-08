@@ -838,6 +838,107 @@ export interface QrCodeListResponse {
   limit: number;
 }
 
+export type PaymentLinkStatus = typeof PaymentLinkStatus[keyof typeof PaymentLinkStatus];
+
+
+export const PaymentLinkStatus = {
+  active: 'active',
+  inactive: 'inactive',
+  expired: 'expired',
+} as const;
+
+export interface PaymentLink {
+  id: number;
+  merchantId: number;
+  /** @nullable */
+  merchantName?: string | null;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  amount?: string | null;
+  currency: string;
+  slug: string;
+  url?: string;
+  /** @nullable */
+  upiPayload?: string | null;
+  status: PaymentLinkStatus;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  callbackUrl?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface PaymentLinkInput {
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  amount?: string | null;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  callbackUrl?: string | null;
+}
+
+export type PaymentLinkUpdateInputStatus = typeof PaymentLinkUpdateInputStatus[keyof typeof PaymentLinkUpdateInputStatus];
+
+
+export const PaymentLinkUpdateInputStatus = {
+  active: 'active',
+  inactive: 'inactive',
+  expired: 'expired',
+} as const;
+
+export interface PaymentLinkUpdateInput {
+  title?: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  amount?: string | null;
+  status?: PaymentLinkUpdateInputStatus;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  callbackUrl?: string | null;
+}
+
+export interface PaymentLinkListResponse {
+  data: PaymentLink[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type PublicPaymentLinkStatus = typeof PublicPaymentLinkStatus[keyof typeof PublicPaymentLinkStatus];
+
+
+export const PublicPaymentLinkStatus = {
+  active: 'active',
+  inactive: 'inactive',
+  expired: 'expired',
+} as const;
+
+export interface PublicPaymentLink {
+  id: number;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  amount?: string | null;
+  currency: string;
+  slug: string;
+  /** @nullable */
+  upiPayload?: string | null;
+  /** @nullable */
+  merchantName?: string | null;
+  status: PublicPaymentLinkStatus;
+  /** @nullable */
+  expiresAt?: string | null;
+}
+
 export type VirtualAccountStatus = typeof VirtualAccountStatus[keyof typeof VirtualAccountStatus];
 
 
@@ -1526,6 +1627,27 @@ export const ListQrCodesStatus = {
   inactive: 'inactive',
   expired: 'expired',
   used: 'used',
+  all: 'all',
+} as const;
+
+export type ListPaymentLinksParams = {
+status?: ListPaymentLinksStatus;
+search?: string;
+merchantId?: number;
+merchantName?: string;
+dateFrom?: string;
+dateTo?: string;
+page?: number;
+limit?: number;
+};
+
+export type ListPaymentLinksStatus = typeof ListPaymentLinksStatus[keyof typeof ListPaymentLinksStatus];
+
+
+export const ListPaymentLinksStatus = {
+  active: 'active',
+  inactive: 'inactive',
+  expired: 'expired',
   all: 'all',
 } as const;
 

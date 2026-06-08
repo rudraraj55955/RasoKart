@@ -1,4 +1,4 @@
-import { db, merchantPlansTable, plansTable, qrCodesTable, virtualAccountsTable, withdrawalsTable, transactionsTable, notificationsTable } from "@workspace/db";
+import { db, merchantPlansTable, plansTable, qrCodesTable, virtualAccountsTable, withdrawalsTable, transactionsTable, notificationsTable, paymentLinksTable } from "@workspace/db";
 import { eq, and, count, ne, gte, sql } from "drizzle-orm";
 import type { Response } from "express";
 import { createNotification } from "./notifications";
@@ -84,7 +84,9 @@ export async function checkPlanLimit(
     case "paymentLink": {
       limit = plan.paymentLinkLimit;
       label = "Payment links";
-      used = 0;
+      const [{ total: plTotal }] = await db.select({ total: count() }).from(paymentLinksTable)
+        .where(and(eq(paymentLinksTable.merchantId, merchantId), eq(paymentLinksTable.status, "active")));
+      used = plTotal;
       break;
     }
     case "payout": {
@@ -169,6 +171,8 @@ export async function getMerchantPlanUsage(merchantId: number) {
     .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "static"), ne(qrCodesTable.status, "expired")));
   const [vaCount] = await db.select({ total: count() }).from(virtualAccountsTable)
     .where(and(eq(virtualAccountsTable.merchantId, merchantId), eq(virtualAccountsTable.status, "active")));
+  const [paymentLinkCount] = await db.select({ total: count() }).from(paymentLinksTable)
+    .where(and(eq(paymentLinksTable.merchantId, merchantId), eq(paymentLinksTable.status, "active")));
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
 
@@ -199,7 +203,7 @@ export async function getMerchantPlanUsage(merchantId: number) {
     dynamicQr: { used: dynamicQrCount.total, limit: plan.dynamicQrLimit },
     staticQr: { used: staticQrCount.total, limit: plan.staticQrLimit },
     virtualAccount: { used: vaCount.total, limit: plan.virtualAccountLimit },
-    paymentLink: { used: 0, limit: plan.paymentLinkLimit },
+    paymentLink: { used: paymentLinkCount.total, limit: plan.paymentLinkLimit },
     payout: { used: payoutCount.total, limit: plan.payoutLimit },
     dailyTransaction: { used: dailyTxCount.total, limit: plan.dailyTransactionLimit },
     monthlyTransaction: { used: monthlyTxCount.total, limit: plan.monthlyTransactionLimit },

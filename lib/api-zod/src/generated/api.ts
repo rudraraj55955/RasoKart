@@ -1721,6 +1721,150 @@ export const DeleteQrCodeResponse = zod.object({
 
 
 /**
+ * @summary List payment links
+ */
+export const ListPaymentLinksQueryParams = zod.object({
+  "status": zod.enum(['active', 'inactive', 'expired', 'all']).optional(),
+  "search": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.number().optional(),
+  "merchantName": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListPaymentLinksResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "amount": zod.string().nullish(),
+  "currency": zod.string(),
+  "slug": zod.string(),
+  "url": zod.string().optional(),
+  "upiPayload": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'expired']),
+  "expiresAt": zod.string().nullish(),
+  "callbackUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Create payment link
+ */
+export const CreatePaymentLinkBody = zod.object({
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "amount": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "callbackUrl": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get payment link detail
+ */
+export const GetPaymentLinkParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetPaymentLinkResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "amount": zod.string().nullish(),
+  "currency": zod.string(),
+  "slug": zod.string(),
+  "url": zod.string().optional(),
+  "upiPayload": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'expired']),
+  "expiresAt": zod.string().nullish(),
+  "callbackUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Update payment link
+ */
+export const UpdatePaymentLinkParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdatePaymentLinkBody = zod.object({
+  "title": zod.string().optional(),
+  "description": zod.string().nullish(),
+  "amount": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'expired']).optional(),
+  "expiresAt": zod.string().nullish(),
+  "callbackUrl": zod.string().nullish()
+})
+
+export const UpdatePaymentLinkResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "amount": zod.string().nullish(),
+  "currency": zod.string(),
+  "slug": zod.string(),
+  "url": zod.string().optional(),
+  "upiPayload": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'expired']),
+  "expiresAt": zod.string().nullish(),
+  "callbackUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Delete payment link
+ */
+export const DeletePaymentLinkParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeletePaymentLinkResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Get public payment link by slug (no auth required)
+ */
+export const GetPublicPaymentLinkParams = zod.object({
+  "slug": zod.coerce.string()
+})
+
+export const GetPublicPaymentLinkResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "amount": zod.string().nullish(),
+  "currency": zod.string(),
+  "slug": zod.string(),
+  "upiPayload": zod.string().nullish(),
+  "merchantName": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'expired']),
+  "expiresAt": zod.string().nullish()
+})
+
+
+/**
  * @summary List virtual accounts
  */
 export const ListVirtualAccountsQueryParams = zod.object({

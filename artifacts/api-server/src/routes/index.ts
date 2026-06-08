@@ -24,6 +24,7 @@ import ledgerRouter from "./ledger";
 import providersRouter from "./providers";
 import notificationsRouter from "./notifications";
 import reconciliationRouter from "./reconciliation";
+import paymentLinksRouter from "./paymentLinks";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use("/ledger", ledgerRouter);
 router.use("/providers", providersRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/reconciliation", reconciliationRouter);
+router.use("/payment-links", paymentLinksRouter);
 
 export default router;

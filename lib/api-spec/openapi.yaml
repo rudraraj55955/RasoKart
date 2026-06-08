@@ -53,6 +53,8 @@ tags:
     description: In-app notification centre for merchants and admins
   - name: reconciliation
     description: Deposit-to-settlement reconciliation engine
+  - name: payment-links
+    description: Shareable payment link management
 paths:
   /healthz:
     get:
@@ -1651,6 +1653,160 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
+
+  /payment-links:
+    get:
+      operationId: listPaymentLinks
+      tags: [payment-links]
+      summary: List payment links
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, expired, all]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: merchantName
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of payment links
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLinkListResponse"
+    post:
+      operationId: createPaymentLink
+      tags: [payment-links]
+      summary: Create payment link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentLinkInput"
+      responses:
+        "201":
+          description: Payment link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLink"
+
+  /payment-links/{id}:
+    get:
+      operationId: getPaymentLink
+      tags: [payment-links]
+      summary: Get payment link detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Payment link detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLink"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updatePaymentLink
+      tags: [payment-links]
+      summary: Update payment link
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentLinkUpdateInput"
+      responses:
+        "200":
+          description: Payment link updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLink"
+    delete:
+      operationId: deletePaymentLink
+      tags: [payment-links]
+      summary: Delete payment link
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Payment link deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /payment-links/public/{slug}:
+    get:
+      operationId: getPublicPaymentLink
+      tags: [payment-links]
+      summary: Get public payment link by slug (no auth required)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public payment link info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicPaymentLink"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /virtual-accounts:
     get:
@@ -3664,6 +3820,115 @@ components:
           type: integer
         limit:
           type: integer
+
+    PaymentLink:
+      type: object
+      required: [id, merchantId, title, currency, slug, status, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        merchantName:
+          type: ["string", "null"]
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        amount:
+          type: ["string", "null"]
+        currency:
+          type: string
+        slug:
+          type: string
+        url:
+          type: string
+        upiPayload:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, expired]
+        expiresAt:
+          type: ["string", "null"]
+        callbackUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    PaymentLinkInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        amount:
+          type: ["string", "null"]
+        expiresAt:
+          type: ["string", "null"]
+        callbackUrl:
+          type: ["string", "null"]
+
+    PaymentLinkUpdateInput:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        amount:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, expired]
+        expiresAt:
+          type: ["string", "null"]
+        callbackUrl:
+          type: ["string", "null"]
+
+    PaymentLinkListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentLink"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    PublicPaymentLink:
+      type: object
+      required: [id, title, currency, slug, status]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        amount:
+          type: ["string", "null"]
+        currency:
+          type: string
+        slug:
+          type: string
+        upiPayload:
+          type: ["string", "null"]
+        merchantName:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, expired]
+        expiresAt:
+          type: ["string", "null"]
 
     VirtualAccount:
       type: object

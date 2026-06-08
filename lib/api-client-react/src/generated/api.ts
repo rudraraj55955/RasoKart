@@ -61,6 +61,7 @@ import type {
   ListMerchantFeaturesParams,
   ListMerchantsParams,
   ListNotificationsParams,
+  ListPaymentLinksParams,
   ListPlanHistoryParams,
   ListProvidersAdminParams,
   ListProvidersParams,
@@ -89,6 +90,10 @@ import type {
   MessageResponse,
   Notification,
   NotificationListResponse,
+  PaymentLink,
+  PaymentLinkInput,
+  PaymentLinkListResponse,
+  PaymentLinkUpdateInput,
   Plan,
   PlanActionInput,
   PlanHistory,
@@ -103,6 +108,7 @@ import type {
   ProviderMerchantVisibility,
   ProviderReorderInput,
   ProviderVisibilityInput,
+  PublicPaymentLink,
   QrCode,
   QrCodeInput,
   QrCodeListResponse,
@@ -5519,6 +5525,457 @@ export const useDeleteQrCode = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteQrCodeMutationOptions(options));
     }
+
+export const getListPaymentLinksUrl = (params?: ListPaymentLinksParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/payment-links?${stringifiedParams}` : `/api/payment-links`
+}
+
+/**
+ * @summary List payment links
+ */
+export const listPaymentLinks = async (params?: ListPaymentLinksParams, options?: RequestInit): Promise<PaymentLinkListResponse> => {
+
+  return customFetch<PaymentLinkListResponse>(getListPaymentLinksUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPaymentLinksQueryKey = (params?: ListPaymentLinksParams,) => {
+    return [
+    `/api/payment-links`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPaymentLinksQueryOptions = <TData = Awaited<ReturnType<typeof listPaymentLinks>>, TError = ErrorType<unknown>>(params?: ListPaymentLinksParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPaymentLinks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPaymentLinksQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPaymentLinks>>> = ({ signal }) => listPaymentLinks(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPaymentLinks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPaymentLinksQueryResult = NonNullable<Awaited<ReturnType<typeof listPaymentLinks>>>
+export type ListPaymentLinksQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List payment links
+ */
+
+export function useListPaymentLinks<TData = Awaited<ReturnType<typeof listPaymentLinks>>, TError = ErrorType<unknown>>(
+ params?: ListPaymentLinksParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPaymentLinks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPaymentLinksQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreatePaymentLinkUrl = () => {
+
+
+
+
+  return `/api/payment-links`
+}
+
+/**
+ * @summary Create payment link
+ */
+export const createPaymentLink = async (paymentLinkInput: PaymentLinkInput, options?: RequestInit): Promise<PaymentLink> => {
+
+  return customFetch<PaymentLink>(getCreatePaymentLinkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      paymentLinkInput,)
+  }
+);}
+
+
+
+
+export const getCreatePaymentLinkMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPaymentLink>>, TError,{data: BodyType<PaymentLinkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPaymentLink>>, TError,{data: BodyType<PaymentLinkInput>}, TContext> => {
+
+const mutationKey = ['createPaymentLink'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPaymentLink>>, {data: BodyType<PaymentLinkInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPaymentLink(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePaymentLinkMutationResult = NonNullable<Awaited<ReturnType<typeof createPaymentLink>>>
+    export type CreatePaymentLinkMutationBody = BodyType<PaymentLinkInput>
+    export type CreatePaymentLinkMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create payment link
+ */
+export const useCreatePaymentLink = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPaymentLink>>, TError,{data: BodyType<PaymentLinkInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPaymentLink>>,
+        TError,
+        {data: BodyType<PaymentLinkInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePaymentLinkMutationOptions(options));
+    }
+
+export const getGetPaymentLinkUrl = (id: number,) => {
+
+
+
+
+  return `/api/payment-links/${id}`
+}
+
+/**
+ * @summary Get payment link detail
+ */
+export const getPaymentLink = async (id: number, options?: RequestInit): Promise<PaymentLink> => {
+
+  return customFetch<PaymentLink>(getGetPaymentLinkUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPaymentLinkQueryKey = (id: number,) => {
+    return [
+    `/api/payment-links/${id}`
+    ] as const;
+    }
+
+
+export const getGetPaymentLinkQueryOptions = <TData = Awaited<ReturnType<typeof getPaymentLink>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPaymentLink>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPaymentLinkQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPaymentLink>>> = ({ signal }) => getPaymentLink(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPaymentLink>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPaymentLinkQueryResult = NonNullable<Awaited<ReturnType<typeof getPaymentLink>>>
+export type GetPaymentLinkQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get payment link detail
+ */
+
+export function useGetPaymentLink<TData = Awaited<ReturnType<typeof getPaymentLink>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPaymentLink>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPaymentLinkQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdatePaymentLinkUrl = (id: number,) => {
+
+
+
+
+  return `/api/payment-links/${id}`
+}
+
+/**
+ * @summary Update payment link
+ */
+export const updatePaymentLink = async (id: number,
+    paymentLinkUpdateInput: PaymentLinkUpdateInput, options?: RequestInit): Promise<PaymentLink> => {
+
+  return customFetch<PaymentLink>(getUpdatePaymentLinkUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      paymentLinkUpdateInput,)
+  }
+);}
+
+
+
+
+export const getUpdatePaymentLinkMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePaymentLink>>, TError,{id: number;data: BodyType<PaymentLinkUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePaymentLink>>, TError,{id: number;data: BodyType<PaymentLinkUpdateInput>}, TContext> => {
+
+const mutationKey = ['updatePaymentLink'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePaymentLink>>, {id: number;data: BodyType<PaymentLinkUpdateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updatePaymentLink(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePaymentLinkMutationResult = NonNullable<Awaited<ReturnType<typeof updatePaymentLink>>>
+    export type UpdatePaymentLinkMutationBody = BodyType<PaymentLinkUpdateInput>
+    export type UpdatePaymentLinkMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update payment link
+ */
+export const useUpdatePaymentLink = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePaymentLink>>, TError,{id: number;data: BodyType<PaymentLinkUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePaymentLink>>,
+        TError,
+        {id: number;data: BodyType<PaymentLinkUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePaymentLinkMutationOptions(options));
+    }
+
+export const getDeletePaymentLinkUrl = (id: number,) => {
+
+
+
+
+  return `/api/payment-links/${id}`
+}
+
+/**
+ * @summary Delete payment link
+ */
+export const deletePaymentLink = async (id: number, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getDeletePaymentLinkUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeletePaymentLinkMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePaymentLink>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePaymentLink>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deletePaymentLink'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePaymentLink>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deletePaymentLink(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePaymentLinkMutationResult = NonNullable<Awaited<ReturnType<typeof deletePaymentLink>>>
+
+    export type DeletePaymentLinkMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete payment link
+ */
+export const useDeletePaymentLink = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePaymentLink>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePaymentLink>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeletePaymentLinkMutationOptions(options));
+    }
+
+export const getGetPublicPaymentLinkUrl = (slug: string,) => {
+
+
+
+
+  return `/api/payment-links/public/${slug}`
+}
+
+/**
+ * @summary Get public payment link by slug (no auth required)
+ */
+export const getPublicPaymentLink = async (slug: string, options?: RequestInit): Promise<PublicPaymentLink> => {
+
+  return customFetch<PublicPaymentLink>(getGetPublicPaymentLinkUrl(slug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicPaymentLinkQueryKey = (slug: string,) => {
+    return [
+    `/api/payment-links/public/${slug}`
+    ] as const;
+    }
+
+
+export const getGetPublicPaymentLinkQueryOptions = <TData = Awaited<ReturnType<typeof getPublicPaymentLink>>, TError = ErrorType<ErrorResponse>>(slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicPaymentLink>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicPaymentLinkQueryKey(slug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicPaymentLink>>> = ({ signal }) => getPublicPaymentLink(slug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(slug), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicPaymentLink>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPublicPaymentLinkQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicPaymentLink>>>
+export type GetPublicPaymentLinkQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get public payment link by slug (no auth required)
+ */
+
+export function useGetPublicPaymentLink<TData = Awaited<ReturnType<typeof getPublicPaymentLink>>, TError = ErrorType<ErrorResponse>>(
+ slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicPaymentLink>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPublicPaymentLinkQueryOptions(slug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListVirtualAccountsUrl = (params?: ListVirtualAccountsParams,) => {
   const normalizedParams = new URLSearchParams();
