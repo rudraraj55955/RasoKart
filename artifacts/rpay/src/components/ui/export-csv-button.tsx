@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface ExportCsvButtonProps {
@@ -25,7 +25,9 @@ export function ExportCsvButton({ onExport, disabled, label = "Export CSV" }: Ex
 
   return (
     <Button variant="outline" size="sm" onClick={handleClick} disabled={exporting || disabled}>
-      <Download className="w-4 h-4 mr-1.5" />
+      {exporting
+        ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+        : <Download className="w-4 h-4 mr-1.5" />}
       {exporting ? "Exporting…" : label}
     </Button>
   );
