@@ -84,7 +84,11 @@ export const GetDashboardStatsResponse = zod.object({
   "failedTransactions": zod.number(),
   "totalMerchants": zod.number(),
   "pendingMerchants": zod.number(),
-  "totalBalance": zod.number()
+  "totalBalance": zod.number(),
+  "todayDeposits": zod.number(),
+  "todayDepositAmount": zod.number(),
+  "qrCount": zod.number(),
+  "vaCount": zod.number()
 })
 
 
@@ -275,6 +279,18 @@ export const ListTransactionsResponse = zod.object({
   "total": zod.number(),
   "page": zod.number(),
   "limit": zod.number()
+})
+
+
+/**
+ * @summary Simulate a payment received via QR code or Virtual Account (demo)
+ */
+export const SimulatePaymentBody = zod.object({
+  "sourceType": zod.enum(['qr', 'va']),
+  "sourceId": zod.number(),
+  "amount": zod.number(),
+  "utr": zod.string().optional(),
+  "expectedStatus": zod.enum(['success', 'failed', 'pending']).optional().describe('Force the outcome for demo purposes; defaults to success')
 })
 
 

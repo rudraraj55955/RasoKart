@@ -15,4 +15,8 @@ export interface DashboardStats {
   totalMerchants: number;
   pendingMerchants: number;
   totalBalance: number;
+  todayDeposits: number;
+  todayDepositAmount: number;
+  qrCount: number;
+  vaCount: number;
 }

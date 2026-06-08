@@ -2,7 +2,7 @@ import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan } fr
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowDownLeft, ArrowUpRight, Activity, Clock, CreditCard } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
 
@@ -16,7 +16,7 @@ export default function MerchantDashboard() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">Welcome, {user?.name || "Merchant"}</h1>
-        <p className="text-muted-foreground">Overview of your transaction activity.</p>
+        <p className="text-muted-foreground">Overview of your deposit collection activity.</p>
       </div>
 
       {statsLoading ? (
@@ -28,26 +28,28 @@ export default function MerchantDashboard() {
       ) : stats ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            title="Available Balance"
-            value={`$${stats.totalBalance.toLocaleString()}`}
+            title="Today's Deposits"
+            value={`₹${stats.todayDepositAmount.toLocaleString()}`}
+            icon={<TrendingUp className="w-4 h-4 text-primary" />}
+            description={`${stats.todayDeposits} payment${stats.todayDeposits !== 1 ? "s" : ""} today`}
+          />
+          <StatCard
+            title="Total Deposits"
+            value={`₹${stats.totalDeposits.toLocaleString()}`}
             icon={<ArrowDownLeft className="w-4 h-4 text-emerald-500" />}
+            description={`₹${stats.totalBalance.toLocaleString()} available balance`}
           />
           <StatCard
-            title="Total Withdrawals"
-            value={`$${stats.totalWithdrawals.toLocaleString()}`}
-            icon={<ArrowUpRight className="w-4 h-4 text-rose-500" />}
+            title="Active QR Codes"
+            value={stats.qrCount}
+            icon={<QrCode className="w-4 h-4 text-sky-500" />}
+            description="Dynamic QR codes accepting payments"
           />
           <StatCard
-            title="Success Rate"
-            value={`${((stats.successTransactions / (stats.successTransactions + stats.failedTransactions || 1)) * 100).toFixed(1)}%`}
-            icon={<Activity className="w-4 h-4 text-primary" />}
-            description={`${stats.successTransactions} successful, ${stats.failedTransactions} failed`}
-          />
-          <StatCard
-            title="Pending Actions"
-            value={stats.pendingTransactions}
-            icon={<Clock className="w-4 h-4 text-amber-500" />}
-            description={`${stats.pendingTransactions} pending transactions`}
+            title="Virtual Accounts"
+            value={stats.vaCount}
+            icon={<Building2 className="w-4 h-4 text-violet-500" />}
+            description="Active virtual bank accounts"
           />
         </div>
       ) : null}
@@ -105,7 +107,7 @@ export default function MerchantDashboard() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Volume (30 Days)</CardTitle>
+          <CardTitle>Deposit Volume (30 Days)</CardTitle>
         </CardHeader>
         <CardContent className="h-[400px]">
           {chartLoading ? (
@@ -134,7 +136,7 @@ export default function MerchantDashboard() {
                   dy={10}
                 />
                 <YAxis
-                  tickFormatter={(val) => `$${val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val}`}
+                  tickFormatter={(val) => `₹${val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val}`}
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                   tickLine={false}

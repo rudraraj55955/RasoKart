@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -10,6 +10,8 @@ import {
   settlementsTable,
   apiKeysTable,
   webhooksTable,
+  qrCodesTable,
+  virtualAccountsTable,
 } from "@workspace/db";
 
 export async function seed() {
@@ -208,6 +210,116 @@ export async function seed() {
     }
   }
   console.log("Settlements seeded");
+
+  // ── QR Codes ──────────────────────────────────────────────────────────────
+  const [{ qrCount }] = await db
+    .select({ qrCount: count() })
+    .from(qrCodesTable)
+    .where(eq(qrCodesTable.merchantId, merchant1.id));
+
+  let demoQrId: number | undefined;
+  if (Number(qrCount) === 0) {
+    const [qr1] = await db.insert(qrCodesTable).values({
+      merchantId: merchant1.id,
+      type: "dynamic",
+      label: "Store Checkout",
+      payload: "upi://pay?pa=techmart@hdfc&pn=TechMart+Solutions&tn=Payment&cu=INR",
+      status: "active",
+    }).returning();
+    demoQrId = qr1.id;
+
+    await db.insert(qrCodesTable).values({
+      merchantId: merchant1.id,
+      type: "static",
+      label: "Product Page QR",
+      payload: "upi://pay?pa=techmart@hdfc&pn=TechMart+Solutions&am=499&tn=Product+Purchase&cu=INR",
+      amount: "499.00",
+      status: "active",
+    });
+
+    await db.insert(qrCodesTable).values({
+      merchantId: merchant1.id,
+      type: "dynamic",
+      label: "Event Registration",
+      payload: "upi://pay?pa=techmart@hdfc&pn=TechMart+Solutions&tn=Event+Registration&cu=INR",
+      status: "inactive",
+    });
+  } else {
+    const [existingQr] = await db.select().from(qrCodesTable)
+      .where(and(eq(qrCodesTable.merchantId, merchant1.id), eq(qrCodesTable.status, "active")))
+      .limit(1);
+    demoQrId = existingQr?.id;
+  }
+  console.log("QR codes seeded");
+
+  // ── Virtual Accounts ──────────────────────────────────────────────────────
+  const [{ vaCount }] = await db
+    .select({ vaCount: count() })
+    .from(virtualAccountsTable)
+    .where(eq(virtualAccountsTable.merchantId, merchant1.id));
+
+  let demoVaId: number | undefined;
+  if (Number(vaCount) === 0) {
+    const [va1] = await db.insert(virtualAccountsTable).values({
+      merchantId: merchant1.id,
+      accountNumber: "999001234567890",
+      ifsc: "HDFC0001234",
+      bankName: "HDFC Bank",
+      accountHolder: "TechMart Solutions",
+      label: "Primary Collection Account",
+      balance: "0.00",
+      status: "active",
+    }).returning();
+    demoVaId = va1.id;
+
+    await db.insert(virtualAccountsTable).values({
+      merchantId: merchant1.id,
+      accountNumber: "999001234567891",
+      ifsc: "ICIC0005678",
+      bankName: "ICICI Bank",
+      accountHolder: "TechMart Solutions",
+      label: "Secondary Account",
+      balance: "0.00",
+      status: "active",
+    });
+  } else {
+    const [existingVa] = await db.select().from(virtualAccountsTable)
+      .where(and(eq(virtualAccountsTable.merchantId, merchant1.id), eq(virtualAccountsTable.status, "active")))
+      .limit(1);
+    demoVaId = existingVa?.id;
+  }
+  console.log("Virtual accounts seeded");
+
+  // ── Today's Deposit Transactions (QR & VA linked) ─────────────────────────
+  // Seed today's demo deposits so the dashboard "Today's Deposits" card shows data.
+  const todayDeposits = [
+    { utr: "TODAY001", amount: "12500.00", sourceType: "qr",  sourceId: demoQrId, label: "Store Checkout", status: "success" },
+    { utr: "TODAY002", amount: "4999.00",  sourceType: "va",  sourceId: demoVaId, label: "Primary Collection Account", status: "success" },
+    { utr: "TODAY003", amount: "8750.00",  sourceType: "qr",  sourceId: demoQrId, label: "Store Checkout", status: "success" },
+    { utr: "TODAY004", amount: "2200.00",  sourceType: "va",  sourceId: demoVaId, label: "Primary Collection Account", status: "pending" },
+    { utr: "TODAY005", amount: "15000.00", sourceType: "qr",  sourceId: demoQrId, label: "Store Checkout", status: "failed" },
+  ];
+
+  for (const dep of todayDeposits) {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - Math.floor(Math.random() * 480)); // within last 8 hours
+    if (dep.sourceId) {
+      await db.insert(transactionsTable).values({
+        merchantId: merchant1.id,
+        type: "deposit",
+        status: dep.status,
+        amount: dep.amount,
+        currency: "INR",
+        utr: dep.utr,
+        referenceId: `SIM-${dep.sourceType.toUpperCase()}-${dep.sourceId}-SEED`,
+        description: `Payment via ${dep.sourceType === "qr" ? "QR Code" : "Virtual Account"}: ${dep.label}`,
+        metadata: JSON.stringify({ sourceType: dep.sourceType, sourceId: dep.sourceId, simulated: true }),
+        createdAt: now,
+        updatedAt: now,
+      }).onConflictDoNothing();
+    }
+  }
+  console.log("Today's deposits seeded");
 
   console.log("Seed complete.");
 }

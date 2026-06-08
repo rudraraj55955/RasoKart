@@ -64,6 +64,7 @@ import type {
   RejectInput,
   SearchByUtrParams,
   SettlementListResponse,
+  SimulatePaymentInput,
   ToggleProductInput,
   Transaction,
   TransactionListResponse,
@@ -1150,6 +1151,77 @@ export function useListTransactions<TData = Awaited<ReturnType<typeof listTransa
 
 
 
+
+export const getSimulatePaymentUrl = () => {
+
+
+
+
+  return `/api/transactions/simulate`
+}
+
+/**
+ * @summary Simulate a payment received via QR code or Virtual Account (demo)
+ */
+export const simulatePayment = async (simulatePaymentInput: SimulatePaymentInput, options?: RequestInit): Promise<Transaction> => {
+
+  return customFetch<Transaction>(getSimulatePaymentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      simulatePaymentInput,)
+  }
+);}
+
+
+
+
+export const getSimulatePaymentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof simulatePayment>>, TError,{data: BodyType<SimulatePaymentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof simulatePayment>>, TError,{data: BodyType<SimulatePaymentInput>}, TContext> => {
+
+const mutationKey = ['simulatePayment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof simulatePayment>>, {data: BodyType<SimulatePaymentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  simulatePayment(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SimulatePaymentMutationResult = NonNullable<Awaited<ReturnType<typeof simulatePayment>>>
+    export type SimulatePaymentMutationBody = BodyType<SimulatePaymentInput>
+    export type SimulatePaymentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Simulate a payment received via QR code or Virtual Account (demo)
+ */
+export const useSimulatePayment = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof simulatePayment>>, TError,{data: BodyType<SimulatePaymentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof simulatePayment>>,
+        TError,
+        {data: BodyType<SimulatePaymentInput>},
+        TContext
+      > => {
+      return useMutation(getSimulatePaymentMutationOptions(options));
+    }
 
 export const getGetTransactionUrl = (id: number,) => {
 

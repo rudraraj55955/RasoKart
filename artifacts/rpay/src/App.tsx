@@ -44,6 +44,7 @@ import MerchantConnect from "@/pages/merchant/connect";
 import MerchantApiDocs from "@/pages/merchant/api-docs";
 import MerchantVirtualAccounts from "@/pages/merchant/virtual-accounts";
 import MerchantQrCodes from "@/pages/merchant/qr-codes";
+import MerchantDeposits from "@/pages/merchant/deposits";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -120,6 +121,7 @@ function Router() {
       <Route path="/merchant/connect"><MerchantRoute component={MerchantConnect} /></Route>
       <Route path="/merchant/virtual-accounts"><MerchantRoute component={MerchantVirtualAccounts} /></Route>
       <Route path="/merchant/qr-codes"><MerchantRoute component={MerchantQrCodes} /></Route>
+      <Route path="/merchant/deposits"><MerchantRoute component={MerchantDeposits} /></Route>
       <Route path="/merchant/api-docs"><PublicPage component={MerchantApiDocs} /></Route>
 
       <Route component={NotFound} />

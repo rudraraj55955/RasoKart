@@ -361,6 +361,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/TransactionListResponse"
 
+  /transactions/simulate:
+    post:
+      operationId: simulatePayment
+      tags: [transactions]
+      summary: Simulate a payment received via QR code or Virtual Account (demo)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulatePaymentInput"
+      responses:
+        "201":
+          description: Simulated deposit transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Source not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /transactions/{id}:
     get:
       operationId: getTransaction
@@ -1702,7 +1733,7 @@ components:
 
     DashboardStats:
       type: object
-      required: [totalDeposits, totalWithdrawals, pendingTransactions, successTransactions, failedTransactions, totalMerchants, pendingMerchants, totalBalance]
+      required: [totalDeposits, totalWithdrawals, pendingTransactions, successTransactions, failedTransactions, totalMerchants, pendingMerchants, totalBalance, todayDeposits, todayDepositAmount, qrCount, vaCount]
       properties:
         totalDeposits:
           type: number
@@ -1720,6 +1751,32 @@ components:
           type: integer
         totalBalance:
           type: number
+        todayDeposits:
+          type: integer
+        todayDepositAmount:
+          type: number
+        qrCount:
+          type: integer
+        vaCount:
+          type: integer
+
+    SimulatePaymentInput:
+      type: object
+      required: [sourceType, sourceId, amount]
+      properties:
+        sourceType:
+          type: string
+          enum: [qr, va]
+        sourceId:
+          type: integer
+        amount:
+          type: number
+        utr:
+          type: string
+        expectedStatus:
+          type: string
+          enum: [success, failed, pending]
+          description: Force the outcome for demo purposes; defaults to success
 
     ChartDataPoint:
       type: object

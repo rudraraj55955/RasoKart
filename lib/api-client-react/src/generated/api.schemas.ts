@@ -339,6 +339,39 @@ export interface DashboardStats {
   totalMerchants: number;
   pendingMerchants: number;
   totalBalance: number;
+  todayDeposits: number;
+  todayDepositAmount: number;
+  qrCount: number;
+  vaCount: number;
+}
+
+export type SimulatePaymentInputSourceType = typeof SimulatePaymentInputSourceType[keyof typeof SimulatePaymentInputSourceType];
+
+
+export const SimulatePaymentInputSourceType = {
+  qr: 'qr',
+  va: 'va',
+} as const;
+
+/**
+ * Force the outcome for demo purposes; defaults to success
+ */
+export type SimulatePaymentInputExpectedStatus = typeof SimulatePaymentInputExpectedStatus[keyof typeof SimulatePaymentInputExpectedStatus];
+
+
+export const SimulatePaymentInputExpectedStatus = {
+  success: 'success',
+  failed: 'failed',
+  pending: 'pending',
+} as const;
+
+export interface SimulatePaymentInput {
+  sourceType: SimulatePaymentInputSourceType;
+  sourceId: number;
+  amount: number;
+  utr?: string;
+  /** Force the outcome for demo purposes; defaults to success */
+  expectedStatus?: SimulatePaymentInputExpectedStatus;
 }
 
 export interface ChartDataPoint {

@@ -76,6 +76,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
     {
       group: "Payments",
       items: [
+        { title: "Deposits", icon: ArrowDownLeft, href: "/merchant/deposits" },
         { title: "Transactions", icon: ArrowRightLeft, href: "/merchant/transactions" },
         { title: "Withdrawals", icon: Landmark, href: "/merchant/withdrawals" },
         { title: "Settlements", icon: FileText, href: "/merchant/settlements" },
