@@ -40,20 +40,11 @@ export default function AdminDeposits() {
 
   const stats = {
     total: data?.total ?? 0,
-    pending: 0,
-    success: 0,
-    failed: 0,
-    totalAmount: 0,
+    pending: data?.stats?.pendingCount ?? 0,
+    success: data?.stats?.successCount ?? 0,
+    failed: data?.stats?.failedCount ?? 0,
+    totalAmount: data?.stats?.depositVolume ?? 0,
   };
-
-  if (data?.data) {
-    data.data.forEach(t => {
-      if (t.status === "pending") stats.pending++;
-      if (t.status === "success") stats.success++;
-      if (t.status === "failed") stats.failed++;
-      stats.totalAmount += Number(t.amount);
-    });
-  }
 
   return (
     <div className="space-y-6">
