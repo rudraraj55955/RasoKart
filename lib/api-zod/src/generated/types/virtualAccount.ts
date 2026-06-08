@@ -18,6 +18,7 @@ export interface VirtualAccount {
   accountHolder: string;
   /** @nullable */
   label?: string | null;
+  balance: string;
   status: VirtualAccountStatus;
   createdAt: string;
   updatedAt?: string;

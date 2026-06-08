@@ -63,6 +63,7 @@ import type {
   UserInput,
   UserListResponse,
   UserUpdate,
+  VaTransactionListResponse,
   VirtualAccount,
   VirtualAccountInput,
   VirtualAccountListResponse,
@@ -3610,6 +3611,83 @@ export const useCreateVirtualAccount = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateVirtualAccountMutationOptions(options));
     }
+
+export const getGetVirtualAccountTransactionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/virtual-accounts/${id}/transactions`
+}
+
+/**
+ * @summary Get transaction history for a virtual account
+ */
+export const getVirtualAccountTransactions = async (id: number, options?: RequestInit): Promise<VaTransactionListResponse> => {
+
+  return customFetch<VaTransactionListResponse>(getGetVirtualAccountTransactionsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVirtualAccountTransactionsQueryKey = (id: number,) => {
+    return [
+    `/api/virtual-accounts/${id}/transactions`
+    ] as const;
+    }
+
+
+export const getGetVirtualAccountTransactionsQueryOptions = <TData = Awaited<ReturnType<typeof getVirtualAccountTransactions>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVirtualAccountTransactions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVirtualAccountTransactionsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVirtualAccountTransactions>>> = ({ signal }) => getVirtualAccountTransactions(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVirtualAccountTransactions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVirtualAccountTransactionsQueryResult = NonNullable<Awaited<ReturnType<typeof getVirtualAccountTransactions>>>
+export type GetVirtualAccountTransactionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get transaction history for a virtual account
+ */
+
+export function useGetVirtualAccountTransactions<TData = Awaited<ReturnType<typeof getVirtualAccountTransactions>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVirtualAccountTransactions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVirtualAccountTransactionsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getUpdateVirtualAccountUrl = (id: number,) => {
 

@@ -9,7 +9,9 @@ export const qrCodesTable = pgTable("qr_codes", {
   label: text("label"),
   payload: text("payload").notNull(), // UPI QR string or URL
   amount: text("amount"), // fixed amount for static, null for dynamic
-  status: text("status").notNull().default("active"), // active | inactive
+  orderId: text("order_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  status: text("status").notNull().default("active"), // active | inactive | expired
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

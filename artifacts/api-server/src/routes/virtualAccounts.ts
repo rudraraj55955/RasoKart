@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, virtualAccountsTable, merchantsTable } from "@workspace/db";
-import { eq, and, ilike, count, sql, or } from "drizzle-orm";
+import { db, virtualAccountsTable, merchantsTable, transactionsTable } from "@workspace/db";
+import { eq, and, ilike, count, sql, or, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
@@ -28,7 +28,7 @@ router.get("/", async (req, res) => {
     .leftJoin(merchantsTable, eq(virtualAccountsTable.merchantId, merchantsTable.id))
     .where(where)
     .limit(limitNum).offset(offset)
-    .orderBy(sql`${virtualAccountsTable.createdAt} DESC`);
+    .orderBy(desc(virtualAccountsTable.createdAt));
 
   res.json({
     data: rows.map(r => ({ ...r.va, merchantName: r.merchantName ?? null })),
@@ -40,24 +40,54 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const user = (req as any).user;
   const merchantId = user.merchantId!;
-  const { accountNumber, ifsc, bankName, accountHolder, label } = req.body;
+  const { accountNumber, ifsc, bankName, accountHolder, label, balance } = req.body;
   if (!accountNumber || !ifsc || !bankName || !accountHolder) {
     res.status(400).json({ error: "accountNumber, ifsc, bankName, accountHolder required" }); return;
   }
   const [row] = await db.insert(virtualAccountsTable)
-    .values({ merchantId, accountNumber, ifsc, bankName, accountHolder, label: label ?? null })
+    .values({ merchantId, accountNumber, ifsc, bankName, accountHolder, label: label ?? null, balance: balance ?? "0.00" })
     .returning();
   res.status(201).json({ ...row, merchantName: null });
+});
+
+// GET /api/virtual-accounts/:id/transactions
+router.get("/:id/transactions", async (req, res) => {
+  const user = (req as any).user;
+  const id = parseInt(req.params.id);
+
+  const conditions = [eq(virtualAccountsTable.id, id)];
+  if (user.role !== "admin") conditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));
+
+  const [va] = await db.select().from(virtualAccountsTable).where(and(...conditions)).limit(1);
+  if (!va) { res.status(404).json({ error: "Virtual account not found" }); return; }
+
+  const txns = await db.select().from(transactionsTable)
+    .where(eq(transactionsTable.merchantId, va.merchantId))
+    .orderBy(desc(transactionsTable.createdAt))
+    .limit(50);
+
+  const data = txns.map(t => ({
+    id: t.id,
+    amount: t.amount,
+    type: t.type,
+    status: t.status,
+    utr: t.utr ?? null,
+    description: t.description ?? null,
+    createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
+  }));
+
+  res.json({ data, total: data.length, page: 1, limit: 50 });
 });
 
 // PUT /api/virtual-accounts/:id
 router.put("/:id", async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params.id);
-  const { label, status } = req.body;
+  const { label, status, balance } = req.body;
   const update: Record<string, unknown> = {};
   if (label !== undefined) update.label = label;
   if (status !== undefined) update.status = status;
+  if (balance !== undefined) update.balance = balance;
 
   const conditions = [eq(virtualAccountsTable.id, id)];
   if (user.role !== "admin") conditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));

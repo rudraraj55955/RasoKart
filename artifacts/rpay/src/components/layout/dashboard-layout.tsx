@@ -37,6 +37,8 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
     { title: "Transactions", icon: ArrowRightLeft, href: "/merchant/transactions" },
     { title: "Withdrawals", icon: Landmark, href: "/merchant/withdrawals" },
     { title: "Settlements", icon: FileText, href: "/merchant/settlements" },
+    { title: "Virtual Accounts", icon: Building2, href: "/merchant/virtual-accounts" },
+    { title: "Dynamic QR", icon: QrCode, href: "/merchant/qr-codes" },
     { title: "Products", icon: Package, href: "/merchant/products" },
     { title: "Connect", icon: Plug, href: "/merchant/connect" },
     { title: "API Keys", icon: KeyRound, href: "/merchant/api-keys" },

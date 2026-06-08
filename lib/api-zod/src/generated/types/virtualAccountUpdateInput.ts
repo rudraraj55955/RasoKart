@@ -10,5 +10,6 @@ import type { VirtualAccountUpdateInputStatus } from './virtualAccountUpdateInpu
 export interface VirtualAccountUpdateInput {
   /** @nullable */
   label?: string | null;
+  balance?: string;
   status?: VirtualAccountUpdateInputStatus;
 }

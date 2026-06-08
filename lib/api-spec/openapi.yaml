@@ -1058,6 +1058,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/VirtualAccount"
 
+  /virtual-accounts/{id}/transactions:
+    get:
+      operationId: getVirtualAccountTransactions
+      tags: [virtual-accounts]
+      summary: Get transaction history for a virtual account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transaction history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaTransactionListResponse"
+
   /virtual-accounts/{id}:
     put:
       operationId: updateVirtualAccount
@@ -1723,9 +1742,13 @@ components:
           type: string
         amount:
           type: ["string", "null"]
+        orderId:
+          type: ["string", "null"]
+        expiresAt:
+          type: ["string", "null"]
         status:
           type: string
-          enum: [active, inactive]
+          enum: [active, inactive, expired]
         createdAt:
           type: string
         updatedAt:
@@ -1743,6 +1766,10 @@ components:
         payload:
           type: string
         amount:
+          type: ["string", "null"]
+        orderId:
+          type: ["string", "null"]
+        expiresAt:
           type: ["string", "null"]
 
     QrCodeUpdateInput:
@@ -1771,7 +1798,7 @@ components:
 
     VirtualAccount:
       type: object
-      required: [id, merchantId, accountNumber, ifsc, bankName, accountHolder, status, createdAt]
+      required: [id, merchantId, accountNumber, ifsc, bankName, accountHolder, status, balance, createdAt]
       properties:
         id:
           type: integer
@@ -1789,6 +1816,8 @@ components:
           type: string
         label:
           type: ["string", "null"]
+        balance:
+          type: string
         status:
           type: string
           enum: [active, closed]
@@ -1811,12 +1840,16 @@ components:
           type: string
         label:
           type: ["string", "null"]
+        balance:
+          type: string
 
     VirtualAccountUpdateInput:
       type: object
       properties:
         label:
           type: ["string", "null"]
+        balance:
+          type: string
         status:
           type: string
           enum: [active, closed]
@@ -1829,6 +1862,40 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VirtualAccount"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    VaTransaction:
+      type: object
+      required: [id, amount, type, status, utr, createdAt]
+      properties:
+        id:
+          type: integer
+        amount:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        utr:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    VaTransactionListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VaTransaction"
         total:
           type: integer
         page:

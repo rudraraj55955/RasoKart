@@ -19,6 +19,10 @@ export interface QrCode {
   payload: string;
   /** @nullable */
   amount?: string | null;
+  /** @nullable */
+  orderId?: string | null;
+  /** @nullable */
+  expiresAt?: string | null;
   status: QrCodeStatus;
   createdAt: string;
   updatedAt?: string;

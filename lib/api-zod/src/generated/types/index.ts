@@ -72,6 +72,8 @@ export * from './userListResponse';
 export * from './userRole';
 export * from './userUpdate';
 export * from './userUpdateRole';
+export * from './vaTransaction';
+export * from './vaTransactionListResponse';
 export * from './virtualAccount';
 export * from './virtualAccountInput';
 export * from './virtualAccountListResponse';

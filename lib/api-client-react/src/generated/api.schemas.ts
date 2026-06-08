@@ -425,6 +425,7 @@ export type QrCodeStatus = typeof QrCodeStatus[keyof typeof QrCodeStatus];
 export const QrCodeStatus = {
   active: 'active',
   inactive: 'inactive',
+  expired: 'expired',
 } as const;
 
 export interface QrCode {
@@ -438,6 +439,10 @@ export interface QrCode {
   payload: string;
   /** @nullable */
   amount?: string | null;
+  /** @nullable */
+  orderId?: string | null;
+  /** @nullable */
+  expiresAt?: string | null;
   status: QrCodeStatus;
   createdAt: string;
   updatedAt?: string;
@@ -458,6 +463,10 @@ export interface QrCodeInput {
   payload: string;
   /** @nullable */
   amount?: string | null;
+  /** @nullable */
+  orderId?: string | null;
+  /** @nullable */
+  expiresAt?: string | null;
 }
 
 export type QrCodeUpdateInputStatus = typeof QrCodeUpdateInputStatus[keyof typeof QrCodeUpdateInputStatus];
@@ -500,6 +509,7 @@ export interface VirtualAccount {
   accountHolder: string;
   /** @nullable */
   label?: string | null;
+  balance: string;
   status: VirtualAccountStatus;
   createdAt: string;
   updatedAt?: string;
@@ -512,6 +522,7 @@ export interface VirtualAccountInput {
   accountHolder: string;
   /** @nullable */
   label?: string | null;
+  balance?: string;
 }
 
 export type VirtualAccountUpdateInputStatus = typeof VirtualAccountUpdateInputStatus[keyof typeof VirtualAccountUpdateInputStatus];
@@ -525,11 +536,31 @@ export const VirtualAccountUpdateInputStatus = {
 export interface VirtualAccountUpdateInput {
   /** @nullable */
   label?: string | null;
+  balance?: string;
   status?: VirtualAccountUpdateInputStatus;
 }
 
 export interface VirtualAccountListResponse {
   data: VirtualAccount[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface VaTransaction {
+  id: number;
+  amount: string;
+  type: string;
+  status: string;
+  /** @nullable */
+  utr: string | null;
+  /** @nullable */
+  description?: string | null;
+  createdAt: string;
+}
+
+export interface VaTransactionListResponse {
+  data: VaTransaction[];
   total: number;
   page: number;
   limit: number;

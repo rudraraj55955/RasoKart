@@ -10,6 +10,7 @@ export const virtualAccountsTable = pgTable("virtual_accounts", {
   bankName: text("bank_name").notNull(),
   accountHolder: text("account_holder").notNull(),
   label: text("label"),
+  balance: text("balance").notNull().default("0.00"),
   status: text("status").notNull().default("active"), // active | closed
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

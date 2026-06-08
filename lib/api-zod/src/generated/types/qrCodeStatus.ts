@@ -12,4 +12,5 @@ export type QrCodeStatus = typeof QrCodeStatus[keyof typeof QrCodeStatus];
 export const QrCodeStatus = {
   active: 'active',
   inactive: 'inactive',
+  expired: 'expired',
 } as const;

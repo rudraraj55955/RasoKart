@@ -13,4 +13,5 @@ export interface VirtualAccountInput {
   accountHolder: string;
   /** @nullable */
   label?: string | null;
+  balance?: string;
 }

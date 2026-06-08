@@ -14,4 +14,8 @@ export interface QrCodeInput {
   payload: string;
   /** @nullable */
   amount?: string | null;
+  /** @nullable */
+  orderId?: string | null;
+  /** @nullable */
+  expiresAt?: string | null;
 }

@@ -805,7 +805,9 @@ export const ListQrCodesResponse = zod.object({
   "label": zod.string().nullish(),
   "payload": zod.string(),
   "amount": zod.string().nullish(),
-  "status": zod.enum(['active', 'inactive']),
+  "orderId": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'expired']),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })),
@@ -822,7 +824,9 @@ export const CreateQrCodeBody = zod.object({
   "type": zod.enum(['static', 'dynamic']),
   "label": zod.string().nullish(),
   "payload": zod.string(),
-  "amount": zod.string().nullish()
+  "amount": zod.string().nullish(),
+  "orderId": zod.string().nullish(),
+  "expiresAt": zod.string().nullish()
 })
 
 
@@ -846,7 +850,9 @@ export const UpdateQrCodeResponse = zod.object({
   "label": zod.string().nullish(),
   "payload": zod.string(),
   "amount": zod.string().nullish(),
-  "status": zod.enum(['active', 'inactive']),
+  "orderId": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive', 'expired']),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
@@ -885,6 +891,7 @@ export const ListVirtualAccountsResponse = zod.object({
   "bankName": zod.string(),
   "accountHolder": zod.string(),
   "label": zod.string().nullish(),
+  "balance": zod.string(),
   "status": zod.enum(['active', 'closed']),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
@@ -903,7 +910,31 @@ export const CreateVirtualAccountBody = zod.object({
   "ifsc": zod.string(),
   "bankName": zod.string(),
   "accountHolder": zod.string(),
-  "label": zod.string().nullish()
+  "label": zod.string().nullish(),
+  "balance": zod.string().optional()
+})
+
+
+/**
+ * @summary Get transaction history for a virtual account
+ */
+export const GetVirtualAccountTransactionsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetVirtualAccountTransactionsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "amount": zod.string(),
+  "type": zod.string(),
+  "status": zod.string(),
+  "utr": zod.string().nullable(),
+  "description": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
 })
 
 
@@ -916,6 +947,7 @@ export const UpdateVirtualAccountParams = zod.object({
 
 export const UpdateVirtualAccountBody = zod.object({
   "label": zod.string().nullish(),
+  "balance": zod.string().optional(),
   "status": zod.enum(['active', 'closed']).optional()
 })
 
@@ -928,6 +960,7 @@ export const UpdateVirtualAccountResponse = zod.object({
   "bankName": zod.string(),
   "accountHolder": zod.string(),
   "label": zod.string().nullish(),
+  "balance": zod.string(),
   "status": zod.enum(['active', 'closed']),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
