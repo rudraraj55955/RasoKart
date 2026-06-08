@@ -67,18 +67,38 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
   ];
 
   const merchantNav = [
-    { title: "Overview", icon: LayoutDashboard, href: "/merchant/dashboard" },
-    { title: "Transactions", icon: ArrowRightLeft, href: "/merchant/transactions" },
-    { title: "Withdrawals", icon: Landmark, href: "/merchant/withdrawals" },
-    { title: "Settlements", icon: FileText, href: "/merchant/settlements" },
-    { title: "Virtual Accounts", icon: Building2, href: "/merchant/virtual-accounts" },
-    { title: "Dynamic QR", icon: QrCode, href: "/merchant/qr-codes" },
-    { title: "Products", icon: Package, href: "/merchant/products" },
-    { title: "Connect", icon: Plug, href: "/merchant/connect" },
-    { title: "API Keys", icon: KeyRound, href: "/merchant/api-keys" },
-    { title: "Webhooks", icon: Webhook, href: "/merchant/webhook" },
-    { title: "Callbacks", icon: FileText, href: "/merchant/callbacks" },
-    { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
+    {
+      group: "Overview",
+      items: [
+        { title: "Dashboard", icon: LayoutDashboard, href: "/merchant/dashboard" },
+      ],
+    },
+    {
+      group: "Payments",
+      items: [
+        { title: "Transactions", icon: ArrowRightLeft, href: "/merchant/transactions" },
+        { title: "Withdrawals", icon: Landmark, href: "/merchant/withdrawals" },
+        { title: "Settlements", icon: FileText, href: "/merchant/settlements" },
+      ],
+    },
+    {
+      group: "Products",
+      items: [
+        { title: "Virtual Accounts", icon: Building2, href: "/merchant/virtual-accounts" },
+        { title: "Dynamic QR", icon: QrCode, href: "/merchant/qr-codes" },
+        { title: "Plans & Pricing", icon: Package, href: "/merchant/products" },
+      ],
+    },
+    {
+      group: "Integration",
+      items: [
+        { title: "Connect", icon: Plug, href: "/merchant/connect" },
+        { title: "API Keys", icon: KeyRound, href: "/merchant/api-keys" },
+        { title: "Webhooks", icon: Webhook, href: "/merchant/webhook" },
+        { title: "Callbacks", icon: FileText, href: "/merchant/callbacks" },
+        { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
+      ],
+    },
   ];
 
   const publicNav = [
@@ -139,23 +159,25 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
                 </SidebarGroup>
               ))
             ) : (
-              <SidebarGroup>
-                <SidebarGroupLabel>Menu</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {merchantNav.map((item) => (
-                      <SidebarMenuItem key={item.title}>
-                        <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.title}>
-                          <Link href={item.href} className="flex items-center gap-3">
-                            <item.icon className="w-4 h-4" />
-                            <span>{item.title}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
+              merchantNav.map((group) => (
+                <SidebarGroup key={group.group}>
+                  <SidebarGroupLabel>{group.group}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {group.items.map((item) => (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.title}>
+                            <Link href={item.href} className="flex items-center gap-3">
+                              <item.icon className="w-4 h-4" />
+                              <span>{item.title}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ))
             )}
           </SidebarContent>
           <SidebarFooter className="p-4">

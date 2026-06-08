@@ -147,7 +147,7 @@ export default function MerchantQrCodes() {
   const updateMutation = useUpdateQrCode();
   const deleteMutation = useDeleteQrCode();
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["list-qr-codes"] });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/qr-codes"] });
 
   // Derive active provider + VPA from connections
   const activeConnections = (connections ?? []).filter((c: any) => c.isActive);

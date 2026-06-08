@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, XCircle, Trash2, Eye, Download, Building2, TrendingUp, ArrowUpDown } from "lucide-react";
+import { Search, Plus, XCircle, CheckCircle2, Trash2, Eye, Download, Building2, TrendingUp, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -56,7 +56,7 @@ export default function MerchantVirtualAccounts() {
     { query: { enabled: showHistory && !!selectedVa } as any }
   );
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["list-virtual-accounts"] });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] });
 
   const handleCreate = () => {
     if (!form.accountNumber || !form.ifsc || !form.bankName || !form.accountHolder) {
@@ -75,10 +75,11 @@ export default function MerchantVirtualAccounts() {
     );
   };
 
-  const handleClose = (id: number) => {
-    updateMutation.mutate({ id, data: { status: "closed" as any } }, {
-      onSuccess: () => { toast.success("Account closed"); invalidate(); },
-      onError: () => toast.error("Failed to close account"),
+  const handleToggleStatus = (id: number, currentStatus: string) => {
+    const newStatus = currentStatus === "active" ? "closed" : "active";
+    updateMutation.mutate({ id, data: { status: newStatus as any } }, {
+      onSuccess: () => { toast.success(newStatus === "active" ? "Account re-activated" : "Account closed"); invalidate(); },
+      onError: () => toast.error("Failed to update account status"),
     });
   };
 
@@ -241,13 +242,16 @@ export default function MerchantVirtualAccounts() {
                         onClick={() => { setSelectedVa(va as any); setShowHistory(true); }}>
                         <Eye className="w-4 h-4" />
                       </Button>
-                      {va.status === "active" && (
-                        <Button size="sm" variant="ghost"
-                          className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 h-8 text-xs"
-                          onClick={() => handleClose(va.id)}>
-                          <XCircle className="w-3.5 h-3.5 mr-1" />Close
-                        </Button>
-                      )}
+                      <Button size="sm" variant="ghost"
+                        className={va.status === "active"
+                          ? "text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 h-8 text-xs"
+                          : "text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 h-8 text-xs"}
+                        onClick={() => handleToggleStatus(va.id, va.status)}
+                        title={va.status === "active" ? "Close account" : "Re-activate account"}>
+                        {va.status === "active"
+                          ? <><XCircle className="w-3.5 h-3.5 mr-1" />Close</>
+                          : <><CheckCircle2 className="w-3.5 h-3.5 mr-1" />Activate</>}
+                      </Button>
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500 hover:text-rose-400"
                         onClick={() => handleDelete(va.id)}>
                         <Trash2 className="w-3.5 h-3.5" />
