@@ -152,7 +152,7 @@ export default function AdminSettlements() {
       </div>
 
       {/* Stats bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
           {
             label: "Pending Total",
@@ -170,17 +170,31 @@ export default function AdminSettlements() {
           },
           {
             label: "Pending",
-            value: `${stats?.counts?.pending ?? 0} requests`,
+            value: `${stats?.counts?.pending ?? 0}`,
             icon: TrendingUp,
             color: "text-amber-400",
             bg: "bg-amber-500/10",
           },
           {
             label: "Processing",
-            value: `${stats?.counts?.processing ?? 0} requests`,
+            value: `${stats?.counts?.processing ?? 0}`,
             icon: CheckCircle2,
             color: "text-blue-400",
             bg: "bg-blue-500/10",
+          },
+          {
+            label: "Approved",
+            value: `${stats?.counts?.approved ?? 0}`,
+            icon: CheckCircle2,
+            color: "text-green-400",
+            bg: "bg-green-500/10",
+          },
+          {
+            label: "Rejected",
+            value: `${stats?.counts?.rejected ?? 0}`,
+            icon: TrendingUp,
+            color: "text-rose-400",
+            bg: "bg-rose-500/10",
           },
         ].map(card => (
           <Card key={card.label}>

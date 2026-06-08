@@ -210,8 +210,13 @@ router.post("/:id/process", requireAdmin, async (req, res) => {
 
   const [updated] = await db.update(settlementsTable)
     .set({ status: "processing", adminRemark: remark, processedBy: user.id, processedAt: new Date() })
-    .where(eq(settlementsTable.id, id))
+    .where(and(eq(settlementsTable.id, id), eq(settlementsTable.status, "pending")))
     .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "Settlement status changed — concurrent modification detected" });
+    return;
+  }
 
   res.json(mapSettlement(updated));
 });
@@ -253,8 +258,15 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
 
       const [result] = await tx.update(settlementsTable)
         .set({ status: "approved", adminRemark: remark, processedBy: user.id })
-        .where(eq(settlementsTable.id, id))
+        .where(and(eq(settlementsTable.id, id), eq(settlementsTable.status, "processing")))
         .returning();
+
+      if (!result) {
+        throw Object.assign(
+          new Error("Settlement status changed — concurrent modification detected"),
+          { statusCode: 409 }
+        );
+      }
 
       return result;
     });
@@ -284,8 +296,13 @@ router.post("/:id/reject", requireAdmin, async (req, res) => {
 
   const [updated] = await db.update(settlementsTable)
     .set({ status: "rejected", adminRemark: remark, processedBy: user.id, processedAt: new Date() })
-    .where(eq(settlementsTable.id, id))
+    .where(and(eq(settlementsTable.id, id), sql`${settlementsTable.status} IN ('pending', 'processing')`))
     .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "Settlement status changed — concurrent modification detected" });
+    return;
+  }
 
   res.json(mapSettlement(updated));
 });
@@ -307,8 +324,13 @@ router.post("/:id/hold", requireAdmin, async (req, res) => {
 
   const [updated] = await db.update(settlementsTable)
     .set({ status: "pending", adminRemark: remark, processedBy: user.id })
-    .where(eq(settlementsTable.id, id))
+    .where(and(eq(settlementsTable.id, id), eq(settlementsTable.status, "processing")))
     .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "Settlement status changed — concurrent modification detected" });
+    return;
+  }
 
   res.json(mapSettlement(updated));
 });
@@ -342,8 +364,13 @@ router.post("/:id/mark-paid", requireAdmin, async (req, res) => {
       paidAt: new Date(),
       processedBy: user.id,
     })
-    .where(eq(settlementsTable.id, id))
+    .where(and(eq(settlementsTable.id, id), eq(settlementsTable.status, "approved")))
     .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "Settlement status changed — concurrent modification detected" });
+    return;
+  }
 
   res.json(mapSettlement(updated));
 });

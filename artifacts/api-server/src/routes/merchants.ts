@@ -5,7 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
 
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth);
 
 function serializeMerchant(m: typeof merchantsTable.$inferSelect) {
   return {
@@ -50,7 +50,7 @@ async function logPlanHistory(opts: {
 }
 
 // GET /api/merchants
-router.get("/", async (req, res) => {
+router.get("/", requireAdmin, async (req, res) => {
   const { status, search, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
@@ -73,17 +73,22 @@ router.get("/", async (req, res) => {
   res.json({ data: data.map(serializeMerchant), total, page: pageNum, limit: limitNum });
 });
 
-// GET /api/merchants/:id
+// GET /api/merchants/:id  (admin, or the merchant viewing their own profile)
 router.get("/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
+  const user = (req as any).user;
+  const id = parseInt(req.params.id as string);
+  if (user.role !== "admin" && user.merchantId !== id) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   const [merchant] = await db.select().from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
   if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
   res.json(serializeMerchant(merchant));
 });
 
 // POST /api/merchants/:id/approve
-router.post("/:id/approve", async (req, res) => {
-  const id = parseInt(req.params.id);
+router.post("/:id/approve", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id as string);
   const [merchant] = await db.update(merchantsTable)
     .set({ status: "approved", rejectionReason: null })
     .where(eq(merchantsTable.id, id)).returning();
@@ -92,8 +97,8 @@ router.post("/:id/approve", async (req, res) => {
 });
 
 // POST /api/merchants/:id/reject
-router.post("/:id/reject", async (req, res) => {
-  const id = parseInt(req.params.id);
+router.post("/:id/reject", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id as string);
   const { reason } = req.body;
   if (!reason) { res.status(400).json({ error: "Rejection reason required" }); return; }
   const [merchant] = await db.update(merchantsTable)
@@ -104,7 +109,7 @@ router.post("/:id/reject", async (req, res) => {
 });
 
 // GET /api/merchants/:id/plan
-router.get("/:id/plan", async (req, res) => {
+router.get("/:id/plan", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
   const rows = await db.select({ mp: merchantPlansTable, plan: plansTable })
     .from(merchantPlansTable)
@@ -115,7 +120,7 @@ router.get("/:id/plan", async (req, res) => {
 });
 
 // GET /api/merchants/:id/plan/history
-router.get("/:id/plan/history", async (req, res) => {
+router.get("/:id/plan/history", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
   const rows = await db
     .select({ h: planHistoryTable, toPlan: { id: plansTable.id, name: plansTable.name } })
@@ -127,7 +132,7 @@ router.get("/:id/plan/history", async (req, res) => {
 });
 
 // POST /api/merchants/:id/assign-plan
-router.post("/:id/assign-plan", async (req, res) => {
+router.post("/:id/assign-plan", requireAdmin, async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params.id as string);
   const { planId, expiresAt, notes } = req.body;
@@ -167,7 +172,7 @@ router.post("/:id/assign-plan", async (req, res) => {
 });
 
 // POST /api/merchants/:id/plan/upgrade
-router.post("/:id/plan/upgrade", async (req, res) => {
+router.post("/:id/plan/upgrade", requireAdmin, async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params.id as string);
   const { planId, expiresAt, notes } = req.body;
@@ -192,7 +197,7 @@ router.post("/:id/plan/upgrade", async (req, res) => {
 });
 
 // POST /api/merchants/:id/plan/downgrade
-router.post("/:id/plan/downgrade", async (req, res) => {
+router.post("/:id/plan/downgrade", requireAdmin, async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params.id as string);
   const { planId, expiresAt, notes } = req.body;
@@ -217,7 +222,7 @@ router.post("/:id/plan/downgrade", async (req, res) => {
 });
 
 // POST /api/merchants/:id/plan/suspend
-router.post("/:id/plan/suspend", async (req, res) => {
+router.post("/:id/plan/suspend", requireAdmin, async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params.id as string);
   const { notes } = req.body ?? {};
@@ -233,7 +238,7 @@ router.post("/:id/plan/suspend", async (req, res) => {
 });
 
 // POST /api/merchants/:id/plan/reinstate
-router.post("/:id/plan/reinstate", async (req, res) => {
+router.post("/:id/plan/reinstate", requireAdmin, async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params.id as string);
   const { notes } = req.body ?? {};
@@ -249,7 +254,7 @@ router.post("/:id/plan/reinstate", async (req, res) => {
 });
 
 // POST /api/merchants/:id/plan/renew
-router.post("/:id/plan/renew", async (req, res) => {
+router.post("/:id/plan/renew", requireAdmin, async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params.id as string);
   const { expiresAt, notes } = req.body;
@@ -266,7 +271,7 @@ router.post("/:id/plan/renew", async (req, res) => {
 });
 
 // GET /api/merchants/:id/invoices (admin only)
-router.get("/:id/invoices", async (req, res) => {
+router.get("/:id/invoices", requireAdmin, async (req, res) => {
   const merchantId = parseInt(req.params.id as string);
   const { status, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
