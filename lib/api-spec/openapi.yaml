@@ -39,6 +39,10 @@ tags:
     description: QR code management
   - name: virtual-accounts
     description: Virtual account management
+  - name: feature-control
+    description: Merchant feature toggles
+  - name: account-details
+    description: Admin-managed payment collection accounts
 paths:
   /healthz:
     get:
@@ -1270,6 +1274,250 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdminRiskStats"
 
+  /feature-control:
+    get:
+      operationId: listMerchantFeatures
+      tags: [feature-control]
+      summary: List merchants with their feature settings
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: feature
+          in: query
+          schema: { type: string }
+        - name: enabled
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Feature list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantFeaturesListResponse"
+
+  /feature-control/bulk:
+    post:
+      operationId: bulkUpdateMerchantFeatures
+      tags: [feature-control]
+      summary: Bulk update a feature for multiple merchants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkFeatureUpdateInput"
+      responses:
+        "200":
+          description: Bulk update result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated, merchantIds]
+                properties:
+                  updated:
+                    type: integer
+                  merchantIds:
+                    type: array
+                    items:
+                      type: integer
+
+  /feature-control/{merchantId}:
+    get:
+      operationId: getMerchantFeatures
+      tags: [feature-control]
+      summary: Get features for one merchant
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Merchant features
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantFeaturesEntry"
+    put:
+      operationId: updateMerchantFeatures
+      tags: [feature-control]
+      summary: Update features for a merchant
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MerchantFeaturesInput"
+      responses:
+        "200":
+          description: Updated features
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantFeaturesRecord"
+
+  /account-details:
+    get:
+      operationId: listAccountDetails
+      tags: [account-details]
+      summary: List account details
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: isActive
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Account details list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDetailListResponse"
+    post:
+      operationId: createAccountDetail
+      tags: [account-details]
+      summary: Create account detail (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountDetailInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDetail"
+
+  /account-details/{id}:
+    get:
+      operationId: getAccountDetail
+      tags: [account-details]
+      summary: Get one account detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDetail"
+    put:
+      operationId: updateAccountDetail
+      tags: [account-details]
+      summary: Update account detail (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountDetailUpdateInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDetail"
+    delete:
+      operationId: deleteAccountDetail
+      tags: [account-details]
+      summary: Delete account detail (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /account-details/{id}/visibility:
+    get:
+      operationId: listAccountDetailVisibility
+      tags: [account-details]
+      summary: List merchants with visibility status for this account detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Visibility list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDetailVisibilityResponse"
+    put:
+      operationId: updateAccountDetailVisibility
+      tags: [account-details]
+      summary: Set visibility rules for merchants
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisibilityRuleUpdateInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
 components:
   schemas:
     HealthStatus:
@@ -2244,3 +2492,177 @@ components:
               merchantName: { type: string }
               failedCount: { type: integer }
               failedRate: { type: number }
+
+    MerchantFeaturesRecord:
+      type: object
+      required: [id, merchantId, dynamicQr, staticQr, virtualAccount, paymentLinks, payouts, withdrawals, settlements, webhooks, apiKeys, csvExport, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        merchantId: { type: integer }
+        dynamicQr: { type: boolean }
+        staticQr: { type: boolean }
+        virtualAccount: { type: boolean }
+        paymentLinks: { type: boolean }
+        payouts: { type: boolean }
+        withdrawals: { type: boolean }
+        settlements: { type: boolean }
+        webhooks: { type: boolean }
+        apiKeys: { type: boolean }
+        csvExport: { type: boolean }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    MerchantFeaturesEntry:
+      type: object
+      required: [merchantId, businessName, email, status]
+      properties:
+        merchantId: { type: integer }
+        businessName: { type: string }
+        email: { type: string }
+        status: { type: string }
+        features:
+          oneOf:
+            - $ref: "#/components/schemas/MerchantFeaturesRecord"
+            - type: "null"
+
+    MerchantFeaturesListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MerchantFeaturesEntry"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    MerchantFeaturesInput:
+      type: object
+      properties:
+        dynamicQr: { type: boolean }
+        staticQr: { type: boolean }
+        virtualAccount: { type: boolean }
+        paymentLinks: { type: boolean }
+        payouts: { type: boolean }
+        withdrawals: { type: boolean }
+        settlements: { type: boolean }
+        webhooks: { type: boolean }
+        apiKeys: { type: boolean }
+        csvExport: { type: boolean }
+
+    BulkFeatureUpdateInput:
+      type: object
+      required: [merchantIds, feature, enabled]
+      properties:
+        merchantIds:
+          type: array
+          items:
+            type: integer
+        feature:
+          type: string
+        enabled:
+          type: boolean
+
+    AccountDetail:
+      type: object
+      required: [id, type, label, isActive, isGlobal, sortOrder, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        label: { type: string }
+        accountNumber: { type: ["string", "null"] }
+        ifsc: { type: ["string", "null"] }
+        bankName: { type: ["string", "null"] }
+        accountHolder: { type: ["string", "null"] }
+        upiId: { type: ["string", "null"] }
+        qrPayload: { type: ["string", "null"] }
+        provider: { type: ["string", "null"] }
+        metadata: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        isGlobal: { type: boolean }
+        sortOrder: { type: integer }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    AccountDetailInput:
+      type: object
+      required: [type, label]
+      properties:
+        type: { type: string }
+        label: { type: string }
+        accountNumber: { type: ["string", "null"] }
+        ifsc: { type: ["string", "null"] }
+        bankName: { type: ["string", "null"] }
+        accountHolder: { type: ["string", "null"] }
+        upiId: { type: ["string", "null"] }
+        qrPayload: { type: ["string", "null"] }
+        provider: { type: ["string", "null"] }
+        metadata: {}
+        isGlobal: { type: boolean }
+        sortOrder: { type: integer }
+
+    AccountDetailUpdateInput:
+      type: object
+      properties:
+        type: { type: string }
+        label: { type: string }
+        accountNumber: { type: ["string", "null"] }
+        ifsc: { type: ["string", "null"] }
+        bankName: { type: ["string", "null"] }
+        accountHolder: { type: ["string", "null"] }
+        upiId: { type: ["string", "null"] }
+        qrPayload: { type: ["string", "null"] }
+        provider: { type: ["string", "null"] }
+        metadata: {}
+        isActive: { type: boolean }
+        isGlobal: { type: boolean }
+        sortOrder: { type: integer }
+
+    AccountDetailListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountDetail"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    AccountDetailVisibilityEntry:
+      type: object
+      required: [merchantId, businessName, email, status, effectiveVisible, isDefault]
+      properties:
+        merchantId: { type: integer }
+        businessName: { type: string }
+        email: { type: string }
+        status: { type: string }
+        explicitRule: { type: ["boolean", "null"] }
+        effectiveVisible: { type: boolean }
+        isDefault: { type: boolean }
+
+    AccountDetailVisibilityResponse:
+      type: object
+      required: [data, total, page, limit, isGlobal]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountDetailVisibilityEntry"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        isGlobal: { type: boolean }
+
+    VisibilityRuleUpdateInput:
+      type: object
+      properties:
+        merchantIds:
+          type: array
+          items:
+            type: integer
+        visible: { type: boolean }
+        allMerchants: { type: boolean }
+        resetToDefault: { type: boolean }

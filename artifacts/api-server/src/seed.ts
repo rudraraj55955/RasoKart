@@ -12,6 +12,7 @@ import {
   webhooksTable,
   qrCodesTable,
   virtualAccountsTable,
+  accountDetailsTable,
 } from "@workspace/db";
 
 export async function seed() {
@@ -320,6 +321,19 @@ export async function seed() {
     }
   }
   console.log("Today's deposits seeded");
+
+  // ── Account Details ─────────────────────────────────────────────────────────
+  const adCount = await db.select({ c: count() }).from(accountDetailsTable);
+  if (adCount[0].c === 0) {
+    await db.insert(accountDetailsTable).values([
+      { type: "bank", label: "HDFC Bank – Primary", accountHolder: "RPay Payments Pvt Ltd", accountNumber: "50200012345678", ifsc: "HDFC0001234", bankName: "HDFC Bank", isGlobal: true, isActive: true, sortOrder: 1 },
+      { type: "bank", label: "ICICI Bank – Secondary", accountHolder: "RPay Payments Pvt Ltd", accountNumber: "123456789012", ifsc: "ICIC0000456", bankName: "ICICI Bank", isGlobal: true, isActive: true, sortOrder: 2 },
+      { type: "upi", label: "PhonePe UPI", upiId: "rpay@phonepe", provider: "phonepe", isGlobal: true, isActive: true, sortOrder: 3 },
+      { type: "upi", label: "GPay UPI", upiId: "rpay@gpay", provider: "gpay", isGlobal: false, isActive: true, sortOrder: 4 },
+      { type: "qr", label: "Paytm QR Code", qrPayload: "00020101021226180014paytm.com/qr/rpa01", provider: "paytm", isGlobal: true, isActive: true, sortOrder: 5 },
+    ]);
+    console.log("Account details seeded");
+  }
 
   console.log("Seed complete.");
 }

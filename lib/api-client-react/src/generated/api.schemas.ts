@@ -709,6 +709,162 @@ export interface AdminRiskStats {
   topFailingMerchants: AdminRiskStatsTopFailingMerchantsItem[];
 }
 
+export interface MerchantFeaturesRecord {
+  id: number;
+  merchantId: number;
+  dynamicQr: boolean;
+  staticQr: boolean;
+  virtualAccount: boolean;
+  paymentLinks: boolean;
+  payouts: boolean;
+  withdrawals: boolean;
+  settlements: boolean;
+  webhooks: boolean;
+  apiKeys: boolean;
+  csvExport: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MerchantFeaturesEntry {
+  merchantId: number;
+  businessName: string;
+  email: string;
+  status: string;
+  features?: MerchantFeaturesRecord | null;
+}
+
+export interface MerchantFeaturesListResponse {
+  data: MerchantFeaturesEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface MerchantFeaturesInput {
+  dynamicQr?: boolean;
+  staticQr?: boolean;
+  virtualAccount?: boolean;
+  paymentLinks?: boolean;
+  payouts?: boolean;
+  withdrawals?: boolean;
+  settlements?: boolean;
+  webhooks?: boolean;
+  apiKeys?: boolean;
+  csvExport?: boolean;
+}
+
+export interface BulkFeatureUpdateInput {
+  merchantIds: number[];
+  feature: string;
+  enabled: boolean;
+}
+
+export interface AccountDetail {
+  id: number;
+  type: string;
+  label: string;
+  /** @nullable */
+  accountNumber?: string | null;
+  /** @nullable */
+  ifsc?: string | null;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  accountHolder?: string | null;
+  /** @nullable */
+  upiId?: string | null;
+  /** @nullable */
+  qrPayload?: string | null;
+  /** @nullable */
+  provider?: string | null;
+  /** @nullable */
+  metadata?: string | null;
+  isActive: boolean;
+  isGlobal: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountDetailInput {
+  type: string;
+  label: string;
+  /** @nullable */
+  accountNumber?: string | null;
+  /** @nullable */
+  ifsc?: string | null;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  accountHolder?: string | null;
+  /** @nullable */
+  upiId?: string | null;
+  /** @nullable */
+  qrPayload?: string | null;
+  /** @nullable */
+  provider?: string | null;
+  metadata?: unknown;
+  isGlobal?: boolean;
+  sortOrder?: number;
+}
+
+export interface AccountDetailUpdateInput {
+  type?: string;
+  label?: string;
+  /** @nullable */
+  accountNumber?: string | null;
+  /** @nullable */
+  ifsc?: string | null;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  accountHolder?: string | null;
+  /** @nullable */
+  upiId?: string | null;
+  /** @nullable */
+  qrPayload?: string | null;
+  /** @nullable */
+  provider?: string | null;
+  metadata?: unknown;
+  isActive?: boolean;
+  isGlobal?: boolean;
+  sortOrder?: number;
+}
+
+export interface AccountDetailListResponse {
+  data: AccountDetail[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AccountDetailVisibilityEntry {
+  merchantId: number;
+  businessName: string;
+  email: string;
+  status: string;
+  /** @nullable */
+  explicitRule?: boolean | null;
+  effectiveVisible: boolean;
+  isDefault: boolean;
+}
+
+export interface AccountDetailVisibilityResponse {
+  data: AccountDetailVisibilityEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  isGlobal: boolean;
+}
+
+export interface VisibilityRuleUpdateInput {
+  merchantIds?: number[];
+  visible?: boolean;
+  allMerchants?: boolean;
+  resetToDefault?: boolean;
+}
+
 export type ListMerchantsParams = {
 status?: ListMerchantsStatus;
 search?: string;
@@ -864,5 +1020,34 @@ page?: number;
 limit?: number;
 action?: string;
 search?: string;
+};
+
+export type ListMerchantFeaturesParams = {
+search?: string;
+page?: number;
+limit?: number;
+feature?: string;
+enabled?: string;
+};
+
+export type BulkUpdateMerchantFeatures200 = {
+  updated: number;
+  merchantIds: number[];
+};
+
+export type ListAccountDetailsParams = {
+search?: string;
+type?: string;
+isActive?: string;
+page?: number;
+limit?: number;
+};
+
+export type DeleteAccountDetail200 = {
+  success?: boolean;
+};
+
+export type UpdateAccountDetailVisibility200 = {
+  success?: boolean;
 };
 

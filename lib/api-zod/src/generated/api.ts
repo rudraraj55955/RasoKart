@@ -1126,3 +1126,307 @@ export const GetDashboardRiskResponse = zod.object({
 })
 
 
+/**
+ * @summary List merchants with their feature settings
+ */
+export const ListMerchantFeaturesQueryParams = zod.object({
+  "search": zod.coerce.string().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional(),
+  "feature": zod.coerce.string().optional(),
+  "enabled": zod.coerce.string().optional()
+})
+
+export const ListMerchantFeaturesResponse = zod.object({
+  "data": zod.array(zod.object({
+  "merchantId": zod.number(),
+  "businessName": zod.string(),
+  "email": zod.string(),
+  "status": zod.string(),
+  "features": zod.union([zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "dynamicQr": zod.boolean(),
+  "staticQr": zod.boolean(),
+  "virtualAccount": zod.boolean(),
+  "paymentLinks": zod.boolean(),
+  "payouts": zod.boolean(),
+  "withdrawals": zod.boolean(),
+  "settlements": zod.boolean(),
+  "webhooks": zod.boolean(),
+  "apiKeys": zod.boolean(),
+  "csvExport": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}),zod.null()]).optional()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Bulk update a feature for multiple merchants
+ */
+export const BulkUpdateMerchantFeaturesBody = zod.object({
+  "merchantIds": zod.array(zod.number()),
+  "feature": zod.string(),
+  "enabled": zod.boolean()
+})
+
+export const BulkUpdateMerchantFeaturesResponse = zod.object({
+  "updated": zod.number(),
+  "merchantIds": zod.array(zod.number())
+})
+
+
+/**
+ * @summary Get features for one merchant
+ */
+export const GetMerchantFeaturesParams = zod.object({
+  "merchantId": zod.coerce.number()
+})
+
+export const GetMerchantFeaturesResponse = zod.object({
+  "merchantId": zod.number(),
+  "businessName": zod.string(),
+  "email": zod.string(),
+  "status": zod.string(),
+  "features": zod.union([zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "dynamicQr": zod.boolean(),
+  "staticQr": zod.boolean(),
+  "virtualAccount": zod.boolean(),
+  "paymentLinks": zod.boolean(),
+  "payouts": zod.boolean(),
+  "withdrawals": zod.boolean(),
+  "settlements": zod.boolean(),
+  "webhooks": zod.boolean(),
+  "apiKeys": zod.boolean(),
+  "csvExport": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}),zod.null()]).optional()
+})
+
+
+/**
+ * @summary Update features for a merchant
+ */
+export const UpdateMerchantFeaturesParams = zod.object({
+  "merchantId": zod.coerce.number()
+})
+
+export const UpdateMerchantFeaturesBody = zod.object({
+  "dynamicQr": zod.boolean().optional(),
+  "staticQr": zod.boolean().optional(),
+  "virtualAccount": zod.boolean().optional(),
+  "paymentLinks": zod.boolean().optional(),
+  "payouts": zod.boolean().optional(),
+  "withdrawals": zod.boolean().optional(),
+  "settlements": zod.boolean().optional(),
+  "webhooks": zod.boolean().optional(),
+  "apiKeys": zod.boolean().optional(),
+  "csvExport": zod.boolean().optional()
+})
+
+export const UpdateMerchantFeaturesResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "dynamicQr": zod.boolean(),
+  "staticQr": zod.boolean(),
+  "virtualAccount": zod.boolean(),
+  "paymentLinks": zod.boolean(),
+  "payouts": zod.boolean(),
+  "withdrawals": zod.boolean(),
+  "settlements": zod.boolean(),
+  "webhooks": zod.boolean(),
+  "apiKeys": zod.boolean(),
+  "csvExport": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List account details
+ */
+export const ListAccountDetailsQueryParams = zod.object({
+  "search": zod.coerce.string().optional(),
+  "type": zod.coerce.string().optional(),
+  "isActive": zod.coerce.string().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListAccountDetailsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "accountNumber": zod.string().nullish(),
+  "ifsc": zod.string().nullish(),
+  "bankName": zod.string().nullish(),
+  "accountHolder": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "qrPayload": zod.string().nullish(),
+  "provider": zod.string().nullish(),
+  "metadata": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "isGlobal": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Create account detail (admin only)
+ */
+export const CreateAccountDetailBody = zod.object({
+  "type": zod.string(),
+  "label": zod.string(),
+  "accountNumber": zod.string().nullish(),
+  "ifsc": zod.string().nullish(),
+  "bankName": zod.string().nullish(),
+  "accountHolder": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "qrPayload": zod.string().nullish(),
+  "provider": zod.string().nullish(),
+  "metadata": zod.unknown().optional(),
+  "isGlobal": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+
+/**
+ * @summary Get one account detail
+ */
+export const GetAccountDetailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAccountDetailResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "accountNumber": zod.string().nullish(),
+  "ifsc": zod.string().nullish(),
+  "bankName": zod.string().nullish(),
+  "accountHolder": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "qrPayload": zod.string().nullish(),
+  "provider": zod.string().nullish(),
+  "metadata": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "isGlobal": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update account detail (admin only)
+ */
+export const UpdateAccountDetailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAccountDetailBody = zod.object({
+  "type": zod.string().optional(),
+  "label": zod.string().optional(),
+  "accountNumber": zod.string().nullish(),
+  "ifsc": zod.string().nullish(),
+  "bankName": zod.string().nullish(),
+  "accountHolder": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "qrPayload": zod.string().nullish(),
+  "provider": zod.string().nullish(),
+  "metadata": zod.unknown().optional(),
+  "isActive": zod.boolean().optional(),
+  "isGlobal": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateAccountDetailResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "accountNumber": zod.string().nullish(),
+  "ifsc": zod.string().nullish(),
+  "bankName": zod.string().nullish(),
+  "accountHolder": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "qrPayload": zod.string().nullish(),
+  "provider": zod.string().nullish(),
+  "metadata": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "isGlobal": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete account detail (admin only)
+ */
+export const DeleteAccountDetailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAccountDetailResponse = zod.object({
+  "success": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List merchants with visibility status for this account detail
+ */
+export const ListAccountDetailVisibilityParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListAccountDetailVisibilityResponse = zod.object({
+  "data": zod.array(zod.object({
+  "merchantId": zod.number(),
+  "businessName": zod.string(),
+  "email": zod.string(),
+  "status": zod.string(),
+  "explicitRule": zod.boolean().nullish(),
+  "effectiveVisible": zod.boolean(),
+  "isDefault": zod.boolean()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number(),
+  "isGlobal": zod.boolean()
+})
+
+
+/**
+ * @summary Set visibility rules for merchants
+ */
+export const UpdateAccountDetailVisibilityParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAccountDetailVisibilityBody = zod.object({
+  "merchantIds": zod.array(zod.number()).optional(),
+  "visible": zod.boolean().optional(),
+  "allMerchants": zod.boolean().optional(),
+  "resetToDefault": zod.boolean().optional()
+})
+
+export const UpdateAccountDetailVisibilityResponse = zod.object({
+  "success": zod.boolean().optional()
+})
+
+

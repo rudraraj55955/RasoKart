@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/auth-context";
 import { UserRole } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DashboardLayoutProps {
@@ -55,6 +55,16 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
         { title: "Webhook Logs", icon: Webhook, href: "/admin/webhook-logs" },
         { title: "Callback Logs", icon: Activity, href: "/admin/callbacks" },
         { title: "API Monitoring", icon: Activity, href: "/admin/api-monitoring" },
+      ],
+    },
+    {
+      group: "Control & Access",
+      items: [
+        { title: "Feature Control", icon: Sliders, href: "/admin/feature-control" },
+        { title: "Account Details", icon: CreditCard, href: "/admin/account-details" },
+        { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
+        { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
+        { title: "Merchant Access", icon: LayoutGrid, href: "/admin/merchant-access" },
       ],
     },
     {

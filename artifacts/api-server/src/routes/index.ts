@@ -17,6 +17,8 @@ import qrCodesRouter from "./qrCodes";
 import virtualAccountsRouter from "./virtualAccounts";
 import apiMonitoringRouter from "./apiMonitoring";
 import auditLogsRouter from "./auditLogs";
+import featureControlRouter from "./featureControl";
+import accountDetailsRouter from "./accountDetails";
 
 const router: IRouter = Router();
 
@@ -38,5 +40,7 @@ router.use("/qr-codes", qrCodesRouter);
 router.use("/virtual-accounts", virtualAccountsRouter);
 router.use("/api-monitoring", apiMonitoringRouter);
 router.use("/audit-logs", auditLogsRouter);
+router.use("/feature-control", featureControlRouter);
+router.use("/account-details", accountDetailsRouter);
 
 export default router;

@@ -13,3 +13,6 @@ export * from "./merchantPlans";
 export * from "./qrCodes";
 export * from "./virtualAccounts";
 export * from "./auditLogs";
+export * from "./merchantFeatures";
+export * from "./accountDetails";
+export * from "./accountVisibilityRules";

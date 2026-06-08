@@ -30,6 +30,11 @@ import AdminWebhookLogs from "@/pages/admin/webhook-logs";
 import AdminApiMonitoring from "@/pages/admin/api-monitoring";
 import AdminAuditLogs from "@/pages/admin/audit-logs";
 import AdminUserRoles from "@/pages/admin/user-roles";
+import AdminFeatureControl from "@/pages/admin/feature-control";
+import AdminAccountDetails from "@/pages/admin/account-details";
+import AdminQrProviders from "@/pages/admin/qr-providers";
+import AdminVisibilityRules from "@/pages/admin/visibility-rules";
+import AdminMerchantAccess from "@/pages/admin/merchant-access";
 
 // Merchant Pages
 import MerchantDashboard from "@/pages/merchant/dashboard";
@@ -108,6 +113,11 @@ function Router() {
       <Route path="/admin/api-monitoring"><AdminRoute component={AdminApiMonitoring} /></Route>
       <Route path="/admin/audit-logs"><AdminRoute component={AdminAuditLogs} /></Route>
       <Route path="/admin/user-roles"><AdminRoute component={AdminUserRoles} /></Route>
+      <Route path="/admin/feature-control"><AdminRoute component={AdminFeatureControl} /></Route>
+      <Route path="/admin/account-details"><AdminRoute component={AdminAccountDetails} /></Route>
+      <Route path="/admin/qr-providers"><AdminRoute component={AdminQrProviders} /></Route>
+      <Route path="/admin/visibility-rules"><AdminRoute component={AdminVisibilityRules} /></Route>
+      <Route path="/admin/merchant-access"><AdminRoute component={AdminMerchantAccess} /></Route>
 
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>
