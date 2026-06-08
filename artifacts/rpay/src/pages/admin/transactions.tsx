@@ -15,9 +15,19 @@ export default function AdminTransactions() {
   const [utrSearch, setUtrSearch] = useState("");
   const [type, setType] = useState("all");
   const [status, setStatus] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useListTransactions({ type: type as any, status: status as any, search, page, limit: 20 });
+  const { data, isLoading } = useListTransactions({
+    type: type as any,
+    status: status as any,
+    search,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    page,
+    limit: 20,
+  });
   const { data: utrResult, isLoading: utrLoading, error: utrError } = useSearchByUtr(
     { utr: utrSearch || "" },
     { query: { enabled: !!utrSearch } as any }
@@ -71,28 +81,45 @@ export default function AdminTransactions() {
 
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Search UTR or reference..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input className="pl-9" placeholder="Search UTR or reference..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+              </div>
+              <Select value={type} onValueChange={v => { setType(v); setPage(1); }}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="deposit">Deposit</SelectItem>
+                  <SelectItem value="withdrawal">Withdrawal</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="success">Success</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={type} onValueChange={v => { setType(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="deposit">Deposit</SelectItem>
-                <SelectItem value="withdrawal">Withdrawal</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="success">Success</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">From</span>
+                <Input type="date" className="w-40" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">To</span>
+                <Input type="date" className="w-40" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+              </div>
+              {(dateFrom || dateTo) && (
+                <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+                  <X className="w-3.5 h-3.5 mr-1" /> Clear dates
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, merchantsTable, usersTable } from "@workspace/db";
+import { db, merchantsTable, usersTable, merchantPlansTable, plansTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
@@ -102,6 +102,28 @@ router.post("/:id/reject", async (req, res) => {
     totalWithdrawals: Number(merchant.totalWithdrawals),
     balance: Number(merchant.balance),
   });
+});
+
+// POST /api/merchants/:id/assign-plan
+router.post("/:id/assign-plan", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { planId } = req.body;
+  if (!planId) { res.status(400).json({ error: "planId required" }); return; }
+
+  const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId)).limit(1);
+  if (!plan) { res.status(404).json({ error: "Plan not found" }); return; }
+
+  const [merchant] = await db.select().from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+  const existing = await db.select().from(merchantPlansTable).where(eq(merchantPlansTable.merchantId, id)).limit(1);
+  let result;
+  if (existing.length > 0) {
+    [result] = await db.update(merchantPlansTable).set({ planId }).where(eq(merchantPlansTable.merchantId, id)).returning();
+  } else {
+    [result] = await db.insert(merchantPlansTable).values({ merchantId: id, planId }).returning();
+  }
+  res.json({ ...result, planName: plan.name });
 });
 
 export default router;

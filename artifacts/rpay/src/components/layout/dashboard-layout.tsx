@@ -3,20 +3,21 @@ import { useAuth } from "@/lib/auth-context";
 import { UserRole } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DashboardLayoutProps {
   children: ReactNode;
+  publicMode?: boolean;
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({ children, publicMode = false }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
 
-  if (!user) return null;
+  if (!publicMode && !user) return null;
 
-  const isAdmin = user.role === UserRole.admin;
+  const isAdmin = user?.role === UserRole.admin;
 
   const adminNav = [
     { title: "Overview", icon: LayoutDashboard, href: "/admin/dashboard" },
@@ -25,6 +26,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { title: "Withdrawals", icon: Landmark, href: "/admin/withdrawals" },
     { title: "Settlements", icon: FileText, href: "/admin/settlements" },
     { title: "Callbacks", icon: Webhook, href: "/admin/callbacks" },
+    { title: "Plans", icon: CreditCard, href: "/admin/plans" },
+    { title: "QR Management", icon: QrCode, href: "/admin/qr-codes" },
+    { title: "Virtual Accounts", icon: Building2, href: "/admin/virtual-accounts" },
     { title: "Team", icon: Users, href: "/admin/users" },
   ];
 
@@ -33,12 +37,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { title: "Transactions", icon: ArrowRightLeft, href: "/merchant/transactions" },
     { title: "Withdrawals", icon: Landmark, href: "/merchant/withdrawals" },
     { title: "Settlements", icon: FileText, href: "/merchant/settlements" },
+    { title: "Products", icon: Package, href: "/merchant/products" },
+    { title: "Connect", icon: Plug, href: "/merchant/connect" },
     { title: "API Keys", icon: KeyRound, href: "/merchant/api-keys" },
     { title: "Webhooks", icon: Webhook, href: "/merchant/webhook" },
     { title: "Callbacks", icon: FileText, href: "/merchant/callbacks" },
+    { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
   ];
 
-  const navItems = isAdmin ? adminNav : merchantNav;
+  const publicNav = [
+    { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
+  ];
+
+  const navItems = publicMode ? publicNav : (isAdmin ? adminNav : merchantNav);
+  const portalLabel = publicMode ? "Developer Docs" : (isAdmin ? "Admin Console" : "Merchant Portal");
 
   return (
     <SidebarProvider>
@@ -50,7 +62,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
             <div className="flex flex-col">
               <span className="font-bold text-sm tracking-wide">RPay</span>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{isAdmin ? "Admin Console" : "Merchant Portal"}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{portalLabel}</span>
             </div>
           </SidebarHeader>
           <SidebarContent>
@@ -60,8 +72,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <SidebarMenu>
                   {navItems.map((item) => (
                     <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton 
-                        asChild 
+                      <SidebarMenuButton
+                        asChild
                         isActive={location === item.href}
                         tooltip={item.title}
                       >
@@ -77,18 +89,24 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </SidebarGroup>
           </SidebarContent>
           <SidebarFooter className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col truncate pr-2">
-                <span className="text-sm font-medium truncate">{user.name}</span>
-                <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+            {user ? (
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col truncate pr-2">
+                  <span className="text-sm font-medium truncate">{user.name}</span>
+                  <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                </div>
+                <Button variant="ghost" size="icon" onClick={logout} title="Sign out" className="shrink-0 text-muted-foreground hover:text-foreground">
+                  <LogOut className="w-4 h-4" />
+                </Button>
               </div>
-              <Button variant="ghost" size="icon" onClick={logout} title="Sign out" className="shrink-0 text-muted-foreground hover:text-foreground">
-                <LogOut className="w-4 h-4" />
-              </Button>
-            </div>
+            ) : (
+              <Link href="/merchant/login">
+                <Button variant="outline" size="sm" className="w-full">Sign In</Button>
+              </Link>
+            )}
           </SidebarFooter>
         </Sidebar>
-        
+
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div className="flex-1 overflow-y-auto p-6 lg:p-8">
             {children}

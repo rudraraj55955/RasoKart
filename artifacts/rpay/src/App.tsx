@@ -22,6 +22,9 @@ import AdminWithdrawals from "@/pages/admin/withdrawals";
 import AdminSettlements from "@/pages/admin/settlements";
 import AdminCallbacks from "@/pages/admin/callbacks";
 import AdminUsers from "@/pages/admin/users";
+import AdminPlans from "@/pages/admin/plans";
+import AdminQrCodes from "@/pages/admin/qr-codes";
+import AdminVirtualAccounts from "@/pages/admin/virtual-accounts";
 
 // Merchant Pages
 import MerchantDashboard from "@/pages/merchant/dashboard";
@@ -31,6 +34,9 @@ import MerchantApiKeys from "@/pages/merchant/api-keys";
 import MerchantWebhook from "@/pages/merchant/webhook";
 import MerchantCallbacks from "@/pages/merchant/callbacks";
 import MerchantSettlements from "@/pages/merchant/settlements";
+import MerchantProducts from "@/pages/merchant/products";
+import MerchantConnect from "@/pages/merchant/connect";
+import MerchantApiDocs from "@/pages/merchant/api-docs";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,6 +64,14 @@ function MerchantRoute({ component: Component }: { component: React.ComponentTyp
         <Component />
       </DashboardLayout>
     </ProtectedRoute>
+  );
+}
+
+function PublicPage({ component: Component }: { component: React.ComponentType }) {
+  return (
+    <DashboardLayout publicMode>
+      <Component />
+    </DashboardLayout>
   );
 }
 
@@ -92,6 +106,15 @@ function Router() {
       <Route path="/admin/users">
         <AdminRoute component={AdminUsers} />
       </Route>
+      <Route path="/admin/plans">
+        <AdminRoute component={AdminPlans} />
+      </Route>
+      <Route path="/admin/qr-codes">
+        <AdminRoute component={AdminQrCodes} />
+      </Route>
+      <Route path="/admin/virtual-accounts">
+        <AdminRoute component={AdminVirtualAccounts} />
+      </Route>
 
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard">
@@ -114,6 +137,15 @@ function Router() {
       </Route>
       <Route path="/merchant/settlements">
         <MerchantRoute component={MerchantSettlements} />
+      </Route>
+      <Route path="/merchant/products">
+        <MerchantRoute component={MerchantProducts} />
+      </Route>
+      <Route path="/merchant/connect">
+        <MerchantRoute component={MerchantConnect} />
+      </Route>
+      <Route path="/merchant/api-docs">
+        <PublicPage component={MerchantApiDocs} />
       </Route>
 
       <Route component={NotFound} />

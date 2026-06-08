@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListMerchants, useApproveMerchant, useRejectMerchant, getListMerchantsQueryKey } from "@workspace/api-client-react";
+import { useListMerchants, useApproveMerchant, useRejectMerchant, useListPlans, useAssignMerchantPlan, getListMerchantsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -21,10 +21,14 @@ export default function AdminMerchants() {
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string } | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>("");
 
   const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20 });
+  const { data: plans } = useListPlans();
   const approveMutation = useApproveMerchant();
   const rejectMutation = useRejectMerchant();
+  const assignPlanMutation = useAssignMerchantPlan();
 
   const handleApprove = (id: number) => {
     approveMutation.mutate({ id }, {
@@ -46,6 +50,18 @@ export default function AdminMerchants() {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
       },
       onError: () => toast.error("Failed to reject merchant"),
+    });
+  };
+
+  const handleAssignPlan = () => {
+    if (!assignPlanMerchant || !selectedPlanId) return;
+    assignPlanMutation.mutate({ id: assignPlanMerchant.id, data: { planId: parseInt(selectedPlanId) } }, {
+      onSuccess: () => {
+        toast.success("Plan assigned successfully");
+        setAssignPlanMerchant(null);
+        setSelectedPlanId("");
+      },
+      onError: () => toast.error("Failed to assign plan"),
     });
   };
 
@@ -113,17 +129,21 @@ export default function AdminMerchants() {
                   <TableCell><StatusBadge status={merchant.status} /></TableCell>
                   <TableCell className="text-muted-foreground text-sm">{format(new Date(merchant.createdAt), "MMM d, yyyy")}</TableCell>
                   <TableCell className="text-right">
-                    {merchant.status === "pending" && (
-                      <div className="flex items-center justify-end gap-2">
-                        <Button size="sm" variant="ghost" className="text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10" onClick={() => handleApprove(merchant.id)} disabled={approveMutation.isPending}>
-                          <CheckCircle className="w-4 h-4 mr-1" /> Approve
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10" onClick={() => { setRejectId(merchant.id); setRejectReason(""); }}>
-                          <XCircle className="w-4 h-4 mr-1" /> Reject
-                        </Button>
-                      </div>
-                    )}
-                    {merchant.status !== "pending" && <span className="text-muted-foreground text-xs">&mdash;</span>}
+                    <div className="flex items-center justify-end gap-2">
+                      {merchant.status === "pending" && (
+                        <>
+                          <Button size="sm" variant="ghost" className="text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10" onClick={() => handleApprove(merchant.id)} disabled={approveMutation.isPending}>
+                            <CheckCircle className="w-4 h-4 mr-1" /> Approve
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10" onClick={() => { setRejectId(merchant.id); setRejectReason(""); }}>
+                            <XCircle className="w-4 h-4 mr-1" /> Reject
+                          </Button>
+                        </>
+                      )}
+                      <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => { setAssignPlanMerchant({ id: merchant.id, name: merchant.businessName }); setSelectedPlanId(""); }}>
+                        <CreditCard className="w-4 h-4 mr-1" /> Plan
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -152,6 +172,52 @@ export default function AdminMerchants() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectId(null)}>Cancel</Button>
             <Button variant="destructive" onClick={handleReject} disabled={!rejectReason.trim() || rejectMutation.isPending}>Reject Merchant</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!assignPlanMerchant} onOpenChange={() => { setAssignPlanMerchant(null); setSelectedPlanId(""); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Assign Plan — {assignPlanMerchant?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <Label>Select Plan</Label>
+            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+              <SelectTrigger><SelectValue placeholder="Choose a plan..." /></SelectTrigger>
+              <SelectContent>
+                {plans?.map(plan => (
+                  <SelectItem key={plan.id} value={String(plan.id)}>
+                    {plan.name}
+                    {plan.description ? ` — ${plan.description}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedPlanId && plans && (
+              <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                {(() => {
+                  const plan = plans.find(p => String(p.id) === selectedPlanId);
+                  if (!plan) return null;
+                  let features: string[] = [];
+                  try { features = JSON.parse(plan.features); } catch {}
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">{plan.name}</p>
+                      {features.length > 0 && (
+                        <ul className="text-xs text-muted-foreground space-y-0.5">
+                          {features.slice(0, 4).map((f, i) => <li key={i}>• {f}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAssignPlanMerchant(null); setSelectedPlanId(""); }}>Cancel</Button>
+            <Button onClick={handleAssignPlan} disabled={!selectedPlanId || assignPlanMutation.isPending}>
+              {assignPlanMutation.isPending ? "Assigning..." : "Assign Plan"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

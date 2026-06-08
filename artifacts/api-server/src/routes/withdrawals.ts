@@ -71,7 +71,7 @@ router.post("/", async (req, res) => {
 
 // POST /api/withdrawals/:id/approve
 router.post("/:id/approve", requireAdmin, async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params['id'] as string);
   const [withdrawal] = await db
     .update(withdrawalsTable)
     .set({ status: "approved" })
@@ -86,7 +86,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
 
 // POST /api/withdrawals/:id/reject
 router.post("/:id/reject", requireAdmin, async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params['id'] as string);
   const { reason } = req.body;
   if (!reason) {
     res.status(400).json({ error: "Rejection reason required" });

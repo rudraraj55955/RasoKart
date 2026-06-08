@@ -1,7 +1,8 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetMe } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDownLeft, ArrowUpRight, Activity, Clock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowDownLeft, ArrowUpRight, Activity, Clock, CreditCard } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
 
@@ -9,6 +10,7 @@ export default function MerchantDashboard() {
   const { data: user } = useGetMe();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: chartData, isLoading: chartLoading } = useGetDashboardChart();
+  const { data: myPlan } = useGetMyPlan();
 
   return (
     <div className="space-y-6">
@@ -50,6 +52,57 @@ export default function MerchantDashboard() {
         </div>
       ) : null}
 
+      {myPlan ? (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-primary" />
+              <CardTitle className="text-base">Your Plan</CardTitle>
+              <Badge variant="outline" className="ml-auto text-primary border-primary/40">{myPlan.planName}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {(() => {
+                let pricing: { qr?: { monthly?: number; perTx?: number }; va?: { monthly?: number; perTx?: number } } = {};
+                let features: string[] = [];
+                try { pricing = JSON.parse(myPlan.pricing); } catch {}
+                try { features = JSON.parse(myPlan.features); } catch {}
+                return (
+                  <>
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">QR Pricing</p>
+                      {pricing.qr?.monthly != null && <p className="text-sm">Monthly fee: <span className="font-semibold">₹{pricing.qr.monthly}</span></p>}
+                      {pricing.qr?.perTx != null && <p className="text-sm">Per transaction: <span className="font-semibold">₹{pricing.qr.perTx}</span></p>}
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">VA Pricing</p>
+                      {pricing.va?.monthly != null && <p className="text-sm">Monthly fee: <span className="font-semibold">₹{pricing.va.monthly}</span></p>}
+                      {pricing.va?.perTx != null && <p className="text-sm">Per transaction: <span className="font-semibold">₹{pricing.va.perTx}</span></p>}
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Features</p>
+                      <ul className="space-y-0.5">
+                        {features.slice(0, 4).map((f, i) => (
+                          <li key={i} className="text-sm text-muted-foreground">• {f}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-dashed border-muted-foreground/30">
+          <CardContent className="py-4 flex items-center gap-3 text-muted-foreground">
+            <CreditCard className="w-4 h-4 shrink-0" />
+            <p className="text-sm">No plan assigned yet. Contact support to get started with a plan.</p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Volume (30 Days)</CardTitle>
@@ -71,8 +124,8 @@ export default function MerchantDashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis 
-                  dataKey="date" 
+                <XAxis
+                  dataKey="date"
                   tickFormatter={(val) => format(new Date(val), "MMM d")}
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
@@ -80,7 +133,7 @@ export default function MerchantDashboard() {
                   axisLine={false}
                   dy={10}
                 />
-                <YAxis 
+                <YAxis
                   tickFormatter={(val) => `$${val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val}`}
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
@@ -88,27 +141,27 @@ export default function MerchantDashboard() {
                   axisLine={false}
                   dx={-10}
                 />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}
                   itemStyle={{ color: 'hsl(var(--foreground))' }}
                   labelFormatter={(val) => format(new Date(val), "MMM d, yyyy")}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="deposits" 
+                <Area
+                  type="monotone"
+                  dataKey="deposits"
                   name="Deposits"
-                  stroke="hsl(var(--chart-1))" 
-                  fillOpacity={1} 
-                  fill="url(#colorDeposits)" 
+                  stroke="hsl(var(--chart-1))"
+                  fillOpacity={1}
+                  fill="url(#colorDeposits)"
                   strokeWidth={2}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="withdrawals" 
+                <Area
+                  type="monotone"
+                  dataKey="withdrawals"
                   name="Withdrawals"
-                  stroke="hsl(var(--chart-5))" 
-                  fillOpacity={1} 
-                  fill="url(#colorWithdrawals)" 
+                  stroke="hsl(var(--chart-5))"
+                  fillOpacity={1}
+                  fill="url(#colorWithdrawals)"
                   strokeWidth={2}
                 />
               </AreaChart>

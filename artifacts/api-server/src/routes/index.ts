@@ -10,6 +10,11 @@ import webhooksRouter from "./webhooks";
 import callbacksRouter from "./callbacks";
 import settlementsRouter from "./settlements";
 import usersRouter from "./users";
+import productsRouter from "./products";
+import connectionsRouter from "./connections";
+import plansRouter from "./plans";
+import qrCodesRouter from "./qrCodes";
+import virtualAccountsRouter from "./virtualAccounts";
 
 const router: IRouter = Router();
 
@@ -24,5 +29,10 @@ router.use("/webhooks", webhooksRouter);
 router.use("/callbacks", callbacksRouter);
 router.use("/settlements", settlementsRouter);
 router.use("/users", usersRouter);
+router.use("/products", productsRouter);
+router.use("/connections", connectionsRouter);
+router.use("/plans", plansRouter);
+router.use("/qr-codes", qrCodesRouter);
+router.use("/virtual-accounts", virtualAccountsRouter);
 
 export default router;

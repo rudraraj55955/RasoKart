@@ -1,0 +1,1 @@
+- [Express inline middleware TS2345](express-inline-middleware.md) — inline middleware args cause `req.params[id]` to be `string | string[]`; use `req.params['id'] as string` cast.

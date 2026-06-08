@@ -204,6 +204,26 @@ export const RejectMerchantResponse = zod.object({
 
 
 /**
+ * @summary Assign plan to merchant (admin only)
+ */
+export const AssignMerchantPlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AssignMerchantPlanBody = zod.object({
+  "planId": zod.number()
+})
+
+export const AssignMerchantPlanResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "planId": zod.number(),
+  "planName": zod.string().nullish(),
+  "assignedAt": zod.string()
+})
+
+
+/**
  * @summary List transactions
  */
 export const ListTransactionsQueryParams = zod.object({
@@ -571,6 +591,357 @@ export const DeleteUserParams = zod.object({
 })
 
 export const DeleteUserResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary List merchant products
+ */
+export const ListMerchantProductsResponseItem = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "productType": zod.string(),
+  "enabled": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+export const ListMerchantProductsResponse = zod.array(ListMerchantProductsResponseItem)
+
+
+/**
+ * @summary Enable or disable a merchant product
+ */
+export const ToggleMerchantProductParams = zod.object({
+  "productType": zod.coerce.string()
+})
+
+export const ToggleMerchantProductBody = zod.object({
+  "enabled": zod.boolean()
+})
+
+export const ToggleMerchantProductResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "productType": zod.string(),
+  "enabled": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary List merchant payment provider connections
+ */
+export const ListMerchantConnectionsResponseItem = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "provider": zod.string(),
+  "credentials": zod.string().nullish(),
+  "monthlyLimit": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+export const ListMerchantConnectionsResponse = zod.array(ListMerchantConnectionsResponseItem)
+
+
+/**
+ * @summary Create or update a provider connection
+ */
+export const CreateMerchantConnectionBody = zod.object({
+  "provider": zod.string(),
+  "credentials": zod.string().nullish(),
+  "monthlyLimit": zod.number().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const CreateMerchantConnectionResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "provider": zod.string(),
+  "credentials": zod.string().nullish(),
+  "monthlyLimit": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Update a provider connection
+ */
+export const UpdateMerchantConnectionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateMerchantConnectionBody = zod.object({
+  "provider": zod.string(),
+  "credentials": zod.string().nullish(),
+  "monthlyLimit": zod.number().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateMerchantConnectionResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "provider": zod.string(),
+  "credentials": zod.string().nullish(),
+  "monthlyLimit": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Delete a provider connection
+ */
+export const DeleteMerchantConnectionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteMerchantConnectionResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Get current merchant's assigned plan
+ */
+export const GetMyPlanResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "planId": zod.number(),
+  "planName": zod.string(),
+  "description": zod.string().nullish(),
+  "pricing": zod.string(),
+  "features": zod.string(),
+  "assignedAt": zod.string()
+})
+
+
+/**
+ * @summary List all plans
+ */
+export const ListPlansResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "pricing": zod.string(),
+  "features": zod.string(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+export const ListPlansResponse = zod.array(ListPlansResponseItem)
+
+
+/**
+ * @summary Create a plan (admin only)
+ */
+export const CreatePlanBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "pricing": zod.string(),
+  "features": zod.string()
+})
+
+
+/**
+ * @summary Update a plan (admin only)
+ */
+export const UpdatePlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdatePlanBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "pricing": zod.string(),
+  "features": zod.string()
+})
+
+export const UpdatePlanResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "pricing": zod.string(),
+  "features": zod.string(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Delete a plan (admin only)
+ */
+export const DeletePlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeletePlanResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary List QR codes
+ */
+export const ListQrCodesQueryParams = zod.object({
+  "type": zod.enum(['static', 'dynamic', 'all']).optional(),
+  "status": zod.enum(['active', 'inactive', 'all']).optional(),
+  "search": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.number().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListQrCodesResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "type": zod.enum(['static', 'dynamic']),
+  "label": zod.string().nullish(),
+  "payload": zod.string(),
+  "amount": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive']),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Create QR code
+ */
+export const CreateQrCodeBody = zod.object({
+  "type": zod.enum(['static', 'dynamic']),
+  "label": zod.string().nullish(),
+  "payload": zod.string(),
+  "amount": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update QR code status
+ */
+export const UpdateQrCodeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateQrCodeBody = zod.object({
+  "label": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive']).optional()
+})
+
+export const UpdateQrCodeResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "type": zod.enum(['static', 'dynamic']),
+  "label": zod.string().nullish(),
+  "payload": zod.string(),
+  "amount": zod.string().nullish(),
+  "status": zod.enum(['active', 'inactive']),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Delete QR code
+ */
+export const DeleteQrCodeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteQrCodeResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary List virtual accounts
+ */
+export const ListVirtualAccountsQueryParams = zod.object({
+  "status": zod.enum(['active', 'closed', 'all']).optional(),
+  "search": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.number().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListVirtualAccountsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "accountNumber": zod.string(),
+  "ifsc": zod.string(),
+  "bankName": zod.string(),
+  "accountHolder": zod.string(),
+  "label": zod.string().nullish(),
+  "status": zod.enum(['active', 'closed']),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Create virtual account
+ */
+export const CreateVirtualAccountBody = zod.object({
+  "accountNumber": zod.string(),
+  "ifsc": zod.string(),
+  "bankName": zod.string(),
+  "accountHolder": zod.string(),
+  "label": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update virtual account
+ */
+export const UpdateVirtualAccountParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateVirtualAccountBody = zod.object({
+  "label": zod.string().nullish(),
+  "status": zod.enum(['active', 'closed']).optional()
+})
+
+export const UpdateVirtualAccountResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "accountNumber": zod.string(),
+  "ifsc": zod.string(),
+  "bankName": zod.string(),
+  "accountHolder": zod.string(),
+  "label": zod.string().nullish(),
+  "status": zod.enum(['active', 'closed']),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Delete / close virtual account
+ */
+export const DeleteVirtualAccountParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteVirtualAccountResponse = zod.object({
   "message": zod.string()
 })
 

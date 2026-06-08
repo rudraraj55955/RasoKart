@@ -29,6 +29,16 @@ tags:
     description: User management
   - name: dashboard
     description: Dashboard statistics
+  - name: products
+    description: Merchant products marketplace
+  - name: connections
+    description: Merchant payment provider connections
+  - name: plans
+    description: Subscription plans
+  - name: qr-codes
+    description: QR code management
+  - name: virtual-accounts
+    description: Virtual account management
 paths:
   /healthz:
     get:
@@ -252,6 +262,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Merchant"
+
+  /merchants/{id}/assign-plan:
+    post:
+      operationId: assignMerchantPlan
+      tags: [merchants]
+      summary: Assign plan to merchant (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignPlanInput"
+      responses:
+        "200":
+          description: Plan assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantPlan"
 
   /transactions:
     get:
@@ -665,6 +700,406 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
 
+  /products:
+    get:
+      operationId: listMerchantProducts
+      tags: [products]
+      summary: List merchant products
+      responses:
+        "200":
+          description: List of merchant products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MerchantProduct"
+
+  /products/{productType}:
+    put:
+      operationId: toggleMerchantProduct
+      tags: [products]
+      summary: Enable or disable a merchant product
+      parameters:
+        - name: productType
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleProductInput"
+      responses:
+        "200":
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantProduct"
+
+  /connections:
+    get:
+      operationId: listMerchantConnections
+      tags: [connections]
+      summary: List merchant payment provider connections
+      responses:
+        "200":
+          description: List of connections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MerchantConnection"
+    post:
+      operationId: createMerchantConnection
+      tags: [connections]
+      summary: Create or update a provider connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MerchantConnectionInput"
+      responses:
+        "200":
+          description: Connection saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantConnection"
+
+  /connections/{id}:
+    put:
+      operationId: updateMerchantConnection
+      tags: [connections]
+      summary: Update a provider connection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MerchantConnectionInput"
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantConnection"
+    delete:
+      operationId: deleteMerchantConnection
+      tags: [connections]
+      summary: Delete a provider connection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Connection deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /plans/me:
+    get:
+      operationId: getMyPlan
+      tags: [plans]
+      summary: Get current merchant's assigned plan
+      responses:
+        "200":
+          description: Merchant plan assignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantPlanWithDetails"
+        "404":
+          description: No plan assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /plans:
+    get:
+      operationId: listPlans
+      tags: [plans]
+      summary: List all plans
+      responses:
+        "200":
+          description: List of plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plan"
+    post:
+      operationId: createPlan
+      tags: [plans]
+      summary: Create a plan (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanInput"
+      responses:
+        "201":
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+
+  /plans/{id}:
+    put:
+      operationId: updatePlan
+      tags: [plans]
+      summary: Update a plan (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanInput"
+      responses:
+        "200":
+          description: Plan updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+    delete:
+      operationId: deletePlan
+      tags: [plans]
+      summary: Delete a plan (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Plan deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /qr-codes:
+    get:
+      operationId: listQrCodes
+      tags: [qr-codes]
+      summary: List QR codes
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [static, dynamic, all]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, all]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of QR codes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrCodeListResponse"
+    post:
+      operationId: createQrCode
+      tags: [qr-codes]
+      summary: Create QR code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QrCodeInput"
+      responses:
+        "201":
+          description: QR code created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrCode"
+
+  /qr-codes/{id}:
+    put:
+      operationId: updateQrCode
+      tags: [qr-codes]
+      summary: Update QR code status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QrCodeUpdateInput"
+      responses:
+        "200":
+          description: QR code updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrCode"
+    delete:
+      operationId: deleteQrCode
+      tags: [qr-codes]
+      summary: Delete QR code
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: QR code deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /virtual-accounts:
+    get:
+      operationId: listVirtualAccounts
+      tags: [virtual-accounts]
+      summary: List virtual accounts
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, closed, all]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of virtual accounts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualAccountListResponse"
+    post:
+      operationId: createVirtualAccount
+      tags: [virtual-accounts]
+      summary: Create virtual account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VirtualAccountInput"
+      responses:
+        "201":
+          description: Virtual account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualAccount"
+
+  /virtual-accounts/{id}:
+    put:
+      operationId: updateVirtualAccount
+      tags: [virtual-accounts]
+      summary: Update virtual account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VirtualAccountUpdateInput"
+      responses:
+        "200":
+          description: Virtual account updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualAccount"
+    delete:
+      operationId: deleteVirtualAccount
+      tags: [virtual-accounts]
+      summary: Delete / close virtual account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Virtual account closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -796,6 +1231,28 @@ components:
       required: [reason]
       properties:
         reason:
+          type: string
+
+    AssignPlanInput:
+      type: object
+      required: [planId]
+      properties:
+        planId:
+          type: integer
+
+    MerchantPlan:
+      type: object
+      required: [id, merchantId, planId, assignedAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        planId:
+          type: integer
+        planName:
+          type: ["string", "null"]
+        assignedAt:
           type: string
 
     Transaction:
@@ -1135,3 +1592,246 @@ components:
           type: number
         withdrawals:
           type: number
+
+    MerchantProduct:
+      type: object
+      required: [id, merchantId, productType, enabled, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        productType:
+          type: string
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    ToggleProductInput:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+
+    MerchantConnection:
+      type: object
+      required: [id, merchantId, provider, monthlyLimit, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        provider:
+          type: string
+        credentials:
+          type: ["string", "null"]
+        monthlyLimit:
+          type: number
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    MerchantConnectionInput:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+        credentials:
+          type: ["string", "null"]
+        monthlyLimit:
+          type: number
+        isActive:
+          type: boolean
+
+    Plan:
+      type: object
+      required: [id, name, pricing, features, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        pricing:
+          type: string
+        features:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    MerchantPlanWithDetails:
+      type: object
+      required: [id, merchantId, planId, planName, pricing, features, assignedAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        planId:
+          type: integer
+        planName:
+          type: string
+        description:
+          type: ["string", "null"]
+        pricing:
+          type: string
+        features:
+          type: string
+        assignedAt:
+          type: string
+
+    PlanInput:
+      type: object
+      required: [name, pricing, features]
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        pricing:
+          type: string
+        features:
+          type: string
+
+    QrCode:
+      type: object
+      required: [id, merchantId, type, payload, status, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        merchantName:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [static, dynamic]
+        label:
+          type: ["string", "null"]
+        payload:
+          type: string
+        amount:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    QrCodeInput:
+      type: object
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+          enum: [static, dynamic]
+        label:
+          type: ["string", "null"]
+        payload:
+          type: string
+        amount:
+          type: ["string", "null"]
+
+    QrCodeUpdateInput:
+      type: object
+      properties:
+        label:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive]
+
+    QrCodeListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/QrCode"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    VirtualAccount:
+      type: object
+      required: [id, merchantId, accountNumber, ifsc, bankName, accountHolder, status, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        merchantName:
+          type: ["string", "null"]
+        accountNumber:
+          type: string
+        ifsc:
+          type: string
+        bankName:
+          type: string
+        accountHolder:
+          type: string
+        label:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, closed]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    VirtualAccountInput:
+      type: object
+      required: [accountNumber, ifsc, bankName, accountHolder]
+      properties:
+        accountNumber:
+          type: string
+        ifsc:
+          type: string
+        bankName:
+          type: string
+        accountHolder:
+          type: string
+        label:
+          type: ["string", "null"]
+
+    VirtualAccountUpdateInput:
+      type: object
+      properties:
+        label:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, closed]
+
+    VirtualAccountListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VirtualAccount"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer

@@ -93,6 +93,19 @@ export interface RejectInput {
   reason: string;
 }
 
+export interface AssignPlanInput {
+  planId: number;
+}
+
+export interface MerchantPlan {
+  id: number;
+  merchantId: number;
+  planId: number;
+  /** @nullable */
+  planName?: string | null;
+  assignedAt: string;
+}
+
 export type TransactionType = typeof TransactionType[keyof typeof TransactionType];
 
 
@@ -334,6 +347,194 @@ export interface ChartDataPoint {
   withdrawals: number;
 }
 
+export interface MerchantProduct {
+  id: number;
+  merchantId: number;
+  productType: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ToggleProductInput {
+  enabled: boolean;
+}
+
+export interface MerchantConnection {
+  id: number;
+  merchantId: number;
+  provider: string;
+  /** @nullable */
+  credentials?: string | null;
+  monthlyLimit: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface MerchantConnectionInput {
+  provider: string;
+  /** @nullable */
+  credentials?: string | null;
+  monthlyLimit?: number;
+  isActive?: boolean;
+}
+
+export interface Plan {
+  id: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  pricing: string;
+  features: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface MerchantPlanWithDetails {
+  id: number;
+  merchantId: number;
+  planId: number;
+  planName: string;
+  /** @nullable */
+  description?: string | null;
+  pricing: string;
+  features: string;
+  assignedAt: string;
+}
+
+export interface PlanInput {
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  pricing: string;
+  features: string;
+}
+
+export type QrCodeType = typeof QrCodeType[keyof typeof QrCodeType];
+
+
+export const QrCodeType = {
+  static: 'static',
+  dynamic: 'dynamic',
+} as const;
+
+export type QrCodeStatus = typeof QrCodeStatus[keyof typeof QrCodeStatus];
+
+
+export const QrCodeStatus = {
+  active: 'active',
+  inactive: 'inactive',
+} as const;
+
+export interface QrCode {
+  id: number;
+  merchantId: number;
+  /** @nullable */
+  merchantName?: string | null;
+  type: QrCodeType;
+  /** @nullable */
+  label?: string | null;
+  payload: string;
+  /** @nullable */
+  amount?: string | null;
+  status: QrCodeStatus;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type QrCodeInputType = typeof QrCodeInputType[keyof typeof QrCodeInputType];
+
+
+export const QrCodeInputType = {
+  static: 'static',
+  dynamic: 'dynamic',
+} as const;
+
+export interface QrCodeInput {
+  type: QrCodeInputType;
+  /** @nullable */
+  label?: string | null;
+  payload: string;
+  /** @nullable */
+  amount?: string | null;
+}
+
+export type QrCodeUpdateInputStatus = typeof QrCodeUpdateInputStatus[keyof typeof QrCodeUpdateInputStatus];
+
+
+export const QrCodeUpdateInputStatus = {
+  active: 'active',
+  inactive: 'inactive',
+} as const;
+
+export interface QrCodeUpdateInput {
+  /** @nullable */
+  label?: string | null;
+  status?: QrCodeUpdateInputStatus;
+}
+
+export interface QrCodeListResponse {
+  data: QrCode[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type VirtualAccountStatus = typeof VirtualAccountStatus[keyof typeof VirtualAccountStatus];
+
+
+export const VirtualAccountStatus = {
+  active: 'active',
+  closed: 'closed',
+} as const;
+
+export interface VirtualAccount {
+  id: number;
+  merchantId: number;
+  /** @nullable */
+  merchantName?: string | null;
+  accountNumber: string;
+  ifsc: string;
+  bankName: string;
+  accountHolder: string;
+  /** @nullable */
+  label?: string | null;
+  status: VirtualAccountStatus;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface VirtualAccountInput {
+  accountNumber: string;
+  ifsc: string;
+  bankName: string;
+  accountHolder: string;
+  /** @nullable */
+  label?: string | null;
+}
+
+export type VirtualAccountUpdateInputStatus = typeof VirtualAccountUpdateInputStatus[keyof typeof VirtualAccountUpdateInputStatus];
+
+
+export const VirtualAccountUpdateInputStatus = {
+  active: 'active',
+  closed: 'closed',
+} as const;
+
+export interface VirtualAccountUpdateInput {
+  /** @nullable */
+  label?: string | null;
+  status?: VirtualAccountUpdateInputStatus;
+}
+
+export interface VirtualAccountListResponse {
+  data: VirtualAccount[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export type ListMerchantsParams = {
 status?: ListMerchantsStatus;
 search?: string;
@@ -437,6 +638,50 @@ export type ListUsersRole = typeof ListUsersRole[keyof typeof ListUsersRole];
 export const ListUsersRole = {
   admin: 'admin',
   merchant: 'merchant',
+  all: 'all',
+} as const;
+
+export type ListQrCodesParams = {
+type?: ListQrCodesType;
+status?: ListQrCodesStatus;
+search?: string;
+merchantId?: number;
+page?: number;
+limit?: number;
+};
+
+export type ListQrCodesType = typeof ListQrCodesType[keyof typeof ListQrCodesType];
+
+
+export const ListQrCodesType = {
+  static: 'static',
+  dynamic: 'dynamic',
+  all: 'all',
+} as const;
+
+export type ListQrCodesStatus = typeof ListQrCodesStatus[keyof typeof ListQrCodesStatus];
+
+
+export const ListQrCodesStatus = {
+  active: 'active',
+  inactive: 'inactive',
+  all: 'all',
+} as const;
+
+export type ListVirtualAccountsParams = {
+status?: ListVirtualAccountsStatus;
+search?: string;
+merchantId?: number;
+page?: number;
+limit?: number;
+};
+
+export type ListVirtualAccountsStatus = typeof ListVirtualAccountsStatus[keyof typeof ListVirtualAccountsStatus];
+
+
+export const ListVirtualAccountsStatus = {
+  active: 'active',
+  closed: 'closed',
   all: 'all',
 } as const;
 
