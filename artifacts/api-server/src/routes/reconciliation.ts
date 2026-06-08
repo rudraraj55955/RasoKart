@@ -88,7 +88,15 @@ router.post("/run", async (req, res, next) => {
         .where(and(...sConditions));
 
       // (c) Match: for each settlement find a deposit with same merchantId + matching amount
-      // Use greedy 1:1 matching — each deposit/settlement can only be matched once
+      // Use greedy 1:1 matching — each deposit/settlement can only be matched once.
+      // Deterministic: sort settlements and deposits oldest-first before matching.
+      const sortedSettlements = [...settlements].sort(
+        (a, b) => new Date(a.s.createdAt).getTime() - new Date(b.s.createdAt).getTime()
+      );
+      const sortedDeposits = [...deposits].sort(
+        (a, b) => new Date(a.tx.createdAt!).getTime() - new Date(b.tx.createdAt!).getTime()
+      );
+
       const usedDepositIds = new Set<number>();
       const usedSettlementIds = new Set<number>();
 
@@ -103,16 +111,25 @@ router.post("/run", async (req, res, next) => {
         notes: string | null;
       }[] = [];
 
-      for (const { s } of settlements) {
+      for (const { s } of sortedSettlements) {
         if (usedSettlementIds.has(s.id)) continue;
         const settlementAmt = Number(s.requestedAmount ?? s.amount);
 
-        // Find a matching deposit: same merchant, same amount (within ±0.01 tolerance)
-        const match = deposits.find(({ tx }) =>
-          !usedDepositIds.has(tx.id) &&
-          tx.merchantId === s.merchantId &&
-          Math.abs(Number(tx.amount) - settlementAmt) < 0.01
-        );
+        // If settlement has explicit period bounds, deposit must fall within that window.
+        // Otherwise accept any deposit within the run date range (already pre-filtered).
+        const periodStart = s.periodFrom ? new Date(s.periodFrom + "T00:00:00.000Z") : null;
+        const periodEnd   = s.periodTo   ? new Date(s.periodTo   + "T23:59:59.999Z") : null;
+
+        // Find a matching deposit: same merchant, same amount (±0.01 tolerance),
+        // and deposit.createdAt within settlement's period window (if period is set)
+        const match = sortedDeposits.find(({ tx }) => {
+          if (usedDepositIds.has(tx.id)) return false;
+          if (tx.merchantId !== s.merchantId) return false;
+          if (Math.abs(Number(tx.amount) - settlementAmt) >= 0.01) return false;
+          if (periodStart && tx.createdAt && tx.createdAt < periodStart) return false;
+          if (periodEnd   && tx.createdAt && tx.createdAt > periodEnd)   return false;
+          return true;
+        });
 
         if (match) {
           usedDepositIds.add(match.tx.id);

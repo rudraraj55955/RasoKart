@@ -255,6 +255,7 @@ export default function AdminReconciliation() {
                     <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Matched</th>
                     <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Unmatched</th>
                     <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Matched Amt</th>
+                    <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Unmatched Amt</th>
                     <th className="text-center px-4 py-2.5 text-xs text-muted-foreground font-medium">Status</th>
                     <th className="px-4 py-2.5"></th>
                   </tr>
@@ -277,6 +278,7 @@ export default function AdminReconciliation() {
                         <td className="px-4 py-3 text-right font-mono text-xs text-emerald-400">{run.totalMatched}</td>
                         <td className="px-4 py-3 text-right font-mono text-xs text-orange-400">{run.totalUnmatched}</td>
                         <td className="px-4 py-3 text-right font-mono text-xs">{formatCurrency(run.matchedAmount)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-orange-400/80">{formatCurrency(run.unmatchedAmount)}</td>
                         <td className="px-4 py-3 text-center">
                           <Badge className={`text-[10px] px-1.5 py-0 h-5 gap-1 border ${meta.className}`}>
                             {meta.icon}
