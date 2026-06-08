@@ -7,8 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, X } from "lucide-react";
+import { Download, Search, X } from "lucide-react";
 import { format } from "date-fns";
+import { getToken } from "@/lib/auth";
 
 export default function MerchantTransactions() {
   const [type, setType] = useState("all");
@@ -23,19 +24,29 @@ export default function MerchantTransactions() {
     { query: { enabled: !!utrSearch } as any }
   );
 
-  const exportCsv = () => {
-    if (!data?.data) return;
-    const rows = [["ID", "UTR", "Type", "Status", "Amount", "Currency", "Reference", "Date"]];
-    data.data.forEach(t => rows.push([String(t.id), t.utr, t.type, t.status, String(t.amount), t.currency, t.referenceId || "", t.createdAt]));
-    const csv = rows.map(r => r.join(",")).join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv])); a.download = "transactions.csv"; a.click();
+  const exportCsv = async () => {
+    const params = new URLSearchParams();
+    if (type && type !== "all") params.set("type", type);
+    if (status && status !== "all") params.set("status", status);
+    const url = `/api/transactions/export/csv?${params.toString()}`;
+    const token = getToken();
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "transactions.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div><h1 className="text-3xl font-bold tracking-tight">Transactions</h1><p className="text-muted-foreground mt-1">Your payment history</p></div>
-        <Button variant="outline" size="sm" onClick={exportCsv}>Export CSV</Button>
+        <Button variant="outline" size="sm" onClick={exportCsv}><Download className="w-4 h-4 mr-2" />Export CSV</Button>
       </div>
 
       <Card>

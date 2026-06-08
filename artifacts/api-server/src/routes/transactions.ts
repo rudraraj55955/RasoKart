@@ -214,16 +214,14 @@ router.post("/simulate", async (req, res, next) => {
 // GET /api/transactions/export/csv
 router.get("/export/csv", async (req, res) => {
   const user = (req as any).user;
-  if (user.role !== "admin") {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
   const { type, status, search, merchantId, dateFrom, dateTo } = req.query as Record<string, string>;
 
   const conditions = [];
+  const merchantCond = buildMerchantCondition(user);
+  if (merchantCond) conditions.push(merchantCond);
   if (type && type !== "all") conditions.push(eq(transactionsTable.type, type));
   if (status && status !== "all") conditions.push(eq(transactionsTable.status, status));
-  if (merchantId) conditions.push(eq(transactionsTable.merchantId, parseInt(merchantId)));
+  if (merchantId && user.role === "admin") conditions.push(eq(transactionsTable.merchantId, parseInt(merchantId)));
   if (search) {
     conditions.push(
       or(
