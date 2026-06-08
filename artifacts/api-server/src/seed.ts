@@ -252,39 +252,92 @@ export async function seed() {
   }
   console.log("Settlements seeded");
 
-  // ── Detail data: guard with count to prevent duplicates on re-seed ────────
-  const qrCount = await db.select({ c: count() }).from(qrCodesTable);
-  if (qrCount[0].c === 0) {
-    for (let i = 0; i < 15; i++) {
+  // ── QR codes — merchant-scoped guard to survive re-seeding on existing DBs ──
+  const [m1QrCount] = await db.select({ c: count() }).from(qrCodesTable).where(eq(qrCodesTable.merchantId, m1.id));
+  if (m1QrCount.c === 0) {
+    const qrSamples = [
+      { merchantId: m1.id, type: "dynamic" as const, label: "Checkout QR",       payload: "upi://pay?pa=demo@hdfc&pn=Demo+Business&cu=INR",              amount: null,      status: "active" as const },
+      { merchantId: m1.id, type: "dynamic" as const, label: "Invoice #1001",     payload: "upi://pay?pa=demo@hdfc&pn=Demo+Business&cu=INR&am=2500",      amount: "2500",    status: "active" as const },
+      { merchantId: m1.id, type: "static" as const,  label: "Reception Counter", payload: "upi://pay?pa=demo@hdfc&pn=Demo+Business&cu=INR",              amount: null,      status: "active" as const },
+      { merchantId: m1.id, type: "dynamic" as const, label: "Product Bundle",    payload: "upi://pay?pa=demo@hdfc&pn=Demo+Business&cu=INR&am=1299",      amount: "1299",    status: "active" as const },
+      { merchantId: m1.id, type: "dynamic" as const, label: "Event Ticket",      payload: "upi://pay?pa=demo@hdfc&pn=Demo+Business&cu=INR&am=500",       amount: "500",     status: "inactive" as const },
+      { merchantId: m2.id, type: "dynamic" as const, label: "TechPay Checkout",  payload: "upi://pay?pa=techpay@axis&pn=TechPay+Solutions&cu=INR",       amount: null,      status: "active" as const },
+      { merchantId: m2.id, type: "static" as const,  label: "TechPay Counter",   payload: "upi://pay?pa=techpay@axis&pn=TechPay+Solutions&cu=INR",       amount: null,      status: "active" as const },
+      { merchantId: m2.id, type: "dynamic" as const, label: "Monthly Sub",       payload: "upi://pay?pa=techpay@axis&pn=TechPay+Solutions&cu=INR&am=999", amount: "999",    status: "active" as const },
+    ];
+    for (let i = 0; i < qrSamples.length; i++) {
       await db.insert(qrCodesTable).values({
-        merchantId: i % 2 === 0 ? m1.id : m2.id,
-        type: i % 3 === 0 ? "static" : "dynamic",
-        label: `QR-${i + 1}`,
-        payload: JSON.stringify({ upi: `merchant${i % 2 + 1}@upi`, amount: i % 3 === 0 ? null : 500 + i * 100 }),
-        amount: i % 3 === 0 ? null : String(500 + i * 100),
-        status: i < 12 ? "active" : "inactive",
-        createdAt: new Date(Date.now() - Math.random() * 30 * 86400000),
+        ...qrSamples[i],
+        createdAt: new Date(Date.now() - (qrSamples.length - i) * 3 * 86400000),
       });
     }
   }
   console.log("QR codes seeded");
 
-  const vaCount = await db.select({ c: count() }).from(virtualAccountsTable);
-  if (vaCount[0].c === 0) {
-    for (let i = 0; i < 8; i++) {
+  // ── Virtual accounts — merchant-scoped guard ─────────────────────────────
+  const [m1VaCount] = await db.select({ c: count() }).from(virtualAccountsTable).where(eq(virtualAccountsTable.merchantId, m1.id));
+  if (m1VaCount.c === 0) {
+    const vaSamples = [
+      { merchantId: m1.id, label: "Primary Collection", ifsc: "RPAY0001", accountNumber: "99000068001", bankName: "RPay Virtual Bank", accountHolder: "Demo Business Pvt Ltd", status: "active" as const },
+      { merchantId: m1.id, label: "Secondary Reserve",  ifsc: "RPAY0001", accountNumber: "99000068002", bankName: "RPay Virtual Bank", accountHolder: "Demo Business Pvt Ltd", status: "active" as const },
+      { merchantId: m2.id, label: "TechPay Collection", ifsc: "RPAY0001", accountNumber: "99000069001", bankName: "RPay Virtual Bank", accountHolder: "TechPay Solutions",       status: "active" as const },
+      { merchantId: m2.id, label: "TechPay Reserve",    ifsc: "RPAY0001", accountNumber: "99000069002", bankName: "RPay Virtual Bank", accountHolder: "TechPay Solutions",       status: "active" as const },
+    ];
+    for (let i = 0; i < vaSamples.length; i++) {
       await db.insert(virtualAccountsTable).values({
-        merchantId: i % 2 === 0 ? m1.id : m2.id,
-        label: `VA-${i + 1}`,
-        ifsc: "RPAY0001",
-        accountNumber: `9900000${String(i).padStart(4, "0")}`,
-        bankName: "RPay Virtual Bank",
-        accountHolder: "Demo Merchant",
-        status: "active",
-        createdAt: new Date(Date.now() - Math.random() * 30 * 86400000),
+        ...vaSamples[i],
+        createdAt: new Date(Date.now() - (vaSamples.length - i) * 5 * 86400000),
       });
     }
   }
   console.log("Virtual accounts seeded");
+
+  // ── API Keys — merchant-scoped guard ────────────────────────────────────
+  const [m1KeyCount] = await db.select({ c: count() }).from(apiKeysTable).where(eq(apiKeysTable.merchantId, m1.id));
+  if (m1KeyCount.c === 0) {
+    await db.insert(apiKeysTable).values([
+      {
+        merchantId: m1.id,
+        apiKey: "rpay_live_demo_key_m1_0001",
+        secretKey: "rpay_secret_demo_m1_live_xK9mP2nQ7rL",
+        keyPrefix: "rpay_live_demo",
+        isActive: true,
+        lastUsedAt: new Date(Date.now() - 2 * 86400000),
+      },
+      {
+        merchantId: m1.id,
+        apiKey: "rpay_test_demo_key_m1_0002",
+        secretKey: "rpay_secret_demo_m1_test_yR3wS8vT1uE",
+        keyPrefix: "rpay_test_demo",
+        isActive: true,
+        lastUsedAt: null,
+      },
+      {
+        merchantId: m2.id,
+        apiKey: "rpay_live_demo_key_m2_0001",
+        secretKey: "rpay_secret_demo_m2_live_zF5hJ6kM4nC",
+        keyPrefix: "rpay_live_demo",
+        isActive: true,
+        lastUsedAt: new Date(Date.now() - 5 * 86400000),
+      },
+    ]);
+  }
+
+  // ── Webhooks — upsert config for demo merchants ──────────────────────────
+  await db.insert(webhooksTable).values({
+    merchantId: m1.id,
+    url: "https://demo-business.example.com/webhooks/rpay",
+    isActive: true,
+    events: ["payment.success", "payment.failed", "settlement.paid", "settlement.approved"],
+    secret: "whsec_demo_m1_rpay_xK9mP2nQ7rL3wS8",
+  }).onConflictDoUpdate({
+    target: webhooksTable.merchantId,
+    set: {
+      url: "https://demo-business.example.com/webhooks/rpay",
+      isActive: true,
+      events: ["payment.success", "payment.failed", "settlement.paid", "settlement.approved"],
+    },
+  });
 
   const txToday = await db.select({ c: count() }).from(transactionsTable)
     .where(and(eq(transactionsTable.merchantId, m1.id), eq(transactionsTable.type, "deposit")));
