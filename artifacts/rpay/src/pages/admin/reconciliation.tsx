@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2 } from "lucide-react";
 import { toast } from "sonner";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 
 async function apiPost(path: string, body: object) {
   const res = await fetch(`/api${path}`, {
@@ -17,7 +17,12 @@ async function apiPost(path: string, body: object) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = text;
+    try { msg = JSON.parse(text).error ?? text; } catch {}
+    throw new Error(msg);
+  }
   return res.json();
 }
 
@@ -47,14 +52,80 @@ const STATUS_META: Record<string, { label: string; className: string; icon: Reac
   },
 };
 
-const ITEM_STATUS_META: Record<string, { label: string; className: string }> = {
-  matched: { label: "Matched", className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
-  unmatched_deposit: { label: "Unmatched Deposit", className: "bg-orange-500/10 text-orange-400 border-orange-500/30" },
-  unmatched_settlement: { label: "Unmatched Settlement", className: "bg-red-500/10 text-red-400 border-red-500/30" },
-};
+function formatCurrency(v: number | string) {
+  return `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
-function formatCurrency(v: number) {
-  return `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function MatchedPairCard({ item }: { item: any }) {
+  return (
+    <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1">
+          <CheckCircle2 className="w-2.5 h-2.5" /> Matched
+        </Badge>
+        <span className="font-mono text-sm font-semibold">{formatCurrency(item.amount)}</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">{item.merchantName ?? `Merchant #${item.merchantId}`}</p>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        {/* Deposit side */}
+        <div className="bg-muted/40 rounded px-2 py-1.5 min-w-0">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Deposit</p>
+          {item.transaction ? (
+            <p className="font-mono text-xs text-foreground truncate">UTR: {item.transaction.utr}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground/50">—</p>
+          )}
+        </div>
+        {/* Link icon */}
+        <Link2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        {/* Settlement side */}
+        <div className="bg-muted/40 rounded px-2 py-1.5 min-w-0">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Settlement</p>
+          {item.settlement ? (
+            <p className="font-mono text-xs text-foreground truncate">
+              #{item.settlement.id}
+              {item.settlement.referenceNumber ? ` · ${item.settlement.referenceNumber}` : ""}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground/50">—</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnmatchedCard({ item }: { item: any }) {
+  const isDeposit = item.status === "unmatched_deposit";
+  return (
+    <div className={`rounded-md border p-3 text-sm ${
+      isDeposit
+        ? "border-orange-500/20 bg-orange-500/5"
+        : "border-red-500/20 bg-red-500/5"
+    }`}>
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <Badge className={`text-[10px] px-1.5 py-0 h-4 border gap-1 ${
+          isDeposit
+            ? "bg-orange-500/10 text-orange-400 border-orange-500/30"
+            : "bg-red-500/10 text-red-400 border-red-500/30"
+        }`}>
+          {isDeposit ? <ArrowRightLeft className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
+          {isDeposit ? "Unmatched Deposit" : "Unmatched Settlement"}
+        </Badge>
+        <span className="font-mono text-sm font-semibold">{formatCurrency(item.amount)}</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-1.5">{item.merchantName ?? `Merchant #${item.merchantId}`}</p>
+      {isDeposit && item.transaction ? (
+        <p className="text-xs text-muted-foreground font-mono">UTR: {item.transaction.utr}</p>
+      ) : !isDeposit && item.settlement ? (
+        <p className="text-xs text-muted-foreground">
+          Settlement #{item.settlement.id} · {item.settlement.status}
+          {item.settlement.referenceNumber ? ` · Ref: ${item.settlement.referenceNumber}` : ""}
+        </p>
+      ) : null}
+      {item.notes && <p className="text-xs text-muted-foreground/60 mt-1">{item.notes}</p>}
+    </div>
+  );
 }
 
 export default function AdminReconciliation() {
@@ -65,8 +136,6 @@ export default function AdminReconciliation() {
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
   const [dateTo, setDateTo] = useState(today);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [detailPage, setDetailPage] = useState(1);
-  const [detailStatusFilter, setDetailStatusFilter] = useState("all");
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["/api/reconciliation/runs"],
@@ -74,9 +143,10 @@ export default function AdminReconciliation() {
     refetchInterval: 5000,
   });
 
+  // Fetch ALL items for the detail view (up to 200) — split client-side into columns
   const detailQuery = useQuery({
-    queryKey: ["/api/reconciliation/runs", selectedRunId, "items", detailPage, detailStatusFilter],
-    queryFn: () => apiGet(`/reconciliation/runs/${selectedRunId}/items?limit=50&page=${detailPage}&status=${detailStatusFilter}`),
+    queryKey: ["/api/reconciliation/runs", selectedRunId, "items"],
+    queryFn: () => apiGet(`/reconciliation/runs/${selectedRunId}/items?limit=200`),
     enabled: !!selectedRunId,
   });
 
@@ -92,9 +162,10 @@ export default function AdminReconciliation() {
 
   const runs = data?.data ?? [];
   const selectedRun = detailQuery.data?.run;
-  const detailItems = detailQuery.data?.data ?? [];
-  const detailTotal = detailQuery.data?.total ?? 0;
-  const detailTotalPages = Math.max(1, Math.ceil(detailTotal / 50));
+  const allItems: any[] = detailQuery.data?.data ?? [];
+
+  const matchedItems = allItems.filter(i => i.status === "matched");
+  const unmatchedItems = allItems.filter(i => i.status !== "matched");
 
   return (
     <div className="space-y-6">
@@ -151,7 +222,7 @@ export default function AdminReconciliation() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-3">
-            Matches all successful deposits to approved/paid settlements in the selected period.
+            Matches successful deposits to approved/paid settlements. Settlements with period bounds are matched by overlap; others by creation date.
           </p>
         </CardContent>
       </Card>
@@ -217,7 +288,7 @@ export default function AdminReconciliation() {
                             variant="ghost"
                             size="sm"
                             className="h-7 gap-1 text-xs"
-                            onClick={() => { setSelectedRunId(run.id); setDetailPage(1); setDetailStatusFilter("all"); }}
+                            onClick={() => setSelectedRunId(run.id)}
                           >
                             Details <ChevronRight className="w-3 h-3" />
                           </Button>
@@ -232,9 +303,9 @@ export default function AdminReconciliation() {
         </CardContent>
       </Card>
 
-      {/* Detail Dialog */}
+      {/* Detail Dialog — two-column: matched pairs | unmatched items */}
       <Dialog open={!!selectedRunId} onOpenChange={open => !open && setSelectedRunId(null)}>
-        <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-6xl max-h-[88vh] flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <GitMerge className="w-4 h-4 text-primary" />
@@ -242,12 +313,21 @@ export default function AdminReconciliation() {
             </DialogTitle>
           </DialogHeader>
 
+          {/* Run summary */}
           {selectedRun && (
-            <div className="grid grid-cols-4 gap-3 pb-3 border-b border-border/50">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-border/50 pb-4">
               {[
                 { label: "Period", value: `${selectedRun.dateFrom} → ${selectedRun.dateTo}` },
-                { label: "Matched", value: `${selectedRun.totalMatched} (${formatCurrency(selectedRun.matchedAmount)})`, highlight: "text-emerald-400" },
-                { label: "Unmatched", value: `${selectedRun.totalUnmatched}`, highlight: "text-orange-400" },
+                {
+                  label: "Matched",
+                  value: `${selectedRun.totalMatched} items · ${formatCurrency(selectedRun.matchedAmount)}`,
+                  highlight: "text-emerald-400",
+                },
+                {
+                  label: "Unmatched",
+                  value: `${selectedRun.totalUnmatched} items · ${formatCurrency(selectedRun.unmatchedAmount)}`,
+                  highlight: "text-orange-400",
+                },
                 { label: "Status", value: STATUS_META[selectedRun.status]?.label ?? selectedRun.status },
               ].map(s => (
                 <div key={s.label} className="rounded-md border border-border/50 bg-muted/20 px-3 py-2">
@@ -258,102 +338,56 @@ export default function AdminReconciliation() {
             </div>
           )}
 
-          {/* Filter chips */}
-          <div className="flex gap-2 flex-wrap">
-            {["all", "matched", "unmatched_deposit", "unmatched_settlement"].map(f => (
-              <button
-                key={f}
-                onClick={() => { setDetailStatusFilter(f); setDetailPage(1); }}
-                className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                  detailStatusFilter === f
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border/60 text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {f === "all" ? "All" : ITEM_STATUS_META[f]?.label ?? f}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 overflow-y-auto min-h-0">
-            {detailQuery.isLoading ? (
-              <div className="py-10 text-center text-muted-foreground text-sm">Loading items…</div>
-            ) : detailItems.length === 0 ? (
-              <div className="py-10 text-center text-muted-foreground text-sm">No items for this filter.</div>
-            ) : (
-              <div className="space-y-2">
-                {detailItems.map((item: any) => {
-                  const meta = ITEM_STATUS_META[item.status];
-                  const isMatched = item.status === "matched";
-                  return (
-                    <div
-                      key={item.id}
-                      className={`rounded-md border p-3 text-sm ${
-                        isMatched ? "border-emerald-500/20 bg-emerald-500/5" :
-                        item.status === "unmatched_deposit" ? "border-orange-500/20 bg-orange-500/5" :
-                        "border-red-500/20 bg-red-500/5"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <Badge className={`text-[10px] px-1.5 py-0 h-4 border shrink-0 ${meta?.className}`}>
-                            {meta?.label}
-                          </Badge>
-                          <span className="text-muted-foreground text-xs truncate">
-                            {item.merchantName ?? `Merchant #${item.merchantId}`}
-                          </span>
-                        </div>
-                        <span className="font-mono text-sm font-medium shrink-0">{formatCurrency(item.amount)}</span>
-                      </div>
-
-                      {isMatched && item.transaction && item.settlement ? (
-                        <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                          <div className="flex items-center gap-1.5 bg-muted/40 rounded px-2 py-1">
-                            <ArrowRightLeft className="w-3 h-3 text-blue-400" />
-                            <span>Deposit UTR: <span className="font-mono text-foreground">{item.transaction.utr}</span></span>
-                          </div>
-                          <span className="text-muted-foreground/40">↔</span>
-                          <div className="flex items-center gap-1.5 bg-muted/40 rounded px-2 py-1">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                            <span>Settlement #{item.settlement.id}
-                              {item.settlement.referenceNumber ? ` · Ref: ${item.settlement.referenceNumber}` : ""}
-                            </span>
-                          </div>
-                        </div>
-                      ) : item.transaction ? (
-                        <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
-                          <ArrowRightLeft className="w-3 h-3 text-orange-400" />
-                          <span>Deposit UTR: <span className="font-mono text-foreground">{item.transaction.utr}</span></span>
-                          {item.transaction.createdAt && (
-                            <span className="text-muted-foreground/60">· {format(new Date(item.transaction.createdAt), "dd MMM yyyy")}</span>
-                          )}
-                        </div>
-                      ) : item.settlement ? (
-                        <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
-                          <Clock className="w-3 h-3 text-red-400" />
-                          <span>Settlement #{item.settlement.id} ({item.settlement.status})</span>
-                          {item.settlement.referenceNumber && (
-                            <span>· Ref: {item.settlement.referenceNumber}</span>
-                          )}
-                        </div>
-                      ) : null}
-
-                      {item.notes && (
-                        <p className="mt-1.5 text-xs text-muted-foreground/70">{item.notes}</p>
-                      )}
+          {/* Two-column body */}
+          {detailQuery.isLoading ? (
+            <div className="py-10 text-center text-muted-foreground text-sm">Loading items…</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-hidden min-h-0">
+              {/* Left column — Matched pairs */}
+              <div className="flex flex-col min-h-0">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <h3 className="text-sm font-semibold">Matched Pairs</h3>
+                  <Badge className="text-[10px] px-1.5 py-0 h-4 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 ml-auto">
+                    {matchedItems.length}
+                  </Badge>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                  {matchedItems.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground text-xs border border-dashed border-border/40 rounded-md">
+                      No matched pairs in this run
                     </div>
-                  );
-                })}
+                  ) : (
+                    matchedItems.map((item: any) => (
+                      <MatchedPairCard key={item.id} item={item} />
+                    ))
+                  )}
+                </div>
               </div>
-            )}
-          </div>
 
-          {detailTotalPages > 1 && (
-            <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/50">
-              <span>Page {detailPage} of {detailTotalPages} · {detailTotal} items</span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="h-7" disabled={detailPage <= 1} onClick={() => setDetailPage(p => p - 1)}>Prev</Button>
-                <Button variant="outline" size="sm" className="h-7" disabled={detailPage >= detailTotalPages} onClick={() => setDetailPage(p => p + 1)}>Next</Button>
+              {/* Divider */}
+              <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-border/40 pointer-events-none" aria-hidden />
+
+              {/* Right column — Unmatched items */}
+              <div className="flex flex-col min-h-0">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-4 h-4 text-orange-400" />
+                  <h3 className="text-sm font-semibold">Unmatched Items</h3>
+                  <Badge className="text-[10px] px-1.5 py-0 h-4 bg-orange-500/10 text-orange-400 border border-orange-500/30 ml-auto">
+                    {unmatchedItems.length}
+                  </Badge>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                  {unmatchedItems.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground text-xs border border-dashed border-border/40 rounded-md">
+                      All items matched — no discrepancies
+                    </div>
+                  ) : (
+                    unmatchedItems.map((item: any) => (
+                      <UnmatchedCard key={item.id} item={item} />
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           )}

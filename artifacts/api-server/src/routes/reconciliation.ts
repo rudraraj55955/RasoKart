@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTable, settlementsTable, merchantsTable } from "@workspace/db";
-import { eq, and, gte, lte, inArray, sql, count, sum } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, sql, count, or, isNull, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -57,11 +57,28 @@ router.post("/run", async (req, res, next) => {
         .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
         .where(and(...txConditions));
 
-      // (b) Fetch all approved/paid settlements overlapping the period
+      // (b) Fetch all approved/paid settlements overlapping the period.
+      // Overlap logic:
+      //   - If settlement has periodFrom+periodTo: it overlaps if periodFrom <= dateTo AND periodTo >= dateFrom
+      //   - If period bounds are null: fall back to createdAt within range
+      const periodOverlap = or(
+        // Has explicit period bounds — use overlap check
+        and(
+          isNotNull(settlementsTable.periodFrom),
+          isNotNull(settlementsTable.periodTo),
+          lte(settlementsTable.periodFrom, dateTo),   // settlement starts before or on run end
+          gte(settlementsTable.periodTo, dateFrom),    // settlement ends on or after run start
+        ),
+        // No period bounds — fall back to createdAt filter
+        and(
+          isNull(settlementsTable.periodFrom),
+          gte(settlementsTable.createdAt, fromDate),
+          lte(settlementsTable.createdAt, toDate),
+        ),
+      );
       const sConditions = [
         sql`${settlementsTable.status} IN ('approved', 'paid')`,
-        gte(settlementsTable.createdAt, fromDate),
-        lte(settlementsTable.createdAt, toDate),
+        periodOverlap!,
       ];
       if (parsedMerchantId) sConditions.push(eq(settlementsTable.merchantId, parsedMerchantId));
 
