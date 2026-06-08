@@ -1,9 +1,9 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, CheckCircle2, XCircle } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
 import { Link } from "wouter";
@@ -36,12 +36,42 @@ function UsageRow({ label, used, limit }: UsageRowProps) {
   );
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  upi_id:        "UPI ID",
+  google_pay:    "Google Pay",
+  phonepe:       "PhonePe",
+  paytm:         "Paytm",
+  bharatpe:      "BharatPe",
+  freecharge:    "FreeCharge",
+  yono_sbi:      "YONO SBI",
+  hdfc_smarthub: "HDFC SmartHub",
+};
+
+function getVpa(credentials: string | null | undefined): string | null {
+  if (!credentials) return null;
+  if (credentials.includes("@")) return credentials.trim();
+  try {
+    const parsed = JSON.parse(credentials);
+    const vpa = parsed.vpa ?? parsed.upi_id ?? parsed.virtualAddress ?? null;
+    return typeof vpa === "string" ? vpa : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function MerchantDashboard() {
   const { data: user } = useGetMe();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: chartData, isLoading: chartLoading } = useGetDashboardChart();
   const { data: myPlan } = useGetMyPlan();
   const { data: usage } = useGetMyPlanUsage();
+  const { data: connectionsRaw, isLoading: connectionsLoading } = useListMerchantConnections();
+  const connections = Array.isArray(connectionsRaw) ? connectionsRaw : [];
+  const activeConnections = connections.filter(c => c.isActive);
+
+  const monthlyUsed = chartData
+    ? chartData.reduce((sum, d) => sum + ((d as any).deposits ?? 0), 0)
+    : null;
 
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
 
@@ -114,6 +144,104 @@ export default function MerchantDashboard() {
             <Link href="/merchant/plan">
               <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 shrink-0">View Plan</Button>
             </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Provider Status */}
+      {connectionsLoading ? (
+        <Card className="animate-pulse h-28 bg-muted/30" />
+      ) : activeConnections.length === 0 ? (
+        <Card className="border-dashed border-muted-foreground/30">
+          <CardContent className="py-4 flex items-center gap-3">
+            <Plug className="w-4 h-4 shrink-0 text-muted-foreground" />
+            <div className="flex-1">
+              <p className="text-sm text-muted-foreground">No payment provider connected.</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Connect a provider to start collecting payments.</p>
+            </div>
+            <Link href="/merchant/connect">
+              <Button size="sm" variant="outline" className="shrink-0">Connect Provider</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-emerald-500/20 bg-emerald-950/10">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Plug className="w-4 h-4 text-emerald-400" />
+              <CardTitle className="text-base">Provider Status</CardTitle>
+              <Badge variant="outline" className="ml-1 text-emerald-400 border-emerald-500/30">
+                {activeConnections.length} Active
+              </Badge>
+              <Link href="/merchant/connect" className="ml-auto">
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
+                  Manage <ChevronRight className="w-3 h-3 ml-0.5" />
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-4">
+            {activeConnections.map(conn => {
+              const label = PROVIDER_LABELS[conn.provider] ?? conn.provider;
+              const vpa = getVpa(conn.credentials);
+              const limit = conn.monthlyLimit;
+              const used = monthlyUsed ?? 0;
+              const hasLimit = limit > 0;
+              const pct = hasLimit ? Math.min(100, (used / limit) * 100) : 0;
+              const isNearLimit = hasLimit && pct >= 80;
+              const isAtLimit = hasLimit && used >= limit;
+              return (
+                <div key={conn.id} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="text-sm font-medium">{label}</span>
+                    {vpa && (
+                      <span className="text-xs text-muted-foreground font-mono bg-muted/40 px-1.5 py-0.5 rounded">
+                        {vpa}
+                      </span>
+                    )}
+                    {!conn.isActive && (
+                      <Badge variant="outline" className="text-xs text-rose-400 border-rose-500/30 ml-auto">Inactive</Badge>
+                    )}
+                  </div>
+                  {hasLimit ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Monthly limit usage</span>
+                        <span className={`tabular-nums font-medium ${isAtLimit ? "text-rose-400" : isNearLimit ? "text-amber-400" : "text-foreground"}`}>
+                          ₹{Math.round(used).toLocaleString()} / ₹{limit.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted/50">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${isAtLimit ? "bg-rose-500" : isNearLimit ? "bg-amber-400" : "bg-emerald-500"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      {isAtLimit && (
+                        <p className="text-xs text-rose-400">Monthly limit reached. Payments may be restricted.</p>
+                      )}
+                      {isNearLimit && !isAtLimit && (
+                        <p className="text-xs text-amber-400">Approaching monthly limit.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground pl-5">No monthly limit set</p>
+                  )}
+                </div>
+              );
+            })}
+            {connections.filter(c => !c.isActive).length > 0 && (
+              <div className="pt-1 border-t border-border/40">
+                {connections.filter(c => !c.isActive).map(conn => (
+                  <div key={conn.id} className="flex items-center gap-2 py-1">
+                    <XCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground">{PROVIDER_LABELS[conn.provider] ?? conn.provider}</span>
+                    <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/20 ml-1">Inactive</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
