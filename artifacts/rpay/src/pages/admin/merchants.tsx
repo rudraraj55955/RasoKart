@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListMerchants, useApproveMerchant, useRejectMerchant, useListPlans, useAssignMerchantPlan, getListMerchantsQueryKey } from "@workspace/api-client-react";
+import { useListMerchants, useApproveMerchant, useRejectMerchant, useListPlans, useAssignMerchantPlan, useGetMerchantPlan, getListMerchantsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,10 @@ export default function AdminMerchants() {
 
   const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20 });
   const { data: plans } = useListPlans();
+  const { data: currentMerchantPlan, isLoading: planLoading } = useGetMerchantPlan(
+    assignPlanMerchant?.id ?? 0,
+    { query: { enabled: !!assignPlanMerchant, queryKey: ["getMerchantPlan", assignPlanMerchant?.id ?? 0] } }
+  );
   const approveMutation = useApproveMerchant();
   const rejectMutation = useRejectMerchant();
   const assignPlanMutation = useAssignMerchantPlan();
@@ -180,18 +184,36 @@ export default function AdminMerchants() {
         <DialogContent>
           <DialogHeader><DialogTitle>Assign Plan — {assignPlanMerchant?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <Label>Select Plan</Label>
-            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
-              <SelectTrigger><SelectValue placeholder="Choose a plan..." /></SelectTrigger>
-              <SelectContent>
-                {plans?.map(plan => (
-                  <SelectItem key={plan.id} value={String(plan.id)}>
-                    {plan.name}
-                    {plan.description ? ` — ${plan.description}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {planLoading ? (
+              <div className="rounded-lg border border-border/50 bg-muted/10 p-3 animate-pulse h-12" />
+            ) : currentMerchantPlan ? (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-primary shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Current Plan</p>
+                  <p className="text-sm font-semibold">{currentMerchantPlan.planName}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/5 p-3 flex items-center gap-2 text-muted-foreground">
+                <CreditCard className="w-4 h-4 shrink-0" />
+                <p className="text-xs">No plan currently assigned</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>{currentMerchantPlan ? "Change Plan" : "Select Plan"}</Label>
+              <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+                <SelectTrigger><SelectValue placeholder="Choose a plan..." /></SelectTrigger>
+                <SelectContent>
+                  {plans?.map(plan => (
+                    <SelectItem key={plan.id} value={String(plan.id)}>
+                      {plan.name}
+                      {plan.description ? ` — ${plan.description}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {selectedPlanId && plans && (
               <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
                 {(() => {
@@ -216,7 +238,7 @@ export default function AdminMerchants() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAssignPlanMerchant(null); setSelectedPlanId(""); }}>Cancel</Button>
             <Button onClick={handleAssignPlan} disabled={!selectedPlanId || assignPlanMutation.isPending}>
-              {assignPlanMutation.isPending ? "Assigning..." : "Assign Plan"}
+              {assignPlanMutation.isPending ? "Assigning..." : currentMerchantPlan ? "Change Plan" : "Assign Plan"}
             </Button>
           </DialogFooter>
         </DialogContent>

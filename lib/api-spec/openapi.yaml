@@ -219,6 +219,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /merchants/{id}/plan:
+    get:
+      operationId: getMerchantPlan
+      tags: [merchants]
+      summary: Get current plan assignment for a merchant (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Merchant plan assignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantPlanWithDetails"
+        "404":
+          description: No plan assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /merchants/{id}/approve:
     post:
       operationId: approveMerchant

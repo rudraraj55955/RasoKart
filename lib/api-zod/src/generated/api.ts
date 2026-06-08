@@ -154,6 +154,25 @@ export const GetMerchantResponse = zod.object({
 
 
 /**
+ * @summary Get current plan assignment for a merchant (admin only)
+ */
+export const GetMerchantPlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetMerchantPlanResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "planId": zod.number(),
+  "planName": zod.string(),
+  "description": zod.string().nullish(),
+  "pricing": zod.string(),
+  "features": zod.string(),
+  "assignedAt": zod.string()
+})
+
+
+/**
  * @summary Approve merchant
  */
 export const ApproveMerchantParams = zod.object({

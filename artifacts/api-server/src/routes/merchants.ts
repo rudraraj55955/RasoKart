@@ -104,6 +104,33 @@ router.post("/:id/reject", async (req, res) => {
   });
 });
 
+// GET /api/merchants/:id/plan (admin: view current plan assignment)
+router.get("/:id/plan", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const rows = await db
+    .select({ mp: merchantPlansTable, plan: plansTable })
+    .from(merchantPlansTable)
+    .leftJoin(plansTable, eq(merchantPlansTable.planId, plansTable.id))
+    .where(eq(merchantPlansTable.merchantId, id))
+    .limit(1);
+
+  if (rows.length === 0 || !rows[0].plan) {
+    res.status(404).json({ error: "No plan assigned" });
+    return;
+  }
+  const { mp, plan } = rows[0];
+  res.json({
+    id: mp.id,
+    merchantId: mp.merchantId,
+    planId: mp.planId,
+    planName: plan!.name,
+    description: plan!.description ?? null,
+    pricing: plan!.pricing,
+    features: plan!.features,
+    assignedAt: mp.assignedAt,
+  });
+});
+
 // POST /api/merchants/:id/assign-plan
 router.post("/:id/assign-plan", async (req, res) => {
   const id = parseInt(req.params.id);

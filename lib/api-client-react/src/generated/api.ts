@@ -776,6 +776,83 @@ export function useGetMerchant<TData = Awaited<ReturnType<typeof getMerchant>>, 
 
 
 
+export const getGetMerchantPlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/plan`
+}
+
+/**
+ * @summary Get current plan assignment for a merchant (admin only)
+ */
+export const getMerchantPlan = async (id: number, options?: RequestInit): Promise<MerchantPlanWithDetails> => {
+
+  return customFetch<MerchantPlanWithDetails>(getGetMerchantPlanUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMerchantPlanQueryKey = (id: number,) => {
+    return [
+    `/api/merchants/${id}/plan`
+    ] as const;
+    }
+
+
+export const getGetMerchantPlanQueryOptions = <TData = Awaited<ReturnType<typeof getMerchantPlan>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMerchantPlanQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMerchantPlan>>> = ({ signal }) => getMerchantPlan(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlan>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMerchantPlanQueryResult = NonNullable<Awaited<ReturnType<typeof getMerchantPlan>>>
+export type GetMerchantPlanQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get current plan assignment for a merchant (admin only)
+ */
+
+export function useGetMerchantPlan<TData = Awaited<ReturnType<typeof getMerchantPlan>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMerchantPlanQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getApproveMerchantUrl = (id: number,) => {
 
 

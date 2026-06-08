@@ -168,7 +168,7 @@ export default function AdminApiMonitoring() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {format(new Date(err.createdAt), "MMM d, HH:mm")}
+                            {err.createdAt ? format(new Date(err.createdAt), "MMM d, HH:mm") : "—"}
                           </TableCell>
                         </TableRow>
                       ))}
