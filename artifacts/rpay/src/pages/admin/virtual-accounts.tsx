@@ -12,9 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle } from "lucide-react";
+import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { QRCodeCanvas } from "qrcode.react";
+import { buildUpiId, buildUpiUrl } from "@/lib/upi";
 
 type VaRow = {
   id: number;
@@ -120,6 +122,20 @@ export default function AdminVirtualAccounts() {
 
   const txList = historyData?.data ?? [];
   const txCount = txList.length;
+
+  const handleCopyUpiId = (va: VaRow) => {
+    const upiId = buildUpiId(va.accountNumber, va.ifsc);
+    navigator.clipboard.writeText(upiId).then(() => toast.success("UPI ID copied to clipboard"));
+  };
+
+  const handleDownloadQr = (va: VaRow) => {
+    const canvas = document.getElementById(`admin-va-qr-${va.id}`) as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.download = `va-qr-${va.accountNumber}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
 
   return (
     <div className="space-y-6">
@@ -363,6 +379,54 @@ export default function AdminVirtualAccounts() {
               </Card>
             </div>
           )}
+
+          {/* UPI QR Code */}
+          {selectedVa && (
+            <Card className="mb-5 border-primary/20 bg-primary/5">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-start gap-5">
+                  <div className="shrink-0 p-2 bg-white rounded-lg">
+                    <QRCodeCanvas
+                      id={`admin-va-qr-${selectedVa.id}`}
+                      value={buildUpiUrl(selectedVa.accountNumber, selectedVa.ifsc, selectedVa.accountHolder)}
+                      size={108}
+                      level="M"
+                      includeMargin={false}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <QrCode className="w-4 h-4 text-primary" />
+                      <p className="text-sm font-semibold">UPI Payment QR</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Merchant can scan or share this QR to receive payments into this virtual account.
+                    </p>
+                    <div className="bg-muted/60 rounded-md px-3 py-2 mb-3">
+                      <p className="text-xs text-muted-foreground mb-0.5">UPI ID</p>
+                      <p className="font-mono text-sm font-medium break-all">
+                        {buildUpiId(selectedVa.accountNumber, selectedVa.ifsc)}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5"
+                        onClick={() => handleCopyUpiId(selectedVa)}>
+                        <Copy className="w-3.5 h-3.5" />
+                        Copy UPI ID
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5"
+                        onClick={() => handleDownloadQr(selectedVa)}>
+                        <Download className="w-3.5 h-3.5" />
+                        Download QR
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <p className="text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Transaction History</p>
 
           {historyLoading ? (
             <div className="space-y-2">
