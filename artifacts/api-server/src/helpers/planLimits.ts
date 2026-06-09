@@ -1,5 +1,5 @@
 import { db, merchantPlansTable, plansTable, qrCodesTable, virtualAccountsTable, withdrawalsTable, transactionsTable, notificationsTable, paymentLinksTable } from "@workspace/db";
-import { eq, and, count, ne, gte, sql } from "drizzle-orm";
+import { eq, and, count, ne, gte, sql, notInArray } from "drizzle-orm";
 import type { Response } from "express";
 import { createNotification } from "./notifications";
 
@@ -61,7 +61,7 @@ export async function checkPlanLimit(
       limit = plan.dynamicQrLimit;
       label = "Dynamic QR codes";
       const [{ total }] = await db.select({ total: count() }).from(qrCodesTable)
-        .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "dynamic"), ne(qrCodesTable.status, "expired")));
+        .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "dynamic"), notInArray(qrCodesTable.status, ["expired", "used"])));
       used = total;
       break;
     }
@@ -69,7 +69,7 @@ export async function checkPlanLimit(
       limit = plan.staticQrLimit;
       label = "Static QR codes";
       const [{ total }] = await db.select({ total: count() }).from(qrCodesTable)
-        .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "static"), ne(qrCodesTable.status, "expired")));
+        .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "static"), notInArray(qrCodesTable.status, ["expired", "used"])));
       used = total;
       break;
     }
@@ -166,9 +166,9 @@ export async function getMerchantPlanUsage(merchantId: number) {
   const { plan, mp } = result;
 
   const [dynamicQrCount] = await db.select({ total: count() }).from(qrCodesTable)
-    .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "dynamic"), ne(qrCodesTable.status, "expired")));
+    .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "dynamic"), notInArray(qrCodesTable.status, ["expired", "used"])));
   const [staticQrCount] = await db.select({ total: count() }).from(qrCodesTable)
-    .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "static"), ne(qrCodesTable.status, "expired")));
+    .where(and(eq(qrCodesTable.merchantId, merchantId), eq(qrCodesTable.type, "static"), notInArray(qrCodesTable.status, ["expired", "used"])));
   const [vaCount] = await db.select({ total: count() }).from(virtualAccountsTable)
     .where(and(eq(virtualAccountsTable.merchantId, merchantId), eq(virtualAccountsTable.status, "active")));
   const [paymentLinkCount] = await db.select({ total: count() }).from(paymentLinksTable)
