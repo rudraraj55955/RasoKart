@@ -253,6 +253,38 @@ export interface WebhookConfigInput {
   secret?: string | null;
 }
 
+/**
+ * Payment notification body. Caller must supply a valid merchant API key in the
+X-Api-Key request header — merchantId is derived from the key automatically.
+At least one of orderId or merchantReference is required.
+
+ */
+export interface PaymentCallbackInput {
+  /** Order ID set when the QR code was created. Takes priority over merchantReference when both are supplied. */
+  orderId?: string;
+  /** Merchant reference set when the QR code was created. Used only when orderId is absent. */
+  merchantReference?: string;
+  /** Amount received */
+  amount?: string;
+  /** Internal transaction ID if available */
+  transactionId?: number;
+}
+
+export type PaymentCallbackResponseStatus = typeof PaymentCallbackResponseStatus[keyof typeof PaymentCallbackResponseStatus];
+
+
+export const PaymentCallbackResponseStatus = {
+  used: 'used',
+} as const;
+
+export interface PaymentCallbackResponse {
+  success: boolean;
+  qrCodeId: number;
+  status: PaymentCallbackResponseStatus;
+  /** Whether the QR code's callbackUrl was fired */
+  callbackFired: boolean;
+}
+
 export type CallbackLogStatus = typeof CallbackLogStatus[keyof typeof CallbackLogStatus];
 
 

@@ -90,6 +90,8 @@ import type {
   MessageResponse,
   Notification,
   NotificationListResponse,
+  PaymentCallbackInput,
+  PaymentCallbackResponse,
   PaymentLink,
   PaymentLinkInput,
   PaymentLinkListResponse,
@@ -3133,6 +3135,82 @@ export const useUpdateWebhookConfig = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateWebhookConfigMutationOptions(options));
+    }
+
+export const getReceivePaymentCallbackUrl = () => {
+
+
+
+
+  return `/api/callbacks`
+}
+
+/**
+ * Called by a payment provider or merchant back-end when a payment is received.
+Authentication is via the merchant's API key supplied in the X-Api-Key header.
+The merchantId is derived from the key — it does not need to be in the body.
+orderId takes priority over merchantReference when both are provided.
+
+ * @summary Receive payment callback and mark matching QR code as used
+ */
+export const receivePaymentCallback = async (paymentCallbackInput: PaymentCallbackInput, options?: RequestInit): Promise<PaymentCallbackResponse> => {
+
+  return customFetch<PaymentCallbackResponse>(getReceivePaymentCallbackUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      paymentCallbackInput,)
+  }
+);}
+
+
+
+
+export const getReceivePaymentCallbackMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receivePaymentCallback>>, TError,{data: BodyType<PaymentCallbackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof receivePaymentCallback>>, TError,{data: BodyType<PaymentCallbackInput>}, TContext> => {
+
+const mutationKey = ['receivePaymentCallback'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof receivePaymentCallback>>, {data: BodyType<PaymentCallbackInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  receivePaymentCallback(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReceivePaymentCallbackMutationResult = NonNullable<Awaited<ReturnType<typeof receivePaymentCallback>>>
+    export type ReceivePaymentCallbackMutationBody = BodyType<PaymentCallbackInput>
+    export type ReceivePaymentCallbackMutationError = ErrorType<void>
+
+    /**
+ * @summary Receive payment callback and mark matching QR code as used
+ */
+export const useReceivePaymentCallback = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receivePaymentCallback>>, TError,{data: BodyType<PaymentCallbackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof receivePaymentCallback>>,
+        TError,
+        {data: BodyType<PaymentCallbackInput>},
+        TContext
+      > => {
+      return useMutation(getReceivePaymentCallbackMutationOptions(options));
     }
 
 export const getListCallbackLogsUrl = (params?: ListCallbackLogsParams,) => {

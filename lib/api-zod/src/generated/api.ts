@@ -901,6 +901,33 @@ export const UpdateWebhookConfigResponse = zod.object({
 
 
 /**
+ * Called by a payment provider or merchant back-end when a payment is received.
+Authentication is via the merchant's API key supplied in the X-Api-Key header.
+The merchantId is derived from the key — it does not need to be in the body.
+orderId takes priority over merchantReference when both are provided.
+
+ * @summary Receive payment callback and mark matching QR code as used
+ */
+export const ReceivePaymentCallbackHeader = zod.object({
+  "X-Api-Key": zod.string().describe('Active merchant API key (rasokart_live_... prefix)')
+})
+
+export const ReceivePaymentCallbackBody = zod.object({
+  "orderId": zod.string().optional().describe('Order ID set when the QR code was created. Takes priority over merchantReference when both are supplied.'),
+  "merchantReference": zod.string().optional().describe('Merchant reference set when the QR code was created. Used only when orderId is absent.'),
+  "amount": zod.string().optional().describe('Amount received'),
+  "transactionId": zod.number().optional().describe('Internal transaction ID if available')
+}).describe('Payment notification body. Caller must supply a valid merchant API key in the\nX-Api-Key request header — merchantId is derived from the key automatically.\nAt least one of orderId or merchantReference is required.\n')
+
+export const ReceivePaymentCallbackResponse = zod.object({
+  "success": zod.boolean(),
+  "qrCodeId": zod.number(),
+  "status": zod.enum(['used']),
+  "callbackFired": zod.boolean().describe('Whether the QR code\'s callbackUrl was fired')
+})
+
+
+/**
  * @summary List callback logs
  */
 export const ListCallbackLogsQueryParams = zod.object({

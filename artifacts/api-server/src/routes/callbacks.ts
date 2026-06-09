@@ -1,9 +1,148 @@
 import { Router } from "express";
-import { db, callbackLogsTable } from "@workspace/db";
+import { db, callbackLogsTable, qrCodesTable, apiKeysTable } from "@workspace/db";
 import { eq, and, count, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { logger } from "../lib/logger";
 
 const router = Router();
+
+// POST /api/callbacks — authenticated via X-Api-Key header (merchant API key)
+// Called by payment providers or merchant back-end to mark a QR as "used" on payment receipt
+router.post("/", async (req, res) => {
+  // --- Authentication via merchant API key ---
+  const apiKeyHeader = (req.headers["x-api-key"] as string | undefined)?.trim();
+  if (!apiKeyHeader) {
+    res.status(401).json({ error: "X-Api-Key header is required" });
+    return;
+  }
+
+  const [keyRow] = await db
+    .select()
+    .from(apiKeysTable)
+    .where(eq(apiKeysTable.apiKey, apiKeyHeader))
+    .limit(1);
+
+  if (!keyRow || !keyRow.isActive) {
+    res.status(401).json({ error: "Invalid or inactive API key" });
+    return;
+  }
+
+  const merchantId = keyRow.merchantId;
+
+  // --- Input validation ---
+  const { orderId, merchantReference, amount, transactionId } = req.body as {
+    orderId?: string;
+    merchantReference?: string;
+    amount?: string;
+    transactionId?: number;
+  };
+
+  if (!orderId && !merchantReference) {
+    res.status(400).json({ error: "orderId or merchantReference is required" });
+    return;
+  }
+
+  // --- Deterministic QR matching: orderId takes priority over merchantReference ---
+  // When orderId is provided it is the precise, order-scoped identifier and is used exclusively.
+  // merchantReference is only used when orderId is absent, avoiding ambiguous OR lookups.
+  let qr: typeof qrCodesTable.$inferSelect | undefined;
+
+  if (orderId) {
+    const [match] = await db
+      .select()
+      .from(qrCodesTable)
+      .where(and(
+        eq(qrCodesTable.merchantId, merchantId),
+        eq(qrCodesTable.orderId, orderId),
+        eq(qrCodesTable.status, "active"),
+      ))
+      .limit(1);
+    qr = match;
+  } else {
+    const [match] = await db
+      .select()
+      .from(qrCodesTable)
+      .where(and(
+        eq(qrCodesTable.merchantId, merchantId),
+        eq(qrCodesTable.merchantReference, merchantReference!),
+        eq(qrCodesTable.status, "active"),
+      ))
+      .limit(1);
+    qr = match;
+  }
+
+  if (!qr) {
+    res.status(404).json({ error: "No active QR code found matching the provided identifiers" });
+    return;
+  }
+
+  // --- Mark the QR code as used ---
+  await db
+    .update(qrCodesTable)
+    .set({ status: "used" })
+    .where(eq(qrCodesTable.id, qr.id));
+
+  // --- Update API key lastUsedAt (fire-and-forget) ---
+  db.update(apiKeysTable)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(apiKeysTable.id, keyRow.id))
+    .catch(() => {});
+
+  // --- Fire the QR's callbackUrl if set (async, non-blocking) ---
+  if (qr.callbackUrl) {
+    const payload = {
+      event: "payment.received",
+      qrCodeId: qr.id,
+      merchantId: qr.merchantId,
+      orderId: qr.orderId ?? orderId,
+      merchantReference: qr.merchantReference ?? merchantReference,
+      amount: amount ?? qr.amount,
+      transactionId: transactionId ?? null,
+      status: "used",
+    };
+    const bodyStr = JSON.stringify(payload);
+
+    fetch(qr.callbackUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: bodyStr,
+      signal: AbortSignal.timeout(10_000),
+    })
+      .then(async (cbRes) => {
+        const responseBody = await cbRes.text().catch(() => null);
+        await db.insert(callbackLogsTable).values({
+          merchantId: qr!.merchantId,
+          transactionId: transactionId ?? null,
+          url: qr!.callbackUrl!,
+          status: cbRes.ok ? "success" : "failed",
+          httpStatus: cbRes.status,
+          requestBody: bodyStr,
+          responseBody: responseBody ?? null,
+        });
+      })
+      .catch(async (err: unknown) => {
+        logger.warn({ err, url: qr!.callbackUrl }, "QR callbackUrl fire failed");
+        await db.insert(callbackLogsTable).values({
+          merchantId: qr!.merchantId,
+          transactionId: transactionId ?? null,
+          url: qr!.callbackUrl!,
+          status: "failed",
+          httpStatus: null,
+          requestBody: bodyStr,
+          responseBody: err instanceof Error ? err.message : String(err),
+        }).catch(() => {});
+      });
+  }
+
+  res.json({
+    success: true,
+    qrCodeId: qr.id,
+    status: "used",
+    callbackFired: !!qr.callbackUrl,
+  });
+});
+
+// Authenticated routes below
 router.use(requireAuth);
 
 // GET /api/callbacks

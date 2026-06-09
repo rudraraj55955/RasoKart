@@ -935,6 +935,41 @@ paths:
                 $ref: "#/components/schemas/WebhookConfig"
 
   /callbacks:
+    post:
+      operationId: receivePaymentCallback
+      tags: [callbacks]
+      summary: Receive payment callback and mark matching QR code as used
+      description: |
+        Called by a payment provider or merchant back-end when a payment is received.
+        Authentication is via the merchant's API key supplied in the X-Api-Key header.
+        The merchantId is derived from the key — it does not need to be in the body.
+        orderId takes priority over merchantReference when both are provided.
+      parameters:
+        - name: X-Api-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Active merchant API key (rasokart_live_... prefix)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentCallbackInput"
+      responses:
+        "200":
+          description: Callback processed, QR code marked as used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentCallbackResponse"
+        "400":
+          description: Missing required fields (orderId or merchantReference)
+        "401":
+          description: Missing or invalid X-Api-Key header
+        "404":
+          description: No matching active QR code found for the given identifiers
     get:
       operationId: listCallbackLogs
       tags: [callbacks]
@@ -3060,6 +3095,41 @@ components:
             type: string
         secret:
           type: ["string", "null"]
+
+    PaymentCallbackInput:
+      type: object
+      description: |
+        Payment notification body. Caller must supply a valid merchant API key in the
+        X-Api-Key request header — merchantId is derived from the key automatically.
+        At least one of orderId or merchantReference is required.
+      properties:
+        orderId:
+          type: string
+          description: Order ID set when the QR code was created. Takes priority over merchantReference when both are supplied.
+        merchantReference:
+          type: string
+          description: Merchant reference set when the QR code was created. Used only when orderId is absent.
+        amount:
+          type: string
+          description: Amount received
+        transactionId:
+          type: integer
+          description: Internal transaction ID if available
+
+    PaymentCallbackResponse:
+      type: object
+      required: [success, qrCodeId, status, callbackFired]
+      properties:
+        success:
+          type: boolean
+        qrCodeId:
+          type: integer
+        status:
+          type: string
+          enum: [used]
+        callbackFired:
+          type: boolean
+          description: Whether the QR code's callbackUrl was fired
 
     CallbackLog:
       type: object
