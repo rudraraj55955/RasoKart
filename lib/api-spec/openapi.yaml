@@ -4634,6 +4634,9 @@ components:
         createdBy:
           type: integer
           nullable: true
+        triggeredBy:
+          type: string
+          description: '"manual" or "auto" (scheduled)'
         notes:
           type: string
           nullable: true

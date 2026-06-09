@@ -1458,6 +1458,8 @@ export interface ReconciliationRun {
   unmatchedAmount: number;
   status: string;
   createdBy?: number | null;
+  /** "manual" or "auto" (scheduled) */
+  triggeredBy?: string;
   notes?: string | null;
   createdAt: string;
 }

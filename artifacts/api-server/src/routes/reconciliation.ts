@@ -2,10 +2,19 @@ import { Router } from "express";
 import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTable, settlementsTable, merchantsTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray, sql, count, or, isNull, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { runReconciliation } from "../helpers/reconcileEngine";
 
 const router = Router();
 router.use(requireAuth);
 router.use(requireAdmin);
+
+function mapRun(r: typeof reconciliationRunsTable.$inferSelect) {
+  return {
+    ...r,
+    matchedAmount: Number(r.matchedAmount),
+    unmatchedAmount: Number(r.unmatchedAmount),
+  };
+}
 
 // POST /api/reconciliation/run
 router.post("/run", async (req, res, next) => {
@@ -28,203 +37,19 @@ router.post("/run", async (req, res, next) => {
 
     const parsedMerchantId = merchantId ? parseInt(merchantId) : null;
 
-    // Create run record in "running" state
-    const [run] = await db.insert(reconciliationRunsTable).values({
-      merchantId: parsedMerchantId,
+    const updated = await runReconciliation({
       dateFrom,
       dateTo,
-      status: "running",
+      merchantId: parsedMerchantId,
       createdBy: user.id,
-    }).returning();
+      triggeredBy: "manual",
+    });
 
-    // Perform reconciliation asynchronously (but we await it since Express handles timing)
-    try {
-      // (a) Fetch all success deposit transactions in the date range
-      const txConditions = [
-        eq(transactionsTable.type, "deposit"),
-        eq(transactionsTable.status, "success"),
-        gte(transactionsTable.createdAt, fromDate),
-        lte(transactionsTable.createdAt, toDate),
-      ];
-      if (parsedMerchantId) txConditions.push(eq(transactionsTable.merchantId, parsedMerchantId));
-
-      const deposits = await db
-        .select({
-          tx: transactionsTable,
-          merchantName: merchantsTable.businessName,
-        })
-        .from(transactionsTable)
-        .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
-        .where(and(...txConditions));
-
-      // (b) Fetch all approved/paid settlements overlapping the period.
-      // Overlap logic:
-      //   - If settlement has periodFrom+periodTo: it overlaps if periodFrom <= dateTo AND periodTo >= dateFrom
-      //   - If period bounds are null: fall back to createdAt within range
-      const periodOverlap = or(
-        // Has explicit period bounds — use overlap check
-        and(
-          isNotNull(settlementsTable.periodFrom),
-          isNotNull(settlementsTable.periodTo),
-          lte(settlementsTable.periodFrom, dateTo),   // settlement starts before or on run end
-          gte(settlementsTable.periodTo, dateFrom),    // settlement ends on or after run start
-        ),
-        // No period bounds — fall back to createdAt filter
-        and(
-          isNull(settlementsTable.periodFrom),
-          gte(settlementsTable.createdAt, fromDate),
-          lte(settlementsTable.createdAt, toDate),
-        ),
-      );
-      const sConditions = [
-        sql`${settlementsTable.status} IN ('approved', 'paid')`,
-        periodOverlap!,
-      ];
-      if (parsedMerchantId) sConditions.push(eq(settlementsTable.merchantId, parsedMerchantId));
-
-      const settlements = await db
-        .select({ s: settlementsTable })
-        .from(settlementsTable)
-        .where(and(...sConditions));
-
-      // (c) Match: for each settlement find a deposit with same merchantId + matching amount
-      // Use greedy 1:1 matching — each deposit/settlement can only be matched once.
-      // Deterministic: sort settlements and deposits oldest-first before matching.
-      const sortedSettlements = [...settlements].sort(
-        (a, b) => new Date(a.s.createdAt).getTime() - new Date(b.s.createdAt).getTime()
-      );
-      const sortedDeposits = [...deposits].sort(
-        (a, b) => new Date(a.tx.createdAt!).getTime() - new Date(b.tx.createdAt!).getTime()
-      );
-
-      const usedDepositIds = new Set<number>();
-      const usedSettlementIds = new Set<number>();
-
-      const items: {
-        runId: number;
-        transactionId: number | null;
-        settlementId: number | null;
-        merchantId: number;
-        status: string;
-        amount: string;
-        matchedAt: Date | null;
-        notes: string | null;
-      }[] = [];
-
-      for (const { s } of sortedSettlements) {
-        if (usedSettlementIds.has(s.id)) continue;
-        const settlementAmt = Number(s.requestedAmount ?? s.amount);
-
-        // If settlement has explicit period bounds, deposit must fall within that window.
-        // Otherwise accept any deposit within the run date range (already pre-filtered).
-        const periodStart = s.periodFrom ? new Date(s.periodFrom + "T00:00:00.000Z") : null;
-        const periodEnd   = s.periodTo   ? new Date(s.periodTo   + "T23:59:59.999Z") : null;
-
-        // Find a matching deposit: same merchant, same amount (±0.01 tolerance),
-        // and deposit.createdAt within settlement's period window (if period is set)
-        const match = sortedDeposits.find(({ tx }) => {
-          if (usedDepositIds.has(tx.id)) return false;
-          if (tx.merchantId !== s.merchantId) return false;
-          if (Math.abs(Number(tx.amount) - settlementAmt) >= 0.01) return false;
-          if (periodStart && tx.createdAt && tx.createdAt < periodStart) return false;
-          if (periodEnd   && tx.createdAt && tx.createdAt > periodEnd)   return false;
-          return true;
-        });
-
-        if (match) {
-          usedDepositIds.add(match.tx.id);
-          usedSettlementIds.add(s.id);
-          const now = new Date();
-          items.push({
-            runId: run.id,
-            transactionId: match.tx.id,
-            settlementId: s.id,
-            merchantId: s.merchantId,
-            status: "matched",
-            amount: settlementAmt.toFixed(2),
-            matchedAt: now,
-            notes: `Deposit UTR: ${match.tx.utr}`,
-          });
-        }
-      }
-
-      // (d) Unmatched deposits
-      for (const { tx } of deposits) {
-        if (usedDepositIds.has(tx.id)) continue;
-        items.push({
-          runId: run.id,
-          transactionId: tx.id,
-          settlementId: null,
-          merchantId: tx.merchantId,
-          status: "unmatched_deposit",
-          amount: Number(tx.amount).toFixed(2),
-          matchedAt: null,
-          notes: `No matching settlement found for UTR: ${tx.utr}`,
-        });
-      }
-
-      // Unmatched settlements
-      for (const { s } of settlements) {
-        if (usedSettlementIds.has(s.id)) continue;
-        items.push({
-          runId: run.id,
-          transactionId: null,
-          settlementId: s.id,
-          merchantId: s.merchantId,
-          status: "unmatched_settlement",
-          amount: Number(s.requestedAmount ?? s.amount).toFixed(2),
-          matchedAt: null,
-          notes: `No matching deposit found for settlement #${s.id}`,
-        });
-      }
-
-      // (e) Write items
-      if (items.length > 0) {
-        await db.insert(reconciliationItemsTable).values(items);
-      }
-
-      // Calculate summary stats
-      const matched = items.filter(i => i.status === "matched");
-      const unmatchedDeposits = items.filter(i => i.status === "unmatched_deposit");
-      const unmatchedSettlements = items.filter(i => i.status === "unmatched_settlement");
-      const totalUnmatched = unmatchedDeposits.length + unmatchedSettlements.length;
-      const matchedAmount = matched.reduce((s, i) => s + Number(i.amount), 0);
-      const unmatchedAmount = [...unmatchedDeposits, ...unmatchedSettlements].reduce((s, i) => s + Number(i.amount), 0);
-
-      // Update run with summary
-      const [updated] = await db.update(reconciliationRunsTable)
-        .set({
-          status: "complete",
-          totalDeposits: deposits.length,
-          totalSettlements: settlements.length,
-          totalMatched: matched.length,
-          totalUnmatched,
-          matchedAmount: matchedAmount.toFixed(2),
-          unmatchedAmount: unmatchedAmount.toFixed(2),
-        })
-        .where(eq(reconciliationRunsTable.id, run.id))
-        .returning();
-
-      res.status(201).json(mapRun(updated));
-    } catch (err) {
-      // Mark run as failed on error
-      await db.update(reconciliationRunsTable)
-        .set({ status: "failed", notes: err instanceof Error ? err.message : "Unknown error" })
-        .where(eq(reconciliationRunsTable.id, run.id));
-      throw err;
-    }
+    res.status(201).json(mapRun(updated));
   } catch (err) {
     next(err);
   }
 });
-
-function mapRun(r: typeof reconciliationRunsTable.$inferSelect) {
-  return {
-    ...r,
-    matchedAmount: Number(r.matchedAmount),
-    unmatchedAmount: Number(r.unmatchedAmount),
-  };
-}
 
 // GET /api/reconciliation/runs
 router.get("/runs", async (req, res, next) => {
@@ -267,7 +92,7 @@ router.get("/runs", async (req, res, next) => {
 // GET /api/reconciliation/runs/:id/items
 router.get("/runs/:id/items", async (req, res, next) => {
   try {
-    const runId = parseInt(req.params.id as string);
+    const runId = parseInt(req.params['id'] as string);
     const { page = "1", limit = "50", status, merchantId } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
@@ -300,7 +125,6 @@ router.get("/runs/:id/items", async (req, res, next) => {
       .limit(limitNum)
       .offset(offset);
 
-    // Fetch settlement refs for items that have settlementId
     const settlementIds = items
       .map(i => i.item.settlementId)
       .filter((id): id is number => id !== null);

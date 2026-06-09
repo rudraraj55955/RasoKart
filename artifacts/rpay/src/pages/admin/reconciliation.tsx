@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2 } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
@@ -266,7 +266,18 @@ export default function AdminReconciliation() {
                     return (
                       <tr key={run.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-3">
-                          <div className="font-medium">#{run.id}</div>
+                          <div className="flex items-center gap-1.5 font-medium">
+                            #{run.id}
+                            {run.triggeredBy === "auto" ? (
+                              <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-violet-500/10 text-violet-400 border-violet-500/30 gap-1">
+                                <Zap className="w-2.5 h-2.5" /> Auto
+                              </Badge>
+                            ) : (
+                              <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-sky-500/10 text-sky-400 border-sky-500/30 gap-1">
+                                <User className="w-2.5 h-2.5" /> Manual
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             {formatDistanceToNow(new Date(run.createdAt), { addSuffix: true })}
                           </div>
