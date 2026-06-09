@@ -388,6 +388,11 @@ export default function MerchantQrCodes() {
                     <TableCell className="text-xs text-muted-foreground">
                       <div className="flex items-center justify-between gap-2">
                         <span>{format(new Date(qr.createdAt), "MMM d, yyyy HH:mm")}</span>
+                        <button className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted/50"
+                          onClick={e => { e.stopPropagation(); setDownloadQr(qr as any); }}
+                          title="Full detail view">
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
                         <button className="text-rose-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10"
                           onClick={e => { e.stopPropagation(); handleDelete(qr.id); }}
                           title="Delete">
