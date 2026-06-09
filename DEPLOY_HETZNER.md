@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Hetzner Cloud account
-- Domain pointed to your VPS IP (e.g. `rasokart.com`)
+- Domain pointed to your VPS IP (`rasokart.com`)
 - SSH access to your VPS
 
 ---
@@ -65,12 +65,12 @@ npm install -g pm2
 # Create DB and user
 sudo -u postgres psql <<EOF
 CREATE USER rasokart_user WITH PASSWORD 'CHANGE_THIS_STRONG_PASSWORD';
-CREATE DATABASE rasokart OWNER rpay_user;
-GRANT ALL PRIVILEGES ON DATABASE rasokart TO rpay_user;
+CREATE DATABASE rasokart OWNER rasokart_user;
+GRANT ALL PRIVILEGES ON DATABASE rasokart TO rasokart_user;
 EOF
 
 # Test connection
-psql -U rpay_user -d rasokart -h localhost -c "SELECT 1;"
+psql -U rasokart_user -d rasokart -h localhost -c "SELECT 1;"
 ```
 
 ---
@@ -83,7 +83,7 @@ useradd -m -s /bin/bash rasokart
 su - rasokart
 
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/RPay.git /home/rasokart/app
+git clone https://github.com/YOUR_USERNAME/RasoKart.git /home/rasokart/app
 cd /home/rasokart/app
 
 # Install dependencies
@@ -103,7 +103,7 @@ pnpm --filter @workspace/api-server run build
 cat > /home/rasokart/app/artifacts/api-server/.env.production << 'EOF'
 NODE_ENV=production
 PORT=8080
-DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rpay
+DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rasokart
 SESSION_SECRET=GENERATE_64_CHAR_RANDOM_STRING_HERE
 EOF
 
@@ -119,7 +119,7 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 cd /home/rasokart/app
 
 # Push schema to production database
-DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rpay \
+DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rasokart \
   pnpm --filter @workspace/db run push
 ```
 
@@ -139,15 +139,15 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 8080,
-        DATABASE_URL: "postgres://rasokart_user:CHANGE_THIS@localhost:5432/rpay",
+        DATABASE_URL: "postgres://rasokart_user:CHANGE_THIS@localhost:5432/rasokart",
         SESSION_SECRET: "YOUR_64_CHAR_SECRET_HERE",
       },
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: "1G",
-      error_file: "/var/log/rpay/api-error.log",
-      out_file: "/var/log/rpay/api-out.log",
+      error_file: "/var/log/rasokart/api-error.log",
+      out_file: "/var/log/rasokart/api-out.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss",
     },
   ],
@@ -155,7 +155,7 @@ module.exports = {
 EOF
 
 # Create log directory
-mkdir -p /var/log/rpay && chown rpay:rpay /var/log/rpay
+mkdir -p /var/log/rasokart && chown rasokart:rasokart /var/log/rasokart
 
 # Build and start
 cd /home/rasokart/app/artifacts/api-server
@@ -184,7 +184,7 @@ BASE_PATH=/ pnpm run build
 ## 9. Configure Nginx
 
 ```nginx
-# /etc/nginx/sites-available/rpay
+# /etc/nginx/sites-available/rasokart
 server {
     listen 80;
     server_name rasokart.com;
@@ -236,11 +236,11 @@ server {
 
 ```bash
 # Enable site
-ln -s /etc/nginx/sites-available/rpay /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/rasokart /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 
 # Get SSL certificate
-certbot --nginx -d rasokart.com --non-interactive --agree-tos -m admin@yourdomain.com
+certbot --nginx -d rasokart.com --non-interactive --agree-tos -m admin@rasokart.com
 ```
 
 ---
@@ -292,16 +292,16 @@ pnpm --filter @workspace/rpay run build
 ### Backups
 ```bash
 # Database backup (add to cron)
-pg_dump -U rpay_user rpay | gzip > /backups/rpay-$(date +%Y%m%d).sql.gz
+pg_dump -U rasokart_user rasokart | gzip > /backups/rasokart-$(date +%Y%m%d).sql.gz
 
 # Cron job (daily at 2 AM)
-echo "0 2 * * * rpay pg_dump -U rpay_user rpay | gzip > /backups/rpay-\$(date +\%Y\%m\%d).sql.gz" | crontab -
+echo "0 2 * * * rasokart pg_dump -U rasokart_user rasokart | gzip > /backups/rasokart-\$(date +\%Y\%m\%d).sql.gz" | crontab -
 ```
 
 ### Log rotation
 ```bash
-# /etc/logrotate.d/rpay
-/var/log/rpay/*.log {
+# /etc/logrotate.d/rasokart
+/var/log/rasokart/*.log {
     daily
     rotate 14
     compress

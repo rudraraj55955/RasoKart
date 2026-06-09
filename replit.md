@@ -72,8 +72,8 @@ RasoKart is a premium dark-themed payment gateway SaaS platform — admins onboa
 - **`/api/plans/me`** (not `/merchant/current`) is the merchant plan endpoint
 - **Reconciliation routes** require both `requireAuth` AND `requireAdmin` — admin-only
 - **`pnpm dev` at root** is blocked; use workflows or `pnpm --filter @workspace/<pkg> run dev`
-- **localStorage key**: `rasokart_token` (rebranded from `rpay_token` — existing sessions will need re-login)
-- **Admin email**: `admin@rasokart.com` (rebranded from `admin@rpay.com`)
+- **localStorage key**: `rasokart_token`
+- **Admin email**: `admin@rasokart.com`
 - **API key prefix**: `rasokart_live_` / `rasokart_secret_` for newly generated keys
 - **Package name**: internal workspace name remains `@workspace/rpay` (do not rename — breaks pnpm)
 - **Directory**: `artifacts/rpay/` directory name unchanged (internal tooling dependency)

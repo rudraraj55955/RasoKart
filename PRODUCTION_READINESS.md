@@ -146,9 +146,8 @@ All endpoints return proper HTTP status codes:
 ## Environment Requirements (Production)
 
 ```
-DATABASE_URL=postgres://user:pass@host:5432/rpay
+DATABASE_URL=postgres://rasokart_user:pass@host:5432/rasokart
 SESSION_SECRET=<64-char random string>
-JWT_SECRET=<64-char random string>   # set in auth middleware
 NODE_ENV=production
 PORT=8080
 ```
