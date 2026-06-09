@@ -30,7 +30,7 @@ const FEATURES = [
 
 type FeatureKey = typeof FEATURES[number]["key"];
 
-function getToken() { return localStorage.getItem("rpay_token") ?? ""; }
+function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });

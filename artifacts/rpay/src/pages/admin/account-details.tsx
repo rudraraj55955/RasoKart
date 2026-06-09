@@ -24,7 +24,7 @@ const ACCOUNT_TYPES = [
 
 const PROVIDERS = ["phonepe", "paytm", "bharatpe", "yono_sbi", "hdfc_smarthub", "upi_id"];
 
-function getToken() { return localStorage.getItem("rpay_token") ?? ""; }
+function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
 async function api(method: string, path: string, body?: object) {
   const res = await fetch(`/api${path}`, {
     method,
@@ -300,11 +300,11 @@ export default function AdminAccountDetails() {
               <Label className="text-xs text-muted-foreground">Label *</Label>
               <Input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="e.g. Primary HDFC Collection" />
             </div>
-            {field("accountHolder", "Account Holder Name", "e.g. RPay Technologies Pvt Ltd")}
+            {field("accountHolder", "Account Holder Name", "e.g. RasoKart Technologies Pvt Ltd")}
             {field("accountNumber", "Account Number", "e.g. 50100123456789")}
             {field("ifsc", "IFSC Code", "e.g. HDFC0001234")}
             {field("bankName", "Bank Name", "e.g. HDFC Bank")}
-            {field("upiId", "UPI ID", "e.g. rpay@hdfc")}
+            {field("upiId", "UPI ID", "e.g. rasokart@hdfc")}
             {field("qrPayload", "QR Payload / UPI Link", "upi://pay?pa=...")}
             {visibleFields.includes("provider") && (
               <div>

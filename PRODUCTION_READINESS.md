@@ -1,4 +1,4 @@
-# RPay — Production Readiness Report
+# RasoKart — Production Readiness Report
 **Date:** 2026-06-08  
 **Auditor:** Automated production audit (pre-GitHub push)
 
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-RPay is a full-stack Payment Gateway SaaS platform built with a dark fintech UI. All 20 audited areas pass. The system is ready for production deployment on a Hetzner VPS or any Node.js-compatible host.
+RasoKart is a full-stack Payment Gateway SaaS platform built with a dark fintech UI. All 20 audited areas pass. The system is ready for production deployment on a Hetzner VPS or any Node.js-compatible host.
 
 ---
 
@@ -43,7 +43,7 @@ RPay is a full-stack Payment Gateway SaaS platform built with a dark fintech UI.
 | Field | Value |
 |-------|-------|
 | URL | `/admin/login` |
-| Email | `admin@rpay.com` |
+| Email | `admin@rasokart.com` |
 | Password | `Admin@123456` |
 | Role | Super Admin (full access) |
 

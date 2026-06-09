@@ -52,7 +52,7 @@ export default function AdminLogin() {
   };
 
   return (
-    <AuthLayout title="Admin Portal" subtitle="Sign in to RPay operations">
+    <AuthLayout title="Admin Portal" subtitle="Sign in to RasoKart operations">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <FormField
@@ -62,7 +62,7 @@ export default function AdminLogin() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="admin@rpay.inc" {...field} />
+                  <Input placeholder="admin@rasokart.com" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

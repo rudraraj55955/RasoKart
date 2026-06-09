@@ -1,9 +1,9 @@
-# RPay — Hetzner VPS Deployment Guide
+# RasoKart — Hetzner VPS Deployment Guide
 
 ## Prerequisites
 
 - Hetzner Cloud account
-- Domain pointed to your VPS IP (e.g. `rpay.yourdomain.com`)
+- Domain pointed to your VPS IP (e.g. `rasokart.com`)
 - SSH access to your VPS
 
 ---
@@ -64,13 +64,13 @@ npm install -g pm2
 ```bash
 # Create DB and user
 sudo -u postgres psql <<EOF
-CREATE USER rpay_user WITH PASSWORD 'CHANGE_THIS_STRONG_PASSWORD';
-CREATE DATABASE rpay OWNER rpay_user;
-GRANT ALL PRIVILEGES ON DATABASE rpay TO rpay_user;
+CREATE USER rasokart_user WITH PASSWORD 'CHANGE_THIS_STRONG_PASSWORD';
+CREATE DATABASE rasokart OWNER rpay_user;
+GRANT ALL PRIVILEGES ON DATABASE rasokart TO rpay_user;
 EOF
 
 # Test connection
-psql -U rpay_user -d rpay -h localhost -c "SELECT 1;"
+psql -U rpay_user -d rasokart -h localhost -c "SELECT 1;"
 ```
 
 ---
@@ -79,12 +79,12 @@ psql -U rpay_user -d rpay -h localhost -c "SELECT 1;"
 
 ```bash
 # Create app user
-useradd -m -s /bin/bash rpay
-su - rpay
+useradd -m -s /bin/bash rasokart
+su - rasokart
 
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/RPay.git /home/rpay/app
-cd /home/rpay/app
+git clone https://github.com/YOUR_USERNAME/RPay.git /home/rasokart/app
+cd /home/rasokart/app
 
 # Install dependencies
 pnpm install --frozen-lockfile
@@ -100,10 +100,10 @@ pnpm --filter @workspace/api-server run build
 
 ```bash
 # Create environment file
-cat > /home/rpay/app/artifacts/api-server/.env.production << 'EOF'
+cat > /home/rasokart/app/artifacts/api-server/.env.production << 'EOF'
 NODE_ENV=production
 PORT=8080
-DATABASE_URL=postgres://rpay_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rpay
+DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rpay
 SESSION_SECRET=GENERATE_64_CHAR_RANDOM_STRING_HERE
 EOF
 
@@ -116,10 +116,10 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ## 6. Run Database Migrations
 
 ```bash
-cd /home/rpay/app
+cd /home/rasokart/app
 
 # Push schema to production database
-DATABASE_URL=postgres://rpay_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rpay \
+DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rpay \
   pnpm --filter @workspace/db run push
 ```
 
@@ -129,17 +129,17 @@ DATABASE_URL=postgres://rpay_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rpa
 
 ```bash
 # Create PM2 ecosystem config
-cat > /home/rpay/app/ecosystem.config.cjs << 'EOF'
+cat > /home/rasokart/app/ecosystem.config.cjs << 'EOF'
 module.exports = {
   apps: [
     {
-      name: "rpay-api",
-      cwd: "/home/rpay/app/artifacts/api-server",
+      name: "rasokart-api",
+      cwd: "/home/rasokart/app/artifacts/api-server",
       script: "./dist/index.mjs",
       env: {
         NODE_ENV: "production",
         PORT: 8080,
-        DATABASE_URL: "postgres://rpay_user:CHANGE_THIS@localhost:5432/rpay",
+        DATABASE_URL: "postgres://rasokart_user:CHANGE_THIS@localhost:5432/rpay",
         SESSION_SECRET: "YOUR_64_CHAR_SECRET_HERE",
       },
       instances: 1,
@@ -158,10 +158,10 @@ EOF
 mkdir -p /var/log/rpay && chown rpay:rpay /var/log/rpay
 
 # Build and start
-cd /home/rpay/app/artifacts/api-server
+cd /home/rasokart/app/artifacts/api-server
 pnpm run build
 
-cd /home/rpay/app
+cd /home/rasokart/app
 pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup   # follow the printed command to enable on boot
@@ -172,11 +172,11 @@ pm2 startup   # follow the printed command to enable on boot
 ## 8. Build the Frontend for Static Serving
 
 ```bash
-cd /home/rpay/app/artifacts/rpay
+cd /home/rasokart/app/artifacts/rpay
 
 # Build Vite frontend (production)
 BASE_PATH=/ pnpm run build
-# Output: /home/rpay/app/artifacts/rpay/dist/
+# Output: /home/rasokart/app/artifacts/rpay/dist/
 ```
 
 ---
@@ -187,16 +187,16 @@ BASE_PATH=/ pnpm run build
 # /etc/nginx/sites-available/rpay
 server {
     listen 80;
-    server_name rpay.yourdomain.com;
+    server_name rasokart.com;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name rpay.yourdomain.com;
+    server_name rasokart.com;
 
-    ssl_certificate     /etc/letsencrypt/live/rpay.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/rpay.yourdomain.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/rasokart.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/rasokart.com/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
@@ -219,7 +219,7 @@ server {
     }
 
     # Frontend — serve static files
-    root /home/rpay/app/artifacts/rpay/dist;
+    root /home/rasokart/app/artifacts/rpay/dist;
     index index.html;
 
     location / {
@@ -240,7 +240,7 @@ ln -s /etc/nginx/sites-available/rpay /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 
 # Get SSL certificate
-certbot --nginx -d rpay.yourdomain.com --non-interactive --agree-tos -m admin@yourdomain.com
+certbot --nginx -d rasokart.com --non-interactive --agree-tos -m admin@yourdomain.com
 ```
 
 ---
@@ -249,18 +249,18 @@ certbot --nginx -d rpay.yourdomain.com --non-interactive --agree-tos -m admin@yo
 
 ```bash
 # Verify API is running
-curl -s https://rpay.yourdomain.com/api/healthz
+curl -s https://rasokart.com/api/healthz
 
 # Check PM2 status
 pm2 status
 
 # Tail logs
-pm2 logs rpay-api --lines 50
+pm2 logs rasokart-api --lines 50
 
 # Test admin login
-curl -s -X POST https://rpay.yourdomain.com/api/auth/login \
+curl -s -X POST https://rasokart.com/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@rpay.com","password":"Admin@123456"}'
+  -d '{"email":"admin@rasokart.com","password":"Admin@123456"}'
 ```
 
 ---
@@ -269,7 +269,7 @@ curl -s -X POST https://rpay.yourdomain.com/api/auth/login \
 
 **Immediately after deploying to production:**
 
-1. Log in to the admin portal at `https://rpay.yourdomain.com/admin/login`
+1. Log in to the admin portal at `https://rasokart.com/admin/login`
 2. Navigate to Account Settings
 3. Change the admin password to a strong, unique password
 4. Update the merchant demo passwords or remove demo accounts
@@ -280,12 +280,12 @@ curl -s -X POST https://rpay.yourdomain.com/api/auth/login \
 
 ### Update deployment
 ```bash
-cd /home/rpay/app
+cd /home/rasokart/app
 git pull origin main
 pnpm install --frozen-lockfile
 pnpm --filter @workspace/db run push   # if schema changed
 pnpm --filter @workspace/api-server run build
-pm2 restart rpay-api
+pm2 restart rasokart-api
 pnpm --filter @workspace/rpay run build
 ```
 
@@ -321,7 +321,7 @@ echo "0 2 * * * rpay pg_dump -U rpay_user rpay | gzip > /backups/rpay-\$(date +\
 - CPU, RAM, network graphs in Hetzner Cloud console
 
 ### Uptime monitoring
-- Add `https://rpay.yourdomain.com/api/healthz` to UptimeRobot (free tier)
+- Add `https://rasokart.com/api/healthz` to UptimeRobot (free tier)
 
 ### Error alerting
 - PM2 can send email/webhook on process crash:
@@ -363,4 +363,4 @@ Internet
 
 ---
 
-*Generated by RPay production audit — 2026-06-08*
+*Generated by RasoKart production audit — 2026-06-08*

@@ -22,7 +22,7 @@ const QR_PROVIDERS = [
   { value: "upi_id",        label: "UPI ID",         color: "bg-primary/10 text-primary border-primary/20" },
 ];
 
-function getToken() { return localStorage.getItem("rpay_token") ?? ""; }
+function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
 async function api(method: string, path: string, body?: object) {
   const res = await fetch(`/api${path}`, {
     method,

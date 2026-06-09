@@ -1,4 +1,4 @@
-export const TOKEN_KEY = "rpay_token";
+export const TOKEN_KEY = "rasokart_token";
 
 export function getToken() {
   if (typeof window === "undefined") return null;

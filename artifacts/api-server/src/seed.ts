@@ -111,7 +111,7 @@ export async function seed() {
   const adminHash = await bcrypt.hash("Admin@123456", 10);
   const [admin] = await db
     .insert(usersTable)
-    .values({ email: "admin@rpay.com", passwordHash: adminHash, name: "Super Admin", role: "admin", isActive: true })
+    .values({ email: "admin@rasokart.com", passwordHash: adminHash, name: "Super Admin", role: "admin", isActive: true })
     .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: adminHash, name: "Super Admin" } })
     .returning();
   console.log("Admin:", admin.email);
@@ -278,10 +278,10 @@ export async function seed() {
   const [m1VaCount] = await db.select({ c: count() }).from(virtualAccountsTable).where(eq(virtualAccountsTable.merchantId, m1.id));
   if (m1VaCount.c === 0) {
     const vaSamples = [
-      { merchantId: m1.id, label: "Primary Collection", ifsc: "RPAY0001", accountNumber: "99000068001", bankName: "RPay Virtual Bank", accountHolder: "Demo Business Pvt Ltd", status: "active" as const },
-      { merchantId: m1.id, label: "Secondary Reserve",  ifsc: "RPAY0001", accountNumber: "99000068002", bankName: "RPay Virtual Bank", accountHolder: "Demo Business Pvt Ltd", status: "active" as const },
-      { merchantId: m2.id, label: "TechPay Collection", ifsc: "RPAY0001", accountNumber: "99000069001", bankName: "RPay Virtual Bank", accountHolder: "TechPay Solutions",       status: "active" as const },
-      { merchantId: m2.id, label: "TechPay Reserve",    ifsc: "RPAY0001", accountNumber: "99000069002", bankName: "RPay Virtual Bank", accountHolder: "TechPay Solutions",       status: "active" as const },
+      { merchantId: m1.id, label: "Primary Collection", ifsc: "RASO0001", accountNumber: "99000068001", bankName: "RasoKart Virtual Bank", accountHolder: "Demo Business Pvt Ltd", status: "active" as const },
+      { merchantId: m1.id, label: "Secondary Reserve",  ifsc: "RASO0001", accountNumber: "99000068002", bankName: "RasoKart Virtual Bank", accountHolder: "Demo Business Pvt Ltd", status: "active" as const },
+      { merchantId: m2.id, label: "TechPay Collection", ifsc: "RASO0001", accountNumber: "99000069001", bankName: "RasoKart Virtual Bank", accountHolder: "TechPay Solutions",       status: "active" as const },
+      { merchantId: m2.id, label: "TechPay Reserve",    ifsc: "RASO0001", accountNumber: "99000069002", bankName: "RasoKart Virtual Bank", accountHolder: "TechPay Solutions",       status: "active" as const },
     ];
     for (let i = 0; i < vaSamples.length; i++) {
       await db.insert(virtualAccountsTable).values({
@@ -368,25 +368,25 @@ export async function seed() {
     await db.insert(apiKeysTable).values([
       {
         merchantId: m1.id,
-        apiKey: "rpay_live_demo_key_m1_0001",
-        secretKey: "rpay_secret_demo_m1_live_xK9mP2nQ7rL",
-        keyPrefix: "rpay_live_demo",
+        apiKey: "rasokart_live_demo_key_m1_0001",
+        secretKey: "rasokart_secret_demo_m1_live_xK9mP2nQ7rL",
+        keyPrefix: "rasokart_live_demo",
         isActive: true,
         lastUsedAt: new Date(Date.now() - 2 * 86400000),
       },
       {
         merchantId: m1.id,
-        apiKey: "rpay_test_demo_key_m1_0002",
-        secretKey: "rpay_secret_demo_m1_test_yR3wS8vT1uE",
-        keyPrefix: "rpay_test_demo",
+        apiKey: "rasokart_test_demo_key_m1_0002",
+        secretKey: "rasokart_secret_demo_m1_test_yR3wS8vT1uE",
+        keyPrefix: "rasokart_test_demo",
         isActive: true,
         lastUsedAt: null,
       },
       {
         merchantId: m2.id,
-        apiKey: "rpay_live_demo_key_m2_0001",
-        secretKey: "rpay_secret_demo_m2_live_zF5hJ6kM4nC",
-        keyPrefix: "rpay_live_demo",
+        apiKey: "rasokart_live_demo_key_m2_0001",
+        secretKey: "rasokart_secret_demo_m2_live_zF5hJ6kM4nC",
+        keyPrefix: "rasokart_live_demo",
         isActive: true,
         lastUsedAt: new Date(Date.now() - 5 * 86400000),
       },
@@ -396,14 +396,14 @@ export async function seed() {
   // ── Webhooks — upsert config for demo merchants ──────────────────────────
   await db.insert(webhooksTable).values({
     merchantId: m1.id,
-    url: "https://demo-business.example.com/webhooks/rpay",
+    url: "https://demo-business.example.com/webhooks/rasokart",
     isActive: true,
     events: ["payment.success", "payment.failed", "settlement.paid", "settlement.approved"],
-    secret: "whsec_demo_m1_rpay_xK9mP2nQ7rL3wS8",
+    secret: "whsec_demo_m1_rasokart_xK9mP2nQ7rL3wS8",
   }).onConflictDoUpdate({
     target: webhooksTable.merchantId,
     set: {
-      url: "https://demo-business.example.com/webhooks/rpay",
+      url: "https://demo-business.example.com/webhooks/rasokart",
       isActive: true,
       events: ["payment.success", "payment.failed", "settlement.paid", "settlement.approved"],
     },
@@ -430,7 +430,7 @@ export async function seed() {
       bankName: "HDFC Bank",
       accountNumber: "50200012345678",
       ifsc: "HDFC0001234",
-      upiId: "rpay.collection@hdfc",
+      upiId: "rasokart.collection@hdfc",
       isActive: true,
     });
     console.log("Account details seeded");
@@ -564,8 +564,8 @@ export async function seed() {
           userId: m1User.id,
           type: "system_notice",
           title: "Scheduled Maintenance",
-          body: "RPay will undergo scheduled maintenance on June 15, 2026 between 2:00 AM – 4:00 AM IST. Payments will be unaffected.",
-          metadata: { broadcastBy: "admin@rpay.com" },
+          body: "RasoKart will undergo scheduled maintenance on June 15, 2026 between 2:00 AM – 4:00 AM IST. Payments will be unaffected.",
+          metadata: { broadcastBy: "admin@rasokart.com" },
           isRead: false,
           createdAt: new Date(Date.now() - 3 * 3600000),
         },
@@ -582,8 +582,8 @@ export async function seed() {
           userId: m2User.id,
           type: "system_notice",
           title: "Scheduled Maintenance",
-          body: "RPay will undergo scheduled maintenance on June 15, 2026 between 2:00 AM – 4:00 AM IST. Payments will be unaffected.",
-          metadata: { broadcastBy: "admin@rpay.com" },
+          body: "RasoKart will undergo scheduled maintenance on June 15, 2026 between 2:00 AM – 4:00 AM IST. Payments will be unaffected.",
+          metadata: { broadcastBy: "admin@rasokart.com" },
           isRead: false,
           createdAt: new Date(Date.now() - 3 * 3600000),
         },

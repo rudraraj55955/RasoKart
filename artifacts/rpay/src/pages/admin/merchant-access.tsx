@@ -24,7 +24,7 @@ const FEATURES = [
   { key: "csvExport",      label: "CSV Export",   short: "CSV", color: "text-indigo-400" },
 ] as const;
 
-function getToken() { return localStorage.getItem("rpay_token") ?? ""; }
+function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
 async function api(method: string, path: string) {
   const res = await fetch(`/api${path}`, { method, headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) { const e = await res.json().catch(() => ({ error: "Unknown error" })); throw new Error(e.error ?? "Request failed"); }

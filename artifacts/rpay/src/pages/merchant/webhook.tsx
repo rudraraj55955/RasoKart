@@ -60,7 +60,7 @@ export default function MerchantWebhook() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Endpoint Configuration</CardTitle><CardDescription>RPay will send POST requests to this URL for the selected events</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Endpoint Configuration</CardTitle><CardDescription>RasoKart will send POST requests to this URL for the selected events</CardDescription></CardHeader>
         <CardContent className="space-y-5">
           <div>
             <Label>Webhook URL</Label>

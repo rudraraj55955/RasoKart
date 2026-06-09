@@ -60,7 +60,7 @@ export default function MerchantRegister() {
   };
 
   return (
-    <AuthLayout title="Apply for RPay" subtitle="Create your merchant account">
+    <AuthLayout title="Apply for RasoKart" subtitle="Create your merchant account">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">

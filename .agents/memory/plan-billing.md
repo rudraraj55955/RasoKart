@@ -1,6 +1,6 @@
 ---
 name: Plan billing enforcement
-description: How RPay feature gating works end-to-end — from DB flags to UI lock badges
+description: How RasoKart feature gating works end-to-end — from DB flags to UI lock badges
 ---
 
 ## Rule

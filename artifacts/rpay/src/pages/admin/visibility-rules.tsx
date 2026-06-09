@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import { Search, Globe, Lock, Eye, EyeOff, RotateCcw, Users, Info } from "lucide-react";
 
-function getToken() { return localStorage.getItem("rpay_token") ?? ""; }
+function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
 async function api(method: string, path: string, body?: object) {
   const res = await fetch(`/api${path}`, {
     method,

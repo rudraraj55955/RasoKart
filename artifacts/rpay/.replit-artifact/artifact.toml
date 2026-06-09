@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "RPay - Payment Gateway"
+title = "RasoKart - Payment Gateway"
 version = "1.0.0"
 id = "artifacts/rpay"
 router = "path"

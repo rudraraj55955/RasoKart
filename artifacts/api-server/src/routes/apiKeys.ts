@@ -30,8 +30,8 @@ router.post("/", async (req, res) => {
     res.status(403).json({ error: "Only merchants can generate API keys" });
     return;
   }
-  const apiKey = `rpay_live_${crypto.randomBytes(24).toString("hex")}`;
-  const secretKey = `rpay_secret_${crypto.randomBytes(32).toString("hex")}`;
+  const apiKey = `rasokart_live_${crypto.randomBytes(24).toString("hex")}`;
+  const secretKey = `rasokart_secret_${crypto.randomBytes(32).toString("hex")}`;
   const keyPrefix = apiKey.slice(0, 20) + "...";
 
   const [key] = await db.insert(apiKeysTable).values({

@@ -1,6 +1,6 @@
-# RPay — Payment Gateway SaaS
+# RasoKart — Payment Gateway SaaS
 
-RPay is a premium dark-themed payment gateway SaaS platform — admins onboard merchants, assign plans, and oversee all financial operations; merchants collect payments via QR codes, virtual accounts, and payment links.
+RasoKart is a premium dark-themed payment gateway SaaS platform — admins onboard merchants, assign plans, and oversee all financial operations; merchants collect payments via QR codes, virtual accounts, and payment links.
 
 ## Run & Operate
 
@@ -53,7 +53,7 @@ RPay is a premium dark-themed payment gateway SaaS platform — admins onboard m
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin | `admin@rpay.com` | `Admin@123456` |
+| Admin | `admin@rasokart.com` | `Admin@123456` |
 | Merchant (Starter) | `merchant@demo.com` | `Merchant@123456` |
 | Merchant (Gold) | `merchant2@demo.com` | `Merchant@123456` |
 
@@ -72,9 +72,14 @@ RPay is a premium dark-themed payment gateway SaaS platform — admins onboard m
 - **`/api/plans/me`** (not `/merchant/current`) is the merchant plan endpoint
 - **Reconciliation routes** require both `requireAuth` AND `requireAdmin` — admin-only
 - **`pnpm dev` at root** is blocked; use workflows or `pnpm --filter @workspace/<pkg> run dev`
+- **localStorage key**: `rasokart_token` (rebranded from `rpay_token` — existing sessions will need re-login)
+- **Admin email**: `admin@rasokart.com` (rebranded from `admin@rpay.com`)
+- **API key prefix**: `rasokart_live_` / `rasokart_secret_` for newly generated keys
+- **Package name**: internal workspace name remains `@workspace/rpay` (do not rename — breaks pnpm)
+- **Directory**: `artifacts/rpay/` directory name unchanged (internal tooling dependency)
 
 ## Pointers
 
 - See `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
 - See `PRODUCTION_READINESS.md` for full audit results and seed data summary
-- See `DEPLOY_HETZNER.md` for production deployment on Hetzner VPS
+- See `DEPLOY_HETZNER.md` for production deployment on Hetzner VPS (domain: rasokart.com)

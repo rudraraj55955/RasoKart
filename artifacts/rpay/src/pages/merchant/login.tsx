@@ -52,7 +52,7 @@ export default function MerchantLogin() {
   };
 
   return (
-    <AuthLayout title="Merchant Portal" subtitle="Sign in to your RPay dashboard">
+    <AuthLayout title="Merchant Portal" subtitle="Sign in to your RasoKart dashboard">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <FormField

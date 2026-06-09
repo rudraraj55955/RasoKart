@@ -61,7 +61,7 @@ export default function ApiDocs() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">API Documentation</h1>
-        <p className="text-muted-foreground mt-1">Reference for integrating RPay payment APIs into your application.</p>
+        <p className="text-muted-foreground mt-1">Reference for integrating RasoKart payment APIs into your application.</p>
       </div>
 
       <Card className="border-primary/30 bg-primary/5">
@@ -164,7 +164,7 @@ export default function ApiDocs() {
         </Section>
 
         <Section title="Webhook Events Reference" badge="5 event types">
-          <p className="text-sm text-muted-foreground">RPay sends POST requests to your configured webhook URL when events occur.</p>
+          <p className="text-sm text-muted-foreground">RasoKart sends POST requests to your configured webhook URL when events occur.</p>
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-2">Payment Success Webhook Payload</p>
             <CodeBlock language="json" code={`{

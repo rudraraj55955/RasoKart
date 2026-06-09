@@ -194,7 +194,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
               <ShieldCheck className="w-4 h-4 text-primary" />
             </div>
             <div className="flex flex-col flex-1 min-w-0">
-              <span className="font-bold text-sm tracking-wide">RPay</span>
+              <span className="font-bold text-sm tracking-wide">RasoKart</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{portalLabel}</span>
             </div>
             {!publicMode && !isAdmin && user && <NotificationBell />}

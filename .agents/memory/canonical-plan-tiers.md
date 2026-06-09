@@ -1,10 +1,10 @@
 ---
 name: Canonical plan tiers
-description: The 5 official RPay plan tiers and how old ones were removed
+description: The 5 official RasoKart plan tiers and how old ones were removed
 ---
 
 ## Rule
-RPay has exactly 5 plan tiers: Starter, Silver, Gold, Platinum, Custom.
+RasoKart has exactly 5 plan tiers: Starter, Silver, Gold, Platinum, Custom.
 Legacy tiers (Startup, Business, Business Plus, Enterprise) were deleted from the DB manually
 because the seed upserts by name but does not delete stale rows.
 

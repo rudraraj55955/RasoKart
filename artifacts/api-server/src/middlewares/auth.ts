@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "rpay-secret-key-change-in-production";
+const JWT_SECRET = process.env.SESSION_SECRET || "rasokart-secret-key-change-in-production";
 
 export interface AuthPayload {
   userId: number;

@@ -88,7 +88,7 @@ export default function PayPage() {
             <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center border border-primary/30">
               <CheckCircle2 className="w-4 h-4 text-primary" />
             </div>
-            <span className="font-bold text-lg">RPay</span>
+            <span className="font-bold text-lg">RasoKart</span>
           </div>
           {link.merchantName && (
             <p className="text-sm text-muted-foreground">{link.merchantName}</p>
@@ -193,7 +193,7 @@ export default function PayPage() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground/60">Powered by RPay · Secure Payment Gateway</p>
+        <p className="text-center text-xs text-muted-foreground/60">Powered by RasoKart · Secure Payment Gateway</p>
       </div>
     </div>
   );
