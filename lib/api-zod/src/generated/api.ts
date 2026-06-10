@@ -2592,6 +2592,7 @@ export const GetAdminAuditLogStatsResponse = zod.object({
  */
 export const ExportAdminAuditLogsCsvQueryParams = zod.object({
   "action": zod.coerce.string().optional(),
+  "targetType": zod.coerce.string().optional().describe('Filter logs by target entity type (e.g. merchant, plan, user, account_detail)'),
   "search": zod.coerce.string().optional(),
   "dateFrom": zod.date().optional().describe('Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)'),
   "dateTo": zod.date().optional().describe('Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)')
@@ -2605,6 +2606,7 @@ export const ListAdminAuditLogsQueryParams = zod.object({
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional(),
   "action": zod.coerce.string().optional(),
+  "targetType": zod.coerce.string().optional().describe('Filter logs by target entity type (e.g. merchant, plan, user, account_detail)'),
   "search": zod.coerce.string().optional(),
   "dateFrom": zod.date().optional().describe('Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)'),
   "dateTo": zod.date().optional().describe('Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)')

@@ -8,6 +8,10 @@
 
 export type ExportAdminAuditLogsCsvParams = {
 action?: string;
+/**
+ * Filter logs by target entity type (e.g. merchant, plan, user, account_detail)
+ */
+targetType?: string;
 search?: string;
 /**
  * Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)

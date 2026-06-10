@@ -2598,6 +2598,10 @@ paths:
         - name: action
           in: query
           schema: { type: string }
+        - name: targetType
+          in: query
+          description: "Filter logs by target entity type (e.g. merchant, plan, user, account_detail)"
+          schema: { type: string }
         - name: search
           in: query
           schema: { type: string }
@@ -2633,6 +2637,10 @@ paths:
           schema: { type: integer }
         - name: action
           in: query
+          schema: { type: string }
+        - name: targetType
+          in: query
+          description: "Filter logs by target entity type (e.g. merchant, plan, user, account_detail)"
           schema: { type: string }
         - name: search
           in: query

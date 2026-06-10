@@ -49,11 +49,28 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
 
+const TARGET_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "merchant",           label: "Merchant" },
+  { value: "plan",               label: "Plan" },
+  { value: "user",               label: "User" },
+  { value: "account_detail",     label: "Account Detail" },
+  { value: "qr_code",            label: "QR Code" },
+  { value: "virtual_account",    label: "Virtual Account" },
+  { value: "transaction",        label: "Transaction" },
+  { value: "provider",           label: "Provider" },
+  { value: "merchant_features",  label: "Merchant Features" },
+  { value: "settlements",        label: "Settlements" },
+  { value: "reconciliation_item",label: "Reconciliation Item" },
+  { value: "system_config",      label: "System Config" },
+  { value: "audit_logs",         label: "Audit Logs" },
+];
+
 const FILTER_LABELS: Record<string, string> = {
   type: "Type",
   status: "Status",
   search: "Search",
   merchantId: "Merchant",
+  targetType: "Target Type",
   dateFrom: "From",
   dateTo: "To",
 };
@@ -767,6 +784,7 @@ function ActionBadge({ action }: { action: string }) {
 export default function AdminAuditLogs() {
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("all");
+  const [targetType, setTargetType] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -779,6 +797,7 @@ export default function AdminAuditLogs() {
     try {
       const params = new URLSearchParams();
       if (action && action !== "all") params.set("action", action);
+      if (targetType && targetType !== "all") params.set("targetType", targetType);
       if (search) params.set("search", search);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
@@ -811,10 +830,12 @@ export default function AdminAuditLogs() {
   const csvExportsLast30Days = statsData?.csvExportsLast30Days ?? 0;
 
   const hasDateFilter = dateFrom !== "" || dateTo !== "";
+  const hasTargetType = targetType !== "all";
 
   function resetFilters() {
     setSearch("");
     setAction("all");
+    setTargetType("all");
     setDateFrom("");
     setDateTo("");
     setPage(1);
@@ -822,6 +843,7 @@ export default function AdminAuditLogs() {
 
   const { data, isLoading } = useListAdminAuditLogs({
     action: action === "all" ? undefined : action,
+    targetType: targetType === "all" ? undefined : targetType,
     search: search || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
@@ -893,6 +915,15 @@ export default function AdminAuditLogs() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={targetType} onValueChange={v => { setTargetType(v); setPage(1); }}>
+                <SelectTrigger className="w-[200px]"><SelectValue placeholder="Target type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Target Types</SelectItem>
+                  {TARGET_TYPE_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
               <div className="flex items-center gap-2 flex-1">
@@ -940,7 +971,7 @@ export default function AdminAuditLogs() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {(hasDateFilter || search !== "" || action !== "all") && (
+                {(hasDateFilter || search !== "" || action !== "all" || hasTargetType) && (
                   <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground hover:text-foreground">
                     <X className="w-3.5 h-3.5 mr-1.5" />
                     Clear filters
@@ -975,9 +1006,21 @@ export default function AdminAuditLogs() {
           </div>
         </CardHeader>
 
-        {hasDateFilter && (
+        {(hasTargetType || hasDateFilter) && (
           <div className="flex items-center gap-2 px-6 py-2 border-t border-border/40 bg-muted/10 flex-wrap">
-            <span className="text-xs text-muted-foreground shrink-0">Filtered by date:</span>
+            {hasTargetType && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-0.5 text-xs font-medium text-violet-400">
+                Target: {TARGET_TYPE_OPTIONS.find(o => o.value === targetType)?.label ?? targetType}
+                <button
+                  onClick={() => { setTargetType("all"); setPage(1); }}
+                  className="ml-0.5 hover:text-violet-300 transition-colors"
+                  aria-label="Clear target type filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {hasDateFilter && <span className="text-xs text-muted-foreground shrink-0">Date:</span>}
             {dateFrom && dateTo ? (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-0.5 text-xs font-medium text-primary">
                 <CalendarIcon className="w-3 h-3" />
