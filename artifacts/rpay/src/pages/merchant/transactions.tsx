@@ -14,11 +14,21 @@ import { getToken } from "@/lib/auth";
 export default function MerchantTransactions() {
   const [type, setType] = useState("all");
   const [status, setStatus] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [utrSearch, setUtrSearch] = useState("");
   const [utrInput, setUtrInput] = useState("");
 
-  const { data, isLoading } = useListTransactions({ type: type as any, status: status as any, page, limit: 20, search: utrSearch || undefined });
+  const { data, isLoading } = useListTransactions({
+    type: type as any,
+    status: status as any,
+    page,
+    limit: 20,
+    search: utrSearch || undefined,
+    ...(dateFrom ? { dateFrom } : {}),
+    ...(dateTo ? { dateTo } : {}),
+  });
   const { data: utrResult, isLoading: utrLoading, error: utrError } = useSearchByUtr(
     { utr: utrSearch || "" },
     { query: { enabled: !!utrSearch } as any }
@@ -29,6 +39,8 @@ export default function MerchantTransactions() {
     if (type && type !== "all") params.set("type", type);
     if (status && status !== "all") params.set("status", status);
     if (utrSearch) params.set("search", utrSearch);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
     const url = `/api/transactions/export/csv?${params.toString()}`;
     const token = getToken();
     const res = await fetch(url, {
@@ -81,7 +93,7 @@ export default function MerchantTransactions() {
 
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3 items-center">
             <Select value={type} onValueChange={v => { setType(v); setPage(1); }}>
               <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -99,6 +111,33 @@ export default function MerchantTransactions() {
                 <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                className="w-[150px] [color-scheme:dark]"
+                value={dateFrom}
+                onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                title="From date"
+              />
+              <span className="text-muted-foreground text-sm">to</span>
+              <Input
+                type="date"
+                className="w-[150px] [color-scheme:dark]"
+                value={dateTo}
+                onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                title="To date"
+              />
+            </div>
+            {(dateFrom || dateTo) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground h-8 px-2"
+                onClick={() => { setDateFrom(""); setDateTo(""); setPage(1); }}
+              >
+                <X className="w-3 h-3 mr-1" />Clear dates
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">

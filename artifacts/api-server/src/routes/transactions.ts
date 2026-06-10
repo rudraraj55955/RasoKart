@@ -41,7 +41,11 @@ router.get("/", async (req, res, next) => {
       );
     }
     if (dateFrom) conditions.push(gte(transactionsTable.createdAt, new Date(dateFrom)));
-    if (dateTo) conditions.push(lte(transactionsTable.createdAt, new Date(dateTo)));
+    if (dateTo) {
+      const endOfDay = new Date(dateTo);
+      endOfDay.setHours(23, 59, 59, 999);
+      conditions.push(lte(transactionsTable.createdAt, endOfDay));
+    }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
