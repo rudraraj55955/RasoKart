@@ -740,6 +740,12 @@ export async function seed() {
 
   // Backfill connectionId on historical transactions that have a provider but no connectionId.
   // Idempotent: WHERE clause limits to rows where connection_id IS NULL AND provider IS NOT NULL.
+  //
+  // Tie-break rationale: when a merchant has multiple connections for the same provider
+  // (e.g. after rotating credentials), we ORDER BY created_at ASC so the *oldest* active
+  // connection is preferred.  The oldest connection is the one most likely to have been in
+  // use at the time the historical transaction was recorded, making the mapping as accurate
+  // as possible without storing a per-transaction timestamp join.
   await db.execute(sql`
     UPDATE transactions
     SET connection_id = (
@@ -747,6 +753,7 @@ export async function seed() {
       FROM merchant_connections
       WHERE merchant_id = transactions.merchant_id
         AND provider   = transactions.provider
+      ORDER BY created_at ASC
       LIMIT 1
     )
     WHERE connection_id IS NULL
