@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, CalendarClock } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -359,6 +359,12 @@ export default function AdminReconciliation() {
   const [exportFilter, setExportFilter] = useState<"all" | "matched" | "unmatched_deposit" | "unmatched_settlement">("all");
   const [csvExportFilter, setCsvExportFilter] = useState<"all" | "matched" | "unmatched">("all");
 
+  const schedulerQuery = useQuery({
+    queryKey: ["/api/reconciliation/scheduler-status"],
+    queryFn: () => apiGet("/reconciliation/scheduler-status"),
+    refetchInterval: 60000,
+  });
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["/api/reconciliation/runs"],
     queryFn: () => apiGet("/reconciliation/runs?limit=20"),
@@ -393,9 +399,31 @@ export default function AdminReconciliation() {
     qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "items"] });
   }
 
+  const schedulerStatus = schedulerQuery.data as {
+    nextRunAt: string;
+    cronExpression: string;
+    hasEverRun: boolean;
+    lastAutoRunAt: string | null;
+  } | undefined;
+
+  function formatNextRun(isoStr: string): string {
+    const next = new Date(isoStr);
+    const now = new Date();
+    const diffMs = next.getTime() - now.getTime();
+    const diffHrs = diffMs / (1000 * 60 * 60);
+    if (diffHrs < 1) {
+      const mins = Math.round(diffMs / 60000);
+      return `in ${mins} minute${mins !== 1 ? "s" : ""}`;
+    }
+    const hrs = Math.floor(diffHrs);
+    const mins = Math.round((diffHrs - hrs) * 60);
+    if (mins === 0) return `in ${hrs}h`;
+    return `in ${hrs}h ${mins}m`;
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <GitMerge className="w-6 h-6 text-primary" />
@@ -405,6 +433,28 @@ export default function AdminReconciliation() {
             Match deposits to settlements and flag discrepancies
           </p>
         </div>
+        {schedulerStatus && (
+          <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-sm shrink-0">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <CalendarClock className="w-3.5 h-3.5 text-muted-foreground" />
+            <div className="text-xs">
+              <span className="text-muted-foreground">Next auto-run: </span>
+              <span className="font-medium text-foreground">
+                {schedulerStatus.hasEverRun
+                  ? `tonight at midnight (${formatNextRun(schedulerStatus.nextRunAt)})`
+                  : `first run tonight at midnight (${formatNextRun(schedulerStatus.nextRunAt)})`}
+              </span>
+              {schedulerStatus.lastAutoRunAt && (
+                <span className="text-muted-foreground/60 ml-1.5">
+                  · last ran {formatDistanceToNow(new Date(schedulerStatus.lastAutoRunAt), { addSuffix: true })}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Run Trigger */}

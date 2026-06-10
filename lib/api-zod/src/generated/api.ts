@@ -2965,6 +2965,17 @@ export const ListReconciliationRunItemsResponse = zod.object({
 
 
 /**
+ * @summary Get the next scheduled reconciliation run time (admin only)
+ */
+export const GetReconciliationSchedulerStatusResponse = zod.object({
+  "nextRunAt": zod.string().describe('ISO timestamp of the next scheduled run'),
+  "cronExpression": zod.string().describe('Cron expression for the schedule'),
+  "hasEverRun": zod.boolean(),
+  "lastAutoRunAt": zod.string().nullish().describe('ISO timestamp of the last auto-triggered run')
+})
+
+
+/**
  * @summary Manually resolve an unmatched reconciliation item (admin only)
  */
 export const ResolveReconciliationItemParams = zod.object({

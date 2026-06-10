@@ -126,6 +126,7 @@ import type {
   ReconciliationRun,
   ReconciliationRunInput,
   ReconciliationRunListResponse,
+  ReconciliationSchedulerStatus,
   RejectInput,
   RenewPlanInput,
   SearchByUtrParams,
@@ -9486,6 +9487,83 @@ export function useListReconciliationRunItems<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListReconciliationRunItemsQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetReconciliationSchedulerStatusUrl = () => {
+
+
+
+
+  return `/api/reconciliation/scheduler-status`
+}
+
+/**
+ * @summary Get the next scheduled reconciliation run time (admin only)
+ */
+export const getReconciliationSchedulerStatus = async ( options?: RequestInit): Promise<ReconciliationSchedulerStatus> => {
+
+  return customFetch<ReconciliationSchedulerStatus>(getGetReconciliationSchedulerStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReconciliationSchedulerStatusQueryKey = () => {
+    return [
+    `/api/reconciliation/scheduler-status`
+    ] as const;
+    }
+
+
+export const getGetReconciliationSchedulerStatusQueryOptions = <TData = Awaited<ReturnType<typeof getReconciliationSchedulerStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationSchedulerStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReconciliationSchedulerStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReconciliationSchedulerStatus>>> = ({ signal }) => getReconciliationSchedulerStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReconciliationSchedulerStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReconciliationSchedulerStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getReconciliationSchedulerStatus>>>
+export type GetReconciliationSchedulerStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the next scheduled reconciliation run time (admin only)
+ */
+
+export function useGetReconciliationSchedulerStatus<TData = Awaited<ReturnType<typeof getReconciliationSchedulerStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationSchedulerStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReconciliationSchedulerStatusQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

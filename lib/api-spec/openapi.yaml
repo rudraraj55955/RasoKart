@@ -2836,6 +2836,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /reconciliation/scheduler-status:
+    get:
+      operationId: getReconciliationSchedulerStatus
+      tags: [reconciliation]
+      summary: Get the next scheduled reconciliation run time (admin only)
+      responses:
+        "200":
+          description: Scheduler status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationSchedulerStatus"
+
   /reconciliation/items/{id}/resolve:
     patch:
       operationId: resolveReconciliationItem
@@ -4889,6 +4902,18 @@ components:
         merchantId:
           type: integer
           nullable: true
+
+    ReconciliationSchedulerStatus:
+      type: object
+      required: [nextRunAt, cronExpression, hasEverRun]
+      properties:
+        nextRunAt: { type: string, description: "ISO timestamp of the next scheduled run" }
+        cronExpression: { type: string, description: "Cron expression for the schedule" }
+        hasEverRun: { type: boolean }
+        lastAutoRunAt:
+          type: string
+          nullable: true
+          description: "ISO timestamp of the last auto-triggered run"
 
     ReconciliationRun:
       type: object

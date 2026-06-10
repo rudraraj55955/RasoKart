@@ -16,6 +16,34 @@ function mapRun(r: typeof reconciliationRunsTable.$inferSelect) {
   };
 }
 
+// GET /api/reconciliation/scheduler-status
+router.get("/scheduler-status", async (req, res, next) => {
+  try {
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setDate(nextMidnight.getDate() + 1);
+    nextMidnight.setHours(0, 0, 0, 0);
+
+    const lastAutoRun = await db
+      .select({ createdAt: reconciliationRunsTable.createdAt })
+      .from(reconciliationRunsTable)
+      .where(eq(reconciliationRunsTable.triggeredBy, "auto"))
+      .orderBy(sql`${reconciliationRunsTable.createdAt} DESC`)
+      .limit(1);
+
+    const lastAutoRunAt = lastAutoRun.length > 0 ? lastAutoRun[0]!.createdAt : null;
+
+    res.json({
+      nextRunAt: nextMidnight.toISOString(),
+      cronExpression: "0 0 * * *",
+      hasEverRun: lastAutoRun.length > 0,
+      lastAutoRunAt: lastAutoRunAt ? lastAutoRunAt.toISOString() : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/reconciliation/run
 router.post("/run", async (req, res, next) => {
   try {

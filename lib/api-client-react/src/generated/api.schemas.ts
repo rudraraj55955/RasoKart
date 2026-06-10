@@ -1534,6 +1534,16 @@ export interface ReconciliationRunInput {
   merchantId?: number | null;
 }
 
+export interface ReconciliationSchedulerStatus {
+  /** ISO timestamp of the next scheduled run */
+  nextRunAt: string;
+  /** Cron expression for the schedule */
+  cronExpression: string;
+  hasEverRun: boolean;
+  /** ISO timestamp of the last auto-triggered run */
+  lastAutoRunAt?: string | null;
+}
+
 export interface ReconciliationRun {
   id: number;
   merchantId?: number | null;
