@@ -289,16 +289,35 @@ export default function MerchantDashboard() {
           </CardContent>
         </Card>
       ) : (
-        <Card className={activeConnections.length > 0 ? "border-emerald-500/20 bg-emerald-950/10" : "border-border/50"}>
+        (() => {
+          const anyAtLimit = connections.some(c => c.isActive && c.monthlyLimit > 0 && c.monthlyUsed >= c.monthlyLimit);
+          const anyNearLimit = !anyAtLimit && connections.some(c => c.isActive && c.monthlyLimit > 0 && (c.monthlyUsed / c.monthlyLimit) * 100 >= 80);
+          const cardClass = anyAtLimit
+            ? "border-rose-500/40 bg-rose-950/10"
+            : anyNearLimit
+            ? "border-amber-500/30 bg-amber-950/10"
+            : activeConnections.length > 0
+            ? "border-emerald-500/20 bg-emerald-950/10"
+            : "border-border/50";
+          return (
+        <Card className={cardClass}>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
-              <Plug className={`w-4 h-4 ${activeConnections.length > 0 ? "text-emerald-400" : "text-muted-foreground"}`} />
+              <Plug className={`w-4 h-4 ${anyAtLimit ? "text-rose-400" : anyNearLimit ? "text-amber-400" : activeConnections.length > 0 ? "text-emerald-400" : "text-muted-foreground"}`} />
               <CardTitle className="text-base">Provider Status</CardTitle>
-              {activeConnections.length > 0 && (
+              {anyAtLimit ? (
+                <Badge variant="outline" className="ml-1 text-rose-400 border-rose-500/40 bg-rose-950/20 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> Limit Reached
+                </Badge>
+              ) : anyNearLimit ? (
+                <Badge variant="outline" className="ml-1 text-amber-400 border-amber-500/40 bg-amber-950/20 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> Limit Warning
+                </Badge>
+              ) : activeConnections.length > 0 ? (
                 <Badge variant="outline" className="ml-1 text-emerald-400 border-emerald-500/30">
                   {activeConnections.length} Active
                 </Badge>
-              )}
+              ) : null}
               <Link href="/merchant/connect" className="ml-auto">
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
                   Manage <ChevronRight className="w-3 h-3 ml-0.5" />
@@ -371,6 +390,8 @@ export default function MerchantDashboard() {
             })}
           </CardContent>
         </Card>
+          );
+        })()
       )}
 
       {/* Payment Links Summary */}
