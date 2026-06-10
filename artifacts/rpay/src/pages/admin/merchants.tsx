@@ -4,7 +4,7 @@ import {
   useSuspendMerchant, useUnsuspendMerchant,
   useListPlans, useAssignMerchantPlan, useGetMerchantPlan, useGetMerchantPlanHistory,
   useUpgradeMerchantPlan, useDowngradeMerchantPlan, useSuspendMerchantPlan,
-  useReinstateMerchantPlan, useRenewMerchantPlan,
+  useReinstateMerchantPlan, useRenewMerchantPlan, useBulkAssignMerchantPlan,
   useUpdateMerchantBranding,
   getListMerchantsQueryKey,
 } from "@workspace/api-client-react";
@@ -13,14 +13,15 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -61,6 +62,13 @@ export default function AdminMerchants() {
   const [confirmAction, setConfirmAction] = useState<"upgrade" | "downgrade" | "suspend" | "reinstate" | "renew" | null>(null);
   const [renewExpiresAt, setRenewExpiresAt] = useState<string>("");
 
+  // Bulk selection state
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkPlanId, setBulkPlanId] = useState<string>("");
+  const [bulkExpiresAt, setBulkExpiresAt] = useState<string>("");
+  const [bulkNotes, setBulkNotes] = useState<string>("");
+
   const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20 });
   const { data: plans } = useListPlans();
   const { data: currentMerchantPlan, isLoading: planLoading } = useGetMerchantPlan(
@@ -82,6 +90,7 @@ export default function AdminMerchants() {
   const suspendPlanMutation = useSuspendMerchantPlan();
   const reinstatePlanMutation = useReinstateMerchantPlan();
   const renewMutation = useRenewMerchantPlan();
+  const bulkAssignMutation = useBulkAssignMerchantPlan();
 
   const invalidatePlanData = (id: number) => {
     qc.invalidateQueries({ queryKey: ["getMerchantPlan", id] });
@@ -224,6 +233,38 @@ export default function AdminMerchants() {
     });
   };
 
+  const handleBulkAssign = () => {
+    if (!bulkPlanId || selected.size === 0) return;
+    bulkAssignMutation.mutate({
+      data: {
+        merchantIds: Array.from(selected),
+        planId: parseInt(bulkPlanId),
+        expiresAt: bulkExpiresAt || null,
+        notes: bulkNotes || null,
+      },
+    }, {
+      onSuccess: (result) => {
+        const { updated, failed } = result;
+        if (failed === 0) {
+          toast.success(`Plan assigned to ${updated} merchant${updated !== 1 ? "s" : ""}`);
+        } else {
+          toast.warning(`${updated} assigned, ${failed} failed`);
+        }
+        qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+        setSelected(new Set());
+        closeBulkDialog();
+      },
+      onError: () => toast.error("Bulk plan assignment failed"),
+    });
+  };
+
+  const closeBulkDialog = () => {
+    setBulkDialogOpen(false);
+    setBulkPlanId("");
+    setBulkExpiresAt("");
+    setBulkNotes("");
+  };
+
   const exportCsv = () => {
     if (!data?.data) return;
     const rows = [["ID", "Business Name", "Contact", "Email", "Phone", "Status", "Balance", "Created"]];
@@ -245,6 +286,34 @@ export default function AdminMerchants() {
     return msLeft > 0 && msLeft <= 7 * 86400000;
   }).length;
   const expiredCount = merchants.filter(m => m.currentPlanIsExpired).length;
+
+  const allPageIds = merchants.map(m => m.id);
+  const allPageSelected = allPageIds.length > 0 && allPageIds.every(id => selected.has(id));
+  const somePageSelected = allPageIds.some(id => selected.has(id));
+
+  const toggleSelectAll = () => {
+    if (allPageSelected) {
+      setSelected(prev => {
+        const next = new Set(prev);
+        allPageIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        allPageIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -290,11 +359,40 @@ export default function AdminMerchants() {
         </div>
       </div>
 
+      {/* Bulk action toolbar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5">
+          <Users className="w-4 h-4 text-primary shrink-0" />
+          <span className="text-sm font-medium text-primary">{selected.size} merchant{selected.size !== 1 ? "s" : ""} selected</span>
+          <div className="flex gap-2 ml-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-primary border-primary/30 hover:bg-primary/10"
+              onClick={() => { setBulkPlanId(""); setBulkExpiresAt(""); setBulkNotes(""); setBulkDialogOpen(true); }}
+            >
+              <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+              Assign Plan
+            </Button>
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setSelected(new Set())}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allPageSelected ? true : somePageSelected ? "indeterminate" : false}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all on this page"
+                  />
+                </TableHead>
                 <TableHead>Business</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
@@ -308,15 +406,22 @@ export default function AdminMerchants() {
               {isLoading ? (
                 [1,2,3,4,5].map(i => (
                   <TableRow key={i}>
-                    {[1,2,3,4,5,6,7].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
+                    {[1,2,3,4,5,6,7,8].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
                   </TableRow>
                 ))
               ) : merchants.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">No merchants found</TableCell>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-10">No merchants found</TableCell>
                 </TableRow>
               ) : merchants.map(merchant => (
-                <TableRow key={merchant.id}>
+                <TableRow key={merchant.id} className={selected.has(merchant.id) ? "bg-primary/5" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selected.has(merchant.id)}
+                      onCheckedChange={() => toggleSelect(merchant.id)}
+                      aria-label={`Select ${merchant.businessName}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div>
                       <p className="font-medium">{merchant.businessName}</p>
@@ -430,6 +535,137 @@ export default function AdminMerchants() {
             <Button variant="outline" onClick={() => { setRejectId(null); setRejectReason(""); }}>Cancel</Button>
             <Button variant="destructive" onClick={handleReject} disabled={!rejectReason.trim() || rejectMutation.isPending}>
               {rejectMutation.isPending ? "Rejecting..." : "Reject Merchant"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Branding Dialog */}
+      <Dialog open={!!brandingMerchant} onOpenChange={closeBranding}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Paintbrush className="w-4 h-4 text-violet-400" /> Branding — {brandingMerchant?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="adminLogoUrl">Logo URL</Label>
+              <Input
+                id="adminLogoUrl"
+                placeholder="https://yourbrand.com/logo.png"
+                value={brandingLogoUrl}
+                onChange={e => { setBrandingLogoUrl(e.target.value); setBrandingLogoError(false); }}
+              />
+              {brandingLogoUrl && (
+                <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50">
+                  <p className="text-xs text-muted-foreground shrink-0">Preview:</p>
+                  {brandingLogoError ? (
+                    <span className="text-xs text-rose-400">Could not load image</span>
+                  ) : (
+                    <img
+                      src={brandingLogoUrl}
+                      alt="logo"
+                      className="h-8 max-w-[120px] object-contain rounded"
+                      onError={() => setBrandingLogoError(true)}
+                      onLoad={() => setBrandingLogoError(false)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="adminBrandColor">Brand Colour</Label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={brandingColor && /^#[0-9a-f]{3,8}$/i.test(brandingColor) ? brandingColor : "#6366f1"}
+                  onChange={e => setBrandingColor(e.target.value)}
+                  className="h-9 w-12 cursor-pointer rounded border border-input bg-transparent p-0.5"
+                />
+                <Input
+                  id="adminBrandColor"
+                  placeholder="#6366f1"
+                  value={brandingColor}
+                  onChange={e => setBrandingColor(e.target.value)}
+                  className="max-w-[160px] font-mono"
+                />
+                {brandingColor && /^#[0-9a-f]{3,8}$/i.test(brandingColor) && (
+                  <div className="w-6 h-6 rounded-full border border-white/20" style={{ background: brandingColor }} />
+                )}
+              </div>
+            </div>
+            {(brandingMerchant?.logoUrl || brandingMerchant?.brandColor) && (
+              <div className="rounded-lg bg-muted/20 border border-border/50 p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">Current saved values:</p>
+                <p>Logo: {brandingMerchant.logoUrl ?? <em>none</em>}</p>
+                <p>Colour: {brandingMerchant.brandColor ?? <em>none</em>}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeBranding}>Cancel</Button>
+            <Button onClick={handleSaveBranding} disabled={updateBrandingMutation.isPending}>
+              {updateBrandingMutation.isPending ? "Saving…" : "Save Branding"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Assign Plan Dialog */}
+      <Dialog open={bulkDialogOpen} onOpenChange={open => { if (!open) closeBulkDialog(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk Assign Plan</DialogTitle>
+            <DialogDescription>
+              Assign a plan to {selected.size} selected merchant{selected.size !== 1 ? "s" : ""}. This will replace any existing plan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Select Plan *</Label>
+              <Select value={bulkPlanId} onValueChange={setBulkPlanId}>
+                <SelectTrigger><SelectValue placeholder="Choose a plan..." /></SelectTrigger>
+                <SelectContent>
+                  {plans?.map(plan => (
+                    <SelectItem key={plan.id} value={String(plan.id)}>
+                      {plan.name}
+                      {plan.monthlyFee !== "0" ? ` — ₹${parseInt(plan.monthlyFee).toLocaleString()}/mo` : " — Free"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {bulkPlanId && plans && (() => {
+              const plan = plans.find(p => String(p.id) === bulkPlanId);
+              if (!plan) return null;
+              return (
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-3 space-y-2">
+                  <p className="text-sm font-medium">{plan.name}</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground">
+                    <span>Dynamic QR: {plan.dynamicQrLimit >= 999 ? "∞" : plan.dynamicQrLimit}</span>
+                    <span>Virtual Accounts: {plan.virtualAccountLimit >= 999 ? "∞" : plan.virtualAccountLimit}</span>
+                    <span>Settlement: {plan.settlementFee}%</span>
+                    <span>Daily Tx: {plan.dailyTransactionLimit >= 999 ? "∞" : plan.dailyTransactionLimit}</span>
+                    <span>API: {plan.apiAccess ? "✓ Enabled" : "✗ Disabled"}</span>
+                    <span>Webhooks: {plan.webhookAccess ? "✓ Enabled" : "✗ Disabled"}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Plan Expiry Date (optional)</Label>
+              <Input type="date" value={bulkExpiresAt} onChange={e => setBulkExpiresAt(e.target.value)} min={new Date().toISOString().split("T")[0]} />
+              <p className="text-xs text-muted-foreground">Leave empty for no expiry.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Notes (optional)</Label>
+              <Textarea placeholder="e.g. Batch onboarding, promo upgrade..." rows={2} value={bulkNotes} onChange={e => setBulkNotes(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeBulkDialog}>Cancel</Button>
+            <Button onClick={handleBulkAssign} disabled={!bulkPlanId || bulkAssignMutation.isPending}>
+              {bulkAssignMutation.isPending ? "Assigning..." : `Assign to ${selected.size} Merchant${selected.size !== 1 ? "s" : ""}`}
             </Button>
           </DialogFooter>
         </DialogContent>

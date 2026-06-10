@@ -357,6 +357,22 @@ export const GetMerchantPlanHistoryResponse = zod.array(GetMerchantPlanHistoryRe
 
 
 /**
+ * @summary Bulk-assign a plan to multiple merchants (admin only)
+ */
+export const BulkAssignMerchantPlanBody = zod.object({
+  "merchantIds": zod.array(zod.number()),
+  "planId": zod.number(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const BulkAssignMerchantPlanResponse = zod.object({
+  "updated": zod.number(),
+  "failed": zod.number()
+})
+
+
+/**
  * @summary Assign plan to merchant (admin only)
  */
 export const AssignMerchantPlanParams = zod.object({

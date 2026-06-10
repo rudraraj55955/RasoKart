@@ -38,6 +38,8 @@ import type {
   AuthResponse,
   BroadcastNotificationInput,
   BroadcastNotificationResult,
+  BulkAssignMerchantPlan200,
+  BulkAssignPlanInput,
   BulkFeatureUpdateInput,
   BulkUpdateMerchantFeatures200,
   CallbackLogListResponse,
@@ -1288,6 +1290,77 @@ export function useGetMerchantPlanHistory<TData = Awaited<ReturnType<typeof getM
 
 
 
+
+export const getBulkAssignMerchantPlanUrl = () => {
+
+
+
+
+  return `/api/merchants/bulk-assign-plan`
+}
+
+/**
+ * @summary Bulk-assign a plan to multiple merchants (admin only)
+ */
+export const bulkAssignMerchantPlan = async (bulkAssignPlanInput: BulkAssignPlanInput, options?: RequestInit): Promise<BulkAssignMerchantPlan200> => {
+
+  return customFetch<BulkAssignMerchantPlan200>(getBulkAssignMerchantPlanUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      bulkAssignPlanInput,)
+  }
+);}
+
+
+
+
+export const getBulkAssignMerchantPlanMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkAssignMerchantPlan>>, TError,{data: BodyType<BulkAssignPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkAssignMerchantPlan>>, TError,{data: BodyType<BulkAssignPlanInput>}, TContext> => {
+
+const mutationKey = ['bulkAssignMerchantPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkAssignMerchantPlan>>, {data: BodyType<BulkAssignPlanInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkAssignMerchantPlan(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkAssignMerchantPlanMutationResult = NonNullable<Awaited<ReturnType<typeof bulkAssignMerchantPlan>>>
+    export type BulkAssignMerchantPlanMutationBody = BodyType<BulkAssignPlanInput>
+    export type BulkAssignMerchantPlanMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Bulk-assign a plan to multiple merchants (admin only)
+ */
+export const useBulkAssignMerchantPlan = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkAssignMerchantPlan>>, TError,{data: BodyType<BulkAssignPlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkAssignMerchantPlan>>,
+        TError,
+        {data: BodyType<BulkAssignPlanInput>},
+        TContext
+      > => {
+      return useMutation(getBulkAssignMerchantPlanMutationOptions(options));
+    }
 
 export const getAssignMerchantPlanUrl = (id: number,) => {
 

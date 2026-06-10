@@ -365,6 +365,31 @@ paths:
                 items:
                   $ref: "#/components/schemas/PlanHistory"
 
+  /merchants/bulk-assign-plan:
+    post:
+      operationId: bulkAssignMerchantPlan
+      tags: [merchants]
+      summary: Bulk-assign a plan to multiple merchants (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkAssignPlanInput"
+      responses:
+        "200":
+          description: Plans assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated, failed]
+                properties:
+                  updated:
+                    type: integer
+                  failed:
+                    type: integer
+
   /merchants/{id}/assign-plan:
     post:
       operationId: assignMerchantPlan
@@ -3139,6 +3164,21 @@ components:
       properties:
         reason:
           type: string
+
+    BulkAssignPlanInput:
+      type: object
+      required: [merchantIds, planId]
+      properties:
+        merchantIds:
+          type: array
+          items:
+            type: integer
+        planId:
+          type: integer
+        expiresAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
 
     AssignPlanInput:
       type: object

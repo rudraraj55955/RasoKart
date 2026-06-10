@@ -218,6 +218,55 @@ router.get("/:id/plan/history", requireAdmin, async (req, res) => {
   res.json(rows.map(r => ({ ...r.h, toPlanName: r.toPlan?.name ?? null, createdAt: r.h.createdAt.toISOString() })));
 });
 
+// POST /api/merchants/bulk-assign-plan
+router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
+  const user = (req as any).user;
+  const { merchantIds, planId, expiresAt, notes } = req.body;
+  if (!planId || !Array.isArray(merchantIds) || merchantIds.length === 0) {
+    res.status(400).json({ error: "planId and merchantIds[] required" });
+    return;
+  }
+
+  const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId)).limit(1);
+  if (!plan) { res.status(404).json({ error: "Plan not found" }); return; }
+
+  const expiresAtDate = expiresAt ? new Date(expiresAt) : null;
+  let updated = 0;
+  let failed = 0;
+
+  for (const merchantId of merchantIds as number[]) {
+    try {
+      const existing = await db.select().from(merchantPlansTable).where(eq(merchantPlansTable.merchantId, merchantId)).limit(1);
+      const fromPlanId = existing.length > 0 ? existing[0].planId : null;
+      const updateSet: Record<string, unknown> = { planId, assignedBy: user.id, notes: notes ?? null, status: "active" };
+      if (expiresAtDate) updateSet.expiresAt = expiresAtDate;
+
+      if (existing.length > 0) {
+        await db.update(merchantPlansTable).set(updateSet).where(eq(merchantPlansTable.merchantId, merchantId));
+      } else {
+        await db.insert(merchantPlansTable).values({
+          merchantId, planId, assignedBy: user.id,
+          expiresAt: expiresAtDate ?? undefined, notes: notes ?? null,
+        });
+      }
+
+      const action = fromPlanId === null ? "assigned" : fromPlanId === planId ? "renewed" : planId > fromPlanId ? "upgraded" : "downgraded";
+      await logPlanHistory({ merchantId, fromPlanId, toPlanId: planId, action, adminId: user.id, adminEmail: user.email, notes });
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email, action: `plan_${action}`,
+        targetType: "merchant", targetId: merchantId,
+        details: JSON.stringify({ planName: plan.name, fromPlanId, toPlanId: planId, bulk: true }),
+        ipAddress: (req as any).ip ?? null,
+      });
+      updated++;
+    } catch {
+      failed++;
+    }
+  }
+
+  res.json({ updated, failed });
+});
+
 // POST /api/merchants/:id/assign-plan
 router.post("/:id/assign-plan", requireAdmin, async (req, res) => {
   const user = (req as any).user;

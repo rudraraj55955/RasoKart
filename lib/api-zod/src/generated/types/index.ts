@@ -29,6 +29,8 @@ export * from './assignPlanInput';
 export * from './authResponse';
 export * from './broadcastNotificationInput';
 export * from './broadcastNotificationResult';
+export * from './bulkAssignMerchantPlan200';
+export * from './bulkAssignPlanInput';
 export * from './bulkFeatureUpdateInput';
 export * from './bulkUpdateMerchantFeatures200';
 export * from './callbackLog';

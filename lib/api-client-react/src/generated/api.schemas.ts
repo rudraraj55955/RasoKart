@@ -115,6 +115,15 @@ export interface RejectInput {
   reason: string;
 }
 
+export interface BulkAssignPlanInput {
+  merchantIds: number[];
+  planId: number;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
 export interface AssignPlanInput {
   planId: number;
   /** @nullable */
@@ -1708,6 +1717,11 @@ export const ListMerchantsStatus = {
   rejected: 'rejected',
   all: 'all',
 } as const;
+
+export type BulkAssignMerchantPlan200 = {
+  updated: number;
+  failed: number;
+};
 
 export type ListInvoicesParams = {
 merchantId?: number;
