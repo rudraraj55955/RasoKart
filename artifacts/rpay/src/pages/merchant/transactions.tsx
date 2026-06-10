@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useListTransactions, useSearchByUtr, useGetTransaction } from "@workspace/api-client-react";
+import { useListTransactions, useSearchByUtr, useGetTransaction, useGetPaymentLink } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2 } from "lucide-react";
+import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { getToken } from "@/lib/auth";
 
@@ -267,6 +267,11 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
     query: { enabled: open && id != null } as any,
   });
 
+  const paymentLinkId = (tx as any)?.paymentLinkId as number | null | undefined;
+  const { data: paymentLink, isLoading: linkLoading } = useGetPaymentLink(paymentLinkId ?? 0, {
+    query: { enabled: open && paymentLinkId != null } as any,
+  });
+
   const metadataParsed = (() => {
     if (!tx?.metadata) return null;
     try { return JSON.parse(tx.metadata); } catch { return tx.metadata; }
@@ -334,6 +339,50 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
                 )}
               </div>
             </div>
+
+            {/* Payment Link Details */}
+            {paymentLinkId != null && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5" /> Payment Link
+                </p>
+                <div className="space-y-0 rounded-lg border divide-y divide-border bg-card/40">
+                  {linkLoading ? (
+                    <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading link details…
+                    </div>
+                  ) : paymentLink ? (
+                    <>
+                      <DetailRow label="Title" value={paymentLink.title} />
+                      <DetailRow label="Slug" value={paymentLink.slug} mono />
+                      <DetailRow
+                        label="Amount"
+                        value={paymentLink.amount != null ? `₹${Number(paymentLink.amount).toLocaleString()}` : "Any"}
+                      />
+                      <DetailRow
+                        label="Payments"
+                        value={
+                          paymentLink.maxPayments != null
+                            ? `${paymentLink.paymentCount} / ${paymentLink.maxPayments}`
+                            : `${paymentLink.paymentCount} (no limit)`
+                        }
+                      />
+                      <div className="flex items-center justify-between gap-4 px-4 py-3">
+                        <span className="text-sm text-muted-foreground shrink-0">Status</span>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs capitalize ${paymentLink.status === "active" ? "border-green-500/40 text-green-400" : paymentLink.status === "expired" ? "border-orange-500/40 text-orange-400" : "border-zinc-500/40 text-zinc-400"}`}
+                        >
+                          {paymentLink.status}
+                        </Badge>
+                      </div>
+                    </>
+                  ) : (
+                    <DetailRow label="Payment Link" value={`#${paymentLinkId}`} mono />
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Timestamps */}
             <div>
