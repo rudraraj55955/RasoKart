@@ -491,6 +491,12 @@ export default function MerchantVirtualAccounts() {
                 onChange={e => setEditValue(e.target.value)}
                 autoFocus
               />
+              {editMode === "collection" && editVa && editValue !== "" && !isNaN(parseFloat(editValue)) && parseFloat(editValue) < parseFloat(editVa.balance) && (
+                <p className="flex items-center gap-1.5 text-xs text-amber-400">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  New total (₹{parseFloat(editValue).toLocaleString("en-IN", { minimumFractionDigits: 2 })}) is below the current balance of ₹{parseFloat(editVa.balance).toLocaleString("en-IN", { minimumFractionDigits: 2 })} — this will be rejected.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
