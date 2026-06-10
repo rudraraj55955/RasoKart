@@ -66,99 +66,134 @@ const DATE_PRESETS = [
 ];
 
 interface SmartFilter {
-  type: "amount" | "date";
-  label: string;
   amountMin?: number;
   amountMax?: number;
   dateFrom?: string;
   dateTo?: string;
+  txType?: "deposit" | "withdrawal";
+  txStatus?: "pending" | "success" | "failed";
+}
+
+const TYPE_KEYWORDS: Record<string, "deposit" | "withdrawal"> = {
+  deposit: "deposit",
+  deposits: "deposit",
+  withdrawal: "withdrawal",
+  withdrawals: "withdrawal",
+};
+
+const STATUS_KEYWORDS: Record<string, "pending" | "success" | "failed"> = {
+  pending: "pending",
+  success: "success",
+  successful: "success",
+  failed: "failed",
+  failure: "failed",
+};
+
+function parseDateToken(token: string, now: Date): Pick<SmartFilter, "dateFrom" | "dateTo"> | null {
+  if (token === "today") {
+    return { dateFrom: format(startOfDay(now), "yyyy-MM-dd"), dateTo: format(endOfDay(now), "yyyy-MM-dd") };
+  }
+  if (token === "this week") {
+    return {
+      dateFrom: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+      dateTo: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+    };
+  }
+  if (token === "this month") {
+    return { dateFrom: format(startOfMonth(now), "yyyy-MM-dd"), dateTo: format(endOfMonth(now), "yyyy-MM-dd") };
+  }
+  if (token === "last month") {
+    const prev = subMonths(now, 1);
+    return { dateFrom: format(startOfMonth(prev), "yyyy-MM-dd"), dateTo: format(endOfMonth(prev), "yyyy-MM-dd") };
+  }
+  if (token === "last week") {
+    const prevWeekStart = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
+    const prevWeekEnd = endOfWeek(subDays(now, 7), { weekStartsOn: 1 });
+    return { dateFrom: format(prevWeekStart, "yyyy-MM-dd"), dateTo: format(prevWeekEnd, "yyyy-MM-dd") };
+  }
+  return null;
+}
+
+function parseAmountToken(token: string): Pick<SmartFilter, "amountMin" | "amountMax"> | null {
+  const gtMatch = token.match(/^(>=?)(\d+(?:\.\d+)?)$/);
+  if (gtMatch) {
+    const inclusive = gtMatch[1] === ">=";
+    const val = parseFloat(gtMatch[2]!);
+    return { amountMin: inclusive ? val : val + 0.01 };
+  }
+  const ltMatch = token.match(/^(<=?)(\d+(?:\.\d+)?)$/);
+  if (ltMatch) {
+    const inclusive = ltMatch[1] === "<=";
+    const val = parseFloat(ltMatch[2]!);
+    return { amountMax: inclusive ? val : val - 0.01 };
+  }
+  const rangeMatch = token.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+  if (rangeMatch) {
+    const min = parseFloat(rangeMatch[1]!);
+    const max = parseFloat(rangeMatch[2]!);
+    if (min <= max) return { amountMin: min, amountMax: max };
+  }
+  return null;
 }
 
 function parseSmartQuery(raw: string): SmartFilter | null {
   const q = raw.trim().toLowerCase();
   if (!q) return null;
 
-  // Date shortcuts
+  const filter: SmartFilter = {};
   const now = new Date();
-  if (q === "today") {
-    return {
-      type: "date",
-      label: "Today",
-      dateFrom: format(startOfDay(now), "yyyy-MM-dd"),
-      dateTo: format(endOfDay(now), "yyyy-MM-dd"),
-    };
-  }
-  if (q === "this week") {
-    return {
-      type: "date",
-      label: "This week",
-      dateFrom: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-      dateTo: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-    };
-  }
-  if (q === "this month") {
-    return {
-      type: "date",
-      label: "This month",
-      dateFrom: format(startOfMonth(now), "yyyy-MM-dd"),
-      dateTo: format(endOfMonth(now), "yyyy-MM-dd"),
-    };
-  }
-  if (q === "last month") {
-    const prev = subMonths(now, 1);
-    return {
-      type: "date",
-      label: "Last month",
-      dateFrom: format(startOfMonth(prev), "yyyy-MM-dd"),
-      dateTo: format(endOfMonth(prev), "yyyy-MM-dd"),
-    };
-  }
-  if (q === "last week") {
-    const prevWeekStart = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
-    const prevWeekEnd = endOfWeek(subDays(now, 7), { weekStartsOn: 1 });
-    return {
-      type: "date",
-      label: "Last week",
-      dateFrom: format(prevWeekStart, "yyyy-MM-dd"),
-      dateTo: format(prevWeekEnd, "yyyy-MM-dd"),
-    };
-  }
 
-  // Amount patterns
-  // >500 or >=500
-  const gtMatch = q.match(/^(>=?)(\d+(?:\.\d+)?)$/);
-  if (gtMatch) {
-    const inclusive = gtMatch[1] === ">=";
-    const val = parseFloat(gtMatch[2]!);
-    const min = inclusive ? val : val + 0.01;
-    return { type: "amount", label: `≥ ₹${val.toLocaleString()}`, amountMin: min };
-  }
-
-  // <500 or <=500
-  const ltMatch = q.match(/^(<=?)(\d+(?:\.\d+)?)$/);
-  if (ltMatch) {
-    const inclusive = ltMatch[1] === "<=";
-    const val = parseFloat(ltMatch[2]!);
-    const max = inclusive ? val : val - 0.01;
-    return { type: "amount", label: `≤ ₹${val.toLocaleString()}`, amountMax: max };
-  }
-
-  // 100-999 range
-  const rangeMatch = q.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
-  if (rangeMatch) {
-    const min = parseFloat(rangeMatch[1]!);
-    const max = parseFloat(rangeMatch[2]!);
-    if (min <= max) {
-      return {
-        type: "amount",
-        label: `₹${min.toLocaleString()} – ₹${max.toLocaleString()}`,
-        amountMin: min,
-        amountMax: max,
-      };
+  // Check multi-word date phrases first (order matters: longer phrases first)
+  for (const phrase of ["this week", "this month", "last month", "last week"]) {
+    if (q.includes(phrase)) {
+      const dateResult = parseDateToken(phrase, now);
+      if (dateResult) {
+        Object.assign(filter, dateResult);
+        break;
+      }
     }
   }
 
-  return null;
+  // Tokenise the remaining words (single-word tokens)
+  // Remove already-matched multi-word date phrase from remaining
+  let remaining = q;
+  if (filter.dateFrom) {
+    for (const phrase of ["this week", "this month", "last month", "last week"]) {
+      remaining = remaining.replace(phrase, "").trim();
+    }
+  }
+
+  const tokens = remaining.split(/\s+/).filter(Boolean);
+
+  for (const token of tokens) {
+    if (token in TYPE_KEYWORDS) {
+      filter.txType = TYPE_KEYWORDS[token]!;
+      continue;
+    }
+    if (token in STATUS_KEYWORDS) {
+      filter.txStatus = STATUS_KEYWORDS[token]!;
+      continue;
+    }
+    // Single-word date shortcuts
+    if (!filter.dateFrom) {
+      const dateResult = parseDateToken(token, now);
+      if (dateResult) { Object.assign(filter, dateResult); continue; }
+    }
+    // Amount patterns
+    if (filter.amountMin == null && filter.amountMax == null) {
+      const amtResult = parseAmountToken(token);
+      if (amtResult) { Object.assign(filter, amtResult); continue; }
+    }
+  }
+
+  const hasContent =
+    filter.txType != null ||
+    filter.txStatus != null ||
+    filter.dateFrom != null ||
+    filter.amountMin != null ||
+    filter.amountMax != null;
+
+  return hasContent ? filter : null;
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -200,18 +235,22 @@ export default function MerchantTransactions() {
   const [smartError, setSmartError] = useState("");
   const smartInputRef = useRef<HTMLInputElement>(null);
 
-  const amountMin = smartFilter?.type === "amount" ? smartFilter.amountMin : undefined;
-  const amountMax = smartFilter?.type === "amount" ? smartFilter.amountMax : undefined;
-  const smartDateFrom = smartFilter?.type === "date" ? smartFilter.dateFrom : undefined;
-  const smartDateTo = smartFilter?.type === "date" ? smartFilter.dateTo : undefined;
+  const amountMin = smartFilter?.amountMin;
+  const amountMax = smartFilter?.amountMax;
+  const smartDateFrom = smartFilter?.dateFrom;
+  const smartDateTo = smartFilter?.dateTo;
 
   // Smart date filter overrides manual date pickers when active
   const activeDateFrom = smartDateFrom ?? dateFrom;
   const activeDateTo = smartDateTo ?? dateTo;
 
+  // Smart type/status override dropdowns when set
+  const activeType = smartFilter?.txType ?? type;
+  const activeStatus = smartFilter?.txStatus ?? status;
+
   const { data, isLoading } = useListTransactions({
-    type: type as any,
-    status: status as any,
+    type: activeType as any,
+    status: activeStatus as any,
     page,
     limit: 20,
     search: utrSearch || undefined,
@@ -230,8 +269,8 @@ export default function MerchantTransactions() {
     setDateFrom(from);
     setDateTo(to);
     setPage(1);
-    // Clear any date-type smart filter when preset applied
-    if (smartFilter?.type === "date") {
+    // Clear any date smart filter when preset applied
+    if (smartFilter?.dateFrom || smartFilter?.dateTo) {
       setSmartFilter(null);
       setSmartInput("");
     }
@@ -246,12 +285,12 @@ export default function MerchantTransactions() {
     setSmartError("");
     const filter = parseSmartQuery(smartInput);
     if (!filter) {
-      setSmartError("Try: >500, 100-999, today, this week, this month");
+      setSmartError("Try: failed deposits, pending >500, deposits this week, >500, today");
       return;
     }
     setSmartFilter(filter);
     // If it's a date filter, clear the manual date pickers
-    if (filter.type === "date") {
+    if (filter.dateFrom || filter.dateTo) {
       setDateFrom("");
       setDateTo("");
     }
@@ -309,7 +348,7 @@ export default function MerchantTransactions() {
               <Input
                 ref={smartInputRef}
                 className="pl-9"
-                placeholder="Try: >500  ·  100-999  ·  today  ·  this week  ·  this month"
+                placeholder="Try: failed deposits  ·  pending >500  ·  deposits this week  ·  >500  ·  today"
                 value={smartInput}
                 onChange={e => { setSmartInput(e.target.value); setSmartError(""); }}
                 onKeyDown={e => { if (e.key === "Enter") applySmartSearch(); }}
@@ -323,7 +362,7 @@ export default function MerchantTransactions() {
             <p className="mt-2 text-xs text-amber-400">{smartError}</p>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
-            Amount ranges: <span className="font-mono text-foreground/60">{">500"}</span>, <span className="font-mono text-foreground/60">{"<=1000"}</span>, <span className="font-mono text-foreground/60">{"200-999"}</span> — Date shortcuts: <span className="font-mono text-foreground/60">today</span>, <span className="font-mono text-foreground/60">this week</span>, <span className="font-mono text-foreground/60">this month</span>, <span className="font-mono text-foreground/60">last month</span>
+            Type: <span className="font-mono text-foreground/60">deposit</span>, <span className="font-mono text-foreground/60">withdrawal</span> — Status: <span className="font-mono text-foreground/60">pending</span>, <span className="font-mono text-foreground/60">success</span>, <span className="font-mono text-foreground/60">failed</span> — Amount: <span className="font-mono text-foreground/60">{">500"}</span>, <span className="font-mono text-foreground/60">{"200-999"}</span> — Date: <span className="font-mono text-foreground/60">today</span>, <span className="font-mono text-foreground/60">this week</span>, <span className="font-mono text-foreground/60">this month</span> — Combine freely: <span className="font-mono text-foreground/60">failed deposits this week</span>
           </p>
         </CardContent>
       </Card>
@@ -362,19 +401,40 @@ export default function MerchantTransactions() {
       {(hasSmartFilter || hasUtrSearch) && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Active filters:</span>
-          {hasSmartFilter && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
-              <Sparkles className="w-3 h-3" />
-              {smartFilter!.label}
-              <button
-                onClick={clearSmartFilter}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
-                aria-label="Remove smart filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
+          {hasSmartFilter && (() => {
+            const sf = smartFilter!;
+            const chips: { label: string; key: string }[] = [];
+            if (sf.txType) chips.push({ key: "type", label: sf.txType === "deposit" ? "Deposits" : "Withdrawals" });
+            if (sf.txStatus) chips.push({ key: "status", label: sf.txStatus.charAt(0).toUpperCase() + sf.txStatus.slice(1) });
+            if (sf.dateFrom || sf.dateTo) {
+              const d = sf.dateFrom && sf.dateTo
+                ? `${sf.dateFrom} – ${sf.dateTo}`
+                : sf.dateFrom ? `From ${sf.dateFrom}` : `Until ${sf.dateTo}`;
+              chips.push({ key: "date", label: d });
+            }
+            if (sf.amountMin != null && sf.amountMax != null) {
+              chips.push({ key: "amount", label: `₹${sf.amountMin.toLocaleString()} – ₹${sf.amountMax.toLocaleString()}` });
+            } else if (sf.amountMin != null) {
+              chips.push({ key: "amount", label: `≥ ₹${sf.amountMin.toLocaleString()}` });
+            } else if (sf.amountMax != null) {
+              chips.push({ key: "amount", label: `≤ ₹${sf.amountMax.toLocaleString()}` });
+            }
+            return chips.map((chip, i) => (
+              <span key={chip.key} className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                <Sparkles className="w-3 h-3" />
+                {chip.label}
+                {i === chips.length - 1 && (
+                  <button
+                    onClick={clearSmartFilter}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                    aria-label="Remove smart filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            ));
+          })()}
           {hasUtrSearch && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
               <Info className="w-3 h-3" />
@@ -430,30 +490,30 @@ export default function MerchantTransactions() {
                 <Input
                   type="date"
                   className="w-[150px] h-8 text-xs [color-scheme:dark]"
-                  value={smartFilter?.type === "date" ? (smartFilter.dateFrom ?? "") : dateFrom}
+                  value={smartFilter?.dateFrom ?? dateFrom}
                   onChange={e => {
-                    if (smartFilter?.type === "date") return;
+                    if (smartFilter?.dateFrom) return;
                     setDateFrom(e.target.value);
                     setPage(1);
                   }}
                   title="From date"
-                  readOnly={smartFilter?.type === "date"}
+                  readOnly={!!smartFilter?.dateFrom}
                 />
                 <span className="text-muted-foreground text-sm">to</span>
                 <Input
                   type="date"
                   className="w-[150px] h-8 text-xs [color-scheme:dark]"
-                  value={smartFilter?.type === "date" ? (smartFilter.dateTo ?? "") : dateTo}
+                  value={smartFilter?.dateTo ?? dateTo}
                   onChange={e => {
-                    if (smartFilter?.type === "date") return;
+                    if (smartFilter?.dateTo) return;
                     setDateTo(e.target.value);
                     setPage(1);
                   }}
                   title="To date"
-                  readOnly={smartFilter?.type === "date"}
+                  readOnly={!!smartFilter?.dateTo}
                 />
               </div>
-              {(dateFrom || dateTo || smartFilter?.type === "date") && (
+              {(dateFrom || dateTo || smartFilter?.dateFrom || smartFilter?.dateTo) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -461,7 +521,7 @@ export default function MerchantTransactions() {
                   onClick={() => {
                     setDateFrom("");
                     setDateTo("");
-                    if (smartFilter?.type === "date") clearSmartFilter();
+                    if (smartFilter?.dateFrom || smartFilter?.dateTo) clearSmartFilter();
                     setPage(1);
                   }}
                 >
