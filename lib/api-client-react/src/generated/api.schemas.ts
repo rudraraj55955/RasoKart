@@ -1072,6 +1072,24 @@ export interface QrCodeStats {
   expired: number;
 }
 
+/**
+ * Delete all QR codes with this status (for the authenticated merchant)
+ */
+export type BulkDeleteQrCodesInputStatus = typeof BulkDeleteQrCodesInputStatus[keyof typeof BulkDeleteQrCodesInputStatus];
+
+
+export const BulkDeleteQrCodesInputStatus = {
+  expired: 'expired',
+  used: 'used',
+} as const;
+
+export interface BulkDeleteQrCodesInput {
+  /** Specific QR code IDs to delete */
+  ids?: number[];
+  /** Delete all QR codes with this status (for the authenticated merchant) */
+  status?: BulkDeleteQrCodesInputStatus;
+}
+
 export type PaymentLinkStatus = typeof PaymentLinkStatus[keyof typeof PaymentLinkStatus];
 
 
@@ -2063,6 +2081,10 @@ export const ListQrCodesStatus = {
   used: 'used',
   all: 'all',
 } as const;
+
+export type BulkDeleteQrCodes200 = {
+  deleted: number;
+};
 
 export type GetQrCodeStatsParams = {
 merchantName?: string;

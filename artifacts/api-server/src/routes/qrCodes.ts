@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transactionsTable, qrPaymentEventsTable } from "@workspace/db";
-import { eq, and, ilike, count, sql, or, desc, gte, lte } from "drizzle-orm";
+import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 
@@ -364,6 +364,43 @@ router.delete("/:id", async (req, res) => {
   if (user.role !== "admin") conditions.push(eq(qrCodesTable.merchantId, user.merchantId!));
   await db.delete(qrCodesTable).where(and(...conditions));
   res.json({ message: "QR code deleted" });
+});
+
+// POST /api/qr-codes/bulk-delete
+router.post("/bulk-delete", async (req, res) => {
+  const user = (req as any).user;
+  const merchantId = user.merchantId as number | undefined;
+  const { ids, status } = req.body as { ids?: number[]; status?: string };
+
+  const allowedStatuses = ["expired", "used"];
+  if (!ids?.length && !status) {
+    res.status(400).json({ error: "Provide ids or status to bulk delete" });
+    return;
+  }
+  if (status && !allowedStatuses.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${allowedStatuses.join(", ")}` });
+    return;
+  }
+
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  // Merchants can only delete their own codes; admins can delete any
+  if (user.role !== "admin") {
+    if (!merchantId) { res.status(403).json({ error: "Forbidden" }); return; }
+    conditions.push(eq(qrCodesTable.merchantId, merchantId));
+  }
+
+  if (ids?.length) {
+    conditions.push(inArray(qrCodesTable.id, ids));
+  } else if (status) {
+    conditions.push(eq(qrCodesTable.status, status));
+  }
+
+  const deleted = await db.delete(qrCodesTable)
+    .where(and(...conditions))
+    .returning({ id: qrCodesTable.id });
+
+  res.json({ deleted: deleted.length });
 });
 
 export default router;

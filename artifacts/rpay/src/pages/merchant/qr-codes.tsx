@@ -3,6 +3,7 @@ import {
   useListQrCodes,
   useCreateQrCode,
   useDeleteQrCode,
+  useBulkDeleteQrCodes,
   useListMerchantConnections,
   useGetQrCodeActivity,
   useGetQrCodeStats,
@@ -14,9 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Trash2, Download, QrCode, Eye, AlertTriangle, CheckCircle2, Link2, ChevronDown, ChevronRight, ScanLine, Zap, ExternalLink } from "lucide-react";
+import { Search, Plus, Trash2, Download, QrCode, Eye, AlertTriangle, CheckCircle2, Link2, ChevronDown, ChevronRight, ScanLine, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
@@ -57,7 +59,6 @@ function deriveVpaFromConn(provider: string, credentials: string | null): string
   let creds: Record<string, string> = {};
   let isJson = false;
   try { if (credentials) { creds = JSON.parse(credentials); isJson = true; } } catch {}
-  // Any provider may store a pre-formed VPA directly under the "vpa" key
   if (creds["vpa"]) return creds["vpa"];
   if (provider === "upi_id") {
     return creds["UPI ID"] ?? (!isJson && credentials ? credentials : null);
@@ -170,7 +171,7 @@ function InlineQrRow({ qr }: { qr: QrRow }) {
 
   return (
     <TableRow className="bg-muted/30 border-t-0">
-      <TableCell colSpan={8} className="py-4 px-6">
+      <TableCell colSpan={9} className="py-4 px-6">
         <div className="flex gap-6 items-start">
           <div id={`qr-inline-${qr.id}`} className="bg-white p-3 rounded-xl shrink-0">
             <QRCodeCanvas value={qr.payload} size={120} level="H" includeMargin />
@@ -285,6 +286,36 @@ function DownloadModal({ qr, onClose }: { qr: QrRow; onClose: () => void }) {
   );
 }
 
+type BulkConfirmDialogProps = {
+  count: number;
+  label: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+};
+
+function BulkConfirmDialog({ count, label, onConfirm, onCancel, isPending }: BulkConfirmDialogProps) {
+  return (
+    <Dialog open onOpenChange={onCancel}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete {count} QR {count === 1 ? "code" : "codes"}?</DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            This will permanently delete {label}. This action cannot be undone.
+          </p>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onCancel} disabled={isPending}>Cancel</Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            {isPending ? "Deleting…" : `Delete ${count} ${count === 1 ? "code" : "codes"}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MerchantQrCodes() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("all");
@@ -293,6 +324,8 @@ export default function MerchantQrCodes() {
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [downloadQr, setDownloadQr] = useState<QrRow | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkConfirm, setBulkConfirm] = useState<{ ids?: number[]; statusFilter?: string; count: number; label: string } | null>(null);
 
   const [form, setForm] = useState({
     amount: "",
@@ -307,8 +340,13 @@ export default function MerchantQrCodes() {
   const { data: connections } = useListMerchantConnections();
   const createMutation = useCreateQrCode();
   const deleteMutation = useDeleteQrCode();
+  const bulkDeleteMutation = useBulkDeleteQrCodes();
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/qr-codes"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["/api/qr-codes"] });
+    qc.invalidateQueries({ queryKey: ["/api/qr-codes/stats"] });
+    setSelectedIds(new Set());
+  };
 
   const activeConnections = (connections ?? []).filter((c: any) => c.isActive);
   const sortedConns = [...activeConnections].sort((a: any) => a.provider === "upi_id" ? -1 : 1);
@@ -319,6 +357,36 @@ export default function MerchantQrCodes() {
     if (vpa) { activeVpa = vpa; activeProvider = conn.provider; break; }
   }
   const hasProvider = !!activeVpa;
+
+  const rows = data?.data ?? [];
+  const rowIds = rows.map((r: any) => r.id as number);
+  const allSelected = rowIds.length > 0 && rowIds.every(id => selectedIds.has(id));
+  const someSelected = rowIds.some(id => selectedIds.has(id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        rowIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        rowIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const handleCreate = () => {
     if (!hasProvider) {
@@ -359,6 +427,36 @@ export default function MerchantQrCodes() {
     });
   };
 
+  const openBulkDeleteSelected = () => {
+    const ids = Array.from(selectedIds);
+    setBulkConfirm({ ids, count: ids.length, label: `${ids.length} selected QR ${ids.length === 1 ? "code" : "codes"}` });
+  };
+
+  const openBulkDeleteByStatus = (statusFilter: string) => {
+    const count = statusFilter === "expired" ? (stats?.expired ?? 0) : (stats?.used ?? 0);
+    const label = `all ${statusFilter} QR codes`;
+    setBulkConfirm({ statusFilter, count, label });
+  };
+
+  const executeBulkDelete = () => {
+    if (!bulkConfirm) return;
+    const payload = bulkConfirm.ids
+      ? { ids: bulkConfirm.ids }
+      : { status: bulkConfirm.statusFilter as "expired" | "used" };
+
+    bulkDeleteMutation.mutate({ data: payload }, {
+      onSuccess: (res) => {
+        toast.success(`${res.deleted} QR ${res.deleted === 1 ? "code" : "codes"} deleted`);
+        setBulkConfirm(null);
+        invalidate();
+      },
+      onError: () => {
+        toast.error("Bulk delete failed");
+        setBulkConfirm(null);
+      },
+    });
+  };
+
   const toggleExpand = (id: number) => setExpandedId(prev => prev === id ? null : id);
 
   const statCards = [
@@ -367,6 +465,10 @@ export default function MerchantQrCodes() {
     { label: "Expired", value: stats?.expired ?? 0, filter: "expired", color: "text-rose-400", bg: "bg-rose-500/10", ring: "ring-rose-500/40" },
     { label: "Used", value: stats?.used ?? 0, filter: "used", color: "text-blue-400", bg: "bg-blue-500/10", ring: "ring-blue-500/40" },
   ];
+
+  const showDeleteAllExpired = status === "expired" && (stats?.expired ?? 0) > 0;
+  const showDeleteAllUsed = status === "used" && (stats?.used ?? 0) > 0;
+  const selectedCount = selectedIds.size;
 
   return (
     <div className="space-y-6">
@@ -412,7 +514,7 @@ export default function MerchantQrCodes() {
             <button
               key={stat.label}
               type="button"
-              onClick={() => { setStatus(stat.filter); setPage(1); }}
+              onClick={() => { setStatus(stat.filter); setPage(1); setSelectedIds(new Set()); }}
               className={`text-left rounded-xl border bg-card transition-all hover:ring-2 focus-visible:outline-none focus-visible:ring-2 ${isActive ? `ring-2 ${stat.ring}` : "hover:ring-border"}`}
             >
               <div className="px-5 pt-5 pb-4">
@@ -434,13 +536,13 @@ export default function MerchantQrCodes() {
       {/* Table */}
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-start sm:items-center">
             <div className="relative flex-1 min-w-[160px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Search order ID or reference..." value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); setSelectedIds(new Set()); }}>
               <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
@@ -449,12 +551,56 @@ export default function MerchantQrCodes() {
                 <SelectItem value="used">Used</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Bulk action buttons */}
+            {selectedCount > 0 && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={openBulkDeleteSelected}
+                className="shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                Delete selected ({selectedCount})
+              </Button>
+            )}
+            {showDeleteAllExpired && selectedCount === 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openBulkDeleteByStatus("expired")}
+                className="shrink-0 border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                Delete all expired ({stats?.expired})
+              </Button>
+            )}
+            {showDeleteAllUsed && selectedCount === 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openBulkDeleteByStatus("used")}
+                className="shrink-0 border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                Delete all used ({stats?.used})
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8 pl-4">
+                  <Checkbox
+                    checked={allSelected}
+                    data-state={someSelected && !allSelected ? "indeterminate" : undefined}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                    disabled={rowIds.length === 0}
+                  />
+                </TableHead>
                 <TableHead className="w-8"></TableHead>
                 <TableHead>Order ID</TableHead>
                 <TableHead>Amount</TableHead>
@@ -469,26 +615,34 @@ export default function MerchantQrCodes() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 9 }).map((_, j) => (
                       <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
                     ))}
                   </TableRow>
                 ))
-              ) : !data?.data?.length ? (
+              ) : !rows.length ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-14">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-14">
                     <QrCode className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No QR codes yet</p>
                     <p className="text-xs mt-1 opacity-60">Create your first QR code to accept payments</p>
                   </TableCell>
                 </TableRow>
-              ) : data.data.flatMap(qr => {
+              ) : rows.flatMap((qr: any) => {
                 const isExpiredRow = qr.expiresAt ? new Date(qr.expiresAt as string) < new Date() : false;
                 const isExpanded = expandedId === qr.id;
+                const isChecked = selectedIds.has(qr.id);
                 return [
-                  <TableRow key={qr.id} className="cursor-pointer hover:bg-muted/30"
+                  <TableRow key={qr.id} className={`cursor-pointer hover:bg-muted/30 ${isChecked ? "bg-muted/20" : ""}`}
                     onClick={() => toggleExpand(qr.id)}>
-                    <TableCell className="pl-4 pr-0">
+                    <TableCell className="pl-4 pr-0" onClick={e => toggleSelect(qr.id, e)}>
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={() => {}}
+                        aria-label={`Select QR code ${qr.id}`}
+                      />
+                    </TableCell>
+                    <TableCell className="pl-2 pr-0">
                       {isExpanded
                         ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
                         : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
@@ -519,16 +673,18 @@ export default function MerchantQrCodes() {
                     <TableCell className="text-xs text-muted-foreground">
                       <div className="flex items-center justify-between gap-2">
                         <span>{format(new Date(qr.createdAt), "MMM d, yyyy HH:mm")}</span>
-                        <button className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted/50"
-                          onClick={e => { e.stopPropagation(); setDownloadQr(qr as any); }}
-                          title="Full detail view">
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button className="text-rose-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10"
-                          onClick={e => { e.stopPropagation(); handleDelete(qr.id); }}
-                          title="Delete">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted/50"
+                            onClick={e => { e.stopPropagation(); setDownloadQr(qr as any); }}
+                            title="Full detail view">
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button className="text-rose-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10"
+                            onClick={e => { e.stopPropagation(); handleDelete(qr.id); }}
+                            title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </TableCell>
                   </TableRow>,
@@ -617,6 +773,17 @@ export default function MerchantQrCodes() {
       </Dialog>
 
       {downloadQr && <DownloadModal qr={downloadQr} onClose={() => setDownloadQr(null)} />}
+
+      {/* Bulk delete confirmation dialog */}
+      {bulkConfirm && (
+        <BulkConfirmDialog
+          count={bulkConfirm.count}
+          label={bulkConfirm.label}
+          onConfirm={executeBulkDelete}
+          onCancel={() => setBulkConfirm(null)}
+          isPending={bulkDeleteMutation.isPending}
+        />
+      )}
     </div>
   );
 }

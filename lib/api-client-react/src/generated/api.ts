@@ -42,6 +42,8 @@ import type {
   BroadcastNotificationResult,
   BulkAssignMerchantPlan200,
   BulkAssignPlanInput,
+  BulkDeleteQrCodes200,
+  BulkDeleteQrCodesInput,
   BulkFeatureUpdateInput,
   BulkMerchantActionInput,
   BulkMerchantActionResult,
@@ -6232,6 +6234,77 @@ export const useCreateQrCode = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateQrCodeMutationOptions(options));
+    }
+
+export const getBulkDeleteQrCodesUrl = () => {
+
+
+
+
+  return `/api/qr-codes/bulk-delete`
+}
+
+/**
+ * @summary Bulk delete QR codes by IDs or status
+ */
+export const bulkDeleteQrCodes = async (bulkDeleteQrCodesInput: BulkDeleteQrCodesInput, options?: RequestInit): Promise<BulkDeleteQrCodes200> => {
+
+  return customFetch<BulkDeleteQrCodes200>(getBulkDeleteQrCodesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      bulkDeleteQrCodesInput,)
+  }
+);}
+
+
+
+
+export const getBulkDeleteQrCodesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkDeleteQrCodes>>, TError,{data: BodyType<BulkDeleteQrCodesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkDeleteQrCodes>>, TError,{data: BodyType<BulkDeleteQrCodesInput>}, TContext> => {
+
+const mutationKey = ['bulkDeleteQrCodes'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkDeleteQrCodes>>, {data: BodyType<BulkDeleteQrCodesInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkDeleteQrCodes(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkDeleteQrCodesMutationResult = NonNullable<Awaited<ReturnType<typeof bulkDeleteQrCodes>>>
+    export type BulkDeleteQrCodesMutationBody = BodyType<BulkDeleteQrCodesInput>
+    export type BulkDeleteQrCodesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Bulk delete QR codes by IDs or status
+ */
+export const useBulkDeleteQrCodes = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkDeleteQrCodes>>, TError,{data: BodyType<BulkDeleteQrCodesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkDeleteQrCodes>>,
+        TError,
+        {data: BodyType<BulkDeleteQrCodesInput>},
+        TContext
+      > => {
+      return useMutation(getBulkDeleteQrCodesMutationOptions(options));
     }
 
 export const getGetQrCodeStatsUrl = (params?: GetQrCodeStatsParams,) => {

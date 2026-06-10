@@ -1946,6 +1946,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/QrCode"
 
+  /qr-codes/bulk-delete:
+    post:
+      operationId: bulkDeleteQrCodes
+      tags: [qr-codes]
+      summary: Bulk delete QR codes by IDs or status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDeleteQrCodesInput"
+      responses:
+        "200":
+          description: QR codes deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: integer
+
   /qr-codes/stats:
     get:
       operationId: getQrCodeStats
@@ -4790,6 +4813,19 @@ components:
           type: integer
         expired:
           type: integer
+
+    BulkDeleteQrCodesInput:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+          description: Specific QR code IDs to delete
+        status:
+          type: string
+          enum: [expired, used]
+          description: Delete all QR codes with this status (for the authenticated merchant)
 
     PaymentLink:
       type: object

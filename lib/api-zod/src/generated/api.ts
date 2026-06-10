@@ -1994,6 +1994,19 @@ export const CreateQrCodeBody = zod.object({
 
 
 /**
+ * @summary Bulk delete QR codes by IDs or status
+ */
+export const BulkDeleteQrCodesBody = zod.object({
+  "ids": zod.array(zod.number()).optional().describe('Specific QR code IDs to delete'),
+  "status": zod.enum(['expired', 'used']).optional().describe('Delete all QR codes with this status (for the authenticated merchant)')
+})
+
+export const BulkDeleteQrCodesResponse = zod.object({
+  "deleted": zod.number()
+})
+
+
+/**
  * @summary Get QR code status breakdown counts
  */
 export const GetQrCodeStatsQueryParams = zod.object({
