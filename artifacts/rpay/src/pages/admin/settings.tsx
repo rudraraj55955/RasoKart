@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 
@@ -21,6 +21,20 @@ async function apiPut(path: string, body: object) {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
     body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = text;
+    try { msg = JSON.parse(text).error ?? text; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function apiPost(path: string) {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) {
     const text = await res.text();
@@ -58,6 +72,12 @@ export default function AdminSettings() {
       qc.invalidateQueries({ queryKey: ["/api/settings"] });
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+
+  const { mutate: sendTestEmail, isPending: sendingTest } = useMutation({
+    mutationFn: () => apiPost("/settings/test-email"),
+    onSuccess: () => toast.success("Test email sent — check your inbox"),
+    onError: (err: Error) => toast.error(`Test email failed: ${err.message}`),
   });
 
   const currentEmail = data?.finance_report_email ?? null;
@@ -109,21 +129,34 @@ export default function AdminSettings() {
 
           <div className="space-y-2">
             <Label htmlFor="finance-email" className="text-sm">Recipient email addresses</Label>
-            <Input
-              id="finance-email"
-              type="text"
-              placeholder="cfo@company.com, controller@company.com, auditor@company.com"
-              value={financeEmail}
-              onChange={e => setFinanceEmail(e.target.value)}
-              disabled={isLoading}
-              className="max-w-lg"
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                id="finance-email"
+                type="text"
+                placeholder="cfo@company.com, controller@company.com, auditor@company.com"
+                value={financeEmail}
+                onChange={e => setFinanceEmail(e.target.value)}
+                disabled={isLoading}
+                className="max-w-lg"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => sendTestEmail()}
+                disabled={sendingTest || isLoading || !currentEmail}
+                title={!currentEmail ? "Save an email address first to send a test" : "Send a test email to the saved address"}
+              >
+                <Send className="w-3.5 h-3.5 mr-1.5" />
+                {sendingTest ? "Sending…" : "Send test"}
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
               Separate multiple addresses with commas.
               {recipientCount > 1 && (
                 <span className="ml-1 text-violet-400">{recipientCount} recipients configured.</span>
               )}
               {" "}Reports include run stats and a full CSV attachment.
+              {currentEmail && ' Use "Send test" to verify SMTP is working.'}
             </p>
           </div>
 
