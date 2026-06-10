@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
+import rateLimit from "express-rate-limit";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
@@ -9,6 +10,15 @@ import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+const uploadUrlLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => String((req as Request & { user?: { id: number } }).user?.id ?? req.ip),
+  message: { error: "Too many upload URL requests. Please try again later." },
+});
 
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/png",
@@ -27,7 +37,7 @@ const MAX_LOGO_SIZE_BYTES = 5 * 1024 * 1024;
  * The client sends JSON metadata (name, size, contentType) — NOT the file.
  * Then uploads the file directly to the returned presigned URL.
  */
-router.post("/storage/uploads/request-url", requireAuth, async (req: Request, res: Response) => {
+router.post("/storage/uploads/request-url", requireAuth, uploadUrlLimiter, async (req: Request, res: Response) => {
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Missing or invalid required fields" });
