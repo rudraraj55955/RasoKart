@@ -1256,6 +1256,33 @@ export interface VaTransactionListResponse {
   limit: number;
 }
 
+export interface VaBalanceAuditEntry {
+  id: number;
+  virtualAccountId: number;
+  accountNumber: string;
+  /** @nullable */
+  merchantName: string | null;
+  changedBy: number;
+  changedByRole: string;
+  changedByName: string;
+  /** @nullable */
+  oldBalance?: string | null;
+  /** @nullable */
+  newBalance?: string | null;
+  /** @nullable */
+  oldTotalCollection?: string | null;
+  /** @nullable */
+  newTotalCollection?: string | null;
+  createdAt: string;
+}
+
+export interface VaBalanceAuditListResponse {
+  data: VaBalanceAuditEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface VaBalanceHistoryEntry {
   id: number;
   virtualAccountId: number;
@@ -2045,6 +2072,16 @@ export const ListVirtualAccountsStatus = {
 
 export type ExportMerchantBalanceHistoryParams = {
 merchantId: number;
+};
+
+export type ListVaBalanceAuditParams = {
+merchantId?: number;
+merchantName?: string;
+changedBy?: string;
+dateFrom?: string;
+dateTo?: string;
+page?: number;
+limit?: number;
 };
 
 export type GetVirtualAccountBalanceHistoryParams = {

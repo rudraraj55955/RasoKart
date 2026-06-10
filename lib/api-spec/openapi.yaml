@@ -2274,6 +2274,48 @@ paths:
               schema:
                 type: string
 
+  /virtual-accounts/balance-audit:
+    get:
+      operationId: listVaBalanceAudit
+      tags: [virtual-accounts]
+      summary: List balance change history across all virtual accounts (admin-only)
+      parameters:
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: merchantName
+          in: query
+          schema:
+            type: string
+        - name: changedBy
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Balance audit log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaBalanceAuditListResponse"
+
   /virtual-accounts/{id}/balance-history:
     get:
       operationId: getVirtualAccountBalanceHistory
@@ -4880,6 +4922,50 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VaTransaction"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    VaBalanceAuditEntry:
+      type: object
+      required: [id, virtualAccountId, accountNumber, merchantName, changedBy, changedByRole, changedByName, createdAt]
+      properties:
+        id:
+          type: integer
+        virtualAccountId:
+          type: integer
+        accountNumber:
+          type: string
+        merchantName:
+          type: ["string", "null"]
+        changedBy:
+          type: integer
+        changedByRole:
+          type: string
+        changedByName:
+          type: string
+        oldBalance:
+          type: ["string", "null"]
+        newBalance:
+          type: ["string", "null"]
+        oldTotalCollection:
+          type: ["string", "null"]
+        newTotalCollection:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    VaBalanceAuditListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VaBalanceAuditEntry"
         total:
           type: integer
         page:

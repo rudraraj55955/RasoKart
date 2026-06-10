@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceHistoryTable, usersTable } from "@workspace/db";
-import { eq, and, ilike, count, or, desc, gte, lte } from "drizzle-orm";
+import { eq, and, ilike, count, or, desc, gte, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 
@@ -224,6 +224,68 @@ router.post("/", async (req, res) => {
     })
     .returning();
   res.status(201).json({ ...row, merchantName: null });
+});
+
+// GET /api/virtual-accounts/balance-audit (admin-only)
+router.get("/balance-audit", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { merchantId, merchantName, changedBy, dateFrom, dateTo, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+  const offset = (pageNum - 1) * limitNum;
+
+  const conditions = [];
+  if (merchantId) conditions.push(eq(virtualAccountsTable.merchantId, parseInt(merchantId)));
+  if (merchantName) conditions.push(ilike(merchantsTable.businessName, `%${merchantName}%`));
+  if (changedBy) conditions.push(ilike(vaBalanceHistoryTable.changedByName, `%${changedBy}%`));
+  if (dateFrom) conditions.push(gte(vaBalanceHistoryTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const end = new Date(dateTo);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(vaBalanceHistoryTable.createdAt, end));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(vaBalanceHistoryTable)
+    .innerJoin(virtualAccountsTable, eq(vaBalanceHistoryTable.virtualAccountId, virtualAccountsTable.id))
+    .leftJoin(merchantsTable, eq(virtualAccountsTable.merchantId, merchantsTable.id))
+    .where(where);
+
+  const rows = await db
+    .select({
+      id: vaBalanceHistoryTable.id,
+      virtualAccountId: vaBalanceHistoryTable.virtualAccountId,
+      accountNumber: virtualAccountsTable.accountNumber,
+      merchantName: merchantsTable.businessName,
+      changedBy: vaBalanceHistoryTable.changedBy,
+      changedByRole: vaBalanceHistoryTable.changedByRole,
+      changedByName: vaBalanceHistoryTable.changedByName,
+      oldBalance: vaBalanceHistoryTable.oldBalance,
+      newBalance: vaBalanceHistoryTable.newBalance,
+      oldTotalCollection: vaBalanceHistoryTable.oldTotalCollection,
+      newTotalCollection: vaBalanceHistoryTable.newTotalCollection,
+      createdAt: vaBalanceHistoryTable.createdAt,
+    })
+    .from(vaBalanceHistoryTable)
+    .innerJoin(virtualAccountsTable, eq(vaBalanceHistoryTable.virtualAccountId, virtualAccountsTable.id))
+    .leftJoin(merchantsTable, eq(virtualAccountsTable.merchantId, merchantsTable.id))
+    .where(where)
+    .orderBy(desc(vaBalanceHistoryTable.createdAt))
+    .limit(limitNum)
+    .offset(offset);
+
+  const data = rows.map(r => ({
+    ...r,
+    merchantName: r.merchantName ?? null,
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+  }));
+
+  res.json({ data, total: Number(total), page: pageNum, limit: limitNum });
 });
 
 // GET /api/virtual-accounts/:id/balance-history

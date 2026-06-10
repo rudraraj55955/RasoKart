@@ -83,6 +83,7 @@ import type {
   ListSettlementsParams,
   ListTransactionsParams,
   ListUsersParams,
+  ListVaBalanceAuditParams,
   ListVirtualAccountsParams,
   ListWithdrawalsParams,
   LoginInput,
@@ -158,6 +159,7 @@ import type {
   UserInput,
   UserListResponse,
   UserUpdate,
+  VaBalanceAuditListResponse,
   VaBalanceHistoryListResponse,
   VaTransactionListResponse,
   VirtualAccount,
@@ -7271,6 +7273,90 @@ export function useExportVirtualAccountBalanceHistory<TData = Awaited<ReturnType
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getExportVirtualAccountBalanceHistoryQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListVaBalanceAuditUrl = (params?: ListVaBalanceAuditParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/virtual-accounts/balance-audit?${stringifiedParams}` : `/api/virtual-accounts/balance-audit`
+}
+
+/**
+ * @summary List balance change history across all virtual accounts (admin-only)
+ */
+export const listVaBalanceAudit = async (params?: ListVaBalanceAuditParams, options?: RequestInit): Promise<VaBalanceAuditListResponse> => {
+
+  return customFetch<VaBalanceAuditListResponse>(getListVaBalanceAuditUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVaBalanceAuditQueryKey = (params?: ListVaBalanceAuditParams,) => {
+    return [
+    `/api/virtual-accounts/balance-audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListVaBalanceAuditQueryOptions = <TData = Awaited<ReturnType<typeof listVaBalanceAudit>>, TError = ErrorType<unknown>>(params?: ListVaBalanceAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVaBalanceAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVaBalanceAuditQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVaBalanceAudit>>> = ({ signal }) => listVaBalanceAudit(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVaBalanceAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVaBalanceAuditQueryResult = NonNullable<Awaited<ReturnType<typeof listVaBalanceAudit>>>
+export type ListVaBalanceAuditQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List balance change history across all virtual accounts (admin-only)
+ */
+
+export function useListVaBalanceAudit<TData = Awaited<ReturnType<typeof listVaBalanceAudit>>, TError = ErrorType<unknown>>(
+ params?: ListVaBalanceAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVaBalanceAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVaBalanceAuditQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

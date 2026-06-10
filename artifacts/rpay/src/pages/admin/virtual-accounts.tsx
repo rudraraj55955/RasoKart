@@ -5,6 +5,7 @@ import {
   useDeleteVirtualAccount,
   useGetVirtualAccountTransactions,
   useGetVirtualAccountBalanceHistory,
+  useListVaBalanceAudit,
 } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode, History, TrendingUp } from "lucide-react";
+import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode, History, TrendingUp, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
@@ -38,8 +39,13 @@ type VaRow = {
   merchantName?: string | null;
 };
 
+type PageTab = "accounts" | "audit";
+
 export default function AdminVirtualAccounts() {
   const qc = useQueryClient();
+  const [pageTab, setPageTab] = useState<PageTab>("accounts");
+
+  // Accounts tab state
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
   const [merchantName, setMerchantName] = useState("");
@@ -52,6 +58,13 @@ export default function AdminVirtualAccounts() {
   const [editMode, setEditMode] = useState<"balance" | "collection">("balance");
   const [editValue, setEditValue] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Audit tab state
+  const [auditMerchantName, setAuditMerchantName] = useState("");
+  const [auditChangedBy, setAuditChangedBy] = useState("");
+  const [auditDateFrom, setAuditDateFrom] = useState("");
+  const [auditDateTo, setAuditDateTo] = useState("");
+  const [auditPage, setAuditPage] = useState(1);
 
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(
     () => qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] })
@@ -66,6 +79,15 @@ export default function AdminVirtualAccounts() {
     page,
     limit: 20,
   } as Parameters<typeof useListVirtualAccounts>[0]);
+
+  const { data: auditData, isLoading: auditLoading } = useListVaBalanceAudit({
+    merchantName: auditMerchantName || undefined,
+    changedBy: auditChangedBy || undefined,
+    dateFrom: auditDateFrom || undefined,
+    dateTo: auditDateTo || undefined,
+    page: auditPage,
+    limit: 20,
+  });
 
   const updateMutation = useUpdateVirtualAccount();
   const deleteMutation = useDeleteVirtualAccount();
@@ -142,6 +164,7 @@ export default function AdminVirtualAccounts() {
           setEditVa(null);
           qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] });
           qc.invalidateQueries({ queryKey: [`/api/virtual-accounts/${vaId}/balance-history`] });
+          qc.invalidateQueries({ queryKey: ["/api/virtual-accounts/balance-audit"] });
         },
         onError: (err: any) => {
           const msg = err?.response?.data?.error ?? err?.response?.data?.message ?? null;
@@ -155,7 +178,12 @@ export default function AdminVirtualAccounts() {
     setSearch(""); setMerchantName(""); setStatus("all"); setDateFrom(""); setDateTo(""); setPage(1);
   };
 
+  const clearAuditFilters = () => {
+    setAuditMerchantName(""); setAuditChangedBy(""); setAuditDateFrom(""); setAuditDateTo(""); setAuditPage(1);
+  };
+
   const hasFilters = search || merchantName || status !== "all" || dateFrom || dateTo;
+  const hasAuditFilters = auditMerchantName || auditChangedBy || auditDateFrom || auditDateTo;
 
   const exportCsv = async () => {
     const { downloadCsvFromUrl } = await import("@/components/ui/export-csv-button");
@@ -218,152 +246,325 @@ export default function AdminVirtualAccounts() {
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
             <RefreshCw className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`} /> Refresh
           </Button>
-          <ExportCsvButton onExport={exportCsv} />
+          {pageTab === "accounts" && <ExportCsvButton onExport={exportCsv} />}
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex flex-col gap-3">
-            {/* Row 1: search inputs + status */}
-            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[160px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input className="pl-9" placeholder="Search account number, holder..." value={search}
-                  onChange={e => { setSearch(e.target.value); setPage(1); }} />
-              </div>
-              <div className="relative min-w-[160px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input className="pl-9 pr-8" placeholder="Filter by merchant name..." value={merchantName}
-                  onChange={e => { setMerchantName(e.target.value); setPage(1); }} />
-                {merchantName && (
-                  <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setMerchantName("")}>
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-              <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {/* Row 2: date range */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center">
-              <div className="flex items-center gap-2 flex-1">
-                <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
-                <Input
-                  type="date"
-                  className="w-[160px]"
-                  value={dateFrom}
-                  onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-                />
-                <span className="text-muted-foreground text-sm">to</span>
-                <Input
-                  type="date"
-                  className="w-[160px]"
-                  value={dateTo}
-                  onChange={e => { setDateTo(e.target.value); setPage(1); }}
-                />
-              </div>
-              {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground hover:text-foreground">
-                  <X className="w-3.5 h-3.5 mr-1.5" />Clear filters
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Merchant</TableHead>
-                <TableHead>Account Holder</TableHead>
-                <TableHead>Account Number</TableHead>
-                <TableHead>Bank</TableHead>
-                <TableHead>IFSC</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Balance</TableHead>
-                <TableHead>Total Collection</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>{Array.from({ length: 10 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
-                ))
-              ) : !data?.data?.length ? (
-                <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-10">No virtual accounts found</TableCell></TableRow>
-              ) : (data.data as VaRow[]).map(va => (
-                <TableRow key={va.id} className="cursor-pointer hover:bg-muted/30" onClick={() => { setSelectedVa(va); setDrawerTab("transactions"); }}>
-                  <TableCell className="font-medium text-sm">{va.merchantName ?? "—"}</TableCell>
-                  <TableCell className="text-sm">{va.accountHolder}</TableCell>
-                  <TableCell className="font-mono text-xs">{va.accountNumber}</TableCell>
-                  <TableCell className="text-sm">{va.bankName}</TableCell>
-                  <TableCell className="font-mono text-xs">{va.ifsc}</TableCell>
-                  <TableCell onClick={e => e.stopPropagation()}>
-                    <Badge variant={va.status === "active" ? "default" : "secondary"} className="text-xs">
-                      {va.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm text-emerald-400">
-                    ₹{parseFloat(va.balance || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="font-mono text-sm text-blue-400">
-                    ₹{parseFloat(va.totalCollection || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{format(new Date(va.createdAt), "MMM d, yyyy")}</TableCell>
-                  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" title="View Transactions"
-                        onClick={() => { setSelectedVa(va); setDrawerTab("transactions"); }}>
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                        title="Balance History" onClick={() => { setSelectedVa(va); setDrawerTab("history"); }}>
-                        <History className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
-                        title="Adjust Balance" onClick={() => openAdjustBalance(va)}>
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
-                        title="Record Manual Collection" onClick={() => openRecordCollection(va)}>
-                        <TrendingUp className="w-3.5 h-3.5" />
-                      </Button>
-                      {va.status === "active" && (
-                        <Button size="sm" variant="ghost" className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 h-8 text-xs"
-                          onClick={() => handleClose(va.id)}>
-                          <XCircle className="w-3.5 h-3.5 mr-1" />Close
-                        </Button>
-                      )}
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500 hover:text-rose-400"
-                        onClick={() => handleDelete(va.id)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* Top-level tab switcher */}
+      <div className="flex gap-1 border-b border-border">
+        <button
+          onClick={() => setPageTab("accounts")}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
+            pageTab === "accounts"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Virtual Accounts
+        </button>
+        <button
+          onClick={() => setPageTab("audit")}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+            pageTab === "audit"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          Balance Audit Log
+        </button>
+      </div>
 
-      {data && data.total > 20 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">{data.total} total</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>
-            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 20 >= data.total}>Next</Button>
-          </div>
+      {pageTab === "accounts" ? (
+        <>
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex flex-col gap-3">
+                {/* Row 1: search inputs + status */}
+                <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+                  <div className="relative flex-1 min-w-[160px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input className="pl-9" placeholder="Search account number, holder..." value={search}
+                      onChange={e => { setSearch(e.target.value); setPage(1); }} />
+                  </div>
+                  <div className="relative min-w-[160px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input className="pl-9 pr-8" placeholder="Filter by merchant name..." value={merchantName}
+                      onChange={e => { setMerchantName(e.target.value); setPage(1); }} />
+                    {merchantName && (
+                      <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setMerchantName("")}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+                    <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="closed">Closed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Row 2: date range */}
+                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                  <div className="flex items-center gap-2 flex-1">
+                    <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <Input
+                      type="date"
+                      className="w-[160px]"
+                      value={dateFrom}
+                      onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                    />
+                    <span className="text-muted-foreground text-sm">to</span>
+                    <Input
+                      type="date"
+                      className="w-[160px]"
+                      value={dateTo}
+                      onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                    />
+                  </div>
+                  {hasFilters && (
+                    <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground hover:text-foreground">
+                      <X className="w-3.5 h-3.5 mr-1.5" />Clear filters
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Merchant</TableHead>
+                    <TableHead>Account Holder</TableHead>
+                    <TableHead>Account Number</TableHead>
+                    <TableHead>Bank</TableHead>
+                    <TableHead>IFSC</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Balance</TableHead>
+                    <TableHead>Total Collection</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <TableRow key={i}>{Array.from({ length: 10 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
+                    ))
+                  ) : !data?.data?.length ? (
+                    <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-10">No virtual accounts found</TableCell></TableRow>
+                  ) : (data.data as VaRow[]).map(va => (
+                    <TableRow key={va.id} className="cursor-pointer hover:bg-muted/30" onClick={() => { setSelectedVa(va); setDrawerTab("transactions"); }}>
+                      <TableCell className="font-medium text-sm">{va.merchantName ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{va.accountHolder}</TableCell>
+                      <TableCell className="font-mono text-xs">{va.accountNumber}</TableCell>
+                      <TableCell className="text-sm">{va.bankName}</TableCell>
+                      <TableCell className="font-mono text-xs">{va.ifsc}</TableCell>
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <Badge variant={va.status === "active" ? "default" : "secondary"} className="text-xs">
+                          {va.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm text-emerald-400">
+                        ₹{parseFloat(va.balance || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm text-blue-400">
+                        ₹{parseFloat(va.totalCollection || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{format(new Date(va.createdAt), "MMM d, yyyy")}</TableCell>
+                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="icon" variant="ghost" className="h-8 w-8" title="View Transactions"
+                            onClick={() => { setSelectedVa(va); setDrawerTab("transactions"); }}>
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                            title="Balance History" onClick={() => { setSelectedVa(va); setDrawerTab("history"); }}>
+                            <History className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
+                            title="Adjust Balance" onClick={() => openAdjustBalance(va)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          {va.status === "active" && (
+                            <Button size="sm" variant="ghost" className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 h-8 text-xs"
+                              onClick={() => handleClose(va.id)}>
+                              <XCircle className="w-3.5 h-3.5 mr-1" />Close
+                            </Button>
+                          )}
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500 hover:text-rose-400"
+                            onClick={() => handleDelete(va.id)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {data && data.total > 20 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">{data.total} total</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 20 >= data.total}>Next</Button>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        /* Balance Audit Log Tab */
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+                  <div className="relative flex-1 min-w-[160px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      className="pl-9 pr-8"
+                      placeholder="Filter by merchant name..."
+                      value={auditMerchantName}
+                      onChange={e => { setAuditMerchantName(e.target.value); setAuditPage(1); }}
+                    />
+                    {auditMerchantName && (
+                      <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setAuditMerchantName("")}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative flex-1 min-w-[160px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      className="pl-9 pr-8"
+                      placeholder="Filter by changed by..."
+                      value={auditChangedBy}
+                      onChange={e => { setAuditChangedBy(e.target.value); setAuditPage(1); }}
+                    />
+                    {auditChangedBy && (
+                      <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setAuditChangedBy("")}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                  <div className="flex items-center gap-2 flex-1">
+                    <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <Input
+                      type="date"
+                      className="w-[160px]"
+                      value={auditDateFrom}
+                      onChange={e => { setAuditDateFrom(e.target.value); setAuditPage(1); }}
+                    />
+                    <span className="text-muted-foreground text-sm">to</span>
+                    <Input
+                      type="date"
+                      className="w-[160px]"
+                      value={auditDateTo}
+                      onChange={e => { setAuditDateTo(e.target.value); setAuditPage(1); }}
+                    />
+                  </div>
+                  {hasAuditFilters && (
+                    <Button variant="ghost" size="sm" onClick={clearAuditFilters} className="text-muted-foreground hover:text-foreground">
+                      <X className="w-3.5 h-3.5 mr-1.5" />Clear filters
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Account Number</TableHead>
+                    <TableHead>Merchant</TableHead>
+                    <TableHead>Changed By</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Balance Change</TableHead>
+                    <TableHead>Collection Change</TableHead>
+                    <TableHead>Timestamp</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {auditLoading ? (
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
+                    ))
+                  ) : !auditData?.data?.length ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-16">
+                        <ShieldCheck className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-30" />
+                        <p className="text-sm text-muted-foreground">No balance changes found</p>
+                        {hasAuditFilters && (
+                          <p className="text-xs text-muted-foreground mt-1 opacity-70">Try adjusting your filters</p>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ) : auditData.data.map(entry => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="font-mono text-xs">{entry.accountNumber}</TableCell>
+                      <TableCell className="text-sm font-medium">{entry.merchantName ?? "—"}</TableCell>
+                      <TableCell className="text-sm">
+                        <div className="flex items-center gap-1.5">
+                          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${entry.changedByRole === "admin" ? "bg-violet-400" : "bg-blue-400"}`} />
+                          {entry.changedByName}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] capitalize px-1.5">
+                          {entry.changedByRole}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {entry.oldBalance != null && entry.newBalance != null ? (
+                          <div className="flex items-center gap-1 text-xs font-mono">
+                            <span className="text-rose-400">₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="text-emerald-400">₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {entry.oldTotalCollection != null && entry.newTotalCollection != null ? (
+                          <div className="flex items-center gap-1 text-xs font-mono">
+                            <span className="text-rose-400">₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="text-emerald-400">₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {format(new Date(entry.createdAt), "MMM d, yyyy HH:mm")}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {auditData && auditData.total > 20 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">{auditData.total} total entries</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setAuditPage(p => Math.max(1, p - 1))} disabled={auditPage === 1}>Previous</Button>
+                <Button variant="outline" size="sm" onClick={() => setAuditPage(p => p + 1)} disabled={auditPage * 20 >= auditData.total}>Next</Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

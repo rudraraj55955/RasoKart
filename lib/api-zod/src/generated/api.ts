@@ -2270,6 +2270,40 @@ export const ExportVirtualAccountBalanceHistoryParams = zod.object({
 
 
 /**
+ * @summary List balance change history across all virtual accounts (admin-only)
+ */
+export const ListVaBalanceAuditQueryParams = zod.object({
+  "merchantId": zod.coerce.number().optional(),
+  "merchantName": zod.coerce.string().optional(),
+  "changedBy": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListVaBalanceAuditResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "virtualAccountId": zod.number(),
+  "accountNumber": zod.string(),
+  "merchantName": zod.string().nullable(),
+  "changedBy": zod.number(),
+  "changedByRole": zod.string(),
+  "changedByName": zod.string(),
+  "oldBalance": zod.string().nullish(),
+  "newBalance": zod.string().nullish(),
+  "oldTotalCollection": zod.string().nullish(),
+  "newTotalCollection": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Get balance change history for a virtual account
  */
 export const GetVirtualAccountBalanceHistoryParams = zod.object({
