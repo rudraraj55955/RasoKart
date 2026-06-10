@@ -17,6 +17,7 @@ import {
   merchantPlansTable,
   ledgerEntriesTable,
   providersTable,
+  merchantConnectionsTable,
   notificationsTable,
   reconciliationRunsTable,
   reconciliationItemsTable,
@@ -523,6 +524,20 @@ export async function seed() {
       await db.insert(providersTable).values(p).onConflictDoUpdate({ target: providersTable.slug, set: { name: p.name, status: p.status, sortOrder: p.sortOrder } });
     }
     console.log("Providers seeded");
+  }
+
+  // ── Merchant Connections (demo data) ──────────────────────────────────────
+  const [connSeedMerchant] = await db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.email, "merchant2@demo.com")).limit(1);
+  if (connSeedMerchant) {
+    const existingConns = await db.select({ c: count() }).from(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, connSeedMerchant.id));
+    if (existingConns[0].c === 0) {
+      await db.insert(merchantConnectionsTable).values([
+        { merchantId: connSeedMerchant.id, provider: "google_pay", credentials: JSON.stringify({ vpa: "merchant2@okaxis" }), monthlyLimit: "500000", isActive: true },
+        { merchantId: connSeedMerchant.id, provider: "phonepe",    credentials: JSON.stringify({ vpa: "merchant2@ybl" }),   monthlyLimit: "300000", isActive: true },
+        { merchantId: connSeedMerchant.id, provider: "upi_id",     credentials: "merchant2@hdfc",                           monthlyLimit: "0",      isActive: false },
+      ]);
+      console.log("Merchant connections seeded");
+    }
   }
 
   // ── Notifications ─────────────────────────────────────────────────────────
