@@ -8,8 +8,47 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Download, Search, X, Info } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { getToken } from "@/lib/auth";
+
+const DATE_PRESETS = [
+  {
+    label: "Last 7 days",
+    getRange: () => {
+      const to = new Date();
+      const from = subDays(to, 6);
+      return { from: format(from, "yyyy-MM-dd"), to: format(to, "yyyy-MM-dd") };
+    },
+  },
+  {
+    label: "Last 30 days",
+    getRange: () => {
+      const to = new Date();
+      const from = subDays(to, 29);
+      return { from: format(from, "yyyy-MM-dd"), to: format(to, "yyyy-MM-dd") };
+    },
+  },
+  {
+    label: "This month",
+    getRange: () => {
+      const now = new Date();
+      return {
+        from: format(startOfMonth(now), "yyyy-MM-dd"),
+        to: format(endOfMonth(now), "yyyy-MM-dd"),
+      };
+    },
+  },
+  {
+    label: "Last month",
+    getRange: () => {
+      const prev = subMonths(new Date(), 1);
+      return {
+        from: format(startOfMonth(prev), "yyyy-MM-dd"),
+        to: format(endOfMonth(prev), "yyyy-MM-dd"),
+      };
+    },
+  },
+];
 
 export default function MerchantTransactions() {
   const [type, setType] = useState("all");
@@ -33,6 +72,18 @@ export default function MerchantTransactions() {
     { utr: utrSearch || "" },
     { query: { enabled: !!utrSearch } as any }
   );
+
+  const applyPreset = (preset: (typeof DATE_PRESETS)[number]) => {
+    const { from, to } = preset.getRange();
+    setDateFrom(from);
+    setDateTo(to);
+    setPage(1);
+  };
+
+  const isPresetActive = (preset: (typeof DATE_PRESETS)[number]) => {
+    const { from, to } = preset.getRange();
+    return dateFrom === from && dateTo === to;
+  };
 
   const exportCsv = async () => {
     const params = new URLSearchParams();
@@ -109,51 +160,67 @@ export default function MerchantTransactions() {
 
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex flex-wrap gap-3 items-center">
-            <Select value={type} onValueChange={v => { setType(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="deposit">Deposit</SelectItem>
-                <SelectItem value="withdrawal">Withdrawal</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="success">Success</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                className="w-[150px] [color-scheme:dark]"
-                value={dateFrom}
-                onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-                title="From date"
-              />
-              <span className="text-muted-foreground text-sm">to</span>
-              <Input
-                type="date"
-                className="w-[150px] [color-scheme:dark]"
-                value={dateTo}
-                onChange={e => { setDateTo(e.target.value); setPage(1); }}
-                title="To date"
-              />
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-3 items-center">
+              <Select value={type} onValueChange={v => { setType(v); setPage(1); }}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="deposit">Deposit</SelectItem>
+                  <SelectItem value="withdrawal">Withdrawal</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="success">Success</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            {(dateFrom || dateTo) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground h-8 px-2"
-                onClick={() => { setDateFrom(""); setDateTo(""); setPage(1); }}
-              >
-                <X className="w-3 h-3 mr-1" />Clear dates
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs text-muted-foreground font-medium mr-1">Date range:</span>
+              {DATE_PRESETS.map(preset => (
+                <Button
+                  key={preset.label}
+                  variant={isPresetActive(preset) ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => applyPreset(preset)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+              <div className="flex items-center gap-2 ml-1">
+                <Input
+                  type="date"
+                  className="w-[150px] h-8 text-xs [color-scheme:dark]"
+                  value={dateFrom}
+                  onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                  title="From date"
+                />
+                <span className="text-muted-foreground text-sm">to</span>
+                <Input
+                  type="date"
+                  className="w-[150px] h-8 text-xs [color-scheme:dark]"
+                  value={dateTo}
+                  onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                  title="To date"
+                />
+              </div>
+              {(dateFrom || dateTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground h-8 px-2"
+                  onClick={() => { setDateFrom(""); setDateTo(""); setPage(1); }}
+                >
+                  <X className="w-3 h-3 mr-1" />Clear
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
