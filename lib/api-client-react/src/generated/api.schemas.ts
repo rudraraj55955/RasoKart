@@ -1820,6 +1820,8 @@ export interface ReconciliationScheduleConfig {
      * @maximum 90
      */
   lookbackDays: number;
+  /** Whether the scheduled auto-reconciliation is enabled */
+  enabled: boolean;
 }
 
 export interface UploadUrlRequest {

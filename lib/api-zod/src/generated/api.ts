@@ -3284,7 +3284,8 @@ export const getReconciliationScheduleConfigResponseLookbackDaysMax = 90;
 export const GetReconciliationScheduleConfigResponse = zod.object({
   "hour": zod.number().min(getReconciliationScheduleConfigResponseHourMin).max(getReconciliationScheduleConfigResponseHourMax).describe('Hour of day (0-23) to run the scheduled reconciliation'),
   "minute": zod.number().min(getReconciliationScheduleConfigResponseMinuteMin).max(getReconciliationScheduleConfigResponseMinuteMax).describe('Minute of the hour (0-59) to run the scheduled reconciliation'),
-  "lookbackDays": zod.number().min(1).max(getReconciliationScheduleConfigResponseLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation')
+  "lookbackDays": zod.number().min(1).max(getReconciliationScheduleConfigResponseLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation'),
+  "enabled": zod.boolean().describe('Whether the scheduled auto-reconciliation is enabled')
 })
 
 
@@ -3304,7 +3305,8 @@ export const updateReconciliationScheduleConfigBodyLookbackDaysMax = 90;
 export const UpdateReconciliationScheduleConfigBody = zod.object({
   "hour": zod.number().min(updateReconciliationScheduleConfigBodyHourMin).max(updateReconciliationScheduleConfigBodyHourMax).describe('Hour of day (0-23) to run the scheduled reconciliation'),
   "minute": zod.number().min(updateReconciliationScheduleConfigBodyMinuteMin).max(updateReconciliationScheduleConfigBodyMinuteMax).describe('Minute of the hour (0-59) to run the scheduled reconciliation'),
-  "lookbackDays": zod.number().min(1).max(updateReconciliationScheduleConfigBodyLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation')
+  "lookbackDays": zod.number().min(1).max(updateReconciliationScheduleConfigBodyLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation'),
+  "enabled": zod.boolean().describe('Whether the scheduled auto-reconciliation is enabled')
 })
 
 export const updateReconciliationScheduleConfigResponseHourMin = 0;
@@ -3320,7 +3322,8 @@ export const updateReconciliationScheduleConfigResponseLookbackDaysMax = 90;
 export const UpdateReconciliationScheduleConfigResponse = zod.object({
   "hour": zod.number().min(updateReconciliationScheduleConfigResponseHourMin).max(updateReconciliationScheduleConfigResponseHourMax).describe('Hour of day (0-23) to run the scheduled reconciliation'),
   "minute": zod.number().min(updateReconciliationScheduleConfigResponseMinuteMin).max(updateReconciliationScheduleConfigResponseMinuteMax).describe('Minute of the hour (0-59) to run the scheduled reconciliation'),
-  "lookbackDays": zod.number().min(1).max(updateReconciliationScheduleConfigResponseLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation')
+  "lookbackDays": zod.number().min(1).max(updateReconciliationScheduleConfigResponseLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation'),
+  "enabled": zod.boolean().describe('Whether the scheduled auto-reconciliation is enabled')
 })
 
 

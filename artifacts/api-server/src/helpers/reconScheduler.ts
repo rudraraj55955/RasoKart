@@ -10,6 +10,7 @@ export interface ReconConfig {
   hour: number;
   minute: number;
   lookbackDays: number;
+  enabled: boolean;
 }
 
 export async function loadReconConfig(): Promise<ReconConfig> {
@@ -17,6 +18,7 @@ export async function loadReconConfig(): Promise<ReconConfig> {
     SYSTEM_CONFIG_KEYS.RECONCILIATION_HOUR,
     SYSTEM_CONFIG_KEYS.RECONCILIATION_MINUTE,
     SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_DAYS,
+    SYSTEM_CONFIG_KEYS.RECONCILIATION_ENABLED,
   ];
 
   const rows = await db
@@ -38,11 +40,16 @@ export async function loadReconConfig(): Promise<ReconConfig> {
     map.get(SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_DAYS) ??
       SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_DAYS]
   );
+  const enabledRaw =
+    map.get(SYSTEM_CONFIG_KEYS.RECONCILIATION_ENABLED) ??
+    SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.RECONCILIATION_ENABLED];
+  const enabled = enabledRaw !== "false";
 
   return {
     hour: isNaN(hour) ? 0 : Math.max(0, Math.min(23, hour)),
     minute: isNaN(minute) ? 0 : Math.max(0, Math.min(59, minute)),
     lookbackDays: isNaN(lookbackDays) ? 1 : Math.max(1, Math.min(90, lookbackDays)),
+    enabled,
   };
 }
 
@@ -52,7 +59,12 @@ function buildCronExpr(hour: number, minute: number): string {
 
 async function runAutoReconciliation(): Promise<void> {
   const config = await loadReconConfig();
-  const { lookbackDays } = config;
+  const { lookbackDays, enabled } = config;
+
+  if (!enabled) {
+    logger.info("Scheduled auto-reconciliation is disabled — skipping run");
+    return;
+  }
 
   const today = new Date();
   const fromDate = new Date(today);

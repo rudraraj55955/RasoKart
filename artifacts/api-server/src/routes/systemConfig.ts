@@ -13,6 +13,7 @@ async function getReconConfig() {
     SYSTEM_CONFIG_KEYS.RECONCILIATION_HOUR,
     SYSTEM_CONFIG_KEYS.RECONCILIATION_MINUTE,
     SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_DAYS,
+    SYSTEM_CONFIG_KEYS.RECONCILIATION_ENABLED,
   ];
 
   const rows = await db
@@ -21,6 +22,10 @@ async function getReconConfig() {
     .where(inArray(systemConfigTable.key, keys));
 
   const map = new Map(rows.map((r) => [r.key, r.value]));
+
+  const enabledRaw =
+    map.get(SYSTEM_CONFIG_KEYS.RECONCILIATION_ENABLED) ??
+    SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.RECONCILIATION_ENABLED];
 
   return {
     hour: parseInt(
@@ -35,6 +40,7 @@ async function getReconConfig() {
       map.get(SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_DAYS) ??
         SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_DAYS]
     ),
+    enabled: enabledRaw !== "false",
   };
 }
 
@@ -52,7 +58,7 @@ router.get("/reconciliation", async (req, res, next) => {
 router.put("/reconciliation", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { hour, minute, lookbackDays } = req.body;
+    const { hour, minute, lookbackDays, enabled } = req.body;
 
     if (
       typeof hour !== "number" ||
@@ -78,10 +84,18 @@ router.put("/reconciliation", async (req, res, next) => {
       return;
     }
 
+    if (enabled !== undefined && typeof enabled !== "boolean") {
+      res.status(400).json({ error: "enabled must be a boolean" });
+      return;
+    }
+
+    const enabledValue = enabled !== undefined ? enabled : true;
+
     const entries = [
       { key: SYSTEM_CONFIG_KEYS.RECONCILIATION_HOUR, value: String(hour), updatedByEmail: user.email },
       { key: SYSTEM_CONFIG_KEYS.RECONCILIATION_MINUTE, value: String(minute), updatedByEmail: user.email },
       { key: SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_DAYS, value: String(lookbackDays), updatedByEmail: user.email },
+      { key: SYSTEM_CONFIG_KEYS.RECONCILIATION_ENABLED, value: String(enabledValue), updatedByEmail: user.email },
     ];
 
     for (const entry of entries) {
@@ -102,13 +116,13 @@ router.put("/reconciliation", async (req, res, next) => {
       action: "system_config_updated",
       targetType: "system_config",
       targetId: null,
-      details: JSON.stringify({ section: "reconciliation", hour, minute, lookbackDays }),
+      details: JSON.stringify({ section: "reconciliation", hour, minute, lookbackDays, enabled: enabledValue }),
       ipAddress: (req as any).ip ?? null,
     });
 
-    req.log.info({ hour, minute, lookbackDays }, "Reconciliation schedule config updated");
+    req.log.info({ hour, minute, lookbackDays, enabled: enabledValue }, "Reconciliation schedule config updated");
 
-    res.json({ hour, minute, lookbackDays });
+    res.json({ hour, minute, lookbackDays, enabled: enabledValue });
   } catch (err) {
     next(err);
   }

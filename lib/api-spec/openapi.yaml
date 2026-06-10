@@ -5705,7 +5705,7 @@ components:
 
     ReconciliationScheduleConfig:
       type: object
-      required: [hour, minute, lookbackDays]
+      required: [hour, minute, lookbackDays, enabled]
       properties:
         hour:
           type: integer
@@ -5722,6 +5722,9 @@ components:
           minimum: 1
           maximum: 90
           description: Number of days to look back when running the scheduled reconciliation
+        enabled:
+          type: boolean
+          description: Whether the scheduled auto-reconciliation is enabled
 
     UploadUrlRequest:
       type: object

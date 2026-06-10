@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { useGetReconciliationScheduleConfig, useUpdateReconciliationScheduleConfig } from "@workspace/api-client-react";
@@ -359,12 +360,14 @@ function ScheduleSettingsCard() {
   const [hour, setHour] = useState(0);
   const [minute, setMinute] = useState(0);
   const [lookbackDays, setLookbackDays] = useState(1);
+  const [enabled, setEnabled] = useState(true);
 
   useEffect(() => {
     if (config) {
       setHour(config.hour);
       setMinute(config.minute);
       setLookbackDays(config.lookbackDays);
+      setEnabled(config.enabled);
     }
   }, [config]);
 
@@ -383,6 +386,7 @@ function ScheduleSettingsCard() {
   const currentHour = config?.hour ?? 0;
   const currentMinute = config?.minute ?? 0;
   const currentLookback = config?.lookbackDays ?? 1;
+  const currentEnabled = config?.enabled ?? true;
 
   const scheduleLabel = `Daily at ${padTwo(currentHour)}:${padTwo(currentMinute)} server time`;
   const windowLabel = currentLookback === 1
@@ -417,26 +421,59 @@ function ScheduleSettingsCard() {
               <div className="text-sm text-muted-foreground">Loading…</div>
             ) : (
               <>
+                <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/20 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    {currentEnabled ? (
+                      <CalendarClock className="w-3.5 h-3.5 text-green-500" />
+                    ) : (
+                      <PauseCircle className="w-3.5 h-3.5 text-amber-500" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {currentEnabled ? "Auto-reconciliation enabled" : "Auto-reconciliation paused"}
+                    </span>
+                  </div>
+                  <Badge variant={currentEnabled ? "default" : "secondary"} className="text-[10px]">
+                    {currentEnabled ? "Active" : "Paused"}
+                  </Badge>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 min-w-[160px]">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Scheduled Time</p>
-                    <p className="text-sm font-medium font-mono">{padTwo(currentHour)}:{padTwo(currentMinute)}</p>
+                    <p className={`text-sm font-medium font-mono ${!currentEnabled ? "text-muted-foreground/60" : ""}`}>{padTwo(currentHour)}:{padTwo(currentMinute)}</p>
                     <p className="text-[10px] text-muted-foreground/60">server time (24h)</p>
                   </div>
                   <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 min-w-[160px]">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Lookback Window</p>
-                    <p className="text-sm font-medium">{currentLookback} {currentLookback === 1 ? "day" : "days"}</p>
+                    <p className={`text-sm font-medium ${!currentEnabled ? "text-muted-foreground/60" : ""}`}>{currentLookback} {currentLookback === 1 ? "day" : "days"}</p>
                     <p className="text-[10px] text-muted-foreground/60">{windowLabel}</p>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Auto-reconciliation runs <span className="text-foreground font-medium">{scheduleLabel}</span>, covering the previous {currentLookback === 1 ? "day" : `${currentLookback} days`}.
+                  {currentEnabled
+                    ? <>Auto-reconciliation runs <span className="text-foreground font-medium">{scheduleLabel}</span>, covering the previous {currentLookback === 1 ? "day" : `${currentLookback} days`}.</>
+                    : "The scheduler is paused and will not run until re-enabled."}
                 </p>
               </>
             )}
           </div>
         ) : (
           <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-md border border-border/50 bg-muted/20 px-3 py-2.5">
+              <Switch
+                id="recon-enabled"
+                checked={enabled}
+                onCheckedChange={setEnabled}
+                disabled={saving}
+              />
+              <div>
+                <Label htmlFor="recon-enabled" className="text-sm font-medium cursor-pointer">
+                  {enabled ? "Scheduler enabled" : "Scheduler paused"}
+                </Label>
+                <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                  {enabled ? "Runs will execute on schedule" : "Scheduled runs will be skipped"}
+                </p>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Run Hour <span className="text-muted-foreground/50">(0–23)</span></Label>
@@ -473,9 +510,9 @@ function ScheduleSettingsCard() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              New schedule: <span className="text-foreground font-medium font-mono">{padTwo(hour)}:{padTwo(minute)}</span> daily,
-              covering the previous <span className="text-foreground font-medium">{lookbackDays} {lookbackDays === 1 ? "day" : "days"}</span>.
-              Changes take effect on the next scheduled run — no restart required.
+              {enabled
+                ? <>New schedule: <span className="text-foreground font-medium font-mono">{padTwo(hour)}:{padTwo(minute)}</span> daily, covering the previous <span className="text-foreground font-medium">{lookbackDays} {lookbackDays === 1 ? "day" : "days"}</span>. Changes take effect on the next scheduled run — no restart required.</>
+                : "The scheduler is paused. Scheduled runs will be skipped until re-enabled."}
             </p>
             <div className="flex gap-2 pt-1">
               <Button
@@ -487,6 +524,7 @@ function ScheduleSettingsCard() {
                     setHour(config.hour);
                     setMinute(config.minute);
                     setLookbackDays(config.lookbackDays);
+                    setEnabled(config.enabled);
                   }
                 }}
                 disabled={saving}
@@ -497,7 +535,7 @@ function ScheduleSettingsCard() {
                 size="sm"
                 className="gap-1.5"
                 disabled={saving}
-                onClick={() => saveConfig({ data: { hour, minute, lookbackDays } })}
+                onClick={() => saveConfig({ data: { hour, minute, lookbackDays, enabled } })}
               >
                 {saving ? (
                   <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving…</>
