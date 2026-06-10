@@ -950,7 +950,7 @@ export const ReceivePaymentCallbackResponse = zod.object({
  * @summary List callback logs
  */
 export const ListCallbackLogsQueryParams = zod.object({
-  "status": zod.enum(['success', 'failed', 'all']).optional(),
+  "status": zod.enum(['success', 'failed', 'pending_retry', 'all']).optional(),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })
@@ -961,11 +961,13 @@ export const ListCallbackLogsResponse = zod.object({
   "merchantId": zod.number(),
   "transactionId": zod.number().nullable(),
   "url": zod.string(),
-  "status": zod.enum(['success', 'failed']),
+  "status": zod.enum(['success', 'failed', 'pending_retry']),
   "httpStatus": zod.number().nullable(),
   "requestBody": zod.string().nullish(),
   "responseBody": zod.string().nullish(),
   "attempts": zod.number().optional(),
+  "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
+  "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),

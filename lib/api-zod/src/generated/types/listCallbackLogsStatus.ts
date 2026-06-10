@@ -12,5 +12,6 @@ export type ListCallbackLogsStatus = typeof ListCallbackLogsStatus[keyof typeof 
 export const ListCallbackLogsStatus = {
   success: 'success',
   failed: 'failed',
+  pending_retry: 'pending_retry',
   all: 'all',
 } as const;

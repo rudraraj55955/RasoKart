@@ -21,5 +21,15 @@ export interface CallbackLog {
   /** @nullable */
   responseBody?: string | null;
   attempts?: number;
+  /**
+     * ISO timestamp of the next scheduled retry attempt
+     * @nullable
+     */
+  nextRetryAt?: string | null;
+  /**
+     * ISO timestamp of the most recent attempt
+     * @nullable
+     */
+  lastAttemptAt?: string | null;
   createdAt: string;
 }

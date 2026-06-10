@@ -3,6 +3,7 @@ import { db, callbackLogsTable, qrCodesTable, apiKeysTable } from "@workspace/db
 import { eq, and, count, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { logger } from "../lib/logger";
+import { fireCallback, scheduleCallbackRetry } from "../helpers/callbackRetry";
 
 const router = Router();
 
@@ -101,37 +102,46 @@ router.post("/", async (req, res) => {
       status: "used",
     };
     const bodyStr = JSON.stringify(payload);
+    const capturedQr = qr;
 
-    fetch(qr.callbackUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: bodyStr,
-      signal: AbortSignal.timeout(10_000),
-    })
-      .then(async (cbRes) => {
-        const responseBody = await cbRes.text().catch(() => null);
+    (async () => {
+      const now = new Date();
+      const { ok, httpStatus, responseBody } = await fireCallback(capturedQr.callbackUrl!, bodyStr);
+
+      if (ok) {
         await db.insert(callbackLogsTable).values({
-          merchantId: qr!.merchantId,
+          merchantId: capturedQr.merchantId,
           transactionId: transactionId ?? null,
-          url: qr!.callbackUrl!,
-          status: cbRes.ok ? "success" : "failed",
-          httpStatus: cbRes.status,
+          url: capturedQr.callbackUrl!,
+          status: "success",
+          httpStatus,
           requestBody: bodyStr,
-          responseBody: responseBody ?? null,
+          responseBody,
+          attempts: 1,
+          lastAttemptAt: now,
         });
-      })
-      .catch(async (err: unknown) => {
-        logger.warn({ err, url: qr!.callbackUrl }, "QR callbackUrl fire failed");
-        await db.insert(callbackLogsTable).values({
-          merchantId: qr!.merchantId,
+      } else {
+        logger.warn({ httpStatus, url: capturedQr.callbackUrl }, "QR callbackUrl fire failed — scheduling retries");
+
+        const [inserted] = await db.insert(callbackLogsTable).values({
+          merchantId: capturedQr.merchantId,
           transactionId: transactionId ?? null,
-          url: qr!.callbackUrl!,
-          status: "failed",
-          httpStatus: null,
+          url: capturedQr.callbackUrl!,
+          status: "pending_retry",
+          httpStatus,
           requestBody: bodyStr,
-          responseBody: err instanceof Error ? err.message : String(err),
-        }).catch(() => {});
-      });
+          responseBody,
+          attempts: 1,
+          lastAttemptAt: now,
+        }).returning({ id: callbackLogsTable.id });
+
+        if (inserted) {
+          await scheduleCallbackRetry(inserted.id, 1);
+        }
+      }
+    })().catch((err: unknown) => {
+      logger.warn({ err, url: capturedQr.callbackUrl }, "QR callbackUrl fire error");
+    });
   }
 
   res.json({

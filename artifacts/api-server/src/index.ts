@@ -4,6 +4,7 @@ import { pool } from "@workspace/db";
 import { seed } from "./seed";
 import cron from "node-cron";
 import { runReconciliation, notifyAdminsOfReconciliationFailure } from "./helpers/reconcileEngine";
+import { processPendingRetries } from "./helpers/callbackRetry";
 
 const rawPort = process.env["PORT"];
 
@@ -17,6 +18,19 @@ const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+function scheduleCallbackRetryWorker() {
+  // Runs every minute to process pending callback retries
+  cron.schedule("* * * * *", async () => {
+    try {
+      await processPendingRetries();
+    } catch (err) {
+      logger.error({ err }, "Callback retry worker failed");
+    }
+  });
+
+  logger.info("Callback retry worker registered (runs every minute)");
 }
 
 function scheduleNightlyReconciliation() {
@@ -82,6 +96,7 @@ async function main() {
   }
 
   scheduleNightlyReconciliation();
+  scheduleCallbackRetryWorker();
 
   app.listen(port, (err) => {
     if (err) {

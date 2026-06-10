@@ -979,7 +979,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [success, failed, all]
+            enum: [success, failed, pending_retry, all]
         - name: page
           in: query
           schema:
@@ -3210,7 +3210,7 @@ components:
           type: string
         status:
           type: string
-          enum: [success, failed]
+          enum: [success, failed, pending_retry]
         httpStatus:
           type: ["integer", "null"]
         requestBody:
@@ -3219,6 +3219,12 @@ components:
           type: ["string", "null"]
         attempts:
           type: integer
+        nextRetryAt:
+          type: ["string", "null"]
+          description: ISO timestamp of the next scheduled retry attempt
+        lastAttemptAt:
+          type: ["string", "null"]
+          description: ISO timestamp of the most recent attempt
         createdAt:
           type: string
 

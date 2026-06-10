@@ -303,6 +303,7 @@ export type CallbackLogStatus = typeof CallbackLogStatus[keyof typeof CallbackLo
 export const CallbackLogStatus = {
   success: 'success',
   failed: 'failed',
+  pending_retry: 'pending_retry',
 } as const;
 
 export interface CallbackLog {
@@ -319,6 +320,16 @@ export interface CallbackLog {
   /** @nullable */
   responseBody?: string | null;
   attempts?: number;
+  /**
+     * ISO timestamp of the next scheduled retry attempt
+     * @nullable
+     */
+  nextRetryAt?: string | null;
+  /**
+     * ISO timestamp of the most recent attempt
+     * @nullable
+     */
+  lastAttemptAt?: string | null;
   createdAt: string;
 }
 
@@ -1630,6 +1641,7 @@ export type ListCallbackLogsStatus = typeof ListCallbackLogsStatus[keyof typeof 
 export const ListCallbackLogsStatus = {
   success: 'success',
   failed: 'failed',
+  pending_retry: 'pending_retry',
   all: 'all',
 } as const;
 

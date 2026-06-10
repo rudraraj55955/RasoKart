@@ -12,4 +12,5 @@ export type CallbackLogStatus = typeof CallbackLogStatus[keyof typeof CallbackLo
 export const CallbackLogStatus = {
   success: 'success',
   failed: 'failed',
+  pending_retry: 'pending_retry',
 } as const;
