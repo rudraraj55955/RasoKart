@@ -1,14 +1,14 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 
 interface UsageRowProps { label: string; used: number; limit: number; }
@@ -97,6 +97,23 @@ function getVpa(credentials: string | null | undefined): string | null {
   }
 }
 
+const PAGE_SIZE = 100;
+
+async function fetchAllPaymentLinks(): Promise<PaymentLink[]> {
+  const first = await listPaymentLinks({ status: ListPaymentLinksStatus.all, limit: PAGE_SIZE, page: 1 });
+  const all = [...first.data];
+  if (first.total > PAGE_SIZE) {
+    const totalPages = Math.ceil(first.total / PAGE_SIZE);
+    const rest = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, i) =>
+        listPaymentLinks({ status: ListPaymentLinksStatus.all, limit: PAGE_SIZE, page: i + 2 })
+      )
+    );
+    for (const page of rest) all.push(...page.data);
+  }
+  return all;
+}
+
 export default function MerchantDashboard() {
   const { data: user } = useGetMe();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
@@ -104,6 +121,10 @@ export default function MerchantDashboard() {
   const { data: myPlan } = useGetMyPlan();
   const { data: usage } = useGetMyPlanUsage();
   const { data: connectionsRaw, isLoading: connectionsLoading } = useListMerchantConnections();
+  const { data: allPaymentLinks, isLoading: paymentLinksLoading } = useQuery<PaymentLink[]>({
+    queryKey: ["payment-links-all-for-dashboard"],
+    queryFn: fetchAllPaymentLinks,
+  });
   const connections = Array.isArray(connectionsRaw) ? connectionsRaw : [];
   const activeConnections = connections.filter(c => c.isActive);
 
@@ -133,6 +154,11 @@ export default function MerchantDashboard() {
   });
 
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
+
+  const allLinks = allPaymentLinks ?? [];
+  const activeLinks = allLinks.filter(l => l.status === ListPaymentLinksStatus.active);
+  const totalLinkPayments = allLinks.reduce((sum, l) => sum + l.paymentCount, 0);
+  const topLinks = [...allLinks].sort((a, b) => b.paymentCount - a.paymentCount).slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -304,6 +330,74 @@ export default function MerchantDashboard() {
                 </div>
               );
             })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Payment Links Summary */}
+      {paymentLinksLoading ? (
+        <Card className="animate-pulse h-28 bg-muted/30" />
+      ) : (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-violet-400" />
+              <CardTitle className="text-base">Payment Links</CardTitle>
+              <Badge variant="outline" className="ml-1 text-violet-400 border-violet-500/30">
+                {activeLinks.length} Active
+              </Badge>
+              <Link href="/merchant/payment-links" className="ml-auto">
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
+                  Manage <ChevronRight className="w-3 h-3 ml-0.5" />
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="space-y-0.5">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Active Links</p>
+                <p className="text-2xl font-bold text-violet-400">{activeLinks.length}</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Payments</p>
+                <p className="text-2xl font-bold text-emerald-400 flex items-center gap-1.5">
+                  <Hash className="w-4 h-4" />{totalLinkPayments}
+                </p>
+              </div>
+            </div>
+            {topLinks.length > 0 ? (
+              <div className="space-y-2 pt-3 border-t border-border/50">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Top Performing Links</p>
+                {topLinks.map((link, i) => {
+                  const count = link.paymentCount ?? 0;
+                  const max = topLinks[0]?.paymentCount ?? 1;
+                  const pct = max > 0 ? Math.round((count / max) * 100) : 0;
+                  return (
+                    <div key={link.id} className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground/60 w-4 tabular-nums">{i + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-sm font-medium truncate">{link.title}</span>
+                          <span className="text-xs font-mono text-emerald-400 tabular-nums shrink-0 ml-2">{count}</span>
+                        </div>
+                        <div className="h-1 w-full rounded-full bg-muted/50 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-violet-500 transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="pt-3 border-t border-border/50 text-center text-muted-foreground/60">
+                <Link2 className="w-6 h-6 mx-auto mb-1 opacity-30" />
+                <p className="text-xs">No payment links yet. Create one to start collecting payments.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
