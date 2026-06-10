@@ -1204,7 +1204,20 @@ export default function AdminMerchants() {
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Other Resources</p>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="rounded-md bg-background/50 border border-border/40 px-2.5 py-2 space-y-1.5">
-                        <p className="text-xs font-medium text-foreground">Virtual Accounts</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-foreground">Virtual Accounts</p>
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                            onClick={() => {
+                              const name = encodeURIComponent(assignPlanMerchant?.name ?? "");
+                              closeAssignPlan();
+                              navigate(`/admin/virtual-accounts?merchant=${name}`);
+                            }}
+                          >
+                            View →
+                          </button>
+                        </div>
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
                           <span className="text-emerald-400">
                             <span className="font-semibold">{merchantPlanUsage.virtualAccount.used}</span>

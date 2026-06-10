@@ -58,7 +58,12 @@ export default function AdminVirtualAccounts() {
   // Accounts tab state
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
-  const [merchantName, setMerchantName] = useState("");
+  const [merchantName, setMerchantName] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const m = params.get("merchant");
+    if (m) window.history.replaceState({}, "", window.location.pathname);
+    return m ?? "";
+  });
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
