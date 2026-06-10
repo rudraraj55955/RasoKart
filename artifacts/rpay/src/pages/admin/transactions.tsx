@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants, useGetPaymentLink } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -938,7 +939,15 @@ export default function AdminTransactions() {
                   <TableCell><ProviderBadge provider={tx.connectionProvider} /></TableCell>
                   <TableCell className="text-right font-mono font-medium">₹{Number(tx.amount).toLocaleString()}</TableCell>
                   <TableCell className="text-xs text-muted-foreground font-mono">
-                    {tx.referenceId || ((tx as any).paymentLinkId ? <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />Link #{(tx as any).paymentLinkId}</span> : "—")}
+                    {tx.referenceId || ((tx as any).paymentLinkId ? (
+                      <Link
+                        href="/admin/payment-links"
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                        className="flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <Link2 className="w-3 h-3" />Link #{(tx as any).paymentLinkId}
+                      </Link>
+                    ) : "—")}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{format(new Date(tx.createdAt), "MMM d, HH:mm")}</TableCell>
                 </TableRow>
