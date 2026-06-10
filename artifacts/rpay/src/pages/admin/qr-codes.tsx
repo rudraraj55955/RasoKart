@@ -166,7 +166,7 @@ export default function AdminQrCodes() {
                 )}
               </div>
               <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-[140px]"><SelectValue placeholder="All Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
