@@ -3930,6 +3930,9 @@ components:
         lastAttemptAt:
           type: ["string", "null"]
           description: ISO timestamp of the most recent attempt
+        signatureVerified:
+          type: ["boolean", "null"]
+          description: HMAC signature verification result — true if passed, false if rejected, null if no secret is configured
         createdAt:
           type: string
 

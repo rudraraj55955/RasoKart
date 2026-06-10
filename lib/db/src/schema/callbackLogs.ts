@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -15,6 +15,7 @@ export const callbackLogsTable = pgTable("callback_logs", {
   attempts: integer("attempts").notNull().default(1),
   nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
   lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  signatureVerified: boolean("signature_verified"), // true = HMAC passed, false = HMAC failed, null = no secret configured
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

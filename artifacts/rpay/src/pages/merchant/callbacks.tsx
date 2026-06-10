@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useListCallbackLogs } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,6 +10,16 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, QrCode, X } from "lucide-react";
 import { format } from "date-fns";
+
+function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
+  if (value === true) {
+    return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20 text-xs">Verified</Badge>;
+  }
+  if (value === false) {
+    return <Badge className="bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20 text-xs">Failed</Badge>;
+  }
+  return <span className="text-muted-foreground text-xs">—</span>;
+}
 
 function CallbackRow({ log }: { log: any }) {
   const [open, setOpen] = useState(false);
@@ -30,11 +41,12 @@ function CallbackRow({ log }: { log: any }) {
         <TableCell><StatusBadge status={log.status} /></TableCell>
         <TableCell><span className={`font-mono text-sm ${log.httpStatus === 200 ? "text-emerald-500" : "text-rose-500"}`}>{log.httpStatus || "—"}</span></TableCell>
         <TableCell className="text-center">{log.attempts}</TableCell>
+        <TableCell><SignatureVerifiedBadge value={log.signatureVerified} /></TableCell>
         <TableCell className="text-sm text-muted-foreground">{format(new Date(log.createdAt), "MMM d, HH:mm")}</TableCell>
       </TableRow>
       <CollapsibleContent asChild>
         <TableRow>
-          <TableCell colSpan={6} className="bg-muted/20 pb-4">
+          <TableCell colSpan={7} className="bg-muted/20 pb-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2 pt-2">
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Request</p>
@@ -136,15 +148,16 @@ export default function MerchantCallbacks() {
                 <TableHead>Status</TableHead>
                 <TableHead>HTTP</TableHead>
                 <TableHead className="text-center">Attempts</TableHead>
+                <TableHead>Sig. Verified</TableHead>
                 <TableHead>Time</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>{Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
+                <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
               )) : data?.data?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
                     {qrCodeId ? `No webhook logs for QR #${qrCodeId}` : "No callback logs yet"}
                   </TableCell>
                 </TableRow>

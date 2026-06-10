@@ -1169,6 +1169,7 @@ export const ListCallbackLogsResponse = zod.object({
   "attempts": zod.number().optional(),
   "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
   "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
+  "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),

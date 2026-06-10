@@ -58,9 +58,23 @@ router.post("/", async (req, res) => {
     .where(eq(merchantsTable.id, merchantId))
     .limit(1);
 
+  // signatureVerified: true = HMAC passed, false = HMAC rejected, null = no secret configured
+  let signatureVerified: boolean | null = null;
+
   if (merchant?.callbackSecret) {
     const signatureHeader = (req.headers["x-signature"] as string | undefined)?.trim();
     if (!signatureHeader) {
+      db.insert(callbackLogsTable).values({
+        merchantId,
+        url: req.originalUrl,
+        status: "failed",
+        attempts: 1,
+        lastAttemptAt: new Date(),
+        signatureVerified: false,
+        responseBody: "X-Signature header is required for this merchant",
+      }).catch((err: unknown) => {
+        logger.warn({ err }, "Failed to log signature-missing callback attempt");
+      });
       res.status(401).json({ error: "X-Signature header is required for this merchant" });
       return;
     }
@@ -72,9 +86,22 @@ router.post("/", async (req, res) => {
     }
 
     if (!verifyHmacSignature(merchant.callbackSecret, rawBody, signatureHeader)) {
+      db.insert(callbackLogsTable).values({
+        merchantId,
+        url: req.originalUrl,
+        status: "failed",
+        attempts: 1,
+        lastAttemptAt: new Date(),
+        signatureVerified: false,
+        responseBody: "Invalid X-Signature",
+      }).catch((err: unknown) => {
+        logger.warn({ err }, "Failed to log signature-invalid callback attempt");
+      });
       res.status(401).json({ error: "Invalid X-Signature" });
       return;
     }
+
+    signatureVerified = true;
   }
 
   // --- Input validation ---
@@ -168,6 +195,7 @@ router.post("/", async (req, res) => {
     };
     const bodyStr = JSON.stringify(payload);
     const capturedQr = qr;
+    const capturedSignatureVerified = signatureVerified;
 
     (async () => {
       const now = new Date();
@@ -185,6 +213,7 @@ router.post("/", async (req, res) => {
           responseBody,
           attempts: 1,
           lastAttemptAt: now,
+          signatureVerified: capturedSignatureVerified,
         });
       } else {
         logger.warn({ httpStatus, url: capturedQr.callbackUrl }, "QR callbackUrl fire failed — scheduling retries");
@@ -200,6 +229,7 @@ router.post("/", async (req, res) => {
           responseBody,
           attempts: 1,
           lastAttemptAt: now,
+          signatureVerified: capturedSignatureVerified,
         }).returning({ id: callbackLogsTable.id });
 
         if (inserted) {

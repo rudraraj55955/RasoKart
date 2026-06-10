@@ -475,6 +475,11 @@ export interface CallbackLog {
      * @nullable
      */
   lastAttemptAt?: string | null;
+  /**
+     * HMAC signature verification result — true if passed, false if rejected, null if no secret is configured
+     * @nullable
+     */
+  signatureVerified?: boolean | null;
   createdAt: string;
 }
 
