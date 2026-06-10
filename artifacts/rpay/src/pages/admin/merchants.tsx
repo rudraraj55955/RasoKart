@@ -657,6 +657,21 @@ export default function AdminMerchants() {
               <p className="text-xs text-muted-foreground">Leave empty for no expiry.</p>
             </div>
 
+            {/* No-expiry warning for paid plans */}
+            {selectedPlanId && !expiresAt && (() => {
+              const plan = plans?.find(p => String(p.id) === selectedPlanId);
+              if (!plan || plan.monthlyFee === "0") return null;
+              return (
+                <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-amber-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p className="text-xs leading-relaxed">
+                    <span className="font-semibold">No expiry date set.</span>{" "}
+                    This paid plan ({plan.name}) will never expire — the merchant will not be prompted to renew.
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* Notes */}
             <div className="space-y-2">
               <Label>Notes (optional)</Label>
