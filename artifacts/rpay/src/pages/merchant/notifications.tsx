@@ -4,8 +4,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone, RefreshCw } from "lucide-react";
+import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone, RefreshCw, ExternalLink } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
@@ -66,11 +67,14 @@ const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] 
   { value: "system_notice", label: "Notice", icon: <Megaphone className="w-3 h-3" /> },
 ];
 
+const PROVIDER_LIMIT_TYPES = new Set(["provider_limit_warning", "provider_limit_reached", "provider_limit_reset"]);
+
 export default function NotificationsPage() {
   const [tab, setTab] = useState<"all" | "unread">("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [page, setPage] = useState(1);
   const qc = useQueryClient();
+  const [, navigate] = useLocation();
 
   const { data, isLoading, refetch } = useListNotifications({
     isRead: tab === "unread" ? "false" : undefined,
@@ -109,6 +113,11 @@ export default function NotificationsPage() {
         refetch();
       },
     });
+  }
+
+  function handleNotifClick(id: number, type: string, isRead: boolean) {
+    if (!isRead) handleMarkOne(id);
+    if (PROVIDER_LIMIT_TYPES.has(type)) navigate("/merchant/connect");
   }
 
   const notifications = data?.data ?? [];
@@ -178,42 +187,52 @@ export default function NotificationsPage() {
             </div>
           ) : (
             <ul className="divide-y divide-border/50">
-              {notifications.map((n) => (
-                <li
-                  key={n.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => !n.isRead && handleMarkOne(n.id)}
-                  onKeyDown={(e) => e.key === "Enter" && !n.isRead && handleMarkOne(n.id)}
-                  className={`flex items-start gap-4 px-5 py-4 transition-colors ${!n.isRead ? "bg-primary/5 cursor-pointer hover:bg-primary/10" : "cursor-default"}`}
-                >
-                  <div className={`mt-0.5 shrink-0 ${notifColor(n.type)}`}>
-                    {notifIcon(n.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">{n.title}</span>
-                      {TYPE_LABELS[n.type] && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                          {TYPE_LABELS[n.type]}
-                        </Badge>
-                      )}
-                      {!n.isRead && (
-                        <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                      )}
+              {notifications.map((n) => {
+                const isProviderLimit = PROVIDER_LIMIT_TYPES.has(n.type);
+                const isClickable = !n.isRead || isProviderLimit;
+                return (
+                  <li
+                    key={n.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleNotifClick(n.id, n.type, n.isRead)}
+                    onKeyDown={(e) => e.key === "Enter" && handleNotifClick(n.id, n.type, n.isRead)}
+                    className={`flex items-start gap-4 px-5 py-4 transition-colors ${!n.isRead ? "bg-primary/5" : ""} ${isClickable ? "cursor-pointer hover:bg-primary/10" : "cursor-default"}`}
+                  >
+                    <div className={`mt-0.5 shrink-0 ${notifColor(n.type)}`}>
+                      {notifIcon(n.type)}
                     </div>
-                    <p className="text-sm text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
-                    <p className="text-[11px] text-muted-foreground/60 mt-1">
-                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
-                    </p>
-                  </div>
-                  {!n.isRead && (
-                    <div className="shrink-0 h-7 w-7 flex items-center justify-center text-muted-foreground" title="Click row to mark as read">
-                      <Check className="w-3.5 h-3.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm">{n.title}</span>
+                        {TYPE_LABELS[n.type] && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                            {TYPE_LABELS[n.type]}
+                          </Badge>
+                        )}
+                        {isProviderLimit && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-primary/70">
+                            <ExternalLink className="w-3 h-3" />
+                            View providers
+                          </span>
+                        )}
+                        {!n.isRead && (
+                          <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
+                      <p className="text-[11px] text-muted-foreground/60 mt-1">
+                        {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                      </p>
                     </div>
-                  )}
-                </li>
-              ))}
+                    {!n.isRead && (
+                      <div className="shrink-0 h-7 w-7 flex items-center justify-center text-muted-foreground" title="Click row to mark as read">
+                        <Check className="w-3.5 h-3.5" />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
