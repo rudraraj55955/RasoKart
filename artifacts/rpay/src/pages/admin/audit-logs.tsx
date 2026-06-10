@@ -11,12 +11,15 @@ import {
   Shield, Search, Eye, Activity, FileDown, CalendarIcon, X,
   CheckCircle2, XCircle, UserPlus, UserCog,
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
+  Users,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   merchant_approved:        { label: "Merchant Approved",    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
   merchant_rejected:        { label: "Merchant Rejected",    color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
+  merchant_suspended:       { label: "Merchant Suspended",   color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
+  merchant_reinstated:      { label: "Merchant Reinstated",  color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
   plan_assigned:            { label: "Plan Assigned",         color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   plan_upgraded:            { label: "Plan Upgraded",         color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   plan_downgraded:          { label: "Plan Downgraded",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
@@ -31,6 +34,10 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   account_detail_updated:   { label: "Account Detail Updated",color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   account_detail_deleted:   { label: "Account Detail Deleted",color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   visibility_rule_updated:  { label: "Visibility Rule Set",   color: "bg-purple-500/10 text-purple-400 border-purple-500/20" },
+  bulk_approve:             { label: "Bulk Approve",          color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  bulk_suspend:             { label: "Bulk Suspend",          color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
+  bulk_reinstate:           { label: "Bulk Reinstate",        color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  bulk_assign_plan:         { label: "Bulk Plan Assign",      color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
@@ -462,6 +469,68 @@ function VisibilityRuleUpdatedDetails({ log }: { log: any }) {
   );
 }
 
+function BulkActionDetails({ log }: { log: any }) {
+  let parsed: {
+    merchantIds?: number[];
+    count?: number;
+    failed?: number;
+    planId?: number;
+    planName?: string;
+  } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const action = log.action as string;
+  const count = parsed.count ?? parsed.merchantIds?.length ?? 0;
+  const failed = parsed.failed ?? 0;
+
+  const isApprove = action === "bulk_approve";
+  const isSuspend = action === "bulk_suspend";
+  const isReinstate = action === "bulk_reinstate";
+  const isPlanAssign = action === "bulk_assign_plan";
+
+  const iconColor = isSuspend ? "text-rose-400" : isReinstate ? "text-teal-400" : isApprove ? "text-emerald-400" : "text-blue-400";
+  const cardColor = isSuspend
+    ? "bg-rose-500/10 border-rose-500/20"
+    : isReinstate
+    ? "bg-teal-500/10 border-teal-500/20"
+    : isApprove
+    ? "bg-emerald-500/10 border-emerald-500/20"
+    : "bg-blue-500/10 border-blue-500/20";
+
+  const title = isApprove
+    ? `Bulk approved ${count} merchant${count !== 1 ? "s" : ""}`
+    : isSuspend
+    ? `Bulk suspended ${count} merchant${count !== 1 ? "s" : ""}`
+    : isReinstate
+    ? `Bulk reinstated ${count} merchant${count !== 1 ? "s" : ""}`
+    : `Bulk assigned plan to ${count} merchant${count !== 1 ? "s" : ""}`;
+
+  const subtitle = isPlanAssign && parsed.planName ? `Plan: ${parsed.planName}` : undefined;
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<Users className={`w-5 h-5 ${iconColor}`} />}
+        title={title}
+        subtitle={subtitle}
+        colorClass={cardColor}
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        <DetailRow label="Merchants affected" value={count} />
+        {failed > 0 && <DetailRow label="Failed" value={<span className="text-rose-400">{failed}</span>} />}
+        {isPlanAssign && parsed.planName && <DetailRow label="Plan" value={parsed.planName} />}
+        {isPlanAssign && parsed.planId != null && <DetailRow label="Plan ID" value={<span className="font-mono">#{parsed.planId}</span>} />}
+        {parsed.merchantIds && parsed.merchantIds.length > 0 && (
+          <div>
+            <span className="text-xs text-muted-foreground">Merchant IDs: </span>
+            <span className="text-xs font-mono">{parsed.merchantIds.map(id => `#${id}`).join(", ")}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RawJsonDetails({ log }: { log: any }) {
   return (
     <div className="rounded-lg bg-muted/20 p-3">
@@ -506,6 +575,11 @@ function ActionDetails({ log }: { log: any }) {
       return <AccountDetailDeletedDetails log={log} />;
     case "visibility_rule_updated":
       return <VisibilityRuleUpdatedDetails log={log} />;
+    case "bulk_approve":
+    case "bulk_suspend":
+    case "bulk_reinstate":
+    case "bulk_assign_plan":
+      return <BulkActionDetails log={log} />;
     default:
       return <RawJsonDetails log={log} />;
   }
@@ -800,7 +874,17 @@ export default function AdminAuditLogs() {
                       <p className="text-xs text-muted-foreground">ID #{log.adminId}</p>
                     </div>
                   </TableCell>
-                  <TableCell><ActionBadge action={log.action} /></TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <ActionBadge action={log.action} />
+                      {(log.action as string).startsWith("bulk_") && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-violet-400 uppercase tracking-wide">
+                          <Users className="w-2.5 h-2.5" />
+                          Bulk
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-xs capitalize">{log.targetType}</Badge>
                   </TableCell>
