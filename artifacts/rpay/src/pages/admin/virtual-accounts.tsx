@@ -172,6 +172,27 @@ export default function AdminVirtualAccounts() {
   const txCount = txList.length;
   const balList = balHistoryData?.data ?? [];
 
+  const exportBalanceHistoryCsv = async () => {
+    if (!selectedVa) return;
+    const { downloadCsvFromUrl } = await import("@/components/ui/export-csv-button");
+    await downloadCsvFromUrl(
+      `/api/virtual-accounts/${selectedVa.id}/balance-history/export`,
+      `balance-history-va-${selectedVa.id}.csv`
+    );
+  };
+
+  const exportMerchantBalanceHistoryCsv = async () => {
+    if (!selectedVa) return;
+    const mid = (selectedVa as any).merchantId;
+    if (!mid) return;
+    const { downloadCsvFromUrl } = await import("@/components/ui/export-csv-button");
+    await downloadCsvFromUrl(
+      `/api/virtual-accounts/balance-history/export`,
+      `balance-history-merchant-${mid}.csv`,
+      { merchantId: String(mid) }
+    );
+  };
+
   const handleCopyUpiId = (va: VaRow) => {
     const upiId = buildUpiId(va.accountNumber, va.ifsc);
     navigator.clipboard.writeText(upiId).then(() => toast.success("UPI ID copied to clipboard"));
@@ -581,7 +602,17 @@ export default function AdminVirtualAccounts() {
                 <p className="text-xs mt-1 opacity-60">Manual balance edits will appear here</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">{balHistoryData?.total ?? balList.length} change{(balHistoryData?.total ?? balList.length) !== 1 ? "s" : ""}</p>
+                  <div className="flex gap-2">
+                    <ExportCsvButton label="Export This VA" onExport={exportBalanceHistoryCsv} />
+                    {(selectedVa as any)?.merchantId && (
+                      <ExportCsvButton label="Export All VAs" onExport={exportMerchantBalanceHistoryCsv} />
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
                 {balList.map(entry => (
                   <div key={entry.id} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
                     <div className="flex items-center justify-between mb-2">
@@ -624,6 +655,7 @@ export default function AdminVirtualAccounts() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             )
           )}

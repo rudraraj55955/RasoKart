@@ -2154,6 +2154,22 @@ export const CreateVirtualAccountBody = zod.object({
 
 
 /**
+ * @summary Export balance change history for all VAs of a merchant as CSV (admin only)
+ */
+export const ExportMerchantBalanceHistoryQueryParams = zod.object({
+  "merchantId": zod.coerce.number()
+})
+
+
+/**
+ * @summary Export balance change history as CSV
+ */
+export const ExportVirtualAccountBalanceHistoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
  * @summary Get balance change history for a virtual account
  */
 export const GetVirtualAccountBalanceHistoryParams = zod.object({

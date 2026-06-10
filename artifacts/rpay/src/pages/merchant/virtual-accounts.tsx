@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Search, Plus, XCircle, CheckCircle2, Trash2, Eye, Download, Building2, TrendingUp, ArrowUpDown, AlertCircle, Pencil, Copy, QrCode, History } from "lucide-react";
+import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
@@ -192,6 +193,14 @@ export default function MerchantVirtualAccounts() {
   const txCount = txList.length;
 
   const balList = balHistoryData?.data ?? [];
+
+  const exportBalanceHistoryCsv = async () => {
+    if (!selectedVa) return;
+    await downloadCsvFromUrl(
+      `/api/virtual-accounts/${selectedVa.id}/balance-history/export`,
+      `balance-history-va-${selectedVa.id}.csv`
+    );
+  };
 
   const handleCopyUpiId = (va: VaRow) => {
     const upiId = buildUpiId(va.accountNumber, va.ifsc);
@@ -665,7 +674,11 @@ export default function MerchantVirtualAccounts() {
                 <p className="text-xs mt-1 opacity-60">Manual balance edits will appear here</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <ExportCsvButton label="Export CSV" onExport={exportBalanceHistoryCsv} />
+                </div>
+                <div className="space-y-2">
                 {balList.map(entry => (
                   <div key={entry.id} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
                     <div className="flex items-center justify-between mb-2">
@@ -708,6 +721,7 @@ export default function MerchantVirtualAccounts() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             )
           )}

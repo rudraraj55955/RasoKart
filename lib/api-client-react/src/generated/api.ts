@@ -54,6 +54,7 @@ import type {
   DeleteAccountDetail200,
   ErrorResponse,
   ExpiryCheckResult,
+  ExportMerchantBalanceHistoryParams,
   GetVirtualAccountBalanceHistoryParams,
   HealthStatus,
   Invoice,
@@ -6896,6 +6897,167 @@ export const useCreateVirtualAccount = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateVirtualAccountMutationOptions(options));
     }
+
+export const getExportMerchantBalanceHistoryUrl = (params: ExportMerchantBalanceHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/virtual-accounts/balance-history/export?${stringifiedParams}` : `/api/virtual-accounts/balance-history/export`
+}
+
+/**
+ * @summary Export balance change history for all VAs of a merchant as CSV (admin only)
+ */
+export const exportMerchantBalanceHistory = async (params: ExportMerchantBalanceHistoryParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportMerchantBalanceHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportMerchantBalanceHistoryQueryKey = (params?: ExportMerchantBalanceHistoryParams,) => {
+    return [
+    `/api/virtual-accounts/balance-history/export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportMerchantBalanceHistoryQueryOptions = <TData = Awaited<ReturnType<typeof exportMerchantBalanceHistory>>, TError = ErrorType<unknown>>(params: ExportMerchantBalanceHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportMerchantBalanceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportMerchantBalanceHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportMerchantBalanceHistory>>> = ({ signal }) => exportMerchantBalanceHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportMerchantBalanceHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportMerchantBalanceHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof exportMerchantBalanceHistory>>>
+export type ExportMerchantBalanceHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export balance change history for all VAs of a merchant as CSV (admin only)
+ */
+
+export function useExportMerchantBalanceHistory<TData = Awaited<ReturnType<typeof exportMerchantBalanceHistory>>, TError = ErrorType<unknown>>(
+ params: ExportMerchantBalanceHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportMerchantBalanceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportMerchantBalanceHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportVirtualAccountBalanceHistoryUrl = (id: number,) => {
+
+
+
+
+  return `/api/virtual-accounts/${id}/balance-history/export`
+}
+
+/**
+ * @summary Export balance change history as CSV
+ */
+export const exportVirtualAccountBalanceHistory = async (id: number, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportVirtualAccountBalanceHistoryUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportVirtualAccountBalanceHistoryQueryKey = (id: number,) => {
+    return [
+    `/api/virtual-accounts/${id}/balance-history/export`
+    ] as const;
+    }
+
+
+export const getExportVirtualAccountBalanceHistoryQueryOptions = <TData = Awaited<ReturnType<typeof exportVirtualAccountBalanceHistory>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportVirtualAccountBalanceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportVirtualAccountBalanceHistoryQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportVirtualAccountBalanceHistory>>> = ({ signal }) => exportVirtualAccountBalanceHistory(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportVirtualAccountBalanceHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportVirtualAccountBalanceHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof exportVirtualAccountBalanceHistory>>>
+export type ExportVirtualAccountBalanceHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export balance change history as CSV
+ */
+
+export function useExportVirtualAccountBalanceHistory<TData = Awaited<ReturnType<typeof exportVirtualAccountBalanceHistory>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportVirtualAccountBalanceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportVirtualAccountBalanceHistoryQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetVirtualAccountBalanceHistoryUrl = (id: number,
     params?: GetVirtualAccountBalanceHistoryParams,) => {

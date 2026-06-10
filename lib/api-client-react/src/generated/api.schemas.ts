@@ -1959,6 +1959,10 @@ export const ListVirtualAccountsStatus = {
   all: 'all',
 } as const;
 
+export type ExportMerchantBalanceHistoryParams = {
+merchantId: number;
+};
+
 export type GetVirtualAccountBalanceHistoryParams = {
 page?: number;
 limit?: number;

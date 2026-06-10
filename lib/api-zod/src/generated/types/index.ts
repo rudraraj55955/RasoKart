@@ -48,6 +48,7 @@ export * from './dashboardStats';
 export * from './deleteAccountDetail200';
 export * from './errorResponse';
 export * from './expiryCheckResult';
+export * from './exportMerchantBalanceHistoryParams';
 export * from './getVirtualAccountBalanceHistoryParams';
 export * from './healthStatus';
 export * from './invoice';

@@ -152,6 +152,53 @@ router.get("/export/csv", async (req, res) => {
   res.send(csv);
 });
 
+// GET /api/virtual-accounts/balance-history/export (admin only — all VAs for a merchant)
+router.get("/balance-history/export", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { merchantId } = req.query as Record<string, string>;
+  if (!merchantId) { res.status(400).json({ error: "merchantId is required" }); return; }
+
+  const mid = parseInt(merchantId);
+  const vas = await db.select({ id: virtualAccountsTable.id, accountNumber: virtualAccountsTable.accountNumber })
+    .from(virtualAccountsTable)
+    .where(eq(virtualAccountsTable.merchantId, mid));
+
+  if (!vas.length) {
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="balance-history-merchant-${mid}.csv"`);
+    res.send("Date/Time,Virtual Account,Changed By,Role,Old Balance,New Balance,Old Total Collection,New Total Collection\n");
+    return;
+  }
+
+  const vaIds = vas.map(v => v.id);
+  const vaMap = Object.fromEntries(vas.map(v => [v.id, v.accountNumber]));
+
+  const { inArray } = await import("drizzle-orm");
+  const entries = await db.select()
+    .from(vaBalanceHistoryTable)
+    .where(inArray(vaBalanceHistoryTable.virtualAccountId, vaIds))
+    .orderBy(desc(vaBalanceHistoryTable.createdAt));
+
+  const header = ["Date/Time", "Virtual Account", "Changed By", "Role", "Old Balance", "New Balance", "Old Total Collection", "New Total Collection"];
+  const csvRows = entries.map(e => [
+    e.createdAt instanceof Date ? e.createdAt.toISOString() : String(e.createdAt),
+    vaMap[e.virtualAccountId] ?? String(e.virtualAccountId),
+    e.changedByName ?? "",
+    e.changedByRole ?? "",
+    e.oldBalance ?? "",
+    e.newBalance ?? "",
+    e.oldTotalCollection ?? "",
+    e.newTotalCollection ?? "",
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
+
+  const csv = [header.join(","), ...csvRows].join("\n");
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="balance-history-merchant-${mid}.csv"`);
+  res.send(csv);
+});
+
 // POST /api/virtual-accounts
 router.post("/", async (req, res) => {
   const user = (req as any).user;
@@ -220,6 +267,39 @@ router.get("/:id/balance-history", async (req, res) => {
   }));
 
   res.json({ data, total: Number(total), page: pageNum, limit: limitNum });
+});
+
+// GET /api/virtual-accounts/:id/balance-history/export
+router.get("/:id/balance-history/export", async (req, res) => {
+  const user = (req as any).user;
+  const id = parseInt(req.params['id'] as string);
+
+  const vaConditions = [eq(virtualAccountsTable.id, id)];
+  if (user.role !== "admin") vaConditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));
+
+  const [va] = await db.select().from(virtualAccountsTable).where(and(...vaConditions)).limit(1);
+  if (!va) { res.status(404).json({ error: "Virtual account not found" }); return; }
+
+  const entries = await db.select()
+    .from(vaBalanceHistoryTable)
+    .where(eq(vaBalanceHistoryTable.virtualAccountId, id))
+    .orderBy(desc(vaBalanceHistoryTable.createdAt));
+
+  const header = ["Date/Time", "Changed By", "Role", "Old Balance", "New Balance", "Old Total Collection", "New Total Collection"];
+  const csvRows = entries.map(e => [
+    e.createdAt instanceof Date ? e.createdAt.toISOString() : String(e.createdAt),
+    e.changedByName ?? "",
+    e.changedByRole ?? "",
+    e.oldBalance ?? "",
+    e.newBalance ?? "",
+    e.oldTotalCollection ?? "",
+    e.newTotalCollection ?? "",
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
+
+  const csv = [header.join(","), ...csvRows].join("\n");
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="balance-history-va-${id}.csv"`);
+  res.send(csv);
 });
 
 // GET /api/virtual-accounts/:id/transactions
