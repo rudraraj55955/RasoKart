@@ -11,7 +11,7 @@ import {
   Shield, Search, Eye, Activity, FileDown, CalendarIcon, X,
   CheckCircle2, XCircle, UserPlus, UserCog,
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
-  Users, Loader2,
+  Users, Loader2, QrCode, Landmark,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
@@ -39,6 +39,12 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   bulk_suspend:             { label: "Bulk Suspend",          color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   bulk_reinstate:           { label: "Bulk Reinstate",        color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
   bulk_assign_plan:         { label: "Bulk Plan Assign",      color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  qr_code_created:          { label: "QR Code Created",       color: "bg-primary/10 text-primary border-primary/20" },
+  qr_code_updated:          { label: "QR Code Updated",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  qr_code_deleted:          { label: "QR Code Deleted",       color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
+  virtual_account_created:  { label: "VA Created",            color: "bg-primary/10 text-primary border-primary/20" },
+  virtual_account_updated:  { label: "VA Updated",            color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  virtual_account_deleted:  { label: "VA Deleted",            color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
@@ -532,6 +538,156 @@ function BulkActionDetails({ log }: { log: any }) {
   );
 }
 
+function QrCodeCreatedDetails({ log }: { log: any }) {
+  let parsed: { label?: string | null; type?: string; merchantId?: number } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<QrCode className="w-5 h-5 text-primary" />}
+        title={parsed.label ? `New QR code: ${parsed.label}` : "New QR code created"}
+        subtitle={parsed.type ? `Type: ${parsed.type.charAt(0).toUpperCase() + parsed.type.slice(1)}` : undefined}
+        colorClass="bg-primary/10 border-primary/20"
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {parsed.label && <DetailRow label="Label" value={parsed.label} />}
+        {parsed.type && <DetailRow label="Type" value={<span className="capitalize">{parsed.type}</span>} />}
+        <DetailRow label="QR code ID" value={<span className="font-mono">#{log.targetId ?? "—"}</span>} />
+        {parsed.merchantId != null && <DetailRow label="Merchant ID" value={<span className="font-mono">#{parsed.merchantId}</span>} />}
+      </div>
+    </div>
+  );
+}
+
+function QrCodeUpdatedDetails({ log }: { log: any }) {
+  let parsed: { label?: string | null; changes?: string[] } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<PencilLine className="w-5 h-5 text-amber-400" />}
+        title={parsed.label ? `Updated QR code: ${parsed.label}` : "QR code updated"}
+        subtitle={`QR code #${log.targetId ?? "—"}`}
+        colorClass="bg-amber-500/10 border-amber-500/20"
+      />
+      {parsed.changes && parsed.changes.length > 0 && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-2">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Fields changed</p>
+          <div className="flex flex-wrap gap-1.5">
+            {parsed.changes.map((c: string) => (
+              <span key={c} className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                {humanizeKey(c)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QrCodeDeletedDetails({ log }: { log: any }) {
+  let parsed: { label?: string | null; type?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<Trash2 className="w-5 h-5 text-rose-400" />}
+        title={parsed.label ? `Deleted QR code: ${parsed.label}` : "QR code deleted"}
+        subtitle={`QR code #${log.targetId ?? "—"} has been permanently removed`}
+        colorClass="bg-rose-500/10 border-rose-500/20"
+      />
+      {(parsed.label || parsed.type) && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+          {parsed.label && <DetailRow label="Label" value={parsed.label} />}
+          {parsed.type && <DetailRow label="Type" value={<span className="capitalize">{parsed.type}</span>} />}
+          <DetailRow label="QR code ID" value={<span className="font-mono">#{log.targetId ?? "—"}</span>} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VirtualAccountCreatedDetails({ log }: { log: any }) {
+  let parsed: { label?: string | null; accountHolder?: string; accountNumber?: string; bankName?: string; merchantId?: number } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<Landmark className="w-5 h-5 text-primary" />}
+        title={parsed.label ? `New virtual account: ${parsed.label}` : parsed.accountHolder ? `New virtual account for ${parsed.accountHolder}` : "Virtual account created"}
+        subtitle={parsed.bankName ?? undefined}
+        colorClass="bg-primary/10 border-primary/20"
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {parsed.label && <DetailRow label="Label" value={parsed.label} />}
+        {parsed.accountHolder && <DetailRow label="Account holder" value={parsed.accountHolder} />}
+        {parsed.accountNumber && <DetailRow label="Account number" value={<span className="font-mono">{parsed.accountNumber}</span>} />}
+        {parsed.bankName && <DetailRow label="Bank" value={parsed.bankName} />}
+        <DetailRow label="Virtual account ID" value={<span className="font-mono">#{log.targetId ?? "—"}</span>} />
+        {parsed.merchantId != null && <DetailRow label="Merchant ID" value={<span className="font-mono">#{parsed.merchantId}</span>} />}
+      </div>
+    </div>
+  );
+}
+
+function VirtualAccountUpdatedDetails({ log }: { log: any }) {
+  let parsed: { label?: string | null; changes?: string[] } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<PencilLine className="w-5 h-5 text-amber-400" />}
+        title={parsed.label ? `Updated virtual account: ${parsed.label}` : "Virtual account updated"}
+        subtitle={`Virtual account #${log.targetId ?? "—"}`}
+        colorClass="bg-amber-500/10 border-amber-500/20"
+      />
+      {parsed.changes && parsed.changes.length > 0 && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-2">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Fields changed</p>
+          <div className="flex flex-wrap gap-1.5">
+            {parsed.changes.map((c: string) => (
+              <span key={c} className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                {humanizeKey(c)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VirtualAccountDeletedDetails({ log }: { log: any }) {
+  let parsed: { label?: string | null; accountHolder?: string; accountNumber?: string; bankName?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<Trash2 className="w-5 h-5 text-rose-400" />}
+        title={parsed.label ? `Deleted virtual account: ${parsed.label}` : parsed.accountHolder ? `Deleted account for ${parsed.accountHolder}` : "Virtual account deleted"}
+        subtitle={`Virtual account #${log.targetId ?? "—"} has been permanently removed`}
+        colorClass="bg-rose-500/10 border-rose-500/20"
+      />
+      {(parsed.accountHolder || parsed.accountNumber || parsed.bankName) && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+          {parsed.label && <DetailRow label="Label" value={parsed.label} />}
+          {parsed.accountHolder && <DetailRow label="Account holder" value={parsed.accountHolder} />}
+          {parsed.accountNumber && <DetailRow label="Account number" value={<span className="font-mono">{parsed.accountNumber}</span>} />}
+          {parsed.bankName && <DetailRow label="Bank" value={parsed.bankName} />}
+          <DetailRow label="Virtual account ID" value={<span className="font-mono">#{log.targetId ?? "—"}</span>} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RawJsonDetails({ log }: { log: any }) {
   return (
     <div className="rounded-lg bg-muted/20 p-3">
@@ -581,6 +737,18 @@ function ActionDetails({ log }: { log: any }) {
     case "bulk_reinstate":
     case "bulk_assign_plan":
       return <BulkActionDetails log={log} />;
+    case "qr_code_created":
+      return <QrCodeCreatedDetails log={log} />;
+    case "qr_code_updated":
+      return <QrCodeUpdatedDetails log={log} />;
+    case "qr_code_deleted":
+      return <QrCodeDeletedDetails log={log} />;
+    case "virtual_account_created":
+      return <VirtualAccountCreatedDetails log={log} />;
+    case "virtual_account_updated":
+      return <VirtualAccountUpdatedDetails log={log} />;
+    case "virtual_account_deleted":
+      return <VirtualAccountDeletedDetails log={log} />;
     default:
       return <RawJsonDetails log={log} />;
   }

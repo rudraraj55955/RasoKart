@@ -1,8 +1,20 @@
 import { Router } from "express";
-import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transactionsTable, qrPaymentEventsTable } from "@workspace/db";
+import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transactionsTable, qrPaymentEventsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
+
+async function logQrAudit(req: any, action: string, targetId: number | null, details: object) {
+  await db.insert(auditLogsTable).values({
+    adminId: req.user.id,
+    adminEmail: req.user.email,
+    action,
+    targetType: "qr_code",
+    targetId,
+    details: JSON.stringify(details),
+    ipAddress: req.ip ?? null,
+  });
+}
 
 const PROVIDER_VPA_SUFFIX: Record<string, string> = {
   phonepe: "ybl",
@@ -330,6 +342,8 @@ router.post("/", async (req, res) => {
     expiresAt: expiresAt ? new Date(expiresAt) : null,
   }).returning();
 
+  await logQrAudit(req, "qr_code_created", row.id, { label: row.label ?? null, type: row.type, merchantId });
+
   res.status(201).json({
     ...serializeQr(row, merchant?.businessName ?? null),
     vpa,
@@ -353,6 +367,12 @@ router.put("/:id", async (req, res) => {
 
   const [row] = await db.update(qrCodesTable).set(update).where(and(...conditions)).returning();
   if (!row) { res.status(404).json({ error: "QR code not found" }); return; }
+
+  await logQrAudit(req, "qr_code_updated", id, {
+    label: row.label ?? null,
+    changes: Object.keys(update),
+  });
+
   res.json(serializeQr(row));
 });
 
@@ -362,7 +382,15 @@ router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const conditions = [eq(qrCodesTable.id, id)];
   if (user.role !== "admin") conditions.push(eq(qrCodesTable.merchantId, user.merchantId!));
+
+  const [existing] = await db.select().from(qrCodesTable).where(and(...conditions)).limit(1);
+
   await db.delete(qrCodesTable).where(and(...conditions));
+
+  if (existing) {
+    await logQrAudit(req, "qr_code_deleted", id, { label: existing.label ?? null, type: existing.type });
+  }
+
   res.json({ message: "QR code deleted" });
 });
 

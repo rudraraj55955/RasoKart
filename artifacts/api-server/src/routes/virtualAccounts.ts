@@ -1,8 +1,20 @@
 import { Router } from "express";
-import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceHistoryTable, usersTable } from "@workspace/db";
+import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceHistoryTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, ilike, count, or, desc, gte, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
+
+async function logVaAudit(req: any, action: string, targetId: number | null, details: object) {
+  await db.insert(auditLogsTable).values({
+    adminId: req.user.id,
+    adminEmail: req.user.email,
+    action,
+    targetType: "virtual_account",
+    targetId,
+    details: JSON.stringify(details),
+    ipAddress: req.ip ?? null,
+  });
+}
 
 const router = Router();
 
@@ -223,6 +235,15 @@ router.post("/", async (req, res) => {
       totalCollection: "0.00",
     })
     .returning();
+
+  await logVaAudit(req, "virtual_account_created", row.id, {
+    label: row.label ?? null,
+    accountHolder: row.accountHolder,
+    accountNumber: row.accountNumber,
+    bankName: row.bankName,
+    merchantId,
+  });
+
   res.status(201).json({ ...row, merchantName: null });
 });
 
@@ -443,6 +464,11 @@ router.put("/:id", async (req, res) => {
   const [row] = await db.update(virtualAccountsTable).set(update).where(and(...conditions)).returning();
   if (!row) { res.status(404).json({ error: "Virtual account not found" }); return; }
 
+  await logVaAudit(req, "virtual_account_updated", id, {
+    label: row.label ?? null,
+    changes: Object.keys(update),
+  });
+
   const balanceChanged = balance !== undefined && balance !== existing.balance;
   const totalCollectionChanged = totalCollection !== undefined && totalCollection !== existing.totalCollection;
 
@@ -472,7 +498,20 @@ router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const conditions = [eq(virtualAccountsTable.id, id)];
   if (user.role !== "admin") conditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));
+
+  const [existing] = await db.select().from(virtualAccountsTable).where(and(...conditions)).limit(1);
+
   await db.delete(virtualAccountsTable).where(and(...conditions));
+
+  if (existing) {
+    await logVaAudit(req, "virtual_account_deleted", id, {
+      label: existing.label ?? null,
+      accountHolder: existing.accountHolder,
+      accountNumber: existing.accountNumber,
+      bankName: existing.bankName,
+    });
+  }
+
   res.json({ message: "Virtual account deleted" });
 });
 
