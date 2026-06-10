@@ -410,17 +410,20 @@ router.get("/export/csv", async (req, res) => {
     .select({
       transaction: transactionsTable,
       merchantName: merchantsTable.businessName,
+      connectionProvider: merchantConnectionsTable.provider,
     })
     .from(transactionsTable)
     .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
+    .leftJoin(merchantConnectionsTable, eq(transactionsTable.connectionId, merchantConnectionsTable.id))
     .where(where)
     .orderBy(sql`${transactionsTable.createdAt} DESC`);
 
-  const header = ["ID", "UTR", "Merchant", "Type", "Status", "Amount", "Currency", "Reference", "Date"];
+  const header = ["ID", "UTR", "Merchant", "Provider", "Type", "Status", "Amount", "Currency", "Reference", "Date"];
   const csvRows = rows.map(r => [
     String(r.transaction.id),
     r.transaction.utr,
     r.merchantName ?? "",
+    r.connectionProvider ?? "",
     r.transaction.type,
     r.transaction.status,
     String(Number(r.transaction.amount)),
