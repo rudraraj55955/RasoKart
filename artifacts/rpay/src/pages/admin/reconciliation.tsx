@@ -7,13 +7,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
 async function apiPost(path: string, body: object) {
   const res = await fetch(`/api${path}`, {
     method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = text;
+    try { msg = JSON.parse(text).error ?? text; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function apiPatch(path: string, body: object) {
+  const res = await fetch(`/api${path}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
     body: JSON.stringify(body),
   });
@@ -67,7 +84,6 @@ function MatchedPairCard({ item }: { item: any }) {
       </div>
       <p className="text-xs text-muted-foreground mb-2">{item.merchantName ?? `Merchant #${item.merchantId}`}</p>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        {/* Deposit side */}
         <div className="bg-muted/40 rounded px-2 py-1.5 min-w-0">
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Deposit</p>
           {item.transaction ? (
@@ -76,9 +92,7 @@ function MatchedPairCard({ item }: { item: any }) {
             <p className="text-xs text-muted-foreground/50">—</p>
           )}
         </div>
-        {/* Link icon */}
         <Link2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-        {/* Settlement side */}
         <div className="bg-muted/40 rounded px-2 py-1.5 min-w-0">
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Settlement</p>
           {item.settlement ? (
@@ -95,7 +109,201 @@ function MatchedPairCard({ item }: { item: any }) {
   );
 }
 
-function UnmatchedCard({ item }: { item: any }) {
+function ResolvedCard({ item }: { item: any }) {
+  const typeLabel =
+    item.resolutionType === "linked_transaction" ? "Linked to Transaction"
+    : item.resolutionType === "linked_settlement" ? "Linked to Settlement"
+    : "Excluded";
+
+  return (
+    <div className="rounded-md border border-violet-500/20 bg-violet-500/5 p-3 text-sm">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-violet-500/10 text-violet-400 border-violet-500/30 gap-1">
+          <ShieldCheck className="w-2.5 h-2.5" /> Resolved
+        </Badge>
+        <span className="font-mono text-sm font-semibold">{formatCurrency(item.amount)}</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-1">{item.merchantName ?? `Merchant #${item.merchantId}`}</p>
+      <p className="text-xs text-violet-300/80 font-medium mb-1">{typeLabel}</p>
+      {item.resolutionType === "linked_transaction" && item.transaction && (
+        <p className="text-xs text-muted-foreground font-mono">UTR: {item.transaction.utr}</p>
+      )}
+      {item.resolutionType === "linked_settlement" && item.settlement && (
+        <p className="text-xs text-muted-foreground">
+          Settlement #{item.settlement.id}
+          {item.settlement.referenceNumber ? ` · ${item.settlement.referenceNumber}` : ""}
+        </p>
+      )}
+      {item.resolutionNotes && (
+        <p className="text-xs text-muted-foreground/60 mt-1 italic">"{item.resolutionNotes}"</p>
+      )}
+      {item.resolvedByEmail && (
+        <p className="text-[10px] text-muted-foreground/40 mt-1">By {item.resolvedByEmail}</p>
+      )}
+    </div>
+  );
+}
+
+type ResolutionType = "linked_transaction" | "linked_settlement" | "excluded";
+
+interface ResolveDialogProps {
+  item: any | null;
+  onClose: () => void;
+  onResolved: () => void;
+}
+
+function ResolveDialog({ item, onClose, onResolved }: ResolveDialogProps) {
+  const [resolutionType, setResolutionType] = useState<ResolutionType>("excluded");
+  const [linkedTransactionId, setLinkedTransactionId] = useState("");
+  const [linkedSettlementId, setLinkedSettlementId] = useState("");
+  const [resolutionNotes, setResolutionNotes] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiPatch(`/reconciliation/items/${item!.id}/resolve`, {
+        resolutionType,
+        linkedTransactionId: resolutionType === "linked_transaction" && linkedTransactionId ? parseInt(linkedTransactionId) : undefined,
+        linkedSettlementId: resolutionType === "linked_settlement" && linkedSettlementId ? parseInt(linkedSettlementId) : undefined,
+        resolutionNotes: resolutionNotes.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success("Item resolved successfully");
+      onResolved();
+      onClose();
+    },
+    onError: (err: any) => toast.error(`Failed to resolve: ${err.message}`),
+  });
+
+  const isDeposit = item?.status === "unmatched_deposit";
+
+  const canSubmit =
+    resolutionType === "excluded"
+      ? true
+      : resolutionType === "linked_transaction"
+      ? !!linkedTransactionId
+      : !!linkedSettlementId;
+
+  if (!item) return null;
+
+  return (
+    <Dialog open onOpenChange={open => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <ShieldCheck className="w-4 h-4 text-violet-400" />
+            Resolve Unmatched Item
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          {/* Item summary */}
+          <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">
+                {isDeposit ? "Unmatched Deposit" : "Unmatched Settlement"}
+              </span>
+              <span className="font-mono font-semibold">{formatCurrency(item.amount)}</span>
+            </div>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">
+              {item.merchantName ?? `Merchant #${item.merchantId}`}
+            </p>
+            {isDeposit && item.transaction?.utr && (
+              <p className="text-xs text-muted-foreground/60 font-mono mt-0.5">UTR: {item.transaction.utr}</p>
+            )}
+            {!isDeposit && item.settlement && (
+              <p className="text-xs text-muted-foreground/60 mt-0.5">Settlement #{item.settlement.id}</p>
+            )}
+          </div>
+
+          {/* Resolution type */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Resolution Type</Label>
+            <Select value={resolutionType} onValueChange={v => setResolutionType(v as ResolutionType)}>
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="linked_transaction">Link to Transaction ID</SelectItem>
+                <SelectItem value="linked_settlement">Link to Settlement ID</SelectItem>
+                <SelectItem value="excluded">Mark as Excluded</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Conditional ID input */}
+          {resolutionType === "linked_transaction" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Transaction ID</Label>
+              <Input
+                type="number"
+                placeholder="e.g. 42"
+                value={linkedTransactionId}
+                onChange={e => setLinkedTransactionId(e.target.value)}
+                className="h-9"
+              />
+              <p className="text-[10px] text-muted-foreground/60">
+                Enter the numeric ID of the transaction to link this item to.
+              </p>
+            </div>
+          )}
+
+          {resolutionType === "linked_settlement" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Settlement ID</Label>
+              <Input
+                type="number"
+                placeholder="e.g. 7"
+                value={linkedSettlementId}
+                onChange={e => setLinkedSettlementId(e.target.value)}
+                className="h-9"
+              />
+              <p className="text-[10px] text-muted-foreground/60">
+                Enter the numeric ID of the settlement to link this item to.
+              </p>
+            </div>
+          )}
+
+          {resolutionType === "excluded" && (
+            <div className="rounded-md border border-orange-500/20 bg-orange-500/5 px-3 py-2 text-xs text-orange-400/80">
+              This item will be marked as intentionally excluded from matching.
+            </div>
+          )}
+
+          {/* Notes */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Notes <span className="text-muted-foreground/40">(optional)</span></Label>
+            <Textarea
+              placeholder="Add a reason or note for this resolution…"
+              value={resolutionNotes}
+              onChange={e => setResolutionNotes(e.target.value)}
+              className="h-20 resize-none text-sm"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={onClose} disabled={mutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 gap-2 bg-violet-600 hover:bg-violet-700 text-white"
+              disabled={!canSubmit || mutation.isPending}
+              onClick={() => mutation.mutate()}
+            >
+              {mutation.isPending ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving…</>
+              ) : (
+                <><ShieldCheck className="w-3.5 h-3.5" /> Resolve</>
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UnmatchedCard({ item, onResolve }: { item: any; onResolve: (item: any) => void }) {
   const isDeposit = item.status === "unmatched_deposit";
   return (
     <div className={`rounded-md border p-3 text-sm ${
@@ -124,6 +332,16 @@ function UnmatchedCard({ item }: { item: any }) {
         </p>
       ) : null}
       {item.notes && <p className="text-xs text-muted-foreground/60 mt-1">{item.notes}</p>}
+      <div className="mt-2 flex justify-end">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 text-[11px] gap-1 border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+          onClick={() => onResolve(item)}
+        >
+          <ShieldCheck className="w-3 h-3" /> Resolve
+        </Button>
+      </div>
     </div>
   );
 }
@@ -136,6 +354,7 @@ export default function AdminReconciliation() {
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
   const [dateTo, setDateTo] = useState(today);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [resolveItem, setResolveItem] = useState<any | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["/api/reconciliation/runs"],
@@ -143,7 +362,6 @@ export default function AdminReconciliation() {
     refetchInterval: 5000,
   });
 
-  // Fetch ALL items for the detail view (up to 200) — split client-side into columns
   const detailQuery = useQuery({
     queryKey: ["/api/reconciliation/runs", selectedRunId, "items"],
     queryFn: () => apiGet(`/reconciliation/runs/${selectedRunId}/items?limit=200`),
@@ -165,7 +383,12 @@ export default function AdminReconciliation() {
   const allItems: any[] = detailQuery.data?.data ?? [];
 
   const matchedItems = allItems.filter(i => i.status === "matched");
-  const unmatchedItems = allItems.filter(i => i.status !== "matched");
+  const resolvedItems = allItems.filter(i => i.status === "resolved");
+  const unmatchedItems = allItems.filter(i => i.status !== "matched" && i.status !== "resolved");
+
+  function handleResolved() {
+    qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "items"] });
+  }
 
   return (
     <div className="space-y-6">
@@ -316,7 +539,7 @@ export default function AdminReconciliation() {
         </CardContent>
       </Card>
 
-      {/* Detail Dialog — two-column: matched pairs | unmatched items */}
+      {/* Detail Dialog */}
       <Dialog open={!!selectedRunId} onOpenChange={open => !open && setSelectedRunId(null)}>
         <DialogContent className="max-w-6xl max-h-[88vh] flex flex-col gap-4">
           <DialogHeader>
@@ -326,7 +549,6 @@ export default function AdminReconciliation() {
             </DialogTitle>
           </DialogHeader>
 
-          {/* Run summary */}
           {selectedRun && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-border/50 pb-4">
               {[
@@ -351,7 +573,6 @@ export default function AdminReconciliation() {
             </div>
           )}
 
-          {/* Two-column body */}
           {detailQuery.isLoading ? (
             <div className="py-10 text-center text-muted-foreground text-sm">Loading items…</div>
           ) : (
@@ -381,24 +602,45 @@ export default function AdminReconciliation() {
               {/* Divider */}
               <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-border/40 pointer-events-none" aria-hidden />
 
-              {/* Right column — Unmatched items */}
+              {/* Right column — Unmatched + Resolved */}
               <div className="flex flex-col min-h-0">
                 <div className="flex items-center gap-2 mb-3">
                   <AlertTriangle className="w-4 h-4 text-orange-400" />
                   <h3 className="text-sm font-semibold">Unmatched Items</h3>
-                  <Badge className="text-[10px] px-1.5 py-0 h-4 bg-orange-500/10 text-orange-400 border border-orange-500/30 ml-auto">
+                  <Badge className="text-[10px] px-1.5 py-0 h-4 bg-orange-500/10 text-orange-400 border border-orange-500/30">
                     {unmatchedItems.length}
                   </Badge>
+                  {resolvedItems.length > 0 && (
+                    <Badge className="text-[10px] px-1.5 py-0 h-4 bg-violet-500/10 text-violet-400 border border-violet-500/30 gap-1 ml-1">
+                      <ShieldCheck className="w-2.5 h-2.5" /> {resolvedItems.length} resolved
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                  {unmatchedItems.length === 0 ? (
+                  {unmatchedItems.length === 0 && resolvedItems.length === 0 ? (
                     <div className="py-8 text-center text-muted-foreground text-xs border border-dashed border-border/40 rounded-md">
                       All items matched — no discrepancies
                     </div>
                   ) : (
-                    unmatchedItems.map((item: any) => (
-                      <UnmatchedCard key={item.id} item={item} />
-                    ))
+                    <>
+                      {unmatchedItems.map((item: any) => (
+                        <UnmatchedCard key={item.id} item={item} onResolve={setResolveItem} />
+                      ))}
+                      {resolvedItems.length > 0 && (
+                        <>
+                          {unmatchedItems.length > 0 && (
+                            <div className="flex items-center gap-2 my-2">
+                              <div className="h-px flex-1 bg-border/40" />
+                              <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Resolved</span>
+                              <div className="h-px flex-1 bg-border/40" />
+                            </div>
+                          )}
+                          {resolvedItems.map((item: any) => (
+                            <ResolvedCard key={item.id} item={item} />
+                          ))}
+                        </>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -406,6 +648,15 @@ export default function AdminReconciliation() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Resolve Dialog */}
+      {resolveItem && (
+        <ResolveDialog
+          item={resolveItem}
+          onClose={() => setResolveItem(null)}
+          onResolved={handleResolved}
+        />
+      )}
     </div>
   );
 }

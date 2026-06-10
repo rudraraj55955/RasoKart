@@ -116,7 +116,9 @@ import type {
   QrCodeInput,
   QrCodeListResponse,
   QrCodeUpdateInput,
+  ReconciliationItem,
   ReconciliationItemListResponse,
+  ReconciliationItemResolveInput,
   ReconciliationRun,
   ReconciliationRunInput,
   ReconciliationRunListResponse,
@@ -9170,6 +9172,78 @@ export function useListReconciliationRunItems<TData = Awaited<ReturnType<typeof 
 
 
 
+
+export const getResolveReconciliationItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/reconciliation/items/${id}/resolve`
+}
+
+/**
+ * @summary Manually resolve an unmatched reconciliation item (admin only)
+ */
+export const resolveReconciliationItem = async (id: number,
+    reconciliationItemResolveInput: ReconciliationItemResolveInput, options?: RequestInit): Promise<ReconciliationItem> => {
+
+  return customFetch<ReconciliationItem>(getResolveReconciliationItemUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reconciliationItemResolveInput,)
+  }
+);}
+
+
+
+
+export const getResolveReconciliationItemMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveReconciliationItem>>, TError,{id: number;data: BodyType<ReconciliationItemResolveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveReconciliationItem>>, TError,{id: number;data: BodyType<ReconciliationItemResolveInput>}, TContext> => {
+
+const mutationKey = ['resolveReconciliationItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveReconciliationItem>>, {id: number;data: BodyType<ReconciliationItemResolveInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  resolveReconciliationItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveReconciliationItemMutationResult = NonNullable<Awaited<ReturnType<typeof resolveReconciliationItem>>>
+    export type ResolveReconciliationItemMutationBody = BodyType<ReconciliationItemResolveInput>
+    export type ResolveReconciliationItemMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Manually resolve an unmatched reconciliation item (admin only)
+ */
+export const useResolveReconciliationItem = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveReconciliationItem>>, TError,{id: number;data: BodyType<ReconciliationItemResolveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveReconciliationItem>>,
+        TError,
+        {id: number;data: BodyType<ReconciliationItemResolveInput>},
+        TContext
+      > => {
+      return useMutation(getResolveReconciliationItemMutationOptions(options));
+    }
 
 export const getMarkNotificationReadUrl = (id: number,) => {
 

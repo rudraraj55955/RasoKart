@@ -1475,6 +1475,22 @@ export interface ReconciliationRunListResponse {
   limit: number;
 }
 
+export type ReconciliationItemResolveInputResolutionType = typeof ReconciliationItemResolveInputResolutionType[keyof typeof ReconciliationItemResolveInputResolutionType];
+
+
+export const ReconciliationItemResolveInputResolutionType = {
+  linked_transaction: 'linked_transaction',
+  linked_settlement: 'linked_settlement',
+  excluded: 'excluded',
+} as const;
+
+export interface ReconciliationItemResolveInput {
+  resolutionType: ReconciliationItemResolveInputResolutionType;
+  linkedTransactionId?: number | null;
+  linkedSettlementId?: number | null;
+  resolutionNotes?: string | null;
+}
+
 export interface ReconciliationItem {
   id: number;
   runId: number;
@@ -1486,6 +1502,11 @@ export interface ReconciliationItem {
   amount: number;
   matchedAt?: string | null;
   notes?: string | null;
+  resolvedAt?: string | null;
+  resolvedBy?: number | null;
+  resolvedByEmail?: string | null;
+  resolutionType?: string | null;
+  resolutionNotes?: string | null;
   transaction?: unknown;
   settlement?: unknown;
   createdAt: string;

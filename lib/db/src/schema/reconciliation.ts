@@ -29,5 +29,10 @@ export const reconciliationItemsTable = pgTable("reconciliation_items", {
   amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
   matchedAt: timestamp("matched_at", { withTimezone: true }),
   notes: text("notes"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: integer("resolved_by"),
+  resolvedByEmail: text("resolved_by_email"),
+  resolutionType: text("resolution_type"),
+  resolutionNotes: text("resolution_notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

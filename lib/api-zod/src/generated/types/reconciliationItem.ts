@@ -17,6 +17,11 @@ export interface ReconciliationItem {
   amount: number;
   matchedAt?: string | null;
   notes?: string | null;
+  resolvedAt?: string | null;
+  resolvedBy?: number | null;
+  resolvedByEmail?: string | null;
+  resolutionType?: string | null;
+  resolutionNotes?: string | null;
   transaction?: unknown;
   settlement?: unknown;
   createdAt: string;

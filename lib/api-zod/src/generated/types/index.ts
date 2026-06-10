@@ -142,6 +142,8 @@ export * from './qrCodeUpdateInput';
 export * from './qrCodeUpdateInputStatus';
 export * from './reconciliationItem';
 export * from './reconciliationItemListResponse';
+export * from './reconciliationItemResolveInput';
+export * from './reconciliationItemResolveInputResolutionType';
 export * from './reconciliationRun';
 export * from './reconciliationRunInput';
 export * from './reconciliationRunListResponse';

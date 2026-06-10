@@ -2722,6 +2722,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /reconciliation/items/{id}/resolve:
+    patch:
+      operationId: resolveReconciliationItem
+      tags: [reconciliation]
+      summary: Manually resolve an unmatched reconciliation item (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReconciliationItemResolveInput"
+      responses:
+        "200":
+          description: Resolved item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationItem"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /notifications/{id}/read:
     post:
       operationId: markNotificationRead
@@ -4674,6 +4710,23 @@ components:
         page: { type: integer }
         limit: { type: integer }
 
+    ReconciliationItemResolveInput:
+      type: object
+      required: [resolutionType]
+      properties:
+        resolutionType:
+          type: string
+          enum: [linked_transaction, linked_settlement, excluded]
+        linkedTransactionId:
+          type: integer
+          nullable: true
+        linkedSettlementId:
+          type: integer
+          nullable: true
+        resolutionNotes:
+          type: string
+          nullable: true
+
     ReconciliationItem:
       type: object
       required: [id, runId, merchantId, status, amount, createdAt]
@@ -4696,6 +4749,21 @@ components:
           type: string
           nullable: true
         notes:
+          type: string
+          nullable: true
+        resolvedAt:
+          type: string
+          nullable: true
+        resolvedBy:
+          type: integer
+          nullable: true
+        resolvedByEmail:
+          type: string
+          nullable: true
+        resolutionType:
+          type: string
+          nullable: true
+        resolutionNotes:
           type: string
           nullable: true
         transaction: {}

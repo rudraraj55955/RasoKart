@@ -2809,6 +2809,11 @@ export const ListReconciliationRunItemsResponse = zod.object({
   "amount": zod.number(),
   "matchedAt": zod.string().nullish(),
   "notes": zod.string().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedByEmail": zod.string().nullish(),
+  "resolutionType": zod.string().nullish(),
+  "resolutionNotes": zod.string().nullish(),
   "transaction": zod.unknown().optional(),
   "settlement": zod.unknown().optional(),
   "createdAt": zod.string()
@@ -2816,6 +2821,42 @@ export const ListReconciliationRunItemsResponse = zod.object({
   "total": zod.number(),
   "page": zod.number(),
   "limit": zod.number()
+})
+
+
+/**
+ * @summary Manually resolve an unmatched reconciliation item (admin only)
+ */
+export const ResolveReconciliationItemParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResolveReconciliationItemBody = zod.object({
+  "resolutionType": zod.enum(['linked_transaction', 'linked_settlement', 'excluded']),
+  "linkedTransactionId": zod.number().nullish(),
+  "linkedSettlementId": zod.number().nullish(),
+  "resolutionNotes": zod.string().nullish()
+})
+
+export const ResolveReconciliationItemResponse = zod.object({
+  "id": zod.number(),
+  "runId": zod.number(),
+  "transactionId": zod.number().nullish(),
+  "settlementId": zod.number().nullish(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "status": zod.string(),
+  "amount": zod.number(),
+  "matchedAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedByEmail": zod.string().nullish(),
+  "resolutionType": zod.string().nullish(),
+  "resolutionNotes": zod.string().nullish(),
+  "transaction": zod.unknown().optional(),
+  "settlement": zod.unknown().optional(),
+  "createdAt": zod.string()
 })
 
 
