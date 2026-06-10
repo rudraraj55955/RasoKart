@@ -97,10 +97,6 @@ export default function MerchantDashboard() {
     },
   });
 
-  const monthlyUsed = chartData
-    ? chartData.reduce((sum, d) => sum + ((d as any).deposits ?? 0), 0)
-    : null;
-
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
 
   return (
@@ -215,7 +211,7 @@ export default function MerchantDashboard() {
               const label = PROVIDER_LABELS[conn.provider] ?? conn.provider;
               const vpa = getVpa(conn.credentials);
               const limit = conn.monthlyLimit;
-              const used = monthlyUsed ?? 0;
+              const used = conn.monthlyUsed;
               const hasLimit = limit > 0;
               const pct = hasLimit ? Math.min(100, (used / limit) * 100) : 0;
               const isNearLimit = hasLimit && pct >= 80;

@@ -13,6 +13,8 @@ export interface SimulatePaymentInput {
   sourceId: number;
   amount: number;
   utr?: string;
+  /** Payment provider key (e.g. phonepe, paytm, upi_id) — stored on the transaction for per-connection usage tracking */
+  provider?: string;
   /** Force the outcome for demo purposes; defaults to success */
   expectedStatus?: SimulatePaymentInputExpectedStatus;
 }

@@ -1,13 +1,63 @@
 import { Router } from "express";
-import { db, merchantConnectionsTable, merchantsTable } from "@workspace/db";
-import { eq, and, ilike, or, count, sql } from "drizzle-orm";
+import { db, merchantConnectionsTable, merchantsTable, transactionsTable } from "@workspace/db";
+import { eq, and, ilike, or, count, sql, sum } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
 router.use(requireAuth);
 
-function formatConn(c: typeof merchantConnectionsTable.$inferSelect) {
-  return { ...c, monthlyLimit: Number(c.monthlyLimit) };
+function formatConn(c: typeof merchantConnectionsTable.$inferSelect, monthlyUsed: number) {
+  return { ...c, monthlyLimit: Number(c.monthlyLimit), monthlyUsed };
+}
+
+/** Returns a map keyed by provider → monthlyUsed for one merchant */
+async function getMonthlyUsedByProvider(merchantId: number): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ provider: transactionsTable.provider, total: sum(transactionsTable.amount) })
+    .from(transactionsTable)
+    .where(
+      and(
+        eq(transactionsTable.merchantId, merchantId),
+        eq(transactionsTable.type, "deposit"),
+        eq(transactionsTable.status, "success"),
+        sql`date_trunc('month', ${transactionsTable.createdAt}) = date_trunc('month', now())`
+      )
+    )
+    .groupBy(transactionsTable.provider);
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (r.provider != null) map.set(r.provider, Number(r.total ?? 0));
+  }
+  return map;
+}
+
+/**
+ * Returns a map keyed by `${merchantId}:${provider}` → monthlyUsed,
+ * batching all merchants in a single query.
+ */
+async function buildMonthlyUsageMap(merchantIds: number[]): Promise<Map<string, number>> {
+  if (merchantIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      merchantId: transactionsTable.merchantId,
+      provider: transactionsTable.provider,
+      total: sum(transactionsTable.amount),
+    })
+    .from(transactionsTable)
+    .where(
+      and(
+        sql`${transactionsTable.merchantId} = ANY(${sql.raw(`ARRAY[${merchantIds.join(",")}]::int[]`)})`,
+        eq(transactionsTable.type, "deposit"),
+        eq(transactionsTable.status, "success"),
+        sql`date_trunc('month', ${transactionsTable.createdAt}) = date_trunc('month', now())`
+      )
+    )
+    .groupBy(transactionsTable.merchantId, transactionsTable.provider);
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (r.provider != null) map.set(`${r.merchantId}:${r.provider}`, Number(r.total ?? 0));
+  }
+  return map;
 }
 
 // GET /api/connections
@@ -46,8 +96,11 @@ router.get("/", async (req, res) => {
         .innerJoin(merchantsTable, eq(merchantConnectionsTable.merchantId, merchantsTable.id))
         .where(conditions.length ? and(...conditions, nameSearch) : nameSearch);
 
+      const merchantIds = [...new Set(joined.map(r => r.conn.merchantId))];
+      const usageMap = await buildMonthlyUsageMap(merchantIds);
+
       res.json({
-        data: joined.map(r => ({ ...formatConn(r.conn), businessName: r.businessName, merchantEmail: r.merchantEmail })),
+        data: joined.map(r => ({ ...formatConn(r.conn, usageMap.get(`${r.conn.merchantId}:${r.conn.provider}`) ?? 0), businessName: r.businessName, merchantEmail: r.merchantEmail })),
         total: totalCount,
         page: pageNum,
         limit: limitNum,
@@ -67,8 +120,11 @@ router.get("/", async (req, res) => {
       .limit(limitNum)
       .offset(offset);
 
+    const merchantIds = [...new Set(joined.map(r => r.conn.merchantId))];
+    const usageMap = await buildMonthlyUsageMap(merchantIds);
+
     res.json({
-      data: joined.map(r => ({ ...formatConn(r.conn), businessName: r.businessName, merchantEmail: r.merchantEmail })),
+      data: joined.map(r => ({ ...formatConn(r.conn, usageMap.get(`${r.conn.merchantId}:${r.conn.provider}`) ?? 0), businessName: r.businessName, merchantEmail: r.merchantEmail })),
       total: totalCount,
       page: pageNum,
       limit: limitNum,
@@ -79,7 +135,8 @@ router.get("/", async (req, res) => {
   // Merchant: own connections
   const merchantId: number = user.merchantId!;
   const rows = await db.select().from(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, merchantId));
-  res.json(rows.map(formatConn));
+  const providerUsageMap = await getMonthlyUsedByProvider(merchantId);
+  res.json(rows.map(r => formatConn(r, providerUsageMap.get(r.provider) ?? 0)));
 });
 
 // POST /api/connections  (upsert by provider)
@@ -110,13 +167,14 @@ router.post("/", async (req, res) => {
       .values({ merchantId, provider, credentials: credentials ?? null, monthlyLimit: String(monthlyLimit), isActive: !!isActive })
       .returning();
   }
-  res.json(formatConn(result));
+  const providerMapPost = await getMonthlyUsedByProvider(merchantId);
+  res.json(formatConn(result, providerMapPost.get(result.provider) ?? 0));
 });
 
 // PUT /api/connections/:id
 router.put("/:id", async (req, res) => {
   const user = (req as any).user;
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params['id'] as string);
   const { provider, credentials, monthlyLimit, isActive } = req.body;
 
   const update: Record<string, unknown> = {};
@@ -135,7 +193,8 @@ router.put("/:id", async (req, res) => {
     .returning();
 
   if (!result) { res.status(404).json({ error: "Connection not found" }); return; }
-  res.json(formatConn(result));
+  const providerMapPut = await getMonthlyUsedByProvider(result.merchantId);
+  res.json(formatConn(result, providerMapPut.get(result.provider) ?? 0));
 });
 
 // DELETE /api/connections/:id

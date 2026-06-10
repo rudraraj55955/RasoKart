@@ -3412,6 +3412,9 @@ components:
           type: number
         utr:
           type: string
+        provider:
+          type: string
+          description: Payment provider key (e.g. phonepe, paytm, upi_id) — stored on the transaction for per-connection usage tracking
         expectedStatus:
           type: string
           enum: [success, failed, pending]
@@ -3454,7 +3457,7 @@ components:
 
     MerchantConnection:
       type: object
-      required: [id, merchantId, provider, monthlyLimit, isActive, createdAt]
+      required: [id, merchantId, provider, monthlyLimit, monthlyUsed, isActive, createdAt]
       properties:
         id:
           type: integer
@@ -3466,6 +3469,9 @@ components:
           type: ["string", "null"]
         monthlyLimit:
           type: number
+        monthlyUsed:
+          type: number
+          description: Total successful deposit amount collected through this merchant in the current calendar month
         isActive:
           type: boolean
         createdAt:

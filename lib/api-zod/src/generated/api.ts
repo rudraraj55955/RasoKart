@@ -689,6 +689,7 @@ export const SimulatePaymentBody = zod.object({
   "sourceId": zod.number(),
   "amount": zod.number(),
   "utr": zod.string().optional(),
+  "provider": zod.string().optional().describe('Payment provider key (e.g. phonepe, paytm, upi_id) — stored on the transaction for per-connection usage tracking'),
   "expectedStatus": zod.enum(['success', 'failed', 'pending']).optional().describe('Force the outcome for demo purposes; defaults to success')
 })
 
@@ -1304,6 +1305,7 @@ export const ListMerchantConnectionsResponseItem = zod.object({
   "provider": zod.string(),
   "credentials": zod.string().nullish(),
   "monthlyLimit": zod.number(),
+  "monthlyUsed": zod.number().describe('Total successful deposit amount collected through this merchant in the current calendar month'),
   "isActive": zod.boolean(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
@@ -1327,6 +1329,7 @@ export const CreateMerchantConnectionResponse = zod.object({
   "provider": zod.string(),
   "credentials": zod.string().nullish(),
   "monthlyLimit": zod.number(),
+  "monthlyUsed": zod.number().describe('Total successful deposit amount collected through this merchant in the current calendar month'),
   "isActive": zod.boolean(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
@@ -1353,6 +1356,7 @@ export const UpdateMerchantConnectionResponse = zod.object({
   "provider": zod.string(),
   "credentials": zod.string().nullish(),
   "monthlyLimit": zod.number(),
+  "monthlyUsed": zod.number().describe('Total successful deposit amount collected through this merchant in the current calendar month'),
   "isActive": zod.boolean(),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()

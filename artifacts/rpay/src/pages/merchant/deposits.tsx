@@ -5,6 +5,7 @@ import {
   useListQrCodes,
   useListVirtualAccounts,
   useGetDashboardStats,
+  useListMerchantConnections,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -66,6 +67,7 @@ export default function MerchantDeposits() {
   const [simAmount, setSimAmount] = useState("");
   const [simUtr, setSimUtr] = useState("");
   const [simExpected, setSimExpected] = useState<"success" | "failed" | "pending">("success");
+  const [simProvider, setSimProvider] = useState("");
 
   const { data, isLoading } = useListTransactions({
     type: "deposit",
@@ -80,6 +82,8 @@ export default function MerchantDeposits() {
   const { data: stats } = useGetDashboardStats();
   const { data: qrList } = useListQrCodes({ status: "active", limit: 100 });
   const { data: vaList } = useListVirtualAccounts({ status: "active", limit: 100 });
+  const { data: connectionsRaw } = useListMerchantConnections();
+  const activeConnections = Array.isArray(connectionsRaw) ? connectionsRaw.filter(c => c.isActive) : [];
 
   const { mutate: simulate, isPending: simulating } = useSimulatePayment({
     mutation: {
@@ -107,6 +111,7 @@ export default function MerchantDeposits() {
         sourceId: parseInt(simSourceId),
         amount: Number(simAmount),
         utr: simUtr || undefined,
+        provider: simProvider || undefined,
         expectedStatus: simExpected,
       },
     });
@@ -385,6 +390,23 @@ export default function MerchantDeposits() {
                 onChange={e => setSimAmount(e.target.value)}
               />
             </div>
+
+            {activeConnections.length > 0 && (
+              <div className="space-y-2">
+                <Label>Provider <span className="text-muted-foreground text-xs">(optional — tracks usage toward monthly limit)</span></Label>
+                <Select value={simProvider} onValueChange={setSimProvider}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select provider (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {activeConnections.map(c => (
+                      <SelectItem key={c.id} value={c.provider}>{c.provider}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>UTR <span className="text-muted-foreground text-xs">(optional — auto-generated if blank)</span></Label>

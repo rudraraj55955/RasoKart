@@ -100,7 +100,7 @@ router.post("/simulate", async (req, res, next) => {
       return;
     }
 
-    const { sourceType, sourceId, amount, utr, expectedStatus = "success" } = req.body;
+    const { sourceType, sourceId, amount, utr, expectedStatus = "success", provider } = req.body;
 
     if (!sourceType || !sourceId || !amount) {
       res.status(400).json({ error: "sourceType, sourceId, and amount are required" });
@@ -142,6 +142,7 @@ router.post("/simulate", async (req, res, next) => {
     const [pending] = await db.insert(transactionsTable).values({
       merchantId: user.merchantId,
       virtualAccountId: vaId,
+      provider: provider ?? null,
       type: "deposit",
       status: "pending",
       amount: Number(amount).toFixed(2),

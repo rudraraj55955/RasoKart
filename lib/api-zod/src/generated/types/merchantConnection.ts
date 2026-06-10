@@ -13,6 +13,8 @@ export interface MerchantConnection {
   /** @nullable */
   credentials?: string | null;
   monthlyLimit: number;
+  /** Total successful deposit amount collected through this merchant in the current calendar month */
+  monthlyUsed: number;
   isActive: boolean;
   createdAt: string;
   updatedAt?: string;
