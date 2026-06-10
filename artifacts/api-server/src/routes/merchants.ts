@@ -161,11 +161,21 @@ router.patch("/:id/branding", async (req, res) => {
 
 // POST /api/merchants/:id/approve
 router.post("/:id/approve", requireAdmin, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
   const [merchant] = await db.update(merchantsTable)
     .set({ status: "approved", rejectionReason: null })
     .where(eq(merchantsTable.id, id)).returning();
   if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "merchant_approved",
+    targetType: "merchant",
+    targetId: merchant.id,
+    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email }),
+    ipAddress: req.ip ?? null,
+  });
   res.json(serializeMerchant(merchant));
 });
 
@@ -211,13 +221,23 @@ router.post("/:id/unsuspend", async (req, res) => {
 
 // POST /api/merchants/:id/reject
 router.post("/:id/reject", requireAdmin, async (req, res) => {
-  const id = parseInt(req.params.id as string);
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
   const { reason } = req.body;
   if (!reason) { res.status(400).json({ error: "Rejection reason required" }); return; }
   const [merchant] = await db.update(merchantsTable)
     .set({ status: "rejected", rejectionReason: reason })
     .where(eq(merchantsTable.id, id)).returning();
   if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "merchant_rejected",
+    targetType: "merchant",
+    targetId: merchant.id,
+    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email, reason }),
+    ipAddress: req.ip ?? null,
+  });
   res.json(serializeMerchant(merchant));
 });
 
