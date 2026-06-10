@@ -68,6 +68,7 @@ export * from './invoice';
 export * from './invoiceInput';
 export * from './invoiceListResponse';
 export * from './invoiceStatus';
+export * from './lastReconSummary';
 export * from './ledgerAdjustmentInput';
 export * from './ledgerEntry';
 export * from './ledgerListResponse';

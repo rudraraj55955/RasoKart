@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable } from "@workspace/db";
+import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable } from "@workspace/db";
 import { eq, sql, and, gte, count, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
@@ -289,6 +289,47 @@ router.get("/risk", async (req, res, next) => {
       failedRatePercent,
       suspiciousCount: hv.count + (failedRatePercent > 20 ? Math.floor(failed.count * 0.1) : 0),
       topFailingMerchants,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/dashboard/recon-summary — latest auto-reconciliation run summary (admin only)
+router.get("/recon-summary", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const [run] = await db
+      .select()
+      .from(reconciliationRunsTable)
+      .where(
+        and(
+          eq(reconciliationRunsTable.triggeredBy, "auto"),
+          eq(reconciliationRunsTable.status, "complete")
+        )
+      )
+      .orderBy(sql`${reconciliationRunsTable.runAt} DESC`)
+      .limit(1);
+
+    if (!run) {
+      res.json(null);
+      return;
+    }
+
+    res.json({
+      runId: run.id,
+      dateFrom: run.dateFrom,
+      dateTo: run.dateTo,
+      runAt: run.runAt ? run.runAt.toISOString() : run.createdAt.toISOString(),
+      totalMatched: run.totalMatched,
+      totalUnmatched: run.totalUnmatched,
+      totalDeposits: run.totalDeposits,
+      totalSettlements: run.totalSettlements,
+      matchedAmount: Number(run.matchedAmount),
+      unmatchedAmount: Number(run.unmatchedAmount),
+      triggeredBy: run.triggeredBy,
     });
   } catch (err) {
     next(err);

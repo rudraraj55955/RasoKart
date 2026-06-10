@@ -68,6 +68,7 @@ import type {
   Invoice,
   InvoiceInput,
   InvoiceListResponse,
+  LastReconSummary,
   LedgerAdjustmentInput,
   LedgerEntry,
   LedgerListResponse,
@@ -8757,6 +8758,83 @@ export function useGetDashboardRisk<TData = Awaited<ReturnType<typeof getDashboa
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetDashboardRiskQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetDashboardReconSummaryUrl = () => {
+
+
+
+
+  return `/api/dashboard/recon-summary`
+}
+
+/**
+ * @summary Get latest auto-reconciliation run summary
+ */
+export const getDashboardReconSummary = async ( options?: RequestInit): Promise<LastReconSummary> => {
+
+  return customFetch<LastReconSummary>(getGetDashboardReconSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardReconSummaryQueryKey = () => {
+    return [
+    `/api/dashboard/recon-summary`
+    ] as const;
+    }
+
+
+export const getGetDashboardReconSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardReconSummary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardReconSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardReconSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardReconSummary>>> = ({ signal }) => getDashboardReconSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardReconSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardReconSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardReconSummary>>>
+export type GetDashboardReconSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get latest auto-reconciliation run summary
+ */
+
+export function useGetDashboardReconSummary<TData = Awaited<ReturnType<typeof getDashboardReconSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardReconSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardReconSummaryQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

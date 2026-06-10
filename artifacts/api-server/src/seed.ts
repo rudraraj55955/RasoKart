@@ -638,6 +638,7 @@ export async function seed() {
           matchedAmount: "87500.00",
           unmatchedAmount: "22300.00",
           status: "complete",
+          triggeredBy: "auto",
           createdBy: null,
           notes: "Demo seed run",
         }).returning();

@@ -654,6 +654,20 @@ export interface UserUpdate {
   role?: UserUpdateRole;
 }
 
+export interface LastReconSummary {
+  runId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  runAt?: string;
+  totalMatched?: number;
+  totalUnmatched?: number;
+  totalDeposits?: number;
+  totalSettlements?: number;
+  matchedAmount?: number;
+  unmatchedAmount?: number;
+  triggeredBy?: string;
+}
+
 export interface DashboardStats {
   totalDeposits: number;
   totalWithdrawals: number;

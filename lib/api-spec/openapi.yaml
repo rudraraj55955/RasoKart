@@ -2704,6 +2704,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdminRiskStats"
 
+  /dashboard/recon-summary:
+    get:
+      operationId: getDashboardReconSummary
+      tags: [dashboard]
+      summary: Get latest auto-reconciliation run summary
+      responses:
+        "200":
+          description: Latest auto-reconciliation run summary (null if none exists)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LastReconSummary"
+
   /feature-control:
     get:
       operationId: listMerchantFeatures
@@ -4355,6 +4368,32 @@ components:
         role:
           type: string
           enum: [admin, merchant]
+
+    LastReconSummary:
+      type: object
+      properties:
+        runId:
+          type: integer
+        dateFrom:
+          type: string
+        dateTo:
+          type: string
+        runAt:
+          type: string
+        totalMatched:
+          type: integer
+        totalUnmatched:
+          type: integer
+        totalDeposits:
+          type: integer
+        totalSettlements:
+          type: integer
+        matchedAmount:
+          type: number
+        unmatchedAmount:
+          type: number
+        triggeredBy:
+          type: string
 
     DashboardStats:
       type: object

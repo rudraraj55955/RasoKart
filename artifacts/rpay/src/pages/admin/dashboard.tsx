@@ -1,7 +1,7 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from "recharts";
 import { format } from "date-fns";
 import { Link } from "wouter";
@@ -18,6 +18,7 @@ export default function AdminDashboard() {
   const { data: merchantVolumes, isLoading: mvLoading } = useGetDashboardMerchantVolumes();
   const { data: notifications } = useGetDashboardNotifications();
   const { data: risk } = useGetDashboardRisk();
+  const { data: reconSummary } = useGetDashboardReconSummary();
 
   return (
     <div className="space-y-6">
@@ -131,6 +132,64 @@ export default function AdminDashboard() {
           </Card>
         </div>
       )}
+
+      {reconSummary && reconSummary.runId != null && (() => {
+        const hasUnmatched = (reconSummary.totalUnmatched ?? 0) > 0;
+        return (
+          <Card className={hasUnmatched ? "border-rose-500/40 bg-rose-500/5" : "border-emerald-500/30 bg-emerald-500/5"}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <GitCompareArrows className={`w-4 h-4 ${hasUnmatched ? "text-rose-400" : "text-emerald-400"}`} />
+                  <CardTitle className="text-base">Last Auto-Reconciliation Run</CardTitle>
+                  {hasUnmatched && (
+                    <span className="rounded-full bg-rose-500/20 text-rose-400 text-[10px] font-semibold px-2 py-0.5 border border-rose-500/30 uppercase tracking-wide">
+                      Needs Review
+                    </span>
+                  )}
+                </div>
+                <Link href="/admin/reconciliation">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+                    View full run <ChevronRight className="w-3 h-3" />
+                  </span>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-lg bg-background/50 border border-border/40 p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      <p className="text-[11px] text-muted-foreground">Matched</p>
+                    </div>
+                    <p className="text-lg font-bold text-emerald-400">{reconSummary.totalMatched ?? 0}</p>
+                    <p className="text-[11px] text-muted-foreground font-mono">₹{Number(reconSummary.matchedAmount ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className={`rounded-lg bg-background/50 border p-3 ${hasUnmatched ? "border-rose-500/30" : "border-border/40"}`}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <XCircle className={`w-3 h-3 ${hasUnmatched ? "text-rose-400" : "text-muted-foreground"}`} />
+                      <p className="text-[11px] text-muted-foreground">Unmatched</p>
+                    </div>
+                    <p className={`text-lg font-bold ${hasUnmatched ? "text-rose-400" : "text-muted-foreground"}`}>{reconSummary.totalUnmatched ?? 0}</p>
+                    <p className="text-[11px] text-muted-foreground font-mono">₹{Number(reconSummary.unmatchedAmount ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-lg bg-background/50 border border-border/40 p-3">
+                    <p className="text-[11px] text-muted-foreground mb-1">Date Range</p>
+                    <p className="text-sm font-medium font-mono">{reconSummary.dateFrom}</p>
+                    <p className="text-[11px] text-muted-foreground">to {reconSummary.dateTo}</p>
+                  </div>
+                  <div className="rounded-lg bg-background/50 border border-border/40 p-3">
+                    <p className="text-[11px] text-muted-foreground mb-1">Run At</p>
+                    <p className="text-sm font-medium">{reconSummary.runAt ? format(new Date(reconSummary.runAt), "MMM d, yyyy") : "—"}</p>
+                    <p className="text-[11px] text-muted-foreground">{reconSummary.runAt ? format(new Date(reconSummary.runAt), "h:mm a") : ""}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       <Card>
         <CardHeader>

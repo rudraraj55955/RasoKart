@@ -2685,6 +2685,24 @@ export const GetDashboardRiskResponse = zod.object({
 
 
 /**
+ * @summary Get latest auto-reconciliation run summary
+ */
+export const GetDashboardReconSummaryResponse = zod.object({
+  "runId": zod.number().optional(),
+  "dateFrom": zod.string().optional(),
+  "dateTo": zod.string().optional(),
+  "runAt": zod.string().optional(),
+  "totalMatched": zod.number().optional(),
+  "totalUnmatched": zod.number().optional(),
+  "totalDeposits": zod.number().optional(),
+  "totalSettlements": zod.number().optional(),
+  "matchedAmount": zod.number().optional(),
+  "unmatchedAmount": zod.number().optional(),
+  "triggeredBy": zod.string().optional()
+})
+
+
+/**
  * @summary List merchants with their feature settings
  */
 export const ListMerchantFeaturesQueryParams = zod.object({
