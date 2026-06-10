@@ -570,6 +570,7 @@ export default function AdminReconciliation() {
     cronExpression: string;
     hasEverRun: boolean;
     lastAutoRunAt: string | null;
+    lastAutoRunStatus: string | null;
   } | undefined;
 
   function formatNextRun(isoStr: string): string {
@@ -599,28 +600,55 @@ export default function AdminReconciliation() {
             Match deposits to settlements and flag discrepancies
           </p>
         </div>
-        {schedulerStatus && (
-          <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-sm shrink-0">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            <CalendarClock className="w-3.5 h-3.5 text-muted-foreground" />
-            <div className="text-xs">
-              <span className="text-muted-foreground">Next auto-run: </span>
-              <span className="font-medium text-foreground">
-                {schedulerStatus.hasEverRun
-                  ? `tonight at midnight (${formatNextRun(schedulerStatus.nextRunAt)})`
-                  : `first run tonight at midnight (${formatNextRun(schedulerStatus.nextRunAt)})`}
+        {schedulerStatus && (() => {
+          const lastRunFailed = schedulerStatus.lastAutoRunStatus === "failed";
+          return (
+            <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shrink-0 ${
+              lastRunFailed
+                ? "border-destructive/50 bg-destructive/10"
+                : "border-border/50 bg-muted/20"
+            }`}>
+              <span className="relative flex h-2 w-2">
+                {lastRunFailed ? (
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
+                ) : (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                  </>
+                )}
               </span>
-              {schedulerStatus.lastAutoRunAt && (
-                <span className="text-muted-foreground/60 ml-1.5">
-                  · last ran {formatDistanceToNow(new Date(schedulerStatus.lastAutoRunAt), { addSuffix: true })}
-                </span>
-              )}
+              <CalendarClock className={`w-3.5 h-3.5 ${lastRunFailed ? "text-destructive" : "text-muted-foreground"}`} />
+              <div className="text-xs">
+                {lastRunFailed ? (
+                  <>
+                    <span className="font-medium text-destructive">Last auto-run failed</span>
+                    <span className="text-muted-foreground ml-1">— check notifications for details</span>
+                    {schedulerStatus.lastAutoRunAt && (
+                      <span className="text-muted-foreground/60 ml-1.5">
+                        · {formatDistanceToNow(new Date(schedulerStatus.lastAutoRunAt), { addSuffix: true })}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="text-muted-foreground">Next auto-run: </span>
+                    <span className="font-medium text-foreground">
+                      {schedulerStatus.hasEverRun
+                        ? `tonight at midnight (${formatNextRun(schedulerStatus.nextRunAt)})`
+                        : `first run tonight at midnight (${formatNextRun(schedulerStatus.nextRunAt)})`}
+                    </span>
+                    {schedulerStatus.lastAutoRunAt && (
+                      <span className="text-muted-foreground/60 ml-1.5">
+                        · last ran {formatDistanceToNow(new Date(schedulerStatus.lastAutoRunAt), { addSuffix: true })}
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Run Trigger */}

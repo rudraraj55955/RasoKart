@@ -5533,6 +5533,10 @@ components:
           type: string
           nullable: true
           description: "ISO timestamp of the last auto-triggered run"
+        lastAutoRunStatus:
+          type: string
+          nullable: true
+          description: "Status of the last auto-triggered run (success | failed | running)"
 
     ReconciliationRun:
       type: object

@@ -25,19 +25,21 @@ router.get("/scheduler-status", async (req, res, next) => {
     nextMidnight.setHours(0, 0, 0, 0);
 
     const lastAutoRun = await db
-      .select({ createdAt: reconciliationRunsTable.createdAt })
+      .select({ createdAt: reconciliationRunsTable.createdAt, status: reconciliationRunsTable.status })
       .from(reconciliationRunsTable)
       .where(eq(reconciliationRunsTable.triggeredBy, "auto"))
       .orderBy(sql`${reconciliationRunsTable.createdAt} DESC`)
       .limit(1);
 
     const lastAutoRunAt = lastAutoRun.length > 0 ? lastAutoRun[0]!.createdAt : null;
+    const lastAutoRunStatus = lastAutoRun.length > 0 ? lastAutoRun[0]!.status : null;
 
     res.json({
       nextRunAt: nextMidnight.toISOString(),
       cronExpression: "0 0 * * *",
       hasEverRun: lastAutoRun.length > 0,
       lastAutoRunAt: lastAutoRunAt ? lastAutoRunAt.toISOString() : null,
+      lastAutoRunStatus,
     });
   } catch (err) {
     next(err);

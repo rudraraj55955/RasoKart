@@ -14,4 +14,6 @@ export interface ReconciliationSchedulerStatus {
   hasEverRun: boolean;
   /** ISO timestamp of the last auto-triggered run */
   lastAutoRunAt?: string | null;
+  /** Status of the last auto-triggered run (success | failed | running) */
+  lastAutoRunStatus?: string | null;
 }

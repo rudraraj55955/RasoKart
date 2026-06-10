@@ -3225,7 +3225,8 @@ export const GetReconciliationSchedulerStatusResponse = zod.object({
   "nextRunAt": zod.string().describe('ISO timestamp of the next scheduled run'),
   "cronExpression": zod.string().describe('Cron expression for the schedule'),
   "hasEverRun": zod.boolean(),
-  "lastAutoRunAt": zod.string().nullish().describe('ISO timestamp of the last auto-triggered run')
+  "lastAutoRunAt": zod.string().nullish().describe('ISO timestamp of the last auto-triggered run'),
+  "lastAutoRunStatus": zod.string().nullish().describe('Status of the last auto-triggered run (success | failed | running)')
 })
 
 
