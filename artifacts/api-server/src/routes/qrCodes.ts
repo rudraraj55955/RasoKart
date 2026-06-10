@@ -54,6 +54,43 @@ function serializeQr(qr: typeof qrCodesTable.$inferSelect, merchantName?: string
 }
 
 const router = Router();
+
+// Public endpoint — no auth required — must be registered before requireAuth middleware
+// GET /api/qr-codes/public/:id
+router.get("/public/:id", async (req, res) => {
+  await expireOldQrCodes().catch(() => {});
+  const id = parseInt(req.params['id'] as string);
+  if (isNaN(id)) { res.status(404).json({ error: "QR code not found" }); return; }
+
+  const rows = await db.select({
+    qr: qrCodesTable,
+    merchantName: merchantsTable.businessName,
+    logoUrl: merchantsTable.logoUrl,
+    brandColor: merchantsTable.brandColor,
+  })
+    .from(qrCodesTable)
+    .leftJoin(merchantsTable, eq(qrCodesTable.merchantId, merchantsTable.id))
+    .where(eq(qrCodesTable.id, id))
+    .limit(1);
+
+  if (!rows.length) { res.status(404).json({ error: "QR code not found" }); return; }
+
+  const { qr, merchantName, logoUrl, brandColor } = rows[0];
+  res.json({
+    id: qr.id,
+    merchantId: qr.merchantId,
+    type: qr.type,
+    label: qr.label ?? null,
+    payload: qr.payload,
+    amount: qr.amount ?? null,
+    status: qr.status,
+    expiresAt: qr.expiresAt instanceof Date ? qr.expiresAt.toISOString() : (qr.expiresAt ?? null),
+    merchantName: merchantName ?? null,
+    logoUrl: logoUrl ?? null,
+    brandColor: brandColor ?? null,
+  });
+});
+
 router.use(requireAuth);
 
 // Auto-expire QR codes

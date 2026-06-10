@@ -44,6 +44,8 @@ import AdminReconciliation from "@/pages/admin/reconciliation";
 import AdminPaymentLinks from "@/pages/admin/payment-links";
 import AdminSettings from "@/pages/admin/settings";
 import PayPage from "@/pages/pay";
+import QrPayPage from "@/pages/qr-pay";
+import VaPayPage from "@/pages/va-pay";
 
 // Merchant Pages
 import MerchantDashboard from "@/pages/merchant/dashboard";
@@ -165,6 +167,8 @@ function Router() {
       <Route path="/merchant/api-docs"><PublicPage component={MerchantApiDocs} /></Route>
 
       <Route path="/pay/:slug" component={PayPage} />
+      <Route path="/qr/:id" component={QrPayPage} />
+      <Route path="/va/:id" component={VaPayPage} />
 
       <Route component={NotFound} />
     </Switch>

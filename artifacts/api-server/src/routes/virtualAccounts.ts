@@ -5,6 +5,43 @@ import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 
 const router = Router();
+
+// Public endpoint — no auth required — must be registered before requireAuth middleware
+// GET /api/virtual-accounts/public/:id
+router.get("/public/:id", async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  if (isNaN(id)) { res.status(404).json({ error: "Virtual account not found" }); return; }
+
+  const rows = await db.select({
+    va: virtualAccountsTable,
+    merchantName: merchantsTable.businessName,
+    logoUrl: merchantsTable.logoUrl,
+    brandColor: merchantsTable.brandColor,
+  })
+    .from(virtualAccountsTable)
+    .leftJoin(merchantsTable, eq(virtualAccountsTable.merchantId, merchantsTable.id))
+    .where(eq(virtualAccountsTable.id, id))
+    .limit(1);
+
+  if (!rows.length) { res.status(404).json({ error: "Virtual account not found" }); return; }
+
+  const { va, merchantName, logoUrl, brandColor } = rows[0];
+  res.json({
+    id: va.id,
+    merchantId: va.merchantId,
+    accountHolder: va.accountHolder,
+    accountNumber: va.accountNumber,
+    ifsc: va.ifsc,
+    bankName: va.bankName,
+    label: va.label ?? null,
+    status: va.status,
+    createdAt: va.createdAt instanceof Date ? va.createdAt.toISOString() : String(va.createdAt),
+    merchantName: merchantName ?? null,
+    logoUrl: logoUrl ?? null,
+    brandColor: brandColor ?? null,
+  });
+});
+
 router.use(requireAuth);
 
 // GET /api/virtual-accounts
