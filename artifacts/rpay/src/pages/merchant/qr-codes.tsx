@@ -52,8 +52,13 @@ const PROVIDER_VPA_SUFFIX: Record<string, string> = {
 
 function deriveVpaFromConn(provider: string, credentials: string | null): string | null {
   let creds: Record<string, string> = {};
-  try { if (credentials) creds = JSON.parse(credentials); } catch {}
-  if (provider === "upi_id") return creds["UPI ID"] ?? null;
+  let isJson = false;
+  try { if (credentials) { creds = JSON.parse(credentials); isJson = true; } } catch {}
+  // Any provider may store a pre-formed VPA directly under the "vpa" key
+  if (creds["vpa"]) return creds["vpa"];
+  if (provider === "upi_id") {
+    return creds["UPI ID"] ?? (!isJson && credentials ? credentials : null);
+  }
   const suffix = PROVIDER_VPA_SUFFIX[provider];
   const mid = creds["Merchant ID"] ?? creds["MID"] ?? null;
   if (mid && suffix) return `${mid}@${suffix}`;

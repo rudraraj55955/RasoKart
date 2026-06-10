@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { db, merchantConnectionsTable, merchantsTable, transactionsTable } from "@workspace/db";
-import { eq, and, ilike, or, count, sql, sum } from "drizzle-orm";
+import { db, merchantConnectionsTable, merchantsTable, transactionsTable, paymentLinksTable } from "@workspace/db";
+import { eq, and, ilike, or, count, sql, sum, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { deriveUpiPayloadFromConnections } from "../helpers/upiPayload";
 
 const router = Router();
 router.use(requireAuth);
@@ -139,6 +140,50 @@ router.get("/", async (req, res) => {
   res.json(rows.map(r => formatConn(r, providerUsageMap.get(r.provider) ?? 0)));
 });
 
+/**
+ * After a connection is created or updated, backfill upiPayload on all of the
+ * merchant's payment links that were created before a provider was connected
+ * (i.e. links where upiPayload is currently NULL).
+ */
+async function backfillUpiPayloads(merchantId: number): Promise<void> {
+  const [merchantRow] = await db.select({ businessName: merchantsTable.businessName })
+    .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);
+  const merchantName = merchantRow?.businessName ?? "Merchant";
+
+  const connections = await db.select({
+    provider: merchantConnectionsTable.provider,
+    credentials: merchantConnectionsTable.credentials,
+    isActive: merchantConnectionsTable.isActive,
+  })
+    .from(merchantConnectionsTable)
+    .where(and(eq(merchantConnectionsTable.merchantId, merchantId), eq(merchantConnectionsTable.isActive, true)))
+    .limit(10);
+
+  if (!connections.length) return;
+
+  const nullLinks = await db.select({
+    id: paymentLinksTable.id,
+    amount: paymentLinksTable.amount,
+    title: paymentLinksTable.title,
+  })
+    .from(paymentLinksTable)
+    .where(and(eq(paymentLinksTable.merchantId, merchantId), isNull(paymentLinksTable.upiPayload)));
+
+  for (const link of nullLinks) {
+    const payload = deriveUpiPayloadFromConnections(
+      connections,
+      merchantName,
+      link.amount ?? null,
+      link.title ?? null,
+    );
+    if (payload) {
+      await db.update(paymentLinksTable)
+        .set({ upiPayload: payload })
+        .where(eq(paymentLinksTable.id, link.id));
+    }
+  }
+}
+
 // POST /api/connections  (upsert by provider)
 // Admin can supply merchantId in body; merchant uses their own
 router.post("/", async (req, res) => {
@@ -167,6 +212,10 @@ router.post("/", async (req, res) => {
       .values({ merchantId, provider, credentials: credentials ?? null, monthlyLimit: String(monthlyLimit), isActive: !!isActive })
       .returning();
   }
+
+  // Backfill upiPayload on payment links that were created before this connection existed
+  backfillUpiPayloads(merchantId).catch(() => {});
+
   const providerMapPost = await getMonthlyUsedByProvider(merchantId);
   res.json(formatConn(result, providerMapPost.get(result.provider) ?? 0));
 });
@@ -193,6 +242,10 @@ router.put("/:id", async (req, res) => {
     .returning();
 
   if (!result) { res.status(404).json({ error: "Connection not found" }); return; }
+
+  // Backfill upiPayload on payment links that were created before this connection existed
+  backfillUpiPayloads(result.merchantId).catch(() => {});
+
   const providerMapPut = await getMonthlyUsedByProvider(result.merchantId);
   res.json(formatConn(result, providerMapPut.get(result.provider) ?? 0));
 });

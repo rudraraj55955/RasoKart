@@ -1,39 +1,15 @@
 import { Router } from "express";
 import { db, paymentLinksTable, merchantsTable, merchantConnectionsTable } from "@workspace/db";
-import { eq, and, ilike, count, desc, gte, lte, or, sql } from "drizzle-orm";
+import { eq, and, ilike, count, desc, gte, lte, or, sql, isNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
+import { deriveVpa, buildUpiPayload, deriveUpiPayloadFromConnections } from "../helpers/upiPayload";
 import { randomBytes } from "crypto";
 
 const router = Router();
 
 function generateSlug(): string {
   return randomBytes(6).toString("hex");
-}
-
-const PROVIDER_VPA_SUFFIX: Record<string, string> = {
-  phonepe: "ybl",
-  paytm: "paytm",
-  bharatpe: "bharatpe",
-  yono_sbi: "sbi",
-  hdfc_smarthub: "hdfcbank",
-};
-
-function deriveVpa(provider: string, credentials: string | null): string | null {
-  let creds: Record<string, string> = {};
-  try { if (credentials) creds = JSON.parse(credentials); } catch {}
-  if (provider === "upi_id") return creds["UPI ID"] ?? null;
-  const suffix = PROVIDER_VPA_SUFFIX[provider];
-  const mid = creds["Merchant ID"] ?? creds["MID"] ?? null;
-  if (mid && suffix) return `${mid}@${suffix}`;
-  return null;
-}
-
-function buildUpiPayload(vpa: string, name: string, amount: string | null, note: string | null): string {
-  const params = new URLSearchParams({ pa: vpa, pn: name, cu: "INR" });
-  if (amount) params.set("am", amount);
-  if (note) params.set("tn", note);
-  return `upi://pay?${params.toString()}`;
 }
 
 function buildUrl(slug: string, req: any): string {
@@ -83,6 +59,39 @@ router.get("/public/:slug", async (req, res) => {
     link.status = "expired";
   }
 
+  // If upiPayload was not saved at creation time (e.g. provider connected later),
+  // derive it on-the-fly from the merchant's active connections.
+  let upiPayload = link.upiPayload ?? null;
+  if (!upiPayload) {
+    const connections = await db.select({
+      provider: merchantConnectionsTable.provider,
+      credentials: merchantConnectionsTable.credentials,
+      isActive: merchantConnectionsTable.isActive,
+    })
+      .from(merchantConnectionsTable)
+      .where(and(
+        eq(merchantConnectionsTable.merchantId, link.merchantId),
+        eq(merchantConnectionsTable.isActive, true),
+      ))
+      .limit(10);
+
+    if (connections.length > 0) {
+      const derived = deriveUpiPayloadFromConnections(
+        connections,
+        merchantName ?? "Merchant",
+        link.amount ?? null,
+        link.title ?? null,
+      );
+      if (derived) {
+        upiPayload = derived;
+        // Persist so future requests skip the extra query
+        await db.update(paymentLinksTable)
+          .set({ upiPayload: derived })
+          .where(eq(paymentLinksTable.id, link.id));
+      }
+    }
+  }
+
   res.json({
     id: link.id,
     title: link.title,
@@ -90,7 +99,7 @@ router.get("/public/:slug", async (req, res) => {
     amount: link.amount ?? null,
     currency: link.currency,
     slug: link.slug,
-    upiPayload: link.upiPayload ?? null,
+    upiPayload,
     merchantName: merchantName ?? null,
     logoUrl: logoUrl ?? null,
     brandColor: brandColor ?? null,
