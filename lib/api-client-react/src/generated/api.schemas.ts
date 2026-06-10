@@ -1320,7 +1320,10 @@ export interface VirtualAccountUpdateInput {
   /** @nullable */
   label?: string | null;
   balance?: string;
+  totalCollection?: string;
   status?: VirtualAccountUpdateInputStatus;
+  /** @nullable */
+  reason?: string | null;
 }
 
 export interface VirtualAccountListResponse {
@@ -1366,6 +1369,8 @@ export interface VaBalanceAuditEntry {
   oldTotalCollection?: string | null;
   /** @nullable */
   newTotalCollection?: string | null;
+  /** @nullable */
+  reason?: string | null;
   createdAt: string;
 }
 
@@ -1390,6 +1395,8 @@ export interface VaBalanceHistoryEntry {
   oldTotalCollection?: string | null;
   /** @nullable */
   newTotalCollection?: string | null;
+  /** @nullable */
+  reason?: string | null;
   createdAt: string;
 }
 

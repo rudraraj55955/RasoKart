@@ -193,7 +193,7 @@ router.get("/balance-history/export", async (req, res) => {
     .where(inArray(vaBalanceHistoryTable.virtualAccountId, vaIds))
     .orderBy(desc(vaBalanceHistoryTable.createdAt));
 
-  const header = ["Date/Time", "Virtual Account", "Changed By", "Role", "Old Balance", "New Balance", "Old Total Collection", "New Total Collection"];
+  const header = ["Date/Time", "Virtual Account", "Changed By", "Role", "Old Balance", "New Balance", "Old Total Collection", "New Total Collection", "Reason"];
   const csvRows = entries.map(e => [
     e.createdAt instanceof Date ? e.createdAt.toISOString() : String(e.createdAt),
     vaMap[e.virtualAccountId] ?? String(e.virtualAccountId),
@@ -203,6 +203,7 @@ router.get("/balance-history/export", async (req, res) => {
     e.newBalance ?? "",
     e.oldTotalCollection ?? "",
     e.newTotalCollection ?? "",
+    e.reason ?? "",
   ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
 
   const csv = [header.join(","), ...csvRows].join("\n");
@@ -290,6 +291,7 @@ router.get("/balance-audit", async (req, res) => {
       newBalance: vaBalanceHistoryTable.newBalance,
       oldTotalCollection: vaBalanceHistoryTable.oldTotalCollection,
       newTotalCollection: vaBalanceHistoryTable.newTotalCollection,
+      reason: vaBalanceHistoryTable.reason,
       createdAt: vaBalanceHistoryTable.createdAt,
     })
     .from(vaBalanceHistoryTable)
@@ -303,6 +305,7 @@ router.get("/balance-audit", async (req, res) => {
   const data = rows.map(r => ({
     ...r,
     merchantName: r.merchantName ?? null,
+    reason: r.reason ?? null,
     createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
   }));
 
@@ -346,6 +349,7 @@ router.get("/:id/balance-history", async (req, res) => {
     newBalance: e.newBalance ?? null,
     oldTotalCollection: e.oldTotalCollection ?? null,
     newTotalCollection: e.newTotalCollection ?? null,
+    reason: e.reason ?? null,
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : String(e.createdAt),
   }));
 
@@ -368,7 +372,7 @@ router.get("/:id/balance-history/export", async (req, res) => {
     .where(eq(vaBalanceHistoryTable.virtualAccountId, id))
     .orderBy(desc(vaBalanceHistoryTable.createdAt));
 
-  const header = ["Date/Time", "Changed By", "Role", "Old Balance", "New Balance", "Old Total Collection", "New Total Collection"];
+  const header = ["Date/Time", "Changed By", "Role", "Old Balance", "New Balance", "Old Total Collection", "New Total Collection", "Reason"];
   const csvRows = entries.map(e => [
     e.createdAt instanceof Date ? e.createdAt.toISOString() : String(e.createdAt),
     e.changedByName ?? "",
@@ -377,6 +381,7 @@ router.get("/:id/balance-history/export", async (req, res) => {
     e.newBalance ?? "",
     e.oldTotalCollection ?? "",
     e.newTotalCollection ?? "",
+    e.reason ?? "",
   ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
 
   const csv = [header.join(","), ...csvRows].join("\n");
@@ -428,7 +433,7 @@ router.get("/:id/transactions", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params['id'] as string);
-  const { label, status, balance, totalCollection } = req.body;
+  const { label, status, balance, totalCollection, reason } = req.body;
 
   const conditions = [eq(virtualAccountsTable.id, id)];
   if (user.role !== "admin") conditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));
@@ -484,6 +489,7 @@ router.put("/:id", async (req, res) => {
       newBalance: balanceChanged ? balance : existing.balance,
       oldTotalCollection: existing.totalCollection,
       newTotalCollection: totalCollectionChanged ? totalCollection : existing.totalCollection,
+      reason: (reason && typeof reason === "string" && reason.trim()) ? reason.trim() : null,
     });
   }
 

@@ -10,6 +10,7 @@ export const vaBalanceHistoryTable = pgTable("va_balance_history", {
   newBalance: text("new_balance"),
   oldTotalCollection: text("old_total_collection"),
   newTotalCollection: text("new_total_collection"),
+  reason: text("reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

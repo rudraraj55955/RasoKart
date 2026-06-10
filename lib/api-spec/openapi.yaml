@@ -5308,9 +5308,13 @@ components:
           type: ["string", "null"]
         balance:
           type: string
+        totalCollection:
+          type: string
         status:
           type: string
           enum: [active, closed]
+        reason:
+          type: ["string", "null"]
 
     VirtualAccountListResponse:
       type: object
@@ -5387,6 +5391,8 @@ components:
           type: ["string", "null"]
         newTotalCollection:
           type: ["string", "null"]
+        reason:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -5426,6 +5432,8 @@ components:
         oldTotalCollection:
           type: ["string", "null"]
         newTotalCollection:
+          type: ["string", "null"]
+        reason:
           type: ["string", "null"]
         createdAt:
           type: string

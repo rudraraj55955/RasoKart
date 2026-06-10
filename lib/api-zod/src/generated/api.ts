@@ -2456,6 +2456,7 @@ export const ListVaBalanceAuditResponse = zod.object({
   "newBalance": zod.string().nullish(),
   "oldTotalCollection": zod.string().nullish(),
   "newTotalCollection": zod.string().nullish(),
+  "reason": zod.string().nullish(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -2487,6 +2488,7 @@ export const GetVirtualAccountBalanceHistoryResponse = zod.object({
   "newBalance": zod.string().nullish(),
   "oldTotalCollection": zod.string().nullish(),
   "newTotalCollection": zod.string().nullish(),
+  "reason": zod.string().nullish(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -2528,7 +2530,9 @@ export const UpdateVirtualAccountParams = zod.object({
 export const UpdateVirtualAccountBody = zod.object({
   "label": zod.string().nullish(),
   "balance": zod.string().optional(),
-  "status": zod.enum(['active', 'closed']).optional()
+  "totalCollection": zod.string().optional(),
+  "status": zod.enum(['active', 'closed']).optional(),
+  "reason": zod.string().nullish()
 })
 
 export const UpdateVirtualAccountResponse = zod.object({

@@ -66,6 +66,7 @@ export default function AdminVirtualAccounts() {
   const [editVa, setEditVa] = useState<VaRow | null>(null);
   const [editMode, setEditMode] = useState<"balance" | "collection">("balance");
   const [editValue, setEditValue] = useState("");
+  const [editReason, setEditReason] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
 
   // Audit tab state
@@ -131,6 +132,7 @@ export default function AdminVirtualAccounts() {
     setEditVa(va);
     setEditMode("balance");
     setEditValue(va.balance ?? "0.00");
+    setEditReason("");
     setEditError(null);
   };
 
@@ -138,6 +140,7 @@ export default function AdminVirtualAccounts() {
     setEditVa(va);
     setEditMode("collection");
     setEditValue(va.totalCollection ?? "0.00");
+    setEditReason("");
     setEditError(null);
   };
 
@@ -165,6 +168,7 @@ export default function AdminVirtualAccounts() {
       }
       payload = { totalCollection: val.toFixed(2) };
     }
+    if (editReason.trim()) payload.reason = editReason.trim();
     updateMutation.mutate(
       { id: vaId, data: payload as any },
       {
@@ -500,17 +504,18 @@ export default function AdminVirtualAccounts() {
                     <TableHead>Role</TableHead>
                     <TableHead>Balance Change</TableHead>
                     <TableHead>Collection Change</TableHead>
+                    <TableHead>Reason</TableHead>
                     <TableHead>Timestamp</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {auditLoading ? (
                     Array.from({ length: 6 }).map((_, i) => (
-                      <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
+                      <TableRow key={i}>{Array.from({ length: 8 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
                     ))
                   ) : !auditData?.data?.length ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-16">
+                      <TableCell colSpan={8} className="text-center py-16">
                         <ShieldCheck className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-30" />
                         <p className="text-sm text-muted-foreground">No balance changes found</p>
                         {hasAuditFilters && (
@@ -567,6 +572,15 @@ export default function AdminVirtualAccounts() {
                           )
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs max-w-[180px]">
+                        {(entry as any).reason ? (
+                          <span className="text-amber-300/80 italic truncate block" title={(entry as any).reason}>
+                            {(entry as any).reason}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/40">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
@@ -640,6 +654,17 @@ export default function AdminVirtualAccounts() {
                   New total (₹{parseFloat(editValue).toLocaleString("en-IN", { minimumFractionDigits: 2 })}) is below the current balance of ₹{parseFloat(editVa.balance).toLocaleString("en-IN", { minimumFractionDigits: 2 })} — this will be rejected.
                 </p>
               )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-muted-foreground">Reason / Note <span className="text-xs font-normal">(optional)</span></Label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                rows={2}
+                maxLength={500}
+                placeholder="e.g. correcting double-counted deposit, manual reconciliation…"
+                value={editReason}
+                onChange={e => setEditReason(e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>
@@ -953,6 +978,12 @@ export default function AdminVirtualAccounts() {
                               {format(new Date(entry.createdAt), "MMM d, yyyy HH:mm")}
                             </span>
                           </div>
+                          {(entry as any).reason && (
+                            <p className="text-xs text-amber-300/80 italic mb-2 flex items-start gap-1.5">
+                              <span className="shrink-0 mt-0.5">💬</span>
+                              <span>{(entry as any).reason}</span>
+                            </p>
+                          )}
                           <div className="grid grid-cols-1 gap-1.5">
                             {entry.oldBalance != null && entry.newBalance != null ? (
                               <div className="flex items-center gap-2 text-xs">

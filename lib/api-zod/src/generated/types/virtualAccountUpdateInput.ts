@@ -11,5 +11,8 @@ export interface VirtualAccountUpdateInput {
   /** @nullable */
   label?: string | null;
   balance?: string;
+  totalCollection?: string;
   status?: VirtualAccountUpdateInputStatus;
+  /** @nullable */
+  reason?: string | null;
 }

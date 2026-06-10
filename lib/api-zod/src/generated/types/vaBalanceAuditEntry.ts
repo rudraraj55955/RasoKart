@@ -23,5 +23,7 @@ export interface VaBalanceAuditEntry {
   oldTotalCollection?: string | null;
   /** @nullable */
   newTotalCollection?: string | null;
+  /** @nullable */
+  reason?: string | null;
   createdAt: string;
 }
