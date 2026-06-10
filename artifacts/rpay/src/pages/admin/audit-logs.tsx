@@ -573,6 +573,55 @@ export default function AdminAuditLogs() {
             </div>
           </div>
         </CardHeader>
+
+        {hasDateFilter && (
+          <div className="flex items-center gap-2 px-6 py-2 border-t border-border/40 bg-muted/10 flex-wrap">
+            <span className="text-xs text-muted-foreground shrink-0">Filtered by date:</span>
+            {dateFrom && dateTo ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-0.5 text-xs font-medium text-primary">
+                <CalendarIcon className="w-3 h-3" />
+                {formatDateLabel(dateFrom)} → {formatDateLabel(dateTo)}
+                <button
+                  onClick={() => { setDateFrom(""); setDateTo(""); setPage(1); }}
+                  className="ml-0.5 hover:text-primary/70 transition-colors"
+                  aria-label="Clear date range"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : (
+              <>
+                {dateFrom && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-0.5 text-xs font-medium text-primary">
+                    <CalendarIcon className="w-3 h-3" />
+                    From: {formatDateLabel(dateFrom)}
+                    <button
+                      onClick={() => { setDateFrom(""); setPage(1); }}
+                      className="ml-0.5 hover:text-primary/70 transition-colors"
+                      aria-label="Clear from date"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {dateTo && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-0.5 text-xs font-medium text-primary">
+                    <CalendarIcon className="w-3 h-3" />
+                    To: {formatDateLabel(dateTo)}
+                    <button
+                      onClick={() => { setDateTo(""); setPage(1); }}
+                      className="ml-0.5 hover:text-primary/70 transition-colors"
+                      aria-label="Clear to date"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         <CardContent className="p-0">
           <Table>
             <TableHeader>
