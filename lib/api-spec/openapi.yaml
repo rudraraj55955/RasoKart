@@ -1255,6 +1255,12 @@ paths:
           schema:
             type: integer
           description: Filter by QR code ID
+        - name: signatureVerified
+          in: query
+          schema:
+            type: string
+            enum: [all, verified, failed, none]
+          description: Filter by signature verification outcome. "verified" = passed, "failed" = rejected, "none" = no secret configured
         - name: page
           in: query
           schema:

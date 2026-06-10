@@ -1994,6 +1994,10 @@ status?: ListCallbackLogsStatus;
  * Filter by QR code ID
  */
 qrCodeId?: number;
+/**
+ * Filter by signature verification outcome. "verified" = passed, "failed" = rejected, "none" = no secret configured
+ */
+signatureVerified?: ListCallbackLogsSignatureVerified;
 page?: number;
 limit?: number;
 };
@@ -2006,6 +2010,16 @@ export const ListCallbackLogsStatus = {
   failed: 'failed',
   pending_retry: 'pending_retry',
   all: 'all',
+} as const;
+
+export type ListCallbackLogsSignatureVerified = typeof ListCallbackLogsSignatureVerified[keyof typeof ListCallbackLogsSignatureVerified];
+
+
+export const ListCallbackLogsSignatureVerified = {
+  all: 'all',
+  verified: 'verified',
+  failed: 'failed',
+  none: 'none',
 } as const;
 
 export type RetryCallback200 = {

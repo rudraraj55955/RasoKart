@@ -66,6 +66,7 @@ function CallbackRow({ log }: { log: any }) {
 
 export default function MerchantCallbacks() {
   const [status, setStatus] = useState("all");
+  const [sigVerified, setSigVerified] = useState("all");
   const [qrCodeIdInput, setQrCodeIdInput] = useState("");
   const [qrCodeId, setQrCodeId] = useState<number | undefined>(undefined);
   const [page, setPage] = useState(1);
@@ -73,6 +74,7 @@ export default function MerchantCallbacks() {
   const { data, isLoading } = useListCallbackLogs({
     status: status as any,
     qrCodeId,
+    signatureVerified: sigVerified as any,
     page,
     limit: 20,
   });
@@ -108,6 +110,15 @@ export default function MerchantCallbacks() {
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="success">Success</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sigVerified} onValueChange={v => { setSigVerified(v); setPage(1); }}>
+              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Signatures</SelectItem>
+                <SelectItem value="verified">Sig. Verified</SelectItem>
+                <SelectItem value="failed">Sig. Failed</SelectItem>
+                <SelectItem value="none">No Signature</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex items-center gap-2 flex-1 min-w-[180px]">

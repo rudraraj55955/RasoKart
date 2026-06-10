@@ -73,6 +73,7 @@ export * from './ledgerListResponse';
 export * from './listAccountDetailsParams';
 export * from './listAdminAuditLogsParams';
 export * from './listCallbackLogsParams';
+export * from './listCallbackLogsSignatureVerified';
 export * from './listCallbackLogsStatus';
 export * from './listInvoicesParams';
 export * from './listLedgerEntriesParams';

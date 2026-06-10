@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { Router } from "express";
 import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable } from "@workspace/db";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { fireCallback, scheduleCallbackRetry } from "../helpers/callbackRetry";
@@ -339,7 +339,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
 // GET /api/callbacks
 router.get("/", async (req, res) => {
   const user = (req as any).user;
-  const { status, qrCodeId, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { status, qrCodeId, signatureVerified, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -348,6 +348,9 @@ router.get("/", async (req, res) => {
   if (user.role !== "admin") conditions.push(eq(callbackLogsTable.merchantId, user.merchantId!));
   if (status && status !== "all") conditions.push(eq(callbackLogsTable.status, status));
   if (qrCodeId) conditions.push(eq(callbackLogsTable.qrCodeId, parseInt(qrCodeId)));
+  if (signatureVerified === "verified") conditions.push(eq(callbackLogsTable.signatureVerified, true));
+  else if (signatureVerified === "failed") conditions.push(eq(callbackLogsTable.signatureVerified, false));
+  else if (signatureVerified === "none") conditions.push(isNull(callbackLogsTable.signatureVerified));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [{ total }] = await db.select({ total: count() }).from(callbackLogsTable).where(where);

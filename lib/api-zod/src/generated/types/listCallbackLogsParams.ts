@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListCallbackLogsSignatureVerified } from './listCallbackLogsSignatureVerified';
 import type { ListCallbackLogsStatus } from './listCallbackLogsStatus';
 
 export type ListCallbackLogsParams = {
@@ -13,6 +14,10 @@ status?: ListCallbackLogsStatus;
  * Filter by QR code ID
  */
 qrCodeId?: number;
+/**
+ * Filter by signature verification outcome. "verified" = passed, "failed" = rejected, "none" = no secret configured
+ */
+signatureVerified?: ListCallbackLogsSignatureVerified;
 page?: number;
 limit?: number;
 };

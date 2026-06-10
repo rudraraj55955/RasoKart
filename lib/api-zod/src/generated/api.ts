@@ -1211,6 +1211,7 @@ export const ReceivePaymentCallbackResponse = zod.object({
 export const ListCallbackLogsQueryParams = zod.object({
   "status": zod.enum(['success', 'failed', 'pending_retry', 'all']).optional(),
   "qrCodeId": zod.coerce.number().optional().describe('Filter by QR code ID'),
+  "signatureVerified": zod.enum(['all', 'verified', 'failed', 'none']).optional().describe('Filter by signature verification outcome. \"verified\" = passed, \"failed\" = rejected, \"none\" = no secret configured'),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })
