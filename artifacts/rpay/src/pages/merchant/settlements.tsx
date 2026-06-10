@@ -63,6 +63,13 @@ export default function MerchantSettlements() {
   const balance = merchantData ? Number(merchantData.balance) : 0;
   const latestWithdrawal = withdrawalsData?.data?.[0];
 
+  // Sum amounts reserved by any pending/processing settlements (server enforces at most 1 at a time,
+  // but we compute from ALL loaded pages for correctness).
+  const pendingReserved = (data?.data ?? [])
+    .filter(s => s.status === "pending" || s.status === "processing")
+    .reduce((sum, s) => sum + Number(s.requestedAmount ?? s.amount), 0);
+  const availableBalance = balance - pendingReserved;
+
   const exportCsv = () => {
     if (!data?.data) return;
     const header = ["ID", "Amount", "Status", "Admin Remark", "Reference", "Note", "Created"];
@@ -99,16 +106,24 @@ export default function MerchantSettlements() {
 
       {/* Balance summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card className="border-primary/30">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Available Balance</p>
+            <p className="text-xl font-bold mt-1 text-primary">₹{availableBalance.toLocaleString()}</p>
+            {pendingReserved > 0 && (
+              <p className="text-xs text-amber-400 mt-0.5">₹{pendingReserved.toLocaleString()} reserved</p>
+            )}
+          </CardContent>
+        </Card>
         {[
-          { label: "Available Balance", value: `₹${balance.toLocaleString()}`, highlight: true },
           { label: "Pending", value: data?.data?.filter(s => s.status === "pending").length ?? "—" },
           { label: "Processing", value: data?.data?.filter(s => s.status === "processing").length ?? "—" },
           { label: "Paid (all time)", value: `₹${(data?.data?.filter(s => s.status === "paid").reduce((a, s) => a + Number(s.requestedAmount ?? s.amount), 0) ?? 0).toLocaleString()}` },
         ].map(card => (
-          <Card key={card.label} className={card.highlight ? "border-primary/30" : ""}>
+          <Card key={card.label}>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">{card.label}</p>
-              <p className={`text-xl font-bold mt-1 ${card.highlight ? "text-primary" : ""}`}>{card.value}</p>
+              <p className="text-xl font-bold mt-1">{card.value}</p>
             </CardContent>
           </Card>
         ))}
@@ -209,9 +224,21 @@ export default function MerchantSettlements() {
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
-            <div className="flex items-center justify-between rounded-lg border border-border p-3 bg-muted/30">
-              <span className="text-sm text-muted-foreground">Available Balance</span>
-              <span className="font-bold text-lg text-primary">₹{balance.toLocaleString()}</span>
+            <div className="rounded-lg border border-border p-3 bg-muted/30 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Balance</span>
+                <span className="font-semibold text-foreground">₹{balance.toLocaleString()}</span>
+              </div>
+              {pendingReserved > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-amber-400">Reserved (pending withdrawal)</span>
+                  <span className="font-semibold text-amber-400">− ₹{pendingReserved.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                <span className="text-sm font-medium">Available to Request</span>
+                <span className="font-bold text-lg text-primary">₹{availableBalance.toLocaleString()}</span>
+              </div>
             </div>
 
             {/* Payout account — pre-filled from most recent withdrawal */}
@@ -247,9 +274,9 @@ export default function MerchantSettlements() {
                 id="reqAmount"
                 type="number"
                 min="1"
-                max={balance}
+                max={availableBalance}
                 step="0.01"
-                placeholder={`Max ₹${balance.toLocaleString()}`}
+                placeholder={`Max ₹${availableBalance.toLocaleString()}`}
                 value={reqAmount}
                 onChange={e => setReqAmount(e.target.value)}
               />

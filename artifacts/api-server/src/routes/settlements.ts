@@ -162,13 +162,8 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  if (Number(merchant.balance) < requestedAmount) {
-    res.status(400).json({ error: "Insufficient balance", available: Number(merchant.balance) });
-    return;
-  }
-
   // Block duplicate in-flight requests
-  const [existing] = await db.select({ id: settlementsTable.id })
+  const [existing] = await db.select({ id: settlementsTable.id, amount: settlementsTable.requestedAmount })
     .from(settlementsTable)
     .where(and(
       eq(settlementsTable.merchantId, user.merchantId),
@@ -178,6 +173,22 @@ router.post("/", async (req, res) => {
 
   if (existing) {
     res.status(400).json({ error: "You already have a pending or in-progress settlement request" });
+    return;
+  }
+
+  // Validate against truly available balance (balance minus any reserved-but-not-yet-deducted amounts)
+  const [reservedRow] = await db
+    .select({ reserved: sql<string>`COALESCE(SUM(${settlementsTable.requestedAmount}), 0)` })
+    .from(settlementsTable)
+    .where(and(
+      eq(settlementsTable.merchantId, user.merchantId),
+      sql`${settlementsTable.status} IN ('pending', 'processing')`
+    ));
+  const reserved = Number(reservedRow?.reserved ?? 0);
+  const available = Number(merchant.balance) - reserved;
+
+  if (available < requestedAmount) {
+    res.status(400).json({ error: "Insufficient balance", available, balance: Number(merchant.balance), reserved });
     return;
   }
 
