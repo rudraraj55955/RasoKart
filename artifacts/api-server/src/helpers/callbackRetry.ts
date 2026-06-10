@@ -1,6 +1,26 @@
-import { db, callbackLogsTable } from "@workspace/db";
+import { db, callbackLogsTable, usersTable } from "@workspace/db";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { createNotification } from "./notifications";
+
+async function notifyWebhookFailure(merchantId: number, url: string, attempts: number, qrCodeId: number | null): Promise<void> {
+  const [user] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.merchantId, merchantId))
+    .limit(1);
+
+  if (!user) return;
+
+  const qrLabel = qrCodeId != null ? ` (QR Code #${qrCodeId})` : "";
+  await createNotification({
+    userId: user.id,
+    type: "webhook_failure",
+    title: "Webhook Delivery Failed",
+    body: `Callback to ${url} failed after ${attempts} attempt${attempts !== 1 ? "s" : ""}${qrLabel}. Please check your endpoint and ensure it returns a 2xx response.`,
+    metadata: { qrCodeId, url, attempts },
+  });
+}
 
 const MAX_ATTEMPTS = 4; // 1 initial + 3 retries
 
@@ -118,6 +138,10 @@ export async function processPendingRetries(): Promise<void> {
             lastAttemptAt: now,
           })
           .where(eq(callbackLogsTable.id, log.id));
+
+        await notifyWebhookFailure(log.merchantId, log.url, newAttempts, log.qrCodeId ?? null).catch((err) => {
+          logger.error({ err, logId: log.id }, "Failed to send webhook failure notification");
+        });
       } else {
         const delayMs = getNextRetryDelay(newAttempts);
         const nextRetryAt = new Date(Date.now() + delayMs);
