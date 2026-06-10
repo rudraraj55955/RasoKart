@@ -454,10 +454,10 @@ router.put("/:id", async (req, res) => {
       changedBy: user.id,
       changedByRole: user.role,
       changedByName: actingUser?.name ?? user.email ?? "Unknown",
-      oldBalance: balanceChanged ? existing.balance : null,
-      newBalance: balanceChanged ? balance : null,
-      oldTotalCollection: totalCollectionChanged ? existing.totalCollection : null,
-      newTotalCollection: totalCollectionChanged ? totalCollection : null,
+      oldBalance: existing.balance,
+      newBalance: balanceChanged ? balance : existing.balance,
+      oldTotalCollection: existing.totalCollection,
+      newTotalCollection: totalCollectionChanged ? totalCollection : existing.totalCollection,
     });
   }
 

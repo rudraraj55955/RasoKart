@@ -535,22 +535,36 @@ export default function AdminVirtualAccounts() {
                       </TableCell>
                       <TableCell>
                         {entry.oldBalance != null && entry.newBalance != null ? (
-                          <div className="flex items-center gap-1 text-xs font-mono">
-                            <span className="text-rose-400">₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                            <span className="text-muted-foreground">→</span>
-                            <span className="text-emerald-400">₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                          </div>
+                          entry.oldBalance !== entry.newBalance ? (
+                            <div className="flex items-center gap-1 text-xs font-mono">
+                              <span className="text-rose-400">₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="text-emerald-400">₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-xs font-mono">
+                              <span className="text-muted-foreground/60">₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                              <span className="text-[10px] text-muted-foreground/40 italic">unchanged</span>
+                            </div>
+                          )
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell>
                         {entry.oldTotalCollection != null && entry.newTotalCollection != null ? (
-                          <div className="flex items-center gap-1 text-xs font-mono">
-                            <span className="text-rose-400">₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                            <span className="text-muted-foreground">→</span>
-                            <span className="text-emerald-400">₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                          </div>
+                          entry.oldTotalCollection !== entry.newTotalCollection ? (
+                            <div className="flex items-center gap-1 text-xs font-mono">
+                              <span className="text-rose-400">₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="text-emerald-400">₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-xs font-mono">
+                              <span className="text-muted-foreground/60">₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                              <span className="text-[10px] text-muted-foreground/40 italic">unchanged</span>
+                            </div>
+                          )
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -922,48 +936,74 @@ export default function AdminVirtualAccounts() {
                     </Card>
                   )}
                   <div className="space-y-2">
-                    {balList.map((entry: (typeof balList)[number]) => (
-                      <div key={entry.id} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${entry.changedByRole === "admin" ? "bg-violet-400" : "bg-blue-400"}`} />
-                            <span className="text-sm font-medium">{entry.changedByName}</span>
-                            <Badge variant="outline" className="text-[10px] capitalize px-1.5">
-                              {entry.changedByRole}
-                            </Badge>
+                    {balList.map((entry: (typeof balList)[number]) => {
+                      const balChanged = entry.oldBalance != null && entry.newBalance != null && entry.oldBalance !== entry.newBalance;
+                      const tcChanged = entry.oldTotalCollection != null && entry.newTotalCollection != null && entry.oldTotalCollection !== entry.newTotalCollection;
+                      return (
+                        <div key={entry.id} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${entry.changedByRole === "admin" ? "bg-violet-400" : "bg-blue-400"}`} />
+                              <span className="text-sm font-medium">{entry.changedByName}</span>
+                              <Badge variant="outline" className="text-[10px] capitalize px-1.5">
+                                {entry.changedByRole}
+                              </Badge>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(entry.createdAt), "MMM d, yyyy HH:mm")}
+                            </span>
                           </div>
-                          <span className="text-xs text-muted-foreground">
-                            {format(new Date(entry.createdAt), "MMM d, yyyy HH:mm")}
-                          </span>
+                          <div className="grid grid-cols-1 gap-1.5">
+                            {entry.oldBalance != null && entry.newBalance != null ? (
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className={`w-28 shrink-0 ${balChanged ? "text-muted-foreground" : "text-muted-foreground/50"}`}>Balance</span>
+                                {balChanged ? (
+                                  <>
+                                    <span className="font-mono text-rose-400">
+                                      ₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </span>
+                                    <span className="text-muted-foreground">→</span>
+                                    <span className="font-mono text-emerald-400">
+                                      ₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="font-mono text-muted-foreground/60">
+                                      ₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground/50 italic">unchanged</span>
+                                  </>
+                                )}
+                              </div>
+                            ) : null}
+                            {entry.oldTotalCollection != null && entry.newTotalCollection != null ? (
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className={`w-28 shrink-0 ${tcChanged ? "text-muted-foreground" : "text-muted-foreground/50"}`}>Total Collection</span>
+                                {tcChanged ? (
+                                  <>
+                                    <span className="font-mono text-rose-400">
+                                      ₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </span>
+                                    <span className="text-muted-foreground">→</span>
+                                    <span className="font-mono text-emerald-400">
+                                      ₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="font-mono text-muted-foreground/60">
+                                      ₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground/50 italic">unchanged</span>
+                                  </>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="grid grid-cols-1 gap-1.5">
-                          {entry.oldBalance != null && entry.newBalance != null && (
-                            <div className="flex items-center gap-2 text-xs">
-                              <span className="text-muted-foreground w-28 shrink-0">Balance</span>
-                              <span className="font-mono text-rose-400">
-                                ₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                              </span>
-                              <span className="text-muted-foreground">→</span>
-                              <span className="font-mono text-emerald-400">
-                                ₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          )}
-                          {entry.oldTotalCollection != null && entry.newTotalCollection != null && (
-                            <div className="flex items-center gap-2 text-xs">
-                              <span className="text-muted-foreground w-28 shrink-0">Total Collection</span>
-                              <span className="font-mono text-rose-400">
-                                ₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                              </span>
-                              <span className="text-muted-foreground">→</span>
-                              <span className="font-mono text-emerald-400">
-                                ₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
