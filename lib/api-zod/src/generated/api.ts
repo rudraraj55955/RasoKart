@@ -1305,7 +1305,8 @@ export const RetryCallbackResponse = zod.object({
  */
 export const GetCallbackSecretResponse = zod.object({
   "isSet": zod.boolean().describe('Whether a callback signing secret has been configured'),
-  "secretPrefix": zod.string().nullish().describe('First 8 characters of the secret followed by \"...\" — null when no secret is set')
+  "secretPrefix": zod.string().nullish().describe('First 8 characters of the secret followed by \"...\" — null when no secret is set'),
+  "lastRotatedAt": zod.coerce.date().nullish().describe('ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.')
 })
 
 

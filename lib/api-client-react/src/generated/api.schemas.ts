@@ -418,6 +418,11 @@ export interface CallbackSecretStatus {
      * @nullable
      */
   secretPrefix?: string | null;
+  /**
+     * ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.
+     * @nullable
+     */
+  lastRotatedAt?: string | null;
 }
 
 export interface CallbackSecretRotateResponse {

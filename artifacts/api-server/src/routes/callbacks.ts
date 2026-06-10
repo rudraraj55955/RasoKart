@@ -197,7 +197,10 @@ router.get("/secret", async (req, res) => {
   }
 
   const [merchant] = await db
-    .select({ callbackSecret: merchantsTable.callbackSecret })
+    .select({
+      callbackSecret: merchantsTable.callbackSecret,
+      callbackSecretUpdatedAt: merchantsTable.callbackSecretUpdatedAt,
+    })
     .from(merchantsTable)
     .where(eq(merchantsTable.id, user.merchantId))
     .limit(1);
@@ -211,6 +214,7 @@ router.get("/secret", async (req, res) => {
   res.json({
     isSet: !!secret,
     secretPrefix: secret ? secret.slice(0, 8) + "..." : null,
+    lastRotatedAt: merchant.callbackSecretUpdatedAt?.toISOString() ?? null,
   });
 });
 
@@ -225,9 +229,10 @@ router.post("/secret/rotate", async (req, res) => {
   const { randomBytes } = await import("crypto");
   const newSecret = randomBytes(32).toString("hex");
 
+  const now = new Date();
   await db
     .update(merchantsTable)
-    .set({ callbackSecret: newSecret, updatedAt: new Date() })
+    .set({ callbackSecret: newSecret, callbackSecretUpdatedAt: now, updatedAt: now })
     .where(eq(merchantsTable.id, user.merchantId));
 
   req.log.info({ merchantId: user.merchantId }, "Callback secret rotated");

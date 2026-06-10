@@ -4047,6 +4047,10 @@ components:
         secretPrefix:
           type: ["string", "null"]
           description: First 8 characters of the secret followed by "..." — null when no secret is set
+        lastRotatedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.
 
     CallbackSecretRotateResponse:
       type: object
