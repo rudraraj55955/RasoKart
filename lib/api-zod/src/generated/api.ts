@@ -3457,7 +3457,8 @@ export const ResolveReconciliationItemResponse = zod.object({
  * @summary Get the next scheduled reconciliation run time (admin only)
  */
 export const GetReconciliationNextRunResponse = zod.object({
-  "nextRunAt": zod.string().nullable().describe('ISO timestamp of the next scheduled reconciliation run')
+  "nextRunAt": zod.string().nullable().describe('ISO timestamp of the next scheduled reconciliation run'),
+  "serverTimezone": zod.string().nullish().describe('IANA timezone name of the server (e.g. \"America\/New_York\") used to interpret scheduled hour\/minute')
 })
 
 

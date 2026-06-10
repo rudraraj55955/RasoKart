@@ -5993,6 +5993,10 @@ components:
           type: string
           nullable: true
           description: ISO timestamp of the next scheduled reconciliation run
+        serverTimezone:
+          type: string
+          nullable: true
+          description: IANA timezone name of the server (e.g. "America/New_York") used to interpret scheduled hour/minute
 
     ReconciliationScheduleConfig:
       type: object

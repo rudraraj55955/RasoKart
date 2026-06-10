@@ -1892,6 +1892,8 @@ export interface ExpiryCheckResult {
 export interface ReconciliationNextRun {
   /** ISO timestamp of the next scheduled reconciliation run */
   nextRunAt: string | null;
+  /** IANA timezone name of the server (e.g. "America/New_York") used to interpret scheduled hour/minute */
+  serverTimezone?: string | null;
 }
 
 export interface ReconciliationScheduleConfig {

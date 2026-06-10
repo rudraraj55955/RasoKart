@@ -76,6 +76,41 @@ function formatCurrency(v: number | string) {
   return `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function padTwo(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+/**
+ * Given a scheduled hour/minute in the server's IANA timezone, returns the
+ * equivalent local time string (e.g. "08:00 AM") for the browser's timezone.
+ * Returns null if the timezone is invalid or conversion fails.
+ */
+function serverTimeToLocalDisplay(hour: number, minute: number, serverTz: string): string | null {
+  try {
+    const now = new Date();
+    // Get today's date in server timezone (YYYY-MM-DD)
+    const todayInServerTz = new Intl.DateTimeFormat("en-CA", { timeZone: serverTz }).format(now);
+    // Treat the scheduled time naively as UTC to get a starting point
+    const naiveUTC = new Date(`${todayInServerTz}T${padTwo(hour)}:${padTwo(minute)}:00Z`);
+    // Find what hour/minute that UTC instant corresponds to in the server timezone
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: serverTz,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(naiveUTC);
+    const actualServerHour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0");
+    const actualServerMinute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0");
+    // Compute drift and correct
+    const intendedMs = (hour * 60 + minute) * 60000;
+    const actualMs = (actualServerHour * 60 + actualServerMinute) * 60000;
+    const correctedUTC = new Date(naiveUTC.getTime() + (intendedMs - actualMs));
+    return correctedUTC.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return null;
+  }
+}
+
 function MatchedPairCard({ item }: { item: any }) {
   return (
     <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm">
@@ -349,10 +384,6 @@ function UnmatchedCard({ item, onResolve }: { item: any; onResolve: (item: any) 
   );
 }
 
-function padTwo(n: number) {
-  return String(n).padStart(2, "0");
-}
-
 function ScheduleSettingsCard() {
   const qc = useQueryClient();
   const { data: config, isLoading: configLoading } = useGetReconciliationScheduleConfig();
@@ -390,6 +421,10 @@ function ScheduleSettingsCard() {
   const currentMinute = config?.minute ?? 0;
   const currentLookback = config?.lookbackDays ?? 1;
   const currentEnabled = config?.enabled ?? true;
+
+  const serverTz = nextRunData?.serverTimezone ?? null;
+  const localEquivalent = serverTz ? serverTimeToLocalDisplay(currentHour, currentMinute, serverTz) : null;
+  const tzDiffers = serverTz !== null && serverTz !== Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const scheduleLabel = `Daily at ${padTwo(currentHour)}:${padTwo(currentMinute)} server time`;
   const windowLabel = currentLookback === 1
@@ -444,6 +479,9 @@ function ScheduleSettingsCard() {
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Scheduled Time</p>
                     <p className={`text-sm font-medium font-mono ${!currentEnabled ? "text-muted-foreground/60" : ""}`}>{padTwo(currentHour)}:{padTwo(currentMinute)}</p>
                     <p className="text-[10px] text-muted-foreground/60">server time (24h)</p>
+                    {localEquivalent && tzDiffers && (
+                      <p className="text-[10px] text-primary/70 mt-0.5">= {localEquivalent} your time</p>
+                    )}
                   </div>
                   <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 min-w-[160px]">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Lookback Window</p>
@@ -453,7 +491,14 @@ function ScheduleSettingsCard() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {currentEnabled
-                    ? <>Auto-reconciliation runs <span className="text-foreground font-medium">{scheduleLabel}</span>, covering the previous {currentLookback === 1 ? "day" : `${currentLookback} days`}.</>
+                    ? <>
+                        Auto-reconciliation runs{" "}
+                        <span className="text-foreground font-medium">{scheduleLabel}</span>
+                        {localEquivalent && tzDiffers && (
+                          <span className="text-primary/70"> ({localEquivalent} your time)</span>
+                        )}
+                        , covering the previous {currentLookback === 1 ? "day" : `${currentLookback} days`}.
+                      </>
                     : "The scheduler is paused and will not run until re-enabled."}
                 </p>
                 {nextRunData?.nextRunAt && (
@@ -467,7 +512,7 @@ function ScheduleSettingsCard() {
                       <span className="text-muted-foreground/60 ml-1">
                         ({new Date(nextRunData.nextRunAt).toLocaleString(undefined, {
                           month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
-                        })})
+                        })} local)
                       </span>
                     </span>
                   </div>

@@ -47,7 +47,8 @@ async function getReconConfig() {
 // GET /api/system-config/reconciliation/next-run
 router.get("/reconciliation/next-run", (req, res) => {
   const nextRun = getNextRunTime();
-  res.json({ nextRunAt: nextRun ? nextRun.toISOString() : null });
+  const serverTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  res.json({ nextRunAt: nextRun ? nextRun.toISOString() : null, serverTimezone });
 });
 
 // GET /api/system-config/reconciliation
