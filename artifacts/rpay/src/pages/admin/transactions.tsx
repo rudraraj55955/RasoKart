@@ -704,6 +704,20 @@ export default function AdminTransactions() {
   const [selectedTxId, setSelectedTxId] = useState<number | null>(null);
   const [recordDialogOpen, setRecordDialogOpen] = useState(false);
 
+  const [paymentLinkId, setPaymentLinkId] = useState<number | null>(null);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
+
+  const { data: allLinksData } = useListPaymentLinks(
+    { search: linkSearch || undefined, status: "all", limit: 50 },
+    { query: { enabled: linkDropdownOpen } as any }
+  );
+  const linkOptions = allLinksData?.data ?? [];
+
+  const selectedLink = paymentLinkId != null
+    ? (allLinksData?.data?.find(l => l.id === paymentLinkId) ?? null)
+    : null;
+
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(
     () => qc.invalidateQueries({ queryKey: ["/api/transactions"] })
   );
@@ -715,6 +729,7 @@ export default function AdminTransactions() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     connectionProvider: provider !== "all" ? provider as any : undefined,
+    paymentLinkId: paymentLinkId ?? undefined,
     page,
     limit: 20,
   });
@@ -730,6 +745,7 @@ export default function AdminTransactions() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     connectionProvider: provider !== "all" ? provider : undefined,
+    paymentLinkId: paymentLinkId != null ? String(paymentLinkId) : undefined,
   });
 
   const stats = data?.stats;
@@ -902,6 +918,59 @@ export default function AdminTransactions() {
                   <X className="w-3.5 h-3.5 mr-1" /> Clear dates
                 </Button>
               )}
+              <div className="relative">
+                {paymentLinkId != null && selectedLink ? (
+                  <div className="flex items-center gap-1.5 h-9 px-3 rounded-md border border-primary/50 bg-primary/5 text-sm">
+                    <Link2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span className="max-w-[160px] truncate font-medium">{selectedLink.title}</span>
+                    <button
+                      type="button"
+                      className="ml-1 text-muted-foreground hover:text-foreground"
+                      onClick={() => { setPaymentLinkId(null); setLinkSearch(""); setPage(1); }}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      className="pl-8 w-[200px] text-sm"
+                      placeholder="Filter by payment link…"
+                      value={linkSearch}
+                      onFocus={() => setLinkDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setLinkDropdownOpen(false), 150)}
+                      onChange={e => { setLinkSearch(e.target.value); setLinkDropdownOpen(true); }}
+                    />
+                    {linkDropdownOpen && (
+                      <div className="absolute top-full mt-1 left-0 z-50 w-72 rounded-lg border bg-popover shadow-lg overflow-hidden">
+                        {linkOptions.length === 0 ? (
+                          <p className="px-3 py-2.5 text-xs text-muted-foreground">
+                            {linkSearch ? "No matching payment links" : "No payment links found"}
+                          </p>
+                        ) : (
+                          <div className="max-h-48 overflow-y-auto divide-y divide-border">
+                            {linkOptions.map(link => (
+                              <button
+                                key={link.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors"
+                                onMouseDown={e => e.preventDefault()}
+                                onClick={() => { setPaymentLinkId(link.id); setLinkSearch(""); setLinkDropdownOpen(false); setPage(1); }}
+                              >
+                                <p className="text-sm font-medium truncate">{link.title}</p>
+                                <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
+                                  {link.slug}{link.amount ? ` · ₹${Number(link.amount).toLocaleString()}` : ""}
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </CardHeader>

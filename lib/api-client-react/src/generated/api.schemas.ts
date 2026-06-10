@@ -2045,6 +2045,7 @@ dateTo?: string;
 amountMin?: number;
 amountMax?: number;
 connectionProvider?: ListTransactionsConnectionProvider;
+paymentLinkId?: number;
 page?: number;
 limit?: number;
 };

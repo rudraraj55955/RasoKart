@@ -33,7 +33,7 @@ async function expirePaymentLinks() {
 router.get("/", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { type, status, search, merchantId, dateFrom, dateTo, amountMin, amountMax, connectionProvider, page = "1", limit = "20" } = req.query as Record<string, string>;
+    const { type, status, search, merchantId, dateFrom, dateTo, amountMin, amountMax, connectionProvider, paymentLinkId, page = "1", limit = "20" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -67,6 +67,7 @@ router.get("/", async (req, res, next) => {
     }
     if (amountMin) conditions.push(gte(sql`CAST(${transactionsTable.amount} AS DECIMAL)`, parseFloat(amountMin)));
     if (amountMax) conditions.push(lte(sql`CAST(${transactionsTable.amount} AS DECIMAL)`, parseFloat(amountMax)));
+    if (paymentLinkId) conditions.push(eq(transactionsTable.paymentLinkId, parseInt(paymentLinkId)));
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 

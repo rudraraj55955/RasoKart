@@ -863,6 +863,7 @@ export const ListTransactionsQueryParams = zod.object({
   "amountMin": zod.coerce.number().optional(),
   "amountMax": zod.coerce.number().optional(),
   "connectionProvider": zod.enum(['phonepe', 'paytm', 'bharatpe', 'yono_sbi', 'hdfc_smarthub', 'upi_id']).optional(),
+  "paymentLinkId": zod.coerce.number().optional(),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })

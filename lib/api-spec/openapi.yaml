@@ -859,6 +859,10 @@ paths:
           schema:
             type: string
             enum: [phonepe, paytm, bharatpe, yono_sbi, hdfc_smarthub, upi_id]
+        - name: paymentLinkId
+          in: query
+          schema:
+            type: integer
         - name: page
           in: query
           schema:
