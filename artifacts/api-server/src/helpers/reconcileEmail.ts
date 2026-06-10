@@ -259,9 +259,19 @@ export async function sendReconciliationReportEmail(runId: number): Promise<void
       .where(eq(systemSettingsTable.key, "finance_report_email"))
       .limit(1);
 
-    const financeEmail = settingRow[0]?.value ?? null;
-    if (!financeEmail) {
+    const rawValue = settingRow[0]?.value ?? null;
+    if (!rawValue) {
       logger.info({ runId }, "No finance_report_email configured — skipping reconciliation report email");
+      return;
+    }
+
+    const recipients = rawValue
+      .split(",")
+      .map(e => e.trim())
+      .filter(e => e.length > 0);
+
+    if (recipients.length === 0) {
+      logger.info({ runId }, "finance_report_email is blank — skipping reconciliation report email");
       return;
     }
 
@@ -279,13 +289,19 @@ export async function sendReconciliationReportEmail(runId: number): Promise<void
     const csv = await buildRunCsv(runId);
     const html = buildEmailHtml(run);
     const filename = `reconciliation-run-${runId}-${run.dateFrom}-to-${run.dateTo}.csv`;
+    const subject = `[RasoKart] Reconciliation Report — Run #${runId} (${run.dateFrom} to ${run.dateTo})`;
+
+    const [primaryRecipient, ...ccRecipients] = recipients;
 
     await sendMail({
-      to: financeEmail,
-      subject: `[RasoKart] Reconciliation Report — Run #${runId} (${run.dateFrom} to ${run.dateTo})`,
+      to: primaryRecipient,
+      ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
+      subject,
       html,
       attachments: [{ filename, content: csv, contentType: "text/csv" }],
     });
+
+    logger.info({ runId, recipients }, "Reconciliation report email sent");
   } catch (err) {
     logger.error({ err, runId }, "Failed to send reconciliation report email");
   }

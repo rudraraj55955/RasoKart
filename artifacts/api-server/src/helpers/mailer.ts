@@ -23,6 +23,7 @@ function createTransport() {
 
 export interface MailOptions {
   to: string;
+  cc?: string;
   subject: string;
   html: string;
   attachments?: Array<{
@@ -45,6 +46,7 @@ export async function sendMail(opts: MailOptions): Promise<boolean> {
     await transport.sendMail({
       from,
       to: opts.to,
+      ...(opts.cc ? { cc: opts.cc } : {}),
       subject: opts.subject,
       html: opts.html,
       attachments: opts.attachments?.map(a => ({
@@ -53,7 +55,7 @@ export async function sendMail(opts: MailOptions): Promise<boolean> {
         contentType: a.contentType,
       })),
     });
-    logger.info({ to: opts.to, subject: opts.subject }, "Email sent successfully");
+    logger.info({ to: opts.to, cc: opts.cc, subject: opts.subject }, "Email sent successfully");
     return true;
   } catch (err) {
     logger.error({ err, to: opts.to, subject: opts.subject }, "Failed to send email");

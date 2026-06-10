@@ -45,8 +45,13 @@ router.put("/:key", async (req, res, next) => {
 
     if (key === "finance_report_email" && value !== null && value !== "") {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (typeof value !== "string" || !emailRegex.test(value)) {
+      if (typeof value !== "string") {
         res.status(400).json({ error: "Invalid email address" });
+        return;
+      }
+      const addresses = value.split(",").map(e => e.trim()).filter(e => e.length > 0);
+      if (addresses.length === 0 || addresses.some(addr => !emailRegex.test(addr))) {
+        res.status(400).json({ error: "One or more email addresses are invalid" });
         return;
       }
     }

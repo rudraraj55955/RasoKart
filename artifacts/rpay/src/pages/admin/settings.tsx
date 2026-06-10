@@ -47,6 +47,10 @@ export default function AdminSettings() {
     },
   } as any);
 
+  const recipientCount = financeEmail.trim()
+    ? financeEmail.split(",").map(e => e.trim()).filter(e => e.length > 0).length
+    : 0;
+
   const { mutate: saveEmail, isPending: saving } = useMutation({
     mutationFn: () => apiPut("/settings/finance_report_email", { value: financeEmail || null }),
     onSuccess: () => {
@@ -75,18 +79,25 @@ export default function AdminSettings() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <Mail className="w-4 h-4 text-muted-foreground" />
-            <CardTitle className="text-base">Finance Report Email</CardTitle>
+            <CardTitle className="text-base">Finance Report Recipients</CardTitle>
           </div>
           <CardDescription className="text-sm">
             After each reconciliation run completes, a summary email with the full CSV report attached
-            will be sent to this address. Leave blank to disable automatic emails.
+            will be sent to all configured addresses. Leave blank to disable automatic emails.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {!isLoading && currentEmail && (
-            <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Reports are currently being sent to <strong>{currentEmail}</strong></span>
+            <div className="flex items-start gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                Reports are currently being sent to{" "}
+                {currentEmail.split(",").map(e => e.trim()).filter(Boolean).map((addr, i, arr) => (
+                  <span key={addr}>
+                    <strong>{addr}</strong>{i < arr.length - 1 ? ", " : ""}
+                  </span>
+                ))}
+              </span>
             </div>
           )}
           {!isLoading && !currentEmail && (
@@ -97,18 +108,22 @@ export default function AdminSettings() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="finance-email" className="text-sm">Recipient email address</Label>
+            <Label htmlFor="finance-email" className="text-sm">Recipient email addresses</Label>
             <Input
               id="finance-email"
-              type="email"
-              placeholder="finance@company.com"
+              type="text"
+              placeholder="cfo@company.com, controller@company.com, auditor@company.com"
               value={financeEmail}
               onChange={e => setFinanceEmail(e.target.value)}
               disabled={isLoading}
-              className="max-w-sm"
+              className="max-w-lg"
             />
             <p className="text-xs text-muted-foreground">
-              Must be a valid email address. Reports include run stats and a full CSV attachment.
+              Separate multiple addresses with commas.
+              {recipientCount > 1 && (
+                <span className="ml-1 text-violet-400">{recipientCount} recipients configured.</span>
+              )}
+              {" "}Reports include run stats and a full CSV attachment.
             </p>
           </div>
 
