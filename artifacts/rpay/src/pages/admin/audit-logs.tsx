@@ -7,13 +7,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Shield, Search, Eye, Activity, FileDown, CalendarIcon, X } from "lucide-react";
+import {
+  Shield, Search, Eye, Activity, FileDown, CalendarIcon, X,
+  CheckCircle2, XCircle, UserPlus, UserCog,
+  Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
+} from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   merchant_approved:  { label: "Merchant Approved",  color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
   merchant_rejected:  { label: "Merchant Rejected",  color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   plan_assigned:      { label: "Plan Assigned",       color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  plan_upgraded:      { label: "Plan Upgraded",       color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  plan_downgraded:    { label: "Plan Downgraded",     color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  plan_renewed:       { label: "Plan Renewed",        color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   plan_created:       { label: "Plan Created",        color: "bg-primary/10 text-primary border-primary/20" },
   plan_updated:       { label: "Plan Updated",        color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   plan_deleted:       { label: "Plan Deleted",        color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
@@ -37,6 +44,38 @@ function formatDateLabel(val: string): string {
   try { return format(parseISO(val), "MMM d, yyyy"); } catch { return val; }
 }
 
+function humanizeKey(key: string): string {
+  return key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()).trim();
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <span className="text-xs text-muted-foreground">{label}: </span>
+      <span className="text-xs font-medium">{value}</span>
+    </div>
+  );
+}
+
+function SummaryCard({
+  icon, title, subtitle, colorClass,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  colorClass: string;
+}) {
+  return (
+    <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${colorClass}`}>
+      <div className="shrink-0">{icon}</div>
+      <div>
+        <p className="text-sm font-semibold leading-snug">{title}</p>
+        {subtitle && <p className="text-xs opacity-70 mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
 function CsvExportDetails({ log }: { log: any }) {
   let parsed: { rowCount?: number; filters?: Record<string, string | number | null> } = {};
   try { parsed = JSON.parse(log.details); } catch { return null; }
@@ -54,27 +93,18 @@ function CsvExportDetails({ log }: { log: any }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3 rounded-lg bg-sky-500/10 border border-sky-500/20 px-4 py-3">
-        <FileDown className="w-5 h-5 text-sky-400 shrink-0" />
-        <div>
-          <p className="text-sm font-semibold text-sky-300">
-            Exported {rowCount != null ? rowCount.toLocaleString() : "—"} {targetType}
-          </p>
-          {!activeFilters.length && (
-            <p className="text-xs text-sky-400/70 mt-0.5">No filters applied — full export</p>
-          )}
-        </div>
-      </div>
-
+      <SummaryCard
+        icon={<FileDown className="w-5 h-5 text-sky-400" />}
+        title={`Exported ${rowCount != null ? rowCount.toLocaleString() : "—"} ${targetType}`}
+        subtitle={!activeFilters.length ? "No filters applied — full export" : undefined}
+        colorClass="bg-sky-500/10 border-sky-500/20"
+      />
       {activeFilters.length > 0 && (
         <div className="rounded-lg bg-muted/20 p-3 space-y-2">
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Filters applied</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
             {nonDateFilters.map(([key, val]) => (
-              <div key={key}>
-                <span className="text-xs text-muted-foreground">{FILTER_LABELS[key] ?? key}: </span>
-                <span className="text-xs font-medium">{String(val)}</span>
-              </div>
+              <DetailRow key={key} label={FILTER_LABELS[key] ?? key} value={String(val)} />
             ))}
             {hasDates && (
               <div className="col-span-2">
@@ -91,6 +121,256 @@ function CsvExportDetails({ log }: { log: any }) {
       )}
     </div>
   );
+}
+
+function MerchantApprovedDetails({ log }: { log: any }) {
+  let parsed: { businessName?: string; email?: string; reason?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<CheckCircle2 className="w-5 h-5 text-emerald-400" />}
+        title={parsed.businessName ? `Approved: ${parsed.businessName}` : "Merchant application approved"}
+        subtitle={parsed.email}
+        colorClass="bg-emerald-500/10 border-emerald-500/20"
+      />
+      {parsed.reason && (
+        <div className="rounded-lg bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground mb-1">Notes</p>
+          <p className="text-xs">{parsed.reason}</p>
+        </div>
+      )}
+      <div className="rounded-lg bg-muted/20 p-3">
+        <p className="text-xs text-muted-foreground mb-1">Target merchant ID</p>
+        <p className="text-xs font-mono">#{log.targetId ?? "—"}</p>
+      </div>
+    </div>
+  );
+}
+
+function MerchantRejectedDetails({ log }: { log: any }) {
+  let parsed: { businessName?: string; email?: string; reason?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<XCircle className="w-5 h-5 text-rose-400" />}
+        title={parsed.businessName ? `Rejected: ${parsed.businessName}` : "Merchant application rejected"}
+        subtitle={parsed.email}
+        colorClass="bg-rose-500/10 border-rose-500/20"
+      />
+      {parsed.reason && (
+        <div className="rounded-lg bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground mb-1">Rejection reason</p>
+          <p className="text-xs">{parsed.reason}</p>
+        </div>
+      )}
+      <div className="rounded-lg bg-muted/20 p-3">
+        <p className="text-xs text-muted-foreground mb-1">Target merchant ID</p>
+        <p className="text-xs font-mono">#{log.targetId ?? "—"}</p>
+      </div>
+    </div>
+  );
+}
+
+function PlanAssignmentDetails({ log }: { log: any }) {
+  let parsed: { planName?: string; fromPlanId?: number | null; toPlanId?: number } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const action = log.action as string;
+  const actionLabel =
+    action === "plan_upgraded" ? "upgraded to" :
+    action === "plan_downgraded" ? "downgraded to" :
+    action === "plan_renewed" ? "renewed:" :
+    "assigned:";
+
+  const iconColor =
+    action === "plan_downgraded" ? "text-amber-400" : "text-blue-400";
+  const cardColor =
+    action === "plan_downgraded"
+      ? "bg-amber-500/10 border-amber-500/20"
+      : "bg-blue-500/10 border-blue-500/20";
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<ArrowRightLeft className={`w-5 h-5 ${iconColor}`} />}
+        title={parsed.planName ? `Plan ${actionLabel} ${parsed.planName}` : "Plan assignment changed"}
+        subtitle={`Merchant #${log.targetId ?? "—"}`}
+        colorClass={cardColor}
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {parsed.fromPlanId != null && (
+          <DetailRow label="Previous plan ID" value={<span className="font-mono">#{parsed.fromPlanId}</span>} />
+        )}
+        {parsed.toPlanId != null && (
+          <DetailRow label="New plan ID" value={<span className="font-mono">#{parsed.toPlanId}</span>} />
+        )}
+        {parsed.planName && (
+          <DetailRow label="Plan name" value={parsed.planName} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PlanCreatedDetails({ log }: { log: any }) {
+  let parsed: { name?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<Package className="w-5 h-5 text-primary" />}
+        title={parsed.name ? `New plan created: ${parsed.name}` : "New plan created"}
+        subtitle={`Plan #${log.targetId ?? "—"}`}
+        colorClass="bg-primary/10 border-primary/20"
+      />
+    </div>
+  );
+}
+
+function PlanUpdatedDetails({ log }: { log: any }) {
+  let parsed: { name?: string; changes?: string[] } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<PencilLine className="w-5 h-5 text-amber-400" />}
+        title={parsed.name ? `Updated plan: ${parsed.name}` : "Plan updated"}
+        subtitle={`Plan #${log.targetId ?? "—"}`}
+        colorClass="bg-amber-500/10 border-amber-500/20"
+      />
+      {parsed.changes && parsed.changes.length > 0 && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-2">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Fields changed</p>
+          <div className="flex flex-wrap gap-1.5">
+            {parsed.changes.map((c: string) => (
+              <span key={c} className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                {humanizeKey(c)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlanDeletedDetails({ log }: { log: any }) {
+  let parsed: { name?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<Trash2 className="w-5 h-5 text-rose-400" />}
+        title={parsed.name ? `Deleted plan: ${parsed.name}` : "Plan deleted"}
+        subtitle={`Plan #${log.targetId ?? "—"} has been permanently removed`}
+        colorClass="bg-rose-500/10 border-rose-500/20"
+      />
+    </div>
+  );
+}
+
+function UserCreatedDetails({ log }: { log: any }) {
+  let parsed: { email?: string; role?: string; name?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<UserPlus className="w-5 h-5 text-primary" />}
+        title={parsed.email ? `New user: ${parsed.email}` : "New user account created"}
+        subtitle={parsed.role ? `Role: ${parsed.role}` : undefined}
+        colorClass="bg-primary/10 border-primary/20"
+      />
+      {(parsed.name || parsed.email || parsed.role) && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+          {parsed.name && <DetailRow label="Name" value={parsed.name} />}
+          {parsed.email && <DetailRow label="Email" value={parsed.email} />}
+          {parsed.role && <DetailRow label="Role" value={<span className="capitalize">{parsed.role}</span>} />}
+          <DetailRow label="User ID" value={<span className="font-mono">#{log.targetId ?? "—"}</span>} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UserRoleChangedDetails({ log }: { log: any }) {
+  let parsed: { email?: string; fromRole?: string; toRole?: string; role?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const hasRoleChange = parsed.fromRole || parsed.toRole;
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<UserCog className="w-5 h-5 text-purple-400" />}
+        title={
+          hasRoleChange
+            ? `Role changed: ${parsed.fromRole ?? "?"} → ${parsed.toRole ?? "?"}`
+            : parsed.email
+            ? `Role changed for ${parsed.email}`
+            : "User role updated"
+        }
+        subtitle={parsed.email && !hasRoleChange ? undefined : parsed.email}
+        colorClass="bg-purple-500/10 border-purple-500/20"
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {parsed.email && <DetailRow label="User" value={parsed.email} />}
+        {parsed.fromRole && <DetailRow label="Previous role" value={<span className="capitalize">{parsed.fromRole}</span>} />}
+        {(parsed.toRole || parsed.role) && (
+          <DetailRow label="New role" value={<span className="capitalize">{parsed.toRole ?? parsed.role}</span>} />
+        )}
+        <DetailRow label="User ID" value={<span className="font-mono">#{log.targetId ?? "—"}</span>} />
+      </div>
+    </div>
+  );
+}
+
+function RawJsonDetails({ log }: { log: any }) {
+  return (
+    <div className="rounded-lg bg-muted/20 p-3">
+      <p className="text-xs text-muted-foreground mb-2">Details</p>
+      <pre className="text-xs font-mono overflow-auto max-h-48">
+        {(() => { try { return JSON.stringify(JSON.parse(log.details), null, 2); } catch { return log.details; } })()}
+      </pre>
+    </div>
+  );
+}
+
+function ActionDetails({ log }: { log: any }) {
+  if (!log.details) return null;
+
+  switch (log.action) {
+    case "csv_export":
+      return <CsvExportDetails log={log} />;
+    case "merchant_approved":
+      return <MerchantApprovedDetails log={log} />;
+    case "merchant_rejected":
+      return <MerchantRejectedDetails log={log} />;
+    case "plan_assigned":
+    case "plan_upgraded":
+    case "plan_downgraded":
+    case "plan_renewed":
+      return <PlanAssignmentDetails log={log} />;
+    case "plan_created":
+      return <PlanCreatedDetails log={log} />;
+    case "plan_updated":
+      return <PlanUpdatedDetails log={log} />;
+    case "plan_deleted":
+      return <PlanDeletedDetails log={log} />;
+    case "user_created":
+      return <UserCreatedDetails log={log} />;
+    case "user_role_changed":
+      return <UserRoleChangedDetails log={log} />;
+    default:
+      return <RawJsonDetails log={log} />;
+  }
 }
 
 function ActionBadge({ action }: { action: string }) {
@@ -349,18 +629,7 @@ export default function AdminAuditLogs() {
                   <p className="text-xs font-mono">{format(new Date(selected.createdAt), "MMM d, yyyy HH:mm:ss")}</p>
                 </div>
               </div>
-              {selected.details && (
-                selected.action === "csv_export" ? (
-                  <CsvExportDetails log={selected} />
-                ) : (
-                  <div className="rounded-lg bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground mb-2">Details</p>
-                    <pre className="text-xs font-mono overflow-auto max-h-48">
-                      {(() => { try { return JSON.stringify(JSON.parse(selected.details), null, 2); } catch { return selected.details; } })()}
-                    </pre>
-                  </div>
-                )
-              )}
+              {selected.details && <ActionDetails log={selected} />}
             </div>
           )}
         </DialogContent>
