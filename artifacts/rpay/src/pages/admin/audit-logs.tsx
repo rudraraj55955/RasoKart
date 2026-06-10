@@ -11,8 +11,9 @@ import {
   Shield, Search, Eye, Activity, FileDown, CalendarIcon, X,
   CheckCircle2, XCircle, UserPlus, UserCog,
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
-  Users,
+  Users, Loader2,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
@@ -603,6 +604,7 @@ export default function AdminAuditLogs() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [lastExportCount, setLastExportCount] = useState<number | null>(null);
 
   async function handleExportCsv() {
     setExporting(true);
@@ -620,7 +622,12 @@ export default function AdminAuditLogs() {
 
       if (!res.ok) throw new Error("Export failed");
 
-      const blob = await res.blob();
+      const text = await res.text();
+      const lines = text.split("\n").filter(l => l.trim() !== "");
+      const rowCount = Math.max(0, lines.length - 1);
+      setLastExportCount(rowCount);
+
+      const blob = new Blob([text], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -771,16 +778,30 @@ export default function AdminAuditLogs() {
                     Clear filters
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportCsv}
-                  disabled={exporting}
-                  className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
-                >
-                  <FileDown className="w-3.5 h-3.5 mr-1.5" />
-                  {exporting ? "Exporting…" : "Export CSV"}
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExportCsv}
+                        disabled={exporting}
+                        className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
+                      >
+                        {exporting
+                          ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                          : <FileDown className="w-3.5 h-3.5 mr-1.5" />
+                        }
+                        {exporting ? "Exporting…" : "Export CSV"}
+                      </Button>
+                    </TooltipTrigger>
+                    {lastExportCount != null && !exporting && (
+                      <TooltipContent side="bottom">
+                        Last export: {lastExportCount.toLocaleString()} row{lastExportCount !== 1 ? "s" : ""}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </div>
           </div>
