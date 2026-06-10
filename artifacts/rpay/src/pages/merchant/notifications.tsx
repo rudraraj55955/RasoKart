@@ -12,15 +12,15 @@ import { formatDistanceToNow } from "date-fns";
 function notifIcon(type: string) {
   if (type.startsWith("settlement")) return <CreditCard className="w-4 h-4" />;
   if (type.startsWith("plan")) return <Zap className="w-4 h-4" />;
-  if (type === "limit_exceeded") return <AlertCircle className="w-4 h-4" />;
+  if (type === "limit_exceeded" || type === "provider_limit_warning" || type === "provider_limit_reached") return <AlertCircle className="w-4 h-4" />;
   return <Megaphone className="w-4 h-4" />;
 }
 
 function notifColor(type: string): string {
   if (type === "settlement_approved" || type === "settlement_paid") return "text-emerald-400";
   if (type === "settlement_rejected") return "text-red-400";
-  if (type === "plan_expiring" || type === "limit_exceeded") return "text-amber-400";
-  if (type === "plan_expired") return "text-red-400";
+  if (type === "plan_expiring" || type === "limit_exceeded" || type === "provider_limit_warning") return "text-amber-400";
+  if (type === "plan_expired" || type === "provider_limit_reached") return "text-red-400";
   return "text-blue-400";
 }
 
@@ -31,6 +31,8 @@ const TYPE_LABELS: Record<string, string> = {
   plan_expiring: "Plan Expiring",
   plan_expired: "Plan Expired",
   limit_exceeded: "Limit",
+  provider_limit_warning: "Limit Warning",
+  provider_limit_reached: "Limit Reached",
   system_notice: "Notice",
 };
 
@@ -42,6 +44,8 @@ type TypeFilter =
   | "plan_expiring"
   | "plan_expired"
   | "limit_exceeded"
+  | "provider_limit_warning"
+  | "provider_limit_reached"
   | "system_notice";
 
 const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] = [
@@ -52,6 +56,8 @@ const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] 
   { value: "plan_expiring", label: "Expiring", icon: <Zap className="w-3 h-3" /> },
   { value: "plan_expired", label: "Expired", icon: <Zap className="w-3 h-3" /> },
   { value: "limit_exceeded", label: "Limit Alert", icon: <AlertCircle className="w-3 h-3" /> },
+  { value: "provider_limit_warning", label: "Limit Warning", icon: <AlertCircle className="w-3 h-3" /> },
+  { value: "provider_limit_reached", label: "Limit Reached", icon: <AlertCircle className="w-3 h-3" /> },
   { value: "system_notice", label: "Notice", icon: <Megaphone className="w-3 h-3" /> },
 ];
 

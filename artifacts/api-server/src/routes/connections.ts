@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { db, merchantConnectionsTable, merchantsTable, transactionsTable, paymentLinksTable } from "@workspace/db";
+import { db, merchantConnectionsTable, merchantsTable, transactionsTable, paymentLinksTable, notificationsTable } from "@workspace/db";
 import { eq, and, ilike, or, count, sql, sum, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { deriveUpiPayloadFromConnections } from "../helpers/upiPayload";
+import { logger } from "../lib/logger";
 
 const router = Router();
 router.use(requireAuth);
@@ -137,8 +138,80 @@ router.get("/", async (req, res) => {
   const merchantId: number = user.merchantId!;
   const rows = await db.select().from(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, merchantId));
   const providerUsageMap = await getMonthlyUsedByProvider(merchantId);
-  res.json(rows.map(r => formatConn(r, providerUsageMap.get(r.provider) ?? 0)));
+
+  // Fire-and-forget: create provider limit notifications if thresholds are crossed
+  const formatted = rows.map(r => formatConn(r, providerUsageMap.get(r.provider) ?? 0));
+  Promise.all(
+    formatted
+      .filter(r => r.isActive && r.monthlyLimit > 0)
+      .map(r => maybeNotifyProviderLimit(user.id, r.provider, r.monthlyUsed, r.monthlyLimit))
+  ).catch((err) => {
+    logger.warn({ err }, "Provider limit notification background task failed");
+  });
+
+  res.json(formatted);
 });
+
+/**
+ * Creates provider limit notifications when usage crosses 80% or 100% of the
+ * monthly limit. Both thresholds are evaluated independently so that jumping
+ * straight from <80% to >=100% fires both notifications. Deduplication is
+ * enforced by a partial unique index in the DB (notifications_provider_limit_dedup_idx),
+ * with `.onConflictDoNothing()` as the DB-level guard against races.
+ */
+async function maybeNotifyProviderLimit(
+  userId: number,
+  provider: string,
+  monthlyUsed: number,
+  monthlyLimit: number,
+): Promise<void> {
+  if (monthlyLimit <= 0) return;
+  const pct = monthlyUsed / monthlyLimit;
+  if (pct < 0.8) return;
+
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const usedFmt = Math.round(monthlyUsed).toLocaleString("en-IN");
+  const limitFmt = Math.round(monthlyLimit).toLocaleString("en-IN");
+  const pctStr = Math.round(pct * 100);
+
+  // Both thresholds are checked independently:
+  // - warning fires once when usage first crosses 80%
+  // - reached fires once when usage first hits 100%
+  // If usage jumps straight from <80% to >=100%, both notifications are created.
+  const candidates: Array<{ type: string; title: string; body: string }> = [];
+
+  if (pct >= 0.8) {
+    candidates.push({
+      type: "provider_limit_warning",
+      title: `${provider} limit at ${pctStr}%`,
+      body: `You have used ₹${usedFmt} of your ₹${limitFmt} monthly limit for ${provider}. Consider upgrading your plan or reducing usage.`,
+    });
+  }
+
+  if (pct >= 1) {
+    candidates.push({
+      type: "provider_limit_reached",
+      title: `${provider} monthly limit reached`,
+      body: `You have used ₹${usedFmt} of your ₹${limitFmt} monthly limit for ${provider}. New payments via this provider may be rejected until next month.`,
+    });
+  }
+
+  for (const entry of candidates) {
+    // onConflictDoNothing() is the DB-level idempotency guard backed by the
+    // partial unique index `notifications_provider_limit_dedup_idx` created in seed.ts.
+    await db.insert(notificationsTable)
+      .values({
+        userId,
+        type: entry.type,
+        title: entry.title,
+        body: entry.body,
+        metadata: { provider, monthKey },
+        isRead: false,
+      })
+      .onConflictDoNothing();
+  }
+}
 
 /**
  * After a connection is created or updated, backfill upiPayload on all of the

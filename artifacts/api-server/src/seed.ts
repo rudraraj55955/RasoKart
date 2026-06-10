@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { and, count, eq, isNotNull } from "drizzle-orm";
+import { and, count, eq, isNotNull, sql } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -715,6 +715,15 @@ export async function seed() {
     .insert(systemSettingsTable)
     .values({ key: "finance_report_email", value: null })
     .onConflictDoNothing();
+
+  // Partial unique index for provider limit notification deduplication.
+  // Enforces at most one provider_limit_warning and one provider_limit_reached
+  // per (userId, provider, calendar month), making onConflictDoNothing() reliable.
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_provider_limit_dedup_idx
+      ON notifications(user_id, type, (metadata->>'provider'), (metadata->>'monthKey'))
+      WHERE type IN ('provider_limit_warning', 'provider_limit_reached')
+  `);
 
   console.log("Seed complete.");
 }
