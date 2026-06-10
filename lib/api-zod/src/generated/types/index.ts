@@ -110,6 +110,7 @@ export * from './listTransactionsStatus';
 export * from './listTransactionsType';
 export * from './listUsersParams';
 export * from './listUsersRole';
+export * from './listVaBalanceAuditFieldChanged';
 export * from './listVaBalanceAuditParams';
 export * from './listVirtualAccountsParams';
 export * from './listVirtualAccountsStatus';

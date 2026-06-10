@@ -253,7 +253,7 @@ router.get("/balance-audit", async (req, res) => {
   const user = (req as any).user;
   if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const { merchantId, merchantName, changedBy, dateFrom, dateTo, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { merchantId, merchantName, changedBy, dateFrom, dateTo, fieldChanged, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -267,6 +267,11 @@ router.get("/balance-audit", async (req, res) => {
     const end = new Date(dateTo);
     end.setHours(23, 59, 59, 999);
     conditions.push(lte(vaBalanceHistoryTable.createdAt, end));
+  }
+  if (fieldChanged === "balance") {
+    conditions.push(sql`${vaBalanceHistoryTable.oldBalance} IS DISTINCT FROM ${vaBalanceHistoryTable.newBalance}`);
+  } else if (fieldChanged === "totalCollection") {
+    conditions.push(sql`${vaBalanceHistoryTable.oldTotalCollection} IS DISTINCT FROM ${vaBalanceHistoryTable.newTotalCollection}`);
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;

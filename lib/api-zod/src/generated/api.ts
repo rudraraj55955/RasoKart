@@ -2439,6 +2439,7 @@ export const ListVaBalanceAuditQueryParams = zod.object({
   "changedBy": zod.coerce.string().optional(),
   "dateFrom": zod.coerce.string().optional(),
   "dateTo": zod.coerce.string().optional(),
+  "fieldChanged": zod.enum(['balance', 'totalCollection']).optional(),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })

@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListVaBalanceAuditFieldChanged } from './listVaBalanceAuditFieldChanged';
 
 export type ListVaBalanceAuditParams = {
 merchantId?: number;
@@ -12,6 +13,7 @@ merchantName?: string;
 changedBy?: string;
 dateFrom?: string;
 dateTo?: string;
+fieldChanged?: ListVaBalanceAuditFieldChanged;
 page?: number;
 limit?: number;
 };

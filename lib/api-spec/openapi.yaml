@@ -2463,6 +2463,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: fieldChanged
+          in: query
+          schema:
+            type: string
+            enum: [balance, totalCollection]
         - name: page
           in: query
           schema:

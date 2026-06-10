@@ -2293,9 +2293,18 @@ merchantName?: string;
 changedBy?: string;
 dateFrom?: string;
 dateTo?: string;
+fieldChanged?: ListVaBalanceAuditFieldChanged;
 page?: number;
 limit?: number;
 };
+
+export type ListVaBalanceAuditFieldChanged = typeof ListVaBalanceAuditFieldChanged[keyof typeof ListVaBalanceAuditFieldChanged];
+
+
+export const ListVaBalanceAuditFieldChanged = {
+  balance: 'balance',
+  totalCollection: 'totalCollection',
+} as const;
 
 export type GetVirtualAccountBalanceHistoryParams = {
 page?: number;

@@ -74,6 +74,7 @@ export default function AdminVirtualAccounts() {
   const [auditChangedBy, setAuditChangedBy] = useState("");
   const [auditDateFrom, setAuditDateFrom] = useState("");
   const [auditDateTo, setAuditDateTo] = useState("");
+  const [auditFieldChanged, setAuditFieldChanged] = useState<"" | "balance" | "totalCollection">("");
   const [auditPage, setAuditPage] = useState(1);
 
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(
@@ -95,6 +96,7 @@ export default function AdminVirtualAccounts() {
     changedBy: auditChangedBy || undefined,
     dateFrom: auditDateFrom || undefined,
     dateTo: auditDateTo || undefined,
+    fieldChanged: auditFieldChanged || undefined,
     page: auditPage,
     limit: 20,
   });
@@ -192,11 +194,11 @@ export default function AdminVirtualAccounts() {
   };
 
   const clearAuditFilters = () => {
-    setAuditMerchantName(""); setAuditChangedBy(""); setAuditDateFrom(""); setAuditDateTo(""); setAuditPage(1);
+    setAuditMerchantName(""); setAuditChangedBy(""); setAuditDateFrom(""); setAuditDateTo(""); setAuditFieldChanged(""); setAuditPage(1);
   };
 
   const hasFilters = search || merchantName || status !== "all" || dateFrom || dateTo;
-  const hasAuditFilters = auditMerchantName || auditChangedBy || auditDateFrom || auditDateTo;
+  const hasAuditFilters = auditMerchantName || auditChangedBy || auditDateFrom || auditDateTo || auditFieldChanged;
 
   const exportCsv = async () => {
     const { downloadCsvFromUrl } = await import("@/components/ui/export-csv-button");
@@ -468,6 +470,14 @@ export default function AdminVirtualAccounts() {
                       </button>
                     )}
                   </div>
+                  <Select value={auditFieldChanged || "all"} onValueChange={v => { setAuditFieldChanged(v === "all" ? "" : v as "balance" | "totalCollection"); setAuditPage(1); }}>
+                    <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Any field</SelectItem>
+                      <SelectItem value="balance">Balance</SelectItem>
+                      <SelectItem value="totalCollection">Total Collection</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 items-center">
                   <div className="flex items-center gap-2 flex-1">
