@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone } from "lucide-react";
+import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -12,6 +12,7 @@ import { formatDistanceToNow } from "date-fns";
 function notifIcon(type: string) {
   if (type.startsWith("settlement")) return <CreditCard className="w-4 h-4" />;
   if (type.startsWith("plan")) return <Zap className="w-4 h-4" />;
+  if (type === "provider_limit_reset") return <RefreshCw className="w-4 h-4" />;
   if (type === "limit_exceeded" || type === "provider_limit_warning" || type === "provider_limit_reached") return <AlertCircle className="w-4 h-4" />;
   return <Megaphone className="w-4 h-4" />;
 }
@@ -21,6 +22,7 @@ function notifColor(type: string): string {
   if (type === "settlement_rejected") return "text-red-400";
   if (type === "plan_expiring" || type === "limit_exceeded" || type === "provider_limit_warning") return "text-amber-400";
   if (type === "plan_expired" || type === "provider_limit_reached") return "text-red-400";
+  if (type === "provider_limit_reset") return "text-emerald-400";
   return "text-blue-400";
 }
 
@@ -33,6 +35,7 @@ const TYPE_LABELS: Record<string, string> = {
   limit_exceeded: "Limit",
   provider_limit_warning: "Limit Warning",
   provider_limit_reached: "Limit Reached",
+  provider_limit_reset: "Limit Reset",
   system_notice: "Notice",
 };
 
@@ -46,6 +49,7 @@ type TypeFilter =
   | "limit_exceeded"
   | "provider_limit_warning"
   | "provider_limit_reached"
+  | "provider_limit_reset"
   | "system_notice";
 
 const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] = [
@@ -58,6 +62,7 @@ const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] 
   { value: "limit_exceeded", label: "Limit Alert", icon: <AlertCircle className="w-3 h-3" /> },
   { value: "provider_limit_warning", label: "Limit Warning", icon: <AlertCircle className="w-3 h-3" /> },
   { value: "provider_limit_reached", label: "Limit Reached", icon: <AlertCircle className="w-3 h-3" /> },
+  { value: "provider_limit_reset", label: "Limit Reset", icon: <RefreshCw className="w-3 h-3" /> },
   { value: "system_notice", label: "Notice", icon: <Megaphone className="w-3 h-3" /> },
 ];
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, merchantConnectionsTable, merchantsTable, transactionsTable, paymentLinksTable, notificationsTable } from "@workspace/db";
-import { eq, and, ilike, or, count, sql, sum, isNull } from "drizzle-orm";
+import { eq, and, ilike, or, count, sql, sum, isNull, gte, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { deriveUpiPayloadFromConnections } from "../helpers/upiPayload";
 import { logger } from "../lib/logger";
@@ -138,12 +138,15 @@ router.get("/", async (req, res) => {
   const rows = await db.select().from(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, merchantId));
   const connUsageMap = await getMonthlyUsedByConnectionId(merchantId);
 
-  // Fire-and-forget: create provider limit notifications if thresholds are crossed
+  // Fire-and-forget: create provider limit and reset notifications as needed
   const formatted = rows.map(r => formatConn(r, connUsageMap.get(r.id) ?? 0));
   Promise.all(
     formatted
       .filter(r => r.isActive && r.monthlyLimit > 0)
-      .map(r => maybeNotifyProviderLimit(user.id, r.provider, r.monthlyUsed, r.monthlyLimit))
+      .flatMap(r => [
+        maybeNotifyProviderLimit(user.id, r.provider, r.monthlyUsed, r.monthlyLimit),
+        maybeNotifyProviderLimitReset(user.id, r.provider, r.monthlyLimit),
+      ])
   ).catch((err) => {
     logger.warn({ err }, "Provider limit notification background task failed");
   });
@@ -210,6 +213,54 @@ async function maybeNotifyProviderLimit(
       })
       .onConflictDoNothing();
   }
+}
+
+/**
+ * Creates a `provider_limit_reset` notification when a new calendar month begins
+ * and the merchant had a `provider_limit_reached` notification last month for
+ * the same provider. Fires at most once per provider per month — deduplicated by
+ * the partial unique index `notifications_provider_limit_reset_dedup_idx`.
+ */
+async function maybeNotifyProviderLimitReset(
+  userId: number,
+  provider: string,
+  monthlyLimit: number,
+): Promise<void> {
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  // Compute last month
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}`;
+
+  // Check if this merchant had a provider_limit_reached notification last month
+  const [prior] = await db
+    .select({ id: notificationsTable.id })
+    .from(notificationsTable)
+    .where(
+      and(
+        eq(notificationsTable.userId, userId),
+        eq(notificationsTable.type, "provider_limit_reached"),
+        sql`${notificationsTable.metadata}->>'provider' = ${provider}`,
+        sql`${notificationsTable.metadata}->>'monthKey' = ${lastMonthKey}`,
+      )
+    )
+    .limit(1);
+
+  if (!prior) return;
+
+  const limitFmt = Math.round(monthlyLimit).toLocaleString("en-IN");
+
+  await db.insert(notificationsTable)
+    .values({
+      userId,
+      type: "provider_limit_reset",
+      title: `${provider} monthly limit has reset`,
+      body: `Your monthly limit for ${provider} has reset to ₹${limitFmt}. Payments via this provider are now available again for the new month.`,
+      metadata: { provider, currentMonthKey, lastMonthKey },
+      isRead: false,
+    })
+    .onConflictDoNothing();
 }
 
 /**

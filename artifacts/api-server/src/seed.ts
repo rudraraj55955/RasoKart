@@ -725,6 +725,14 @@ export async function seed() {
       WHERE type IN ('provider_limit_warning', 'provider_limit_reached')
   `);
 
+  // Deduplication index for provider_limit_reset: one reset notification per
+  // provider per calendar month (keyed by currentMonthKey in metadata).
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_provider_limit_reset_dedup_idx
+      ON notifications(user_id, (metadata->>'provider'), (metadata->>'currentMonthKey'))
+      WHERE type = 'provider_limit_reset'
+  `);
+
   // Backfill connectionId on historical transactions that have a provider but no connectionId.
   // Idempotent: WHERE clause limits to rows where connection_id IS NULL AND provider IS NOT NULL.
   await db.execute(sql`
