@@ -276,9 +276,20 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
       const balanceBefore = Number(merchant.balance);
       const balanceAfter = balanceBefore - requestedAmt;
 
-      await tx.update(merchantsTable)
+      const [balanceUpdateResult] = await tx.update(merchantsTable)
         .set({ balance: sql`${merchantsTable.balance} - ${requestedAmt}::numeric` })
-        .where(eq(merchantsTable.id, s.merchantId));
+        .where(and(
+          eq(merchantsTable.id, s.merchantId),
+          sql`${merchantsTable.balance} >= ${requestedAmt}::numeric`,
+        ))
+        .returning({ id: merchantsTable.id });
+
+      if (!balanceUpdateResult) {
+        throw Object.assign(
+          new Error("Insufficient balance — merchant balance changed before approval could complete"),
+          { statusCode: 400 }
+        );
+      }
 
       const [result] = await tx.update(settlementsTable)
         .set({ status: "approved", adminRemark: remark, processedBy: user.id })
