@@ -35,6 +35,8 @@ export default function MerchantBranding() {
   const [brandColor, setBrandColor] = useState("");
   const [logoError, setLogoError] = useState(false);
   const [savedLogoUrl, setSavedLogoUrl] = useState<string | null>(null);
+  const [savedLogoError, setSavedLogoError] = useState(false);
+  const [isReplacing, setIsReplacing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -87,6 +89,8 @@ export default function MerchantBranding() {
           qc.invalidateQueries({ queryKey: ["getMerchant"] });
           const newSaved = logoUrl.trim() || null;
           setSavedLogoUrl(newSaved);
+          setSavedLogoError(false);
+          setIsReplacing(false);
           if (!newSaved) setLogoError(false);
         },
         onError: () => toast.error("Failed to save branding"),
@@ -119,11 +123,11 @@ export default function MerchantBranding() {
       </div>
 
       {/* Saved logo broken warning */}
-      {logoError && savedLogoUrl && logoUrl === savedLogoUrl && (
+      {savedLogoError && savedLogoUrl && (
         <Alert variant="destructive" className="border-amber-500/50 bg-amber-500/10 text-amber-400 [&>svg]:text-amber-400">
           <TriangleAlert className="h-4 w-4" />
           <AlertDescription>
-            Your saved logo URL can't be loaded — it may have been moved, deleted, or blocked by CORS. Customers on your payment page will see the default RasoKart branding instead. Update the URL below and save to fix this.
+            Your saved logo can't be loaded — it may have been moved, deleted, or blocked by CORS. Customers on your payment page will see the default RasoKart branding instead. Click <strong>Replace</strong> to upload a new one.
           </AlertDescription>
         </Alert>
       )}
@@ -137,74 +141,128 @@ export default function MerchantBranding() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Upload button */}
-          <div className="space-y-2">
-            <Label>Upload Logo File</Label>
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                disabled={isUploading}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {isUploading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+          {/* Current saved logo thumbnail */}
+          {savedLogoUrl && !isReplacing ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg border border-border/50">
+                {savedLogoError ? (
+                  <span className="text-xs text-rose-400 flex items-center gap-1.5">
+                    <TriangleAlert className="w-3.5 h-3.5" /> Logo can't be loaded
+                  </span>
                 ) : (
-                  <><Upload className="w-4 h-4" /> Choose File</>
+                  <img
+                    src={savedLogoUrl}
+                    alt="Current logo"
+                    className="h-10 max-w-[160px] object-contain rounded"
+                    onError={() => setSavedLogoError(true)}
+                    onLoad={() => setSavedLogoError(false)}
+                  />
                 )}
-              </Button>
-              {logoUrl && (
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => { setIsReplacing(true); setLogoUrl(savedLogoUrl); setLogoError(false); }}
+                >
+                  <Upload className="w-3.5 h-3.5" /> Replace
+                </Button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="gap-1 text-muted-foreground"
-                  onClick={() => { setLogoUrl(""); setLogoError(false); }}
+                  onClick={() => { setLogoUrl(""); setLogoError(false); setSavedLogoError(false); setIsReplacing(true); }}
                 >
                   <X className="w-3.5 h-3.5" /> Remove
                 </Button>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/svg+xml,image/webp,image/jpeg,image/gif"
-                className="hidden"
-                onChange={handleFileChange}
-              />
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              PNG, SVG, WebP, or JPEG. Max display height is 40 px.
-            </p>
-          </div>
+          ) : (
+            <>
+              {/* Upload button */}
+              <div className="space-y-2">
+                <Label>Upload Logo File</Label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    disabled={isUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {isUploading ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+                    ) : (
+                      <><Upload className="w-4 h-4" /> Choose File</>
+                    )}
+                  </Button>
+                  {logoUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 text-muted-foreground"
+                      onClick={() => { setLogoUrl(""); setLogoError(false); }}
+                    >
+                      <X className="w-3.5 h-3.5" /> Clear
+                    </Button>
+                  )}
+                  {isReplacing && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 text-muted-foreground"
+                      onClick={() => { setLogoUrl(savedLogoUrl ?? ""); setLogoError(false); setIsReplacing(false); }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/svg+xml,image/webp,image/jpeg,image/gif"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  PNG, SVG, WebP, or JPEG. Max display height is 40 px.
+                </p>
+              </div>
 
-          {/* URL fallback */}
-          <div className="space-y-2">
-            <Label htmlFor="logoUrl">Or paste a URL</Label>
-            <Input
-              id="logoUrl"
-              placeholder="https://yourbrand.com/logo.png"
-              value={logoUrl}
-              onChange={e => { setLogoUrl(e.target.value); setLogoError(false); }}
-            />
-          </div>
-
-          {logoUrl && (
-            <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg border border-border/50">
-              <p className="text-xs text-muted-foreground shrink-0">Preview:</p>
-              {logoError ? (
-                <span className="text-xs text-rose-400">Could not load image — check the URL</span>
-              ) : (
-                <img
-                  src={logoUrl}
-                  alt="Logo preview"
-                  className="h-10 max-w-[160px] object-contain rounded"
-                  onError={() => setLogoError(true)}
-                  onLoad={() => setLogoError(false)}
+              {/* URL fallback */}
+              <div className="space-y-2">
+                <Label htmlFor="logoUrl">Or paste a URL</Label>
+                <Input
+                  id="logoUrl"
+                  placeholder="https://yourbrand.com/logo.png"
+                  value={logoUrl}
+                  onChange={e => { setLogoUrl(e.target.value); setLogoError(false); }}
                 />
+              </div>
+
+              {logoUrl && (
+                <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg border border-border/50">
+                  <p className="text-xs text-muted-foreground shrink-0">Preview:</p>
+                  {logoError ? (
+                    <span className="text-xs text-rose-400">Could not load image — check the URL</span>
+                  ) : (
+                    <img
+                      src={logoUrl}
+                      alt="Logo preview"
+                      className="h-10 max-w-[160px] object-contain rounded"
+                      onError={() => setLogoError(true)}
+                      onLoad={() => setLogoError(false)}
+                    />
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </CardContent>
       </Card>

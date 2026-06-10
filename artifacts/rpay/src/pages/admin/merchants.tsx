@@ -59,6 +59,8 @@ export default function AdminMerchants() {
   const [brandingLogoUrl, setBrandingLogoUrl] = useState("");
   const [brandingColor, setBrandingColor] = useState("");
   const [brandingLogoError, setBrandingLogoError] = useState(false);
+  const [brandingSavedLogoError, setBrandingSavedLogoError] = useState(false);
+  const [brandingIsReplacing, setBrandingIsReplacing] = useState(false);
   const brandingFileInputRef = useRef<HTMLInputElement>(null);
   const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
   const { uploadFile: uploadLogo, isUploading: isUploadingLogo } = useUpload({
@@ -213,6 +215,8 @@ export default function AdminMerchants() {
     setBrandingLogoUrl(merchant.logoUrl ?? "");
     setBrandingColor(merchant.brandColor ?? "");
     setBrandingLogoError(false);
+    setBrandingSavedLogoError(false);
+    setBrandingIsReplacing(false);
   };
 
   const closeBranding = () => { setBrandingMerchant(null); };
@@ -792,72 +796,129 @@ export default function AdminMerchants() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Paintbrush className="w-4 h-4 text-violet-400" /> Branding — {brandingMerchant?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Upload Logo File</Label>
-              <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  disabled={isUploadingLogo}
-                  onClick={() => brandingFileInputRef.current?.click()}
-                >
-                  {isUploadingLogo ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-                  ) : (
-                    <><Upload className="w-4 h-4" /> Choose File</>
-                  )}
-                </Button>
-                {brandingLogoUrl && (
+            {/* Current saved logo thumbnail */}
+            {brandingMerchant?.logoUrl && !brandingIsReplacing ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium mb-2">Current Logo</p>
+                  <div className="flex items-center gap-4 p-3 bg-muted/30 rounded-lg border border-border/50">
+                    {brandingSavedLogoError ? (
+                      <span className="text-xs text-rose-400 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Logo can't be loaded
+                      </span>
+                    ) : (
+                      <img
+                        src={brandingMerchant.logoUrl}
+                        alt="Current logo"
+                        className="h-8 max-w-[120px] object-contain rounded"
+                        onError={() => setBrandingSavedLogoError(true)}
+                        onLoad={() => setBrandingSavedLogoError(false)}
+                      />
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => { setBrandingIsReplacing(true); setBrandingLogoUrl(brandingMerchant.logoUrl ?? ""); setBrandingLogoError(false); }}
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Replace
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="gap-1 text-muted-foreground"
-                    onClick={() => { setBrandingLogoUrl(""); setBrandingLogoError(false); }}
+                    onClick={() => { setBrandingLogoUrl(""); setBrandingLogoError(false); setBrandingSavedLogoError(false); setBrandingIsReplacing(true); }}
                   >
                     <X className="w-3.5 h-3.5" /> Remove
                   </Button>
-                )}
-                <input
-                  ref={brandingFileInputRef}
-                  type="file"
-                  accept="image/png,image/svg+xml,image/webp,image/jpeg,image/gif"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadLogo(file);
-                    e.target.value = "";
-                  }}
-                />
+                </div>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="adminLogoUrl">Or paste a URL</Label>
-              <Input
-                id="adminLogoUrl"
-                placeholder="https://yourbrand.com/logo.png"
-                value={brandingLogoUrl}
-                onChange={e => { setBrandingLogoUrl(e.target.value); setBrandingLogoError(false); }}
-              />
-              {brandingLogoUrl && (
-                <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50">
-                  <p className="text-xs text-muted-foreground shrink-0">Preview:</p>
-                  {brandingLogoError ? (
-                    <span className="text-xs text-rose-400">Could not load image</span>
-                  ) : (
-                    <img
-                      src={brandingLogoUrl}
-                      alt="logo"
-                      className="h-8 max-w-[120px] object-contain rounded"
-                      onError={() => setBrandingLogoError(true)}
-                      onLoad={() => setBrandingLogoError(false)}
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Upload Logo File</Label>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={isUploadingLogo}
+                      onClick={() => brandingFileInputRef.current?.click()}
+                    >
+                      {isUploadingLogo ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+                      ) : (
+                        <><Upload className="w-4 h-4" /> Choose File</>
+                      )}
+                    </Button>
+                    {brandingLogoUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 text-muted-foreground"
+                        onClick={() => { setBrandingLogoUrl(""); setBrandingLogoError(false); }}
+                      >
+                        <X className="w-3.5 h-3.5" /> Clear
+                      </Button>
+                    )}
+                    {brandingIsReplacing && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 text-muted-foreground"
+                        onClick={() => { setBrandingLogoUrl(brandingMerchant?.logoUrl ?? ""); setBrandingLogoError(false); setBrandingIsReplacing(false); }}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                    <input
+                      ref={brandingFileInputRef}
+                      type="file"
+                      accept="image/png,image/svg+xml,image/webp,image/jpeg,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadLogo(file);
+                        e.target.value = "";
+                      }}
                     />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="adminLogoUrl">Or paste a URL</Label>
+                  <Input
+                    id="adminLogoUrl"
+                    placeholder="https://yourbrand.com/logo.png"
+                    value={brandingLogoUrl}
+                    onChange={e => { setBrandingLogoUrl(e.target.value); setBrandingLogoError(false); }}
+                  />
+                  {brandingLogoUrl && (
+                    <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50">
+                      <p className="text-xs text-muted-foreground shrink-0">Preview:</p>
+                      {brandingLogoError ? (
+                        <span className="text-xs text-rose-400">Could not load image</span>
+                      ) : (
+                        <img
+                          src={brandingLogoUrl}
+                          alt="logo"
+                          className="h-8 max-w-[120px] object-contain rounded"
+                          onError={() => setBrandingLogoError(true)}
+                          onLoad={() => setBrandingLogoError(false)}
+                        />
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label htmlFor="adminBrandColor">Brand Colour</Label>
               <div className="flex items-center gap-3">
@@ -879,13 +940,6 @@ export default function AdminMerchants() {
                 )}
               </div>
             </div>
-            {(brandingMerchant?.logoUrl || brandingMerchant?.brandColor) && (
-              <div className="rounded-lg bg-muted/20 border border-border/50 p-3 text-xs text-muted-foreground space-y-1">
-                <p className="font-medium text-foreground">Current saved values:</p>
-                <p>Logo: {brandingMerchant.logoUrl ?? <em>none</em>}</p>
-                <p>Colour: {brandingMerchant.brandColor ?? <em>none</em>}</p>
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={closeBranding}>Cancel</Button>
