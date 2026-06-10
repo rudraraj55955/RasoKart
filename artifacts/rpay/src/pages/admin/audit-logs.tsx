@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Shield, Search, Eye, Activity, FileDown } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   merchant_approved:  { label: "Merchant Approved",  color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
@@ -23,6 +23,75 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
+
+const FILTER_LABELS: Record<string, string> = {
+  type: "Type",
+  status: "Status",
+  search: "Search",
+  merchantId: "Merchant",
+  dateFrom: "From",
+  dateTo: "To",
+};
+
+function formatDateLabel(val: string): string {
+  try { return format(parseISO(val), "MMM d, yyyy"); } catch { return val; }
+}
+
+function CsvExportDetails({ log }: { log: any }) {
+  let parsed: { rowCount?: number; filters?: Record<string, string | number | null> } = {};
+  try { parsed = JSON.parse(log.details); } catch { return null; }
+
+  const { rowCount, filters = {} } = parsed;
+  const targetType = (log.targetType as string) || "records";
+
+  const activeFilters = Object.entries(filters).filter(([, v]) => v != null && v !== "");
+
+  const dateFrom = filters["dateFrom"] as string | null;
+  const dateTo = filters["dateTo"] as string | null;
+  const hasDates = dateFrom != null || dateTo != null;
+
+  const nonDateFilters = activeFilters.filter(([k]) => k !== "dateFrom" && k !== "dateTo");
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 rounded-lg bg-sky-500/10 border border-sky-500/20 px-4 py-3">
+        <FileDown className="w-5 h-5 text-sky-400 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-sky-300">
+            Exported {rowCount != null ? rowCount.toLocaleString() : "—"} {targetType}
+          </p>
+          {!activeFilters.length && (
+            <p className="text-xs text-sky-400/70 mt-0.5">No filters applied — full export</p>
+          )}
+        </div>
+      </div>
+
+      {activeFilters.length > 0 && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-2">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Filters applied</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+            {nonDateFilters.map(([key, val]) => (
+              <div key={key}>
+                <span className="text-xs text-muted-foreground">{FILTER_LABELS[key] ?? key}: </span>
+                <span className="text-xs font-medium">{String(val)}</span>
+              </div>
+            ))}
+            {hasDates && (
+              <div className="col-span-2">
+                <span className="text-xs text-muted-foreground">Date range: </span>
+                <span className="text-xs font-medium">
+                  {dateFrom ? formatDateLabel(dateFrom) : "—"}
+                  {" – "}
+                  {dateTo ? formatDateLabel(dateTo) : "—"}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ActionBadge({ action }: { action: string }) {
   const config = ACTION_LABELS[action];
@@ -213,12 +282,16 @@ export default function AdminAuditLogs() {
                 </div>
               </div>
               {selected.details && (
-                <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-2">Details</p>
-                  <pre className="text-xs font-mono overflow-auto max-h-48">
-                    {(() => { try { return JSON.stringify(JSON.parse(selected.details), null, 2); } catch { return selected.details; } })()}
-                  </pre>
-                </div>
+                selected.action === "csv_export" ? (
+                  <CsvExportDetails log={selected} />
+                ) : (
+                  <div className="rounded-lg bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground mb-2">Details</p>
+                    <pre className="text-xs font-mono overflow-auto max-h-48">
+                      {(() => { try { return JSON.stringify(JSON.parse(selected.details), null, 2); } catch { return selected.details; } })()}
+                    </pre>
+                  </div>
+                )
               )}
             </div>
           )}
