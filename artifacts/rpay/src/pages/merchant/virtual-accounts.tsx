@@ -7,6 +7,15 @@ import {
   useGetVirtualAccountTransactions,
   useGetVirtualAccountBalanceHistory,
 } from "@workspace/api-client-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -673,57 +682,110 @@ export default function MerchantVirtualAccounts() {
                 <p className="text-sm">No balance changes recorded yet</p>
                 <p className="text-xs mt-1 opacity-60">Manual balance edits will appear here</p>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex justify-end">
-                  <ExportCsvButton label="Export CSV" onExport={exportBalanceHistoryCsv} />
-                </div>
-                <div className="space-y-2">
-                {balList.map(entry => (
-                  <div key={entry.id} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${entry.changedByRole === "admin" ? "bg-violet-400" : "bg-blue-400"}`} />
-                        <span className="text-sm font-medium">{entry.changedByName}</span>
-                        <Badge variant="outline" className="text-[10px] capitalize px-1.5">
-                          {entry.changedByRole}
-                        </Badge>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {format(new Date(entry.createdAt), "MMM d, yyyy HH:mm")}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-1.5">
-                      {entry.oldBalance != null && entry.newBalance != null && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground w-28 shrink-0">Balance</span>
-                          <span className="font-mono text-rose-400">
-                            ₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </span>
-                          <span className="text-muted-foreground">→</span>
-                          <span className="font-mono text-emerald-400">
-                            ₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      )}
-                      {entry.oldTotalCollection != null && entry.newTotalCollection != null && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground w-28 shrink-0">Total Collection</span>
-                          <span className="font-mono text-rose-400">
-                            ₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </span>
-                          <span className="text-muted-foreground">→</span>
-                          <span className="font-mono text-emerald-400">
-                            ₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
+            ) : (() => {
+              const chartData = [...balList]
+                .filter(e => e.newBalance != null)
+                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                .map(e => ({
+                  time: format(new Date(e.createdAt), "MMM d HH:mm"),
+                  balance: parseFloat(e.newBalance!),
+                }));
+              return (
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <ExportCsvButton label="Export CSV" onExport={exportBalanceHistoryCsv} />
                   </div>
-                ))}
+                  {chartData.length >= 2 && (
+                    <Card className="border-border bg-muted/10">
+                      <CardContent className="pt-4 pb-3 px-3">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3">Balance Over Time</p>
+                        <ResponsiveContainer width="100%" height={160}>
+                          <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                            <XAxis
+                              dataKey="time"
+                              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                              tickLine={false}
+                              axisLine={false}
+                              interval="preserveStartEnd"
+                            />
+                            <YAxis
+                              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                              tickLine={false}
+                              axisLine={false}
+                              tickFormatter={v => `₹${v.toLocaleString("en-IN")}`}
+                              width={72}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                background: "hsl(var(--card))",
+                                border: "1px solid hsl(var(--border))",
+                                borderRadius: "8px",
+                                fontSize: "12px",
+                              }}
+                              formatter={(value: number) => [`₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, "Balance"]}
+                              labelStyle={{ color: "hsl(var(--muted-foreground))", marginBottom: "4px" }}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="balance"
+                              stroke="#34d399"
+                              strokeWidth={2}
+                              dot={{ fill: "#34d399", r: 3, strokeWidth: 0 }}
+                              activeDot={{ r: 5, fill: "#34d399" }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  )}
+                  <div className="space-y-2">
+                    {balList.map((entry: (typeof balList)[number]) => (
+                      <div key={entry.id} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${entry.changedByRole === "admin" ? "bg-violet-400" : "bg-blue-400"}`} />
+                            <span className="text-sm font-medium">{entry.changedByName}</span>
+                            <Badge variant="outline" className="text-[10px] capitalize px-1.5">
+                              {entry.changedByRole}
+                            </Badge>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(entry.createdAt), "MMM d, yyyy HH:mm")}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {entry.oldBalance != null && entry.newBalance != null && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-muted-foreground w-28 shrink-0">Balance</span>
+                              <span className="font-mono text-rose-400">
+                                ₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="font-mono text-emerald-400">
+                                ₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )}
+                          {entry.oldTotalCollection != null && entry.newTotalCollection != null && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-muted-foreground w-28 shrink-0">Total Collection</span>
+                              <span className="font-mono text-rose-400">
+                                ₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="font-mono text-emerald-400">
+                                ₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )
+              );
+            })()
           )}
         </SheetContent>
       </Sheet>
