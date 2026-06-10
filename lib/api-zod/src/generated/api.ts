@@ -1996,6 +1996,13 @@ export const CreateQrCodeBody = zod.object({
 /**
  * @summary Get QR code status breakdown counts
  */
+export const GetQrCodeStatsQueryParams = zod.object({
+  "merchantName": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional()
+})
+
 export const GetQrCodeStatsResponse = zod.object({
   "total": zod.number(),
   "active": zod.number(),

@@ -165,16 +165,50 @@ router.get("/", async (req, res) => {
 router.get("/stats", async (req, res) => {
   await expireOldQrCodes().catch(() => {});
   const user = (req as any).user;
+  const { merchantName, search, dateFrom, dateTo } = req.query as Record<string, string>;
 
-  const baseConditions = user.role !== "admin"
-    ? [eq(qrCodesTable.merchantId, user.merchantId!)]
-    : [];
+  const qrConditions = [];
+  const merchantConditions = [];
+
+  if (user.role !== "admin") {
+    qrConditions.push(eq(qrCodesTable.merchantId, user.merchantId!));
+  }
+  if (search) {
+    qrConditions.push(or(
+      ilike(qrCodesTable.orderId, `%${search}%`),
+      ilike(qrCodesTable.merchantReference, `%${search}%`),
+      ilike(qrCodesTable.label, `%${search}%`),
+    )!);
+  }
+  if (dateFrom) qrConditions.push(gte(qrCodesTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const to = new Date(dateTo);
+    to.setHours(23, 59, 59, 999);
+    qrConditions.push(lte(qrCodesTable.createdAt, to));
+  }
+  if (merchantName && user.role === "admin") {
+    merchantConditions.push(ilike(merchantsTable.businessName, `%${merchantName}%`));
+  }
+
+  const needsJoin = merchantConditions.length > 0;
+
+  const buildWhere = (extraStatus?: string) => {
+    const conditions = [...qrConditions, ...merchantConditions];
+    if (extraStatus) conditions.push(eq(qrCodesTable.status, extraStatus));
+    return conditions.length ? and(...conditions) : undefined;
+  };
+
+  const runCount = (extraStatus?: string) =>
+    db.select({ n: count() })
+      .from(qrCodesTable)
+      .$if(needsJoin, q => q.leftJoin(merchantsTable, eq(qrCodesTable.merchantId, merchantsTable.id)))
+      .where(buildWhere(extraStatus));
 
   const [totalRow, activeRow, usedRow, expiredRow] = await Promise.all([
-    db.select({ n: count() }).from(qrCodesTable).where(baseConditions.length ? and(...baseConditions) : undefined),
-    db.select({ n: count() }).from(qrCodesTable).where(and(...baseConditions, eq(qrCodesTable.status, "active"))),
-    db.select({ n: count() }).from(qrCodesTable).where(and(...baseConditions, eq(qrCodesTable.status, "used"))),
-    db.select({ n: count() }).from(qrCodesTable).where(and(...baseConditions, eq(qrCodesTable.status, "expired"))),
+    runCount(),
+    runCount("active"),
+    runCount("used"),
+    runCount("expired"),
   ]);
 
   res.json({

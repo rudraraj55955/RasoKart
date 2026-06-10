@@ -58,6 +58,7 @@ import type {
   ExpiryCheckResult,
   ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
+  GetQrCodeStatsParams,
   GetVirtualAccountBalanceHistoryParams,
   GetWebhookLogsParams,
   HealthStatus,
@@ -6233,20 +6234,27 @@ export const useCreateQrCode = <TError = ErrorType<unknown>,
       return useMutation(getCreateQrCodeMutationOptions(options));
     }
 
-export const getGetQrCodeStatsUrl = () => {
+export const getGetQrCodeStatsUrl = (params?: GetQrCodeStatsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/qr-codes/stats`
+  return stringifiedParams.length > 0 ? `/api/qr-codes/stats?${stringifiedParams}` : `/api/qr-codes/stats`
 }
 
 /**
  * @summary Get QR code status breakdown counts
  */
-export const getQrCodeStats = async ( options?: RequestInit): Promise<QrCodeStats> => {
+export const getQrCodeStats = async (params?: GetQrCodeStatsParams, options?: RequestInit): Promise<QrCodeStats> => {
 
-  return customFetch<QrCodeStats>(getGetQrCodeStatsUrl(),
+  return customFetch<QrCodeStats>(getGetQrCodeStatsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6259,23 +6267,23 @@ export const getQrCodeStats = async ( options?: RequestInit): Promise<QrCodeStat
 
 
 
-export const getGetQrCodeStatsQueryKey = () => {
+export const getGetQrCodeStatsQueryKey = (params?: GetQrCodeStatsParams,) => {
     return [
-    `/api/qr-codes/stats`
+    `/api/qr-codes/stats`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetQrCodeStatsQueryOptions = <TData = Awaited<ReturnType<typeof getQrCodeStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQrCodeStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetQrCodeStatsQueryOptions = <TData = Awaited<ReturnType<typeof getQrCodeStats>>, TError = ErrorType<unknown>>(params?: GetQrCodeStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQrCodeStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetQrCodeStatsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetQrCodeStatsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getQrCodeStats>>> = ({ signal }) => getQrCodeStats({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getQrCodeStats>>> = ({ signal }) => getQrCodeStats(params, { signal, ...requestOptions });
 
 
 
@@ -6293,11 +6301,11 @@ export type GetQrCodeStatsQueryError = ErrorType<unknown>
  */
 
 export function useGetQrCodeStats<TData = Awaited<ReturnType<typeof getQrCodeStats>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQrCodeStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetQrCodeStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQrCodeStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetQrCodeStatsQueryOptions(options)
+  const queryOptions = getGetQrCodeStatsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

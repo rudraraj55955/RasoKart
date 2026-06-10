@@ -2064,6 +2064,13 @@ export const ListQrCodesStatus = {
   all: 'all',
 } as const;
 
+export type GetQrCodeStatsParams = {
+merchantName?: string;
+search?: string;
+dateFrom?: string;
+dateTo?: string;
+};
+
 export type ListPaymentLinksParams = {
 status?: ListPaymentLinksStatus;
 search?: string;

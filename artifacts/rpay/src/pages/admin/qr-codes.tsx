@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListQrCodes, useDeleteQrCode } from "@workspace/api-client-react";
+import { useListQrCodes, useDeleteQrCode, useGetQrCodeStats } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,9 +43,18 @@ export default function AdminQrCodes() {
     page,
     limit: 50,
   } as any);
+  const { data: stats } = useGetQrCodeStats({
+    merchantName: merchantName || undefined,
+    search: search || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  });
   const deleteMutation = useDeleteQrCode();
 
-  const invalidateQr = () => qc.invalidateQueries({ queryKey: ["/api/qr-codes"] });
+  const invalidateQr = () => {
+    qc.invalidateQueries({ queryKey: ["/api/qr-codes"] });
+    qc.invalidateQueries({ queryKey: ["/api/qr-codes/stats"] });
+  };
 
   const handleDelete = (id: number) => {
     if (!confirm("Delete this QR code?")) return;
@@ -90,6 +99,38 @@ export default function AdminQrCodes() {
           </Button>
           <ExportCsvButton onExport={exportCsv} disabled={!data?.data?.length} />
         </div>
+      </div>
+
+      {/* Stats — clickable to filter */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: "Total", value: stats?.total ?? 0, filter: "all", color: "text-primary", bg: "bg-primary/10", ring: "ring-primary/40" },
+          { label: "Active", value: stats?.active ?? 0, filter: "active", color: "text-emerald-400", bg: "bg-emerald-500/10", ring: "ring-emerald-500/40" },
+          { label: "Expired", value: stats?.expired ?? 0, filter: "expired", color: "text-rose-400", bg: "bg-rose-500/10", ring: "ring-rose-500/40" },
+          { label: "Used", value: stats?.used ?? 0, filter: "used", color: "text-blue-400", bg: "bg-blue-500/10", ring: "ring-blue-500/40" },
+        ].map(stat => {
+          const isActive = status === stat.filter;
+          return (
+            <button
+              key={stat.label}
+              type="button"
+              onClick={() => { setStatus(stat.filter); setPage(1); }}
+              className={`text-left rounded-xl border bg-card transition-all hover:ring-2 focus-visible:outline-none focus-visible:ring-2 ${isActive ? `ring-2 ${stat.ring}` : "hover:ring-border"}`}
+            >
+              <div className="px-5 pt-5 pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">{stat.label}</p>
+                    <p className={`text-2xl font-bold mt-1 ${stat.color}`}>{stat.value}</p>
+                  </div>
+                  <div className={`w-10 h-10 ${stat.bg} rounded-lg flex items-center justify-center`}>
+                    <QrCode className={`w-5 h-5 ${stat.color}`} />
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       <Card>

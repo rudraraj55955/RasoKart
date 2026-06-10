@@ -55,6 +55,7 @@ export * from './errorResponse';
 export * from './expiryCheckResult';
 export * from './exportAdminAuditLogsCsvParams';
 export * from './exportMerchantBalanceHistoryParams';
+export * from './getQrCodeStatsParams';
 export * from './getVirtualAccountBalanceHistoryParams';
 export * from './getWebhookLogsParams';
 export * from './healthStatus';
