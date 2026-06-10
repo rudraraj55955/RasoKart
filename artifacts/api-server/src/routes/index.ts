@@ -25,6 +25,7 @@ import providersRouter from "./providers";
 import notificationsRouter from "./notifications";
 import reconciliationRouter from "./reconciliation";
 import paymentLinksRouter from "./paymentLinks";
+import systemConfigRouter from "./systemConfig";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use("/providers", providersRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/reconciliation", reconciliationRouter);
 router.use("/payment-links", paymentLinksRouter);
+router.use("/system-config", systemConfigRouter);
 
 export default router;

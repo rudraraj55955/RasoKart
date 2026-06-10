@@ -1671,6 +1671,27 @@ export interface ExpiryCheckResult {
   expiredCount: number;
 }
 
+export interface ReconciliationScheduleConfig {
+  /**
+     * Hour of day (0-23) to run the scheduled reconciliation
+     * @minimum 0
+     * @maximum 23
+     */
+  hour: number;
+  /**
+     * Minute of the hour (0-59) to run the scheduled reconciliation
+     * @minimum 0
+     * @maximum 59
+     */
+  minute: number;
+  /**
+     * Number of days to look back when running the scheduled reconciliation
+     * @minimum 1
+     * @maximum 90
+     */
+  lookbackDays: number;
+}
+
 export type ListMerchantsParams = {
 status?: ListMerchantsStatus;
 search?: string;

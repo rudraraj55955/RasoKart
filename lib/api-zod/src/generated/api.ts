@@ -3044,6 +3044,62 @@ export const ResolveReconciliationItemResponse = zod.object({
 
 
 /**
+ * @summary Get scheduled reconciliation configuration (admin only)
+ */
+export const getReconciliationScheduleConfigResponseHourMin = 0;
+export const getReconciliationScheduleConfigResponseHourMax = 23;
+
+export const getReconciliationScheduleConfigResponseMinuteMin = 0;
+export const getReconciliationScheduleConfigResponseMinuteMax = 59;
+
+export const getReconciliationScheduleConfigResponseLookbackDaysMax = 90;
+
+
+
+export const GetReconciliationScheduleConfigResponse = zod.object({
+  "hour": zod.number().min(getReconciliationScheduleConfigResponseHourMin).max(getReconciliationScheduleConfigResponseHourMax).describe('Hour of day (0-23) to run the scheduled reconciliation'),
+  "minute": zod.number().min(getReconciliationScheduleConfigResponseMinuteMin).max(getReconciliationScheduleConfigResponseMinuteMax).describe('Minute of the hour (0-59) to run the scheduled reconciliation'),
+  "lookbackDays": zod.number().min(1).max(getReconciliationScheduleConfigResponseLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation')
+})
+
+
+/**
+ * @summary Update scheduled reconciliation configuration (admin only)
+ */
+export const updateReconciliationScheduleConfigBodyHourMin = 0;
+export const updateReconciliationScheduleConfigBodyHourMax = 23;
+
+export const updateReconciliationScheduleConfigBodyMinuteMin = 0;
+export const updateReconciliationScheduleConfigBodyMinuteMax = 59;
+
+export const updateReconciliationScheduleConfigBodyLookbackDaysMax = 90;
+
+
+
+export const UpdateReconciliationScheduleConfigBody = zod.object({
+  "hour": zod.number().min(updateReconciliationScheduleConfigBodyHourMin).max(updateReconciliationScheduleConfigBodyHourMax).describe('Hour of day (0-23) to run the scheduled reconciliation'),
+  "minute": zod.number().min(updateReconciliationScheduleConfigBodyMinuteMin).max(updateReconciliationScheduleConfigBodyMinuteMax).describe('Minute of the hour (0-59) to run the scheduled reconciliation'),
+  "lookbackDays": zod.number().min(1).max(updateReconciliationScheduleConfigBodyLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation')
+})
+
+export const updateReconciliationScheduleConfigResponseHourMin = 0;
+export const updateReconciliationScheduleConfigResponseHourMax = 23;
+
+export const updateReconciliationScheduleConfigResponseMinuteMin = 0;
+export const updateReconciliationScheduleConfigResponseMinuteMax = 59;
+
+export const updateReconciliationScheduleConfigResponseLookbackDaysMax = 90;
+
+
+
+export const UpdateReconciliationScheduleConfigResponse = zod.object({
+  "hour": zod.number().min(updateReconciliationScheduleConfigResponseHourMin).max(updateReconciliationScheduleConfigResponseHourMax).describe('Hour of day (0-23) to run the scheduled reconciliation'),
+  "minute": zod.number().min(updateReconciliationScheduleConfigResponseMinuteMin).max(updateReconciliationScheduleConfigResponseMinuteMax).describe('Minute of the hour (0-59) to run the scheduled reconciliation'),
+  "lookbackDays": zod.number().min(1).max(updateReconciliationScheduleConfigResponseLookbackDaysMax).describe('Number of days to look back when running the scheduled reconciliation')
+})
+
+
+/**
  * @summary Mark a single notification as read
  */
 export const MarkNotificationReadParams = zod.object({

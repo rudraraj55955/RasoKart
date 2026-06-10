@@ -155,6 +155,7 @@ export * from './reconciliationRun';
 export * from './reconciliationRunInput';
 export * from './reconciliationRunListResponse';
 export * from './reconciliationSchedulerStatus';
+export * from './reconciliationScheduleConfig';
 export * from './rejectInput';
 export * from './renewPlanInput';
 export * from './searchByUtrParams';

@@ -21,6 +21,9 @@ import {
   notificationsTable,
   reconciliationRunsTable,
   reconciliationItemsTable,
+  systemConfigTable,
+  SYSTEM_CONFIG_KEYS,
+  SYSTEM_CONFIG_DEFAULTS,
 } from "@workspace/db";
 
 const PLAN_TIERS = [
@@ -696,6 +699,15 @@ export async function seed() {
       }
     }
   }
+
+  // System config defaults — idempotent: only insert if key doesn't exist
+  for (const [key, value] of Object.entries(SYSTEM_CONFIG_DEFAULTS)) {
+    await db
+      .insert(systemConfigTable)
+      .values({ key, value })
+      .onConflictDoNothing();
+  }
+  console.log("System config defaults seeded");
 
   console.log("Seed complete.");
 }

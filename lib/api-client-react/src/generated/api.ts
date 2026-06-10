@@ -128,6 +128,7 @@ import type {
   ReconciliationRunInput,
   ReconciliationRunListResponse,
   ReconciliationSchedulerStatus,
+  ReconciliationScheduleConfig,
   RejectInput,
   RenewPlanInput,
   SearchByUtrParams,
@@ -9724,6 +9725,154 @@ export const useResolveReconciliationItem = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getResolveReconciliationItemMutationOptions(options));
+    }
+
+export const getGetReconciliationScheduleConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/reconciliation`
+}
+
+/**
+ * @summary Get scheduled reconciliation configuration (admin only)
+ */
+export const getReconciliationScheduleConfig = async ( options?: RequestInit): Promise<ReconciliationScheduleConfig> => {
+
+  return customFetch<ReconciliationScheduleConfig>(getGetReconciliationScheduleConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReconciliationScheduleConfigQueryKey = () => {
+    return [
+    `/api/system-config/reconciliation`
+    ] as const;
+    }
+
+
+export const getGetReconciliationScheduleConfigQueryOptions = <TData = Awaited<ReturnType<typeof getReconciliationScheduleConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationScheduleConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReconciliationScheduleConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReconciliationScheduleConfig>>> = ({ signal }) => getReconciliationScheduleConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReconciliationScheduleConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReconciliationScheduleConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getReconciliationScheduleConfig>>>
+export type GetReconciliationScheduleConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get scheduled reconciliation configuration (admin only)
+ */
+
+export function useGetReconciliationScheduleConfig<TData = Awaited<ReturnType<typeof getReconciliationScheduleConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationScheduleConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReconciliationScheduleConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateReconciliationScheduleConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/reconciliation`
+}
+
+/**
+ * @summary Update scheduled reconciliation configuration (admin only)
+ */
+export const updateReconciliationScheduleConfig = async (reconciliationScheduleConfig: ReconciliationScheduleConfig, options?: RequestInit): Promise<ReconciliationScheduleConfig> => {
+
+  return customFetch<ReconciliationScheduleConfig>(getUpdateReconciliationScheduleConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reconciliationScheduleConfig,)
+  }
+);}
+
+
+
+
+export const getUpdateReconciliationScheduleConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateReconciliationScheduleConfig>>, TError,{data: BodyType<ReconciliationScheduleConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateReconciliationScheduleConfig>>, TError,{data: BodyType<ReconciliationScheduleConfig>}, TContext> => {
+
+const mutationKey = ['updateReconciliationScheduleConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateReconciliationScheduleConfig>>, {data: BodyType<ReconciliationScheduleConfig>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateReconciliationScheduleConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateReconciliationScheduleConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateReconciliationScheduleConfig>>>
+    export type UpdateReconciliationScheduleConfigMutationBody = BodyType<ReconciliationScheduleConfig>
+    export type UpdateReconciliationScheduleConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update scheduled reconciliation configuration (admin only)
+ */
+export const useUpdateReconciliationScheduleConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateReconciliationScheduleConfig>>, TError,{data: BodyType<ReconciliationScheduleConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateReconciliationScheduleConfig>>,
+        TError,
+        {data: BodyType<ReconciliationScheduleConfig>},
+        TContext
+      > => {
+      return useMutation(getUpdateReconciliationScheduleConfigMutationOptions(options));
     }
 
 export const getMarkNotificationReadUrl = (id: number,) => {

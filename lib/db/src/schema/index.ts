@@ -26,3 +26,4 @@ export * from "./reconciliation";
 export * from "./paymentLinks";
 export * from "./vaBalanceHistory";
 export * from "./qrPaymentEvents";
+export * from "./systemConfig";

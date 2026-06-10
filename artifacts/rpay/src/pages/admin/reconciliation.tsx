@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, CalendarClock } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useGetReconciliationScheduleConfig, useUpdateReconciliationScheduleConfig } from "@workspace/api-client-react";
 
 async function apiPost(path: string, body: object) {
   const res = await fetch(`/api${path}`, {
@@ -347,6 +348,171 @@ function UnmatchedCard({ item, onResolve }: { item: any; onResolve: (item: any) 
   );
 }
 
+function padTwo(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function ScheduleSettingsCard() {
+  const { data: config, isLoading: configLoading } = useGetReconciliationScheduleConfig();
+
+  const [editing, setEditing] = useState(false);
+  const [hour, setHour] = useState(0);
+  const [minute, setMinute] = useState(0);
+  const [lookbackDays, setLookbackDays] = useState(1);
+
+  useEffect(() => {
+    if (config) {
+      setHour(config.hour);
+      setMinute(config.minute);
+      setLookbackDays(config.lookbackDays);
+    }
+  }, [config]);
+
+  const { mutate: saveConfig, isPending: saving } = useUpdateReconciliationScheduleConfig({
+    mutation: {
+      onSuccess: () => {
+        toast.success("Schedule settings saved — takes effect on the next run");
+        setEditing(false);
+      },
+      onError: (err: any) => {
+        toast.error(`Failed to save: ${err?.message ?? "Unknown error"}`);
+      },
+    },
+  });
+
+  const currentHour = config?.hour ?? 0;
+  const currentMinute = config?.minute ?? 0;
+  const currentLookback = config?.lookbackDays ?? 1;
+
+  const scheduleLabel = `Daily at ${padTwo(currentHour)}:${padTwo(currentMinute)} server time`;
+  const windowLabel = currentLookback === 1
+    ? "lookback: yesterday"
+    : `lookback: last ${currentLookback} days`;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <CalendarClock className="w-4 h-4 text-primary" />
+            Schedule Settings
+          </span>
+          {!editing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-muted-foreground"
+              onClick={() => setEditing(true)}
+              disabled={configLoading}
+            >
+              <Settings2 className="w-3.5 h-3.5" /> Configure
+            </Button>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {!editing ? (
+          <div className="space-y-3">
+            {configLoading ? (
+              <div className="text-sm text-muted-foreground">Loading…</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 min-w-[160px]">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Scheduled Time</p>
+                    <p className="text-sm font-medium font-mono">{padTwo(currentHour)}:{padTwo(currentMinute)}</p>
+                    <p className="text-[10px] text-muted-foreground/60">server time (24h)</p>
+                  </div>
+                  <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 min-w-[160px]">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Lookback Window</p>
+                    <p className="text-sm font-medium">{currentLookback} {currentLookback === 1 ? "day" : "days"}</p>
+                    <p className="text-[10px] text-muted-foreground/60">{windowLabel}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Auto-reconciliation runs <span className="text-foreground font-medium">{scheduleLabel}</span>, covering the previous {currentLookback === 1 ? "day" : `${currentLookback} days`}.
+                </p>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Run Hour <span className="text-muted-foreground/50">(0–23)</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={hour}
+                  onChange={e => setHour(Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-24"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Run Minute <span className="text-muted-foreground/50">(0–59)</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={minute}
+                  onChange={e => setMinute(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-24"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Lookback Days <span className="text-muted-foreground/50">(1–90)</span></Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={lookbackDays}
+                  onChange={e => setLookbackDays(Math.min(90, Math.max(1, parseInt(e.target.value) || 1)))}
+                  className="w-24"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              New schedule: <span className="text-foreground font-medium font-mono">{padTwo(hour)}:{padTwo(minute)}</span> daily,
+              covering the previous <span className="text-foreground font-medium">{lookbackDays} {lookbackDays === 1 ? "day" : "days"}</span>.
+              Changes take effect on the next scheduled run — no restart required.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEditing(false);
+                  if (config) {
+                    setHour(config.hour);
+                    setMinute(config.minute);
+                    setLookbackDays(config.lookbackDays);
+                  }
+                }}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                disabled={saving}
+                onClick={() => saveConfig({ data: { hour, minute, lookbackDays } })}
+              >
+                {saving ? (
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving…</>
+                ) : (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Save Schedule</>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AdminReconciliation() {
   const qc = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
@@ -502,6 +668,9 @@ export default function AdminReconciliation() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Schedule Settings */}
+      <ScheduleSettingsCard />
 
       {/* Run History */}
       <Card>
