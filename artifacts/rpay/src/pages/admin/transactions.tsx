@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useListPaymentLinks, useListMerchants } from "@workspace/api-client-react";
+import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,72 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Separator } from "@/components/ui/separator";
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, X, ArrowDownLeft, ArrowUpRight, CheckCircle, XCircle, Hash, RefreshCw, Loader2, Building2, CreditCard, FileText, Info, Plus, Link2, Zap } from "lucide-react";
+import { Search, X, ArrowDownLeft, ArrowUpRight, CheckCircle, XCircle, Hash, RefreshCw, Loader2, Building2, CreditCard, FileText, Info, Plus, Link2, Zap, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
 function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
   const { data: tx, isLoading } = useGetTransaction(id ?? 0, {
     query: { enabled: open && id != null } as any,
   });
+
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editLinkId, setEditLinkId] = useState<string>("");
+  const [linkSearch, setLinkSearch] = useState("");
+
+  const { mutateAsync: updateTx, isPending: isSaving } = useAdminUpdateTransaction();
+
+  const { data: linksData } = useListPaymentLinks(
+    { merchantId: tx?.merchantId ?? 0, limit: 200 },
+    { query: { enabled: isEditMode && tx != null } as any }
+  );
+
+  const filteredLinks = (linksData?.data ?? []).filter(l => {
+    if (!linkSearch) return true;
+    const q = linkSearch.toLowerCase();
+    return l.title.toLowerCase().includes(q) || l.slug.toLowerCase().includes(q);
+  });
+
+  const selectedEditLink = editLinkId
+    ? (linksData?.data ?? []).find(l => String(l.id) === editLinkId) ?? null
+    : null;
+
+  const enterEditMode = () => {
+    setEditLinkId((tx as any)?.paymentLinkId != null ? String((tx as any).paymentLinkId) : "");
+    setLinkSearch("");
+    setIsEditMode(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditMode(false);
+    setEditLinkId("");
+    setLinkSearch("");
+  };
+
+  const handleSave = async () => {
+    if (!tx) return;
+    try {
+      await updateTx({
+        id: tx.id,
+        data: { paymentLinkId: editLinkId ? parseInt(editLinkId) : null },
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/transactions"] }),
+        qc.invalidateQueries({ queryKey: [`/api/transactions/${tx.id}`] }),
+        qc.invalidateQueries({ queryKey: ["/api/payment-links"] }),
+      ]);
+      toast.success("Payment link attribution updated");
+      cancelEdit();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to update attribution");
+    }
+  };
+
+  const handleClose = () => {
+    cancelEdit();
+    onClose();
+  };
 
   const metadataParsed = (() => {
     if (!tx?.metadata) return null;
@@ -29,13 +87,21 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
   })();
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Sheet open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader className="mb-6">
-          <SheetTitle className="flex items-center gap-2 text-base">
-            <CreditCard className="w-4 h-4 text-primary" />
-            Transaction Details
-          </SheetTitle>
+          <div className="flex items-center justify-between">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <CreditCard className="w-4 h-4 text-primary" />
+              Transaction Details
+            </SheetTitle>
+            {!isLoading && tx && !isEditMode && (
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={enterEditMode}>
+                <Pencil className="w-3.5 h-3.5" />
+                Edit Attribution
+              </Button>
+            )}
+          </div>
         </SheetHeader>
 
         {isLoading || !tx ? (
@@ -72,8 +138,93 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
                 <DetailRow label="UTR" value={tx.utr} mono />
                 {tx.referenceId && <DetailRow label="Reference ID" value={tx.referenceId} mono />}
                 {tx.description && <DetailRow label="Description" value={tx.description} />}
-                {(tx as any).paymentLinkId != null && (
-                  <DetailRow label="Payment Link" value={`#${(tx as any).paymentLinkId}`} mono />
+
+                {/* Payment Link row — read or edit */}
+                {!isEditMode ? (
+                  (tx as any).paymentLinkId != null ? (
+                    <DetailRow label="Payment Link" value={`#${(tx as any).paymentLinkId}`} mono />
+                  ) : null
+                ) : (
+                  <div className="px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                        <Link2 className="w-3.5 h-3.5" /> Payment Link
+                      </span>
+                      <span className="text-xs text-muted-foreground">(optional)</span>
+                    </div>
+
+                    {selectedEditLink ? (
+                      <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-primary/5">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{selectedEditLink.title}</p>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                            {selectedEditLink.slug}
+                            {selectedEditLink.amount ? ` · ₹${Number(selectedEditLink.amount).toLocaleString()}` : ""}
+                            {selectedEditLink.maxPayments != null
+                              ? ` · ${selectedEditLink.paymentCount}/${selectedEditLink.maxPayments} payments`
+                              : ` · ${selectedEditLink.paymentCount} payments`}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs shrink-0"
+                          onClick={() => { setEditLinkId(""); setLinkSearch(""); }}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                          <Input
+                            className="pl-8 text-sm"
+                            placeholder="Search payment links…"
+                            value={linkSearch}
+                            onChange={e => setLinkSearch(e.target.value)}
+                          />
+                        </div>
+                        {(linksData?.data?.length ?? 0) === 0 && !linkSearch && (
+                          <p className="text-xs text-muted-foreground px-1">No payment links found for this merchant</p>
+                        )}
+                        {filteredLinks.length > 0 && (
+                          <div className="max-h-40 overflow-y-auto rounded-lg border divide-y divide-border bg-card/50">
+                            {filteredLinks.map(link => (
+                              <button
+                                key={link.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors"
+                                onClick={() => { setEditLinkId(String(link.id)); setLinkSearch(""); }}
+                              >
+                                <p className="text-sm font-medium">{link.title}</p>
+                                <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                                  {link.slug}
+                                  {link.amount ? ` · ₹${Number(link.amount).toLocaleString()}` : ""}
+                                  {link.maxPayments != null
+                                    ? ` · ${link.paymentCount}/${link.maxPayments} payments`
+                                    : ` · ${link.paymentCount} payments`}
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {linkSearch && filteredLinks.length === 0 && (
+                          <p className="text-xs text-muted-foreground px-1">No matching payment links</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <Button size="sm" className="h-8 text-xs" onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Saving…</> : "Save"}
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={cancelEdit} disabled={isSaving}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
