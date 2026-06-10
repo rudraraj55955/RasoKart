@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, merchantsTable, qrCodesTable, virtualAccountsTable, ledgerEntriesTable, auditLogsTable } from "@workspace/db";
+import { db, transactionsTable, merchantsTable, qrCodesTable, virtualAccountsTable, ledgerEntriesTable, auditLogsTable, merchantConnectionsTable, paymentLinksTable } from "@workspace/db";
 import { eq, ilike, and, count, sum, sql, gte, lte, or } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
@@ -106,8 +106,8 @@ router.post("/simulate", async (req, res, next) => {
       res.status(400).json({ error: "sourceType, sourceId, and amount are required" });
       return;
     }
-    if (!["qr", "va"].includes(sourceType)) {
-      res.status(400).json({ error: "sourceType must be 'qr' or 'va'" });
+    if (!["qr", "va", "link"].includes(sourceType)) {
+      res.status(400).json({ error: "sourceType must be 'qr', 'va', or 'link'" });
       return;
     }
     if (Number(amount) <= 0) {
@@ -117,6 +117,7 @@ router.post("/simulate", async (req, res, next) => {
 
     // Verify source belongs to this merchant
     let sourceLabel = "";
+    let paymentLinkId: number | null = null;
     if (sourceType === "qr") {
       const [qr] = await db.select().from(qrCodesTable)
         .where(and(eq(qrCodesTable.id, parseInt(sourceId)), eq(qrCodesTable.merchantId, user.merchantId)))
@@ -124,13 +125,22 @@ router.post("/simulate", async (req, res, next) => {
       if (!qr) { res.status(404).json({ error: "QR code not found" }); return; }
       if (qr.status !== "active") { res.status(400).json({ error: "QR code is not active" }); return; }
       sourceLabel = qr.label ?? `QR #${qr.id}`;
-    } else {
+    } else if (sourceType === "va") {
       const [va] = await db.select().from(virtualAccountsTable)
         .where(and(eq(virtualAccountsTable.id, parseInt(sourceId)), eq(virtualAccountsTable.merchantId, user.merchantId)))
         .limit(1);
       if (!va) { res.status(404).json({ error: "Virtual account not found" }); return; }
       if (va.status !== "active") { res.status(400).json({ error: "Virtual account is not active" }); return; }
       sourceLabel = va.label ?? va.accountNumber;
+    } else {
+      // sourceType === "link"
+      const [link] = await db.select().from(paymentLinksTable)
+        .where(and(eq(paymentLinksTable.id, parseInt(sourceId)), eq(paymentLinksTable.merchantId, user.merchantId)))
+        .limit(1);
+      if (!link) { res.status(404).json({ error: "Payment link not found" }); return; }
+      if (link.status !== "active") { res.status(400).json({ error: "Payment link is not active" }); return; }
+      sourceLabel = link.title ?? `Link #${link.id}`;
+      paymentLinkId = link.id;
     }
 
     const finalUtr = utr || generateUtr();
@@ -138,10 +148,37 @@ router.post("/simulate", async (req, res, next) => {
 
     const vaId = sourceType === "va" ? parseInt(sourceId) : null;
 
+    // Resolve connectionId: prefer explicit provider match, fall back to first active connection
+    let connectionId: number | null = null;
+    if (provider) {
+      const [conn] = await db.select({ id: merchantConnectionsTable.id })
+        .from(merchantConnectionsTable)
+        .where(and(eq(merchantConnectionsTable.merchantId, user.merchantId), eq(merchantConnectionsTable.provider, provider), eq(merchantConnectionsTable.isActive, true)))
+        .limit(1);
+      connectionId = conn?.id ?? null;
+    }
+    if (connectionId === null) {
+      // No explicit provider or provider not found — infer from first active connection
+      const [conn] = await db.select({ id: merchantConnectionsTable.id })
+        .from(merchantConnectionsTable)
+        .where(and(eq(merchantConnectionsTable.merchantId, user.merchantId), eq(merchantConnectionsTable.isActive, true)))
+        .limit(1);
+      connectionId = conn?.id ?? null;
+    }
+
+    // Build description based on sourceType
+    const sourceDescription = sourceType === "qr"
+      ? `QR Code: ${sourceLabel}`
+      : sourceType === "va"
+        ? `Virtual Account: ${sourceLabel}`
+        : `Payment Link: ${sourceLabel}`;
+
     // Insert pending first
     const [pending] = await db.insert(transactionsTable).values({
       merchantId: user.merchantId,
       virtualAccountId: vaId,
+      paymentLinkId,
+      connectionId,
       provider: provider ?? null,
       type: "deposit",
       status: "pending",
@@ -149,7 +186,7 @@ router.post("/simulate", async (req, res, next) => {
       currency: "INR",
       utr: finalUtr,
       referenceId: `SIM-${sourceType.toUpperCase()}-${sourceId}-${Date.now()}`,
-      description: `Payment via ${sourceType === "qr" ? "QR Code" : "Virtual Account"}: ${sourceLabel}`,
+      description: `Payment via ${sourceDescription}`,
       metadata: JSON.stringify({ sourceType, sourceId: parseInt(sourceId), simulated: true }),
     }).returning();
 
@@ -190,7 +227,7 @@ router.post("/simulate", async (req, res, next) => {
             balanceAfter: balanceAfter.toFixed(2),
             referenceType: "transaction",
             referenceId: resolved.id,
-            description: `Deposit via ${sourceType === "qr" ? "QR Code" : "Virtual Account"}: ${sourceLabel}`,
+            description: `Deposit via ${sourceDescription}`,
             createdBy: null,
           });
 

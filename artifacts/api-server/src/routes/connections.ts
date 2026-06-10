@@ -12,10 +12,10 @@ function formatConn(c: typeof merchantConnectionsTable.$inferSelect, monthlyUsed
   return { ...c, monthlyLimit: Number(c.monthlyLimit), monthlyUsed };
 }
 
-/** Returns a map keyed by provider → monthlyUsed for one merchant */
-async function getMonthlyUsedByProvider(merchantId: number): Promise<Map<string, number>> {
+/** Returns a map keyed by connectionId → monthlyUsed for one merchant */
+async function getMonthlyUsedByConnectionId(merchantId: number): Promise<Map<number, number>> {
   const rows = await db
-    .select({ provider: transactionsTable.provider, total: sum(transactionsTable.amount) })
+    .select({ connectionId: transactionsTable.connectionId, total: sum(transactionsTable.amount) })
     .from(transactionsTable)
     .where(
       and(
@@ -25,39 +25,38 @@ async function getMonthlyUsedByProvider(merchantId: number): Promise<Map<string,
         sql`date_trunc('month', ${transactionsTable.createdAt}) = date_trunc('month', now())`
       )
     )
-    .groupBy(transactionsTable.provider);
-  const map = new Map<string, number>();
+    .groupBy(transactionsTable.connectionId);
+  const map = new Map<number, number>();
   for (const r of rows) {
-    if (r.provider != null) map.set(r.provider, Number(r.total ?? 0));
+    if (r.connectionId != null) map.set(r.connectionId, Number(r.total ?? 0));
   }
   return map;
 }
 
 /**
- * Returns a map keyed by `${merchantId}:${provider}` → monthlyUsed,
- * batching all merchants in a single query.
+ * Returns a map keyed by connectionId → monthlyUsed,
+ * batching all connections in a single query.
  */
-async function buildMonthlyUsageMap(merchantIds: number[]): Promise<Map<string, number>> {
-  if (merchantIds.length === 0) return new Map();
+async function buildMonthlyUsageMap(connectionIds: number[]): Promise<Map<number, number>> {
+  if (connectionIds.length === 0) return new Map();
   const rows = await db
     .select({
-      merchantId: transactionsTable.merchantId,
-      provider: transactionsTable.provider,
+      connectionId: transactionsTable.connectionId,
       total: sum(transactionsTable.amount),
     })
     .from(transactionsTable)
     .where(
       and(
-        sql`${transactionsTable.merchantId} = ANY(${sql.raw(`ARRAY[${merchantIds.join(",")}]::int[]`)})`,
+        sql`${transactionsTable.connectionId} = ANY(${sql.raw(`ARRAY[${connectionIds.join(",")}]::int[]`)})`,
         eq(transactionsTable.type, "deposit"),
         eq(transactionsTable.status, "success"),
         sql`date_trunc('month', ${transactionsTable.createdAt}) = date_trunc('month', now())`
       )
     )
-    .groupBy(transactionsTable.merchantId, transactionsTable.provider);
-  const map = new Map<string, number>();
+    .groupBy(transactionsTable.connectionId);
+  const map = new Map<number, number>();
   for (const r of rows) {
-    if (r.provider != null) map.set(`${r.merchantId}:${r.provider}`, Number(r.total ?? 0));
+    if (r.connectionId != null) map.set(r.connectionId, Number(r.total ?? 0));
   }
   return map;
 }
@@ -98,11 +97,11 @@ router.get("/", async (req, res) => {
         .innerJoin(merchantsTable, eq(merchantConnectionsTable.merchantId, merchantsTable.id))
         .where(conditions.length ? and(...conditions, nameSearch) : nameSearch);
 
-      const merchantIds = [...new Set(joined.map(r => r.conn.merchantId))];
-      const usageMap = await buildMonthlyUsageMap(merchantIds);
+      const connectionIds = joined.map(r => r.conn.id);
+      const usageMap = await buildMonthlyUsageMap(connectionIds);
 
       res.json({
-        data: joined.map(r => ({ ...formatConn(r.conn, usageMap.get(`${r.conn.merchantId}:${r.conn.provider}`) ?? 0), businessName: r.businessName, merchantEmail: r.merchantEmail })),
+        data: joined.map(r => ({ ...formatConn(r.conn, usageMap.get(r.conn.id) ?? 0), businessName: r.businessName, merchantEmail: r.merchantEmail })),
         total: totalCount,
         page: pageNum,
         limit: limitNum,
@@ -122,11 +121,11 @@ router.get("/", async (req, res) => {
       .limit(limitNum)
       .offset(offset);
 
-    const merchantIds = [...new Set(joined.map(r => r.conn.merchantId))];
-    const usageMap = await buildMonthlyUsageMap(merchantIds);
+    const connectionIds = joined.map(r => r.conn.id);
+    const usageMap = await buildMonthlyUsageMap(connectionIds);
 
     res.json({
-      data: joined.map(r => ({ ...formatConn(r.conn, usageMap.get(`${r.conn.merchantId}:${r.conn.provider}`) ?? 0), businessName: r.businessName, merchantEmail: r.merchantEmail })),
+      data: joined.map(r => ({ ...formatConn(r.conn, usageMap.get(r.conn.id) ?? 0), businessName: r.businessName, merchantEmail: r.merchantEmail })),
       total: totalCount,
       page: pageNum,
       limit: limitNum,
@@ -137,10 +136,10 @@ router.get("/", async (req, res) => {
   // Merchant: own connections
   const merchantId: number = user.merchantId!;
   const rows = await db.select().from(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, merchantId));
-  const providerUsageMap = await getMonthlyUsedByProvider(merchantId);
+  const connUsageMap = await getMonthlyUsedByConnectionId(merchantId);
 
   // Fire-and-forget: create provider limit notifications if thresholds are crossed
-  const formatted = rows.map(r => formatConn(r, providerUsageMap.get(r.provider) ?? 0));
+  const formatted = rows.map(r => formatConn(r, connUsageMap.get(r.id) ?? 0));
   Promise.all(
     formatted
       .filter(r => r.isActive && r.monthlyLimit > 0)
@@ -289,8 +288,8 @@ router.post("/", async (req, res) => {
   // Backfill upiPayload on payment links that were created before this connection existed
   backfillUpiPayloads(merchantId).catch(() => {});
 
-  const providerMapPost = await getMonthlyUsedByProvider(merchantId);
-  res.json(formatConn(result, providerMapPost.get(result.provider) ?? 0));
+  const connMapPost = await getMonthlyUsedByConnectionId(result.merchantId);
+  res.json(formatConn(result, connMapPost.get(result.id) ?? 0));
 });
 
 // PUT /api/connections/:id
@@ -319,8 +318,8 @@ router.put("/:id", async (req, res) => {
   // Backfill upiPayload on payment links that were created before this connection existed
   backfillUpiPayloads(result.merchantId).catch(() => {});
 
-  const providerMapPut = await getMonthlyUsedByProvider(result.merchantId);
-  res.json(formatConn(result, providerMapPut.get(result.provider) ?? 0));
+  const connMapPut = await getMonthlyUsedByConnectionId(result.merchantId);
+  res.json(formatConn(result, connMapPut.get(result.id) ?? 0));
 });
 
 // DELETE /api/connections/:id
