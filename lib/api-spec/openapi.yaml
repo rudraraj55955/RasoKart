@@ -792,6 +792,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TransactionListResponse"
+    post:
+      operationId: adminCreateTransaction
+      tags: [transactions]
+      summary: Admin — manually record a transaction against a merchant (optionally attributed to a payment link)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateTransactionInput"
+      responses:
+        "201":
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Merchant or payment link not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /transactions/simulate:
     post:
@@ -842,6 +877,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Transaction"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: adminUpdateTransaction
+      tags: [transactions]
+      summary: Admin — update transaction status or payment link attribution
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateTransactionInput"
+      responses:
+        "200":
+          description: Transaction updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
           content:
@@ -3372,6 +3442,9 @@ components:
           type: integer
         virtualAccountId:
           type: ["integer", "null"]
+        paymentLinkId:
+          type: ["integer", "null"]
+          description: Payment link this transaction was attributed to
         merchantName:
           type: ["string", "null"]
         type:
@@ -3396,6 +3469,41 @@ components:
           type: string
         updatedAt:
           type: string
+
+    AdminCreateTransactionInput:
+      type: object
+      required: [merchantId, type, status, amount]
+      properties:
+        merchantId:
+          type: integer
+        type:
+          type: string
+          enum: [deposit, withdrawal]
+        status:
+          type: string
+          enum: [pending, success, failed]
+        amount:
+          type: number
+        utr:
+          type: string
+          description: If omitted, a UTR is auto-generated
+        referenceId:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        paymentLinkId:
+          type: ["integer", "null"]
+          description: Optional payment link to attribute this transaction to
+
+    AdminUpdateTransactionInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, success, failed]
+        paymentLinkId:
+          type: ["integer", "null"]
+          description: Payment link to attribute this transaction to (null to clear)
 
     TransactionListResponse:
       type: object

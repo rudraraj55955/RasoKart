@@ -185,6 +185,11 @@ export interface Transaction {
   merchantId: number;
   /** @nullable */
   virtualAccountId?: number | null;
+  /**
+     * Payment link this transaction was attributed to
+     * @nullable
+     */
+  paymentLinkId?: number | null;
   /** @nullable */
   merchantName?: string | null;
   type: TransactionType;
@@ -200,6 +205,59 @@ export interface Transaction {
   metadata?: string | null;
   createdAt: string;
   updatedAt?: string;
+}
+
+export type AdminCreateTransactionInputType = typeof AdminCreateTransactionInputType[keyof typeof AdminCreateTransactionInputType];
+
+
+export const AdminCreateTransactionInputType = {
+  deposit: 'deposit',
+  withdrawal: 'withdrawal',
+} as const;
+
+export type AdminCreateTransactionInputStatus = typeof AdminCreateTransactionInputStatus[keyof typeof AdminCreateTransactionInputStatus];
+
+
+export const AdminCreateTransactionInputStatus = {
+  pending: 'pending',
+  success: 'success',
+  failed: 'failed',
+} as const;
+
+export interface AdminCreateTransactionInput {
+  merchantId: number;
+  type: AdminCreateTransactionInputType;
+  status: AdminCreateTransactionInputStatus;
+  amount: number;
+  /** If omitted, a UTR is auto-generated */
+  utr?: string;
+  /** @nullable */
+  referenceId?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /**
+     * Optional payment link to attribute this transaction to
+     * @nullable
+     */
+  paymentLinkId?: number | null;
+}
+
+export type AdminUpdateTransactionInputStatus = typeof AdminUpdateTransactionInputStatus[keyof typeof AdminUpdateTransactionInputStatus];
+
+
+export const AdminUpdateTransactionInputStatus = {
+  pending: 'pending',
+  success: 'success',
+  failed: 'failed',
+} as const;
+
+export interface AdminUpdateTransactionInput {
+  status?: AdminUpdateTransactionInputStatus;
+  /**
+     * Payment link to attribute this transaction to (null to clear)
+     * @nullable
+     */
+  paymentLinkId?: number | null;
 }
 
 export type TransactionListResponseStats = {

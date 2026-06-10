@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, transactionsTable, merchantsTable, qrCodesTable, virtualAccountsTable, ledgerEntriesTable, auditLogsTable, merchantConnectionsTable, paymentLinksTable } from "@workspace/db";
 import { eq, ilike, and, count, sum, sql, gte, lte, or } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
 router.use(requireAuth);
@@ -15,6 +15,18 @@ function generateUtr(): string {
   const ts = Date.now().toString(36).toUpperCase();
   const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
   return `SIM${ts}${rand}`;
+}
+
+async function expirePaymentLinks() {
+  await db.execute(sql`
+    UPDATE payment_links SET status = 'expired'
+    WHERE expires_at IS NOT NULL AND expires_at < NOW() AND status = 'active'
+  `);
+  await db.execute(sql`
+    UPDATE payment_links SET status = 'expired'
+    WHERE max_payments IS NOT NULL AND status = 'active'
+      AND (SELECT COUNT(*) FROM transactions WHERE payment_link_id = payment_links.id) >= max_payments
+  `);
 }
 
 // GET /api/transactions
@@ -86,6 +98,108 @@ router.get("/", async (req, res, next) => {
         pendingCount: Number(agg.pendingCount),
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/transactions — admin manually records a transaction (optionally attributed to a payment link)
+router.post("/", requireAdmin, async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { merchantId, type, status, amount, utr, referenceId, description, paymentLinkId } = req.body;
+
+    if (!merchantId || !type || !status || amount == null) {
+      res.status(400).json({ error: "merchantId, type, status, and amount are required" });
+      return;
+    }
+    if (!["deposit", "withdrawal"].includes(type)) {
+      res.status(400).json({ error: "type must be 'deposit' or 'withdrawal'" });
+      return;
+    }
+    if (!["pending", "success", "failed"].includes(status)) {
+      res.status(400).json({ error: "status must be 'pending', 'success', or 'failed'" });
+      return;
+    }
+    if (Number(amount) <= 0) {
+      res.status(400).json({ error: "Amount must be positive" });
+      return;
+    }
+
+    // Verify merchant exists
+    const [merchant] = await db.select({ id: merchantsTable.id, businessName: merchantsTable.businessName, balance: merchantsTable.balance })
+      .from(merchantsTable).where(eq(merchantsTable.id, parseInt(merchantId))).limit(1);
+    if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+    // Verify payment link belongs to merchant (if provided)
+    if (paymentLinkId != null) {
+      const [link] = await db.select({ id: paymentLinksTable.id })
+        .from(paymentLinksTable)
+        .where(and(eq(paymentLinksTable.id, parseInt(paymentLinkId)), eq(paymentLinksTable.merchantId, merchant.id)))
+        .limit(1);
+      if (!link) { res.status(404).json({ error: "Payment link not found or does not belong to this merchant" }); return; }
+    }
+
+    const finalUtr = utr || generateUtr();
+    const depositAmt = Number(amount);
+
+    const tx = await db.transaction(async (trx) => {
+      const [inserted] = await trx.insert(transactionsTable).values({
+        merchantId: merchant.id,
+        type,
+        status,
+        amount: depositAmt.toFixed(2),
+        currency: "INR",
+        utr: finalUtr,
+        referenceId: referenceId ?? null,
+        description: description ?? null,
+        paymentLinkId: paymentLinkId != null ? parseInt(paymentLinkId) : null,
+        metadata: JSON.stringify({ adminRecorded: true, adminId: user.id }),
+      }).returning();
+
+      // If successful deposit, update merchant balance and write ledger entry
+      if (status === "success" && type === "deposit") {
+        const balanceBefore = Number(merchant.balance ?? 0);
+        const balanceAfter = balanceBefore + depositAmt;
+
+        await trx.update(merchantsTable).set({
+          balance: sql`CAST(COALESCE(balance, '0') AS DECIMAL) + ${depositAmt.toFixed(2)}`,
+          totalDeposits: sql`CAST(COALESCE(total_deposits, '0') AS DECIMAL) + ${depositAmt.toFixed(2)}`,
+          updatedAt: new Date(),
+        }).where(eq(merchantsTable.id, merchant.id));
+
+        await trx.insert(ledgerEntriesTable).values({
+          merchantId: merchant.id,
+          type: "deposit",
+          amount: depositAmt.toFixed(2),
+          balanceBefore: balanceBefore.toFixed(2),
+          balanceAfter: balanceAfter.toFixed(2),
+          referenceType: "transaction",
+          referenceId: inserted.id,
+          description: description ?? `Admin-recorded deposit${paymentLinkId != null ? ` via payment link #${paymentLinkId}` : ""}`,
+          createdBy: user.id,
+        });
+      }
+
+      return inserted;
+    });
+
+    // After inserting, run expiry check for payment links with maxPayments
+    if (paymentLinkId != null) {
+      await expirePaymentLinks().catch(() => {});
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "create_transaction",
+      targetType: "transaction",
+      targetId: tx.id,
+      details: JSON.stringify({ merchantId: merchant.id, type, status, amount: depositAmt, paymentLinkId: paymentLinkId ?? null }),
+      ipAddress: req.ip ?? null,
+    }).catch(() => {});
+
+    res.status(201).json({ ...tx, amount: Number(tx.amount), merchantName: merchant.businessName ?? null });
   } catch (err) {
     next(err);
   }
@@ -353,7 +467,7 @@ router.get("/search/utr", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params['id'] as string);
     const conditions = [eq(transactionsTable.id, id)];
     const merchantCond = buildMerchantCondition(user);
     if (merchantCond) conditions.push(merchantCond);
@@ -368,6 +482,59 @@ router.get("/:id", async (req, res, next) => {
     if (rows.length === 0) { res.status(404).json({ error: "Transaction not found" }); return; }
     const r = rows[0];
     res.json({ ...r.transaction, amount: Number(r.transaction.amount), merchantName: r.merchantName ?? null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/transactions/:id — admin updates status or paymentLinkId
+router.put("/:id", requireAdmin, async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const id = parseInt(req.params['id'] as string);
+    const { status, paymentLinkId } = req.body;
+
+    const update: Record<string, unknown> = { updatedAt: new Date() };
+    if (status !== undefined) {
+      if (!["pending", "success", "failed"].includes(status)) {
+        res.status(400).json({ error: "status must be 'pending', 'success', or 'failed'" });
+        return;
+      }
+      update.status = status;
+    }
+    if (paymentLinkId !== undefined) {
+      update.paymentLinkId = paymentLinkId != null ? parseInt(paymentLinkId) : null;
+    }
+
+    const [tx] = await db.update(transactionsTable)
+      .set(update)
+      .where(eq(transactionsTable.id, id))
+      .returning();
+
+    if (!tx) { res.status(404).json({ error: "Transaction not found" }); return; }
+
+    if (paymentLinkId != null) {
+      await expirePaymentLinks().catch(() => {});
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "update_transaction",
+      targetType: "transaction",
+      targetId: id,
+      details: JSON.stringify({ status: status ?? null, paymentLinkId: paymentLinkId ?? null }),
+      ipAddress: req.ip ?? null,
+    }).catch(() => {});
+
+    const [row] = await db
+      .select({ transaction: transactionsTable, merchantName: merchantsTable.businessName })
+      .from(transactionsTable)
+      .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
+      .where(eq(transactionsTable.id, id))
+      .limit(1);
+
+    res.json({ ...row.transaction, amount: Number(row.transaction.amount), merchantName: row.merchantName ?? null });
   } catch (err) {
     next(err);
   }

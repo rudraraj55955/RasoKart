@@ -758,6 +758,7 @@ export const ListTransactionsResponse = zod.object({
   "id": zod.number(),
   "merchantId": zod.number(),
   "virtualAccountId": zod.number().nullish(),
+  "paymentLinkId": zod.number().nullish().describe('Payment link this transaction was attributed to'),
   "merchantName": zod.string().nullish(),
   "type": zod.enum(['deposit', 'withdrawal']),
   "status": zod.enum(['pending', 'success', 'failed']),
@@ -780,6 +781,21 @@ export const ListTransactionsResponse = zod.object({
   "failedCount": zod.number(),
   "pendingCount": zod.number()
 })
+})
+
+
+/**
+ * @summary Admin — manually record a transaction against a merchant (optionally attributed to a payment link)
+ */
+export const AdminCreateTransactionBody = zod.object({
+  "merchantId": zod.number(),
+  "type": zod.enum(['deposit', 'withdrawal']),
+  "status": zod.enum(['pending', 'success', 'failed']),
+  "amount": zod.number(),
+  "utr": zod.string().optional().describe('If omitted, a UTR is auto-generated'),
+  "referenceId": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "paymentLinkId": zod.number().nullish().describe('Optional payment link to attribute this transaction to')
 })
 
 
@@ -807,6 +823,38 @@ export const GetTransactionResponse = zod.object({
   "id": zod.number(),
   "merchantId": zod.number(),
   "virtualAccountId": zod.number().nullish(),
+  "paymentLinkId": zod.number().nullish().describe('Payment link this transaction was attributed to'),
+  "merchantName": zod.string().nullish(),
+  "type": zod.enum(['deposit', 'withdrawal']),
+  "status": zod.enum(['pending', 'success', 'failed']),
+  "amount": zod.number(),
+  "currency": zod.string(),
+  "utr": zod.string(),
+  "referenceId": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "metadata": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Admin — update transaction status or payment link attribution
+ */
+export const AdminUpdateTransactionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminUpdateTransactionBody = zod.object({
+  "status": zod.enum(['pending', 'success', 'failed']).optional(),
+  "paymentLinkId": zod.number().nullish().describe('Payment link to attribute this transaction to (null to clear)')
+})
+
+export const AdminUpdateTransactionResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "virtualAccountId": zod.number().nullish(),
+  "paymentLinkId": zod.number().nullish().describe('Payment link this transaction was attributed to'),
   "merchantName": zod.string().nullish(),
   "type": zod.enum(['deposit', 'withdrawal']),
   "status": zod.enum(['pending', 'success', 'failed']),
@@ -832,6 +880,7 @@ export const SearchByUtrResponse = zod.object({
   "id": zod.number(),
   "merchantId": zod.number(),
   "virtualAccountId": zod.number().nullish(),
+  "paymentLinkId": zod.number().nullish().describe('Payment link this transaction was attributed to'),
   "merchantName": zod.string().nullish(),
   "type": zod.enum(['deposit', 'withdrawal']),
   "status": zod.enum(['pending', 'success', 'failed']),

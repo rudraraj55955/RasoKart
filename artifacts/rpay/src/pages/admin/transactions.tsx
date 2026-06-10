@@ -1,19 +1,22 @@
 import { useState } from "react";
-import { useListTransactions, useSearchByUtr, useGetTransaction } from "@workspace/api-client-react";
+import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useListPaymentLinks, useListMerchants } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, X, ArrowDownLeft, ArrowUpRight, CheckCircle, XCircle, Hash, RefreshCw, Loader2, Building2, CreditCard, FileText, Info } from "lucide-react";
+import { Search, X, ArrowDownLeft, ArrowUpRight, CheckCircle, XCircle, Hash, RefreshCw, Loader2, Building2, CreditCard, FileText, Info, Plus, Link2 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open: boolean; onClose: () => void }) {
   const { data: tx, isLoading } = useGetTransaction(id ?? 0, {
@@ -69,6 +72,9 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
                 <DetailRow label="UTR" value={tx.utr} mono />
                 {tx.referenceId && <DetailRow label="Reference ID" value={tx.referenceId} mono />}
                 {tx.description && <DetailRow label="Description" value={tx.description} />}
+                {(tx as any).paymentLinkId != null && (
+                  <DetailRow label="Payment Link" value={`#${(tx as any).paymentLinkId}`} mono />
+                )}
               </div>
             </div>
 
@@ -121,6 +127,252 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
   );
 }
 
+function RecordPaymentDialog({ open, onClose, onSuccess }: { open: boolean; onClose: () => void; onSuccess: () => void }) {
+  const [merchantId, setMerchantId] = useState("");
+  const [type, setType] = useState<"deposit" | "withdrawal">("deposit");
+  const [status, setStatus] = useState<"success" | "pending" | "failed">("success");
+  const [amount, setAmount] = useState("");
+  const [utr, setUtr] = useState("");
+  const [referenceId, setReferenceId] = useState("");
+  const [description, setDescription] = useState("");
+  const [paymentLinkId, setPaymentLinkId] = useState<string>("");
+  const [linkSearch, setLinkSearch] = useState("");
+
+  const { mutateAsync: createTx, isPending } = useAdminCreateTransaction();
+
+  // Load merchants for selector
+  const { data: merchantsData } = useListMerchants({ limit: 200 }, {
+    query: { enabled: open } as any,
+  });
+
+  // Load payment links for selected merchant
+  const { data: linksData } = useListPaymentLinks(
+    { merchantId: merchantId ? parseInt(merchantId) : undefined, status: "active", limit: 100 },
+    { query: { enabled: open && !!merchantId } as any }
+  );
+
+  const filteredLinks = (linksData?.data ?? []).filter(l => {
+    if (!linkSearch) return true;
+    const q = linkSearch.toLowerCase();
+    return l.title.toLowerCase().includes(q) || l.slug.toLowerCase().includes(q);
+  });
+
+  const handleMerchantChange = (val: string) => {
+    setMerchantId(val);
+    setPaymentLinkId("");
+    setLinkSearch("");
+  };
+
+  const handleClose = () => {
+    setMerchantId("");
+    setType("deposit");
+    setStatus("success");
+    setAmount("");
+    setUtr("");
+    setReferenceId("");
+    setDescription("");
+    setPaymentLinkId("");
+    setLinkSearch("");
+    onClose();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!merchantId || !amount) return;
+    if (isNaN(Number(amount)) || Number(amount) <= 0) {
+      toast.error("Amount must be a positive number");
+      return;
+    }
+    try {
+      await createTx({
+        data: {
+          merchantId: parseInt(merchantId),
+          type,
+          status,
+          amount: Number(amount),
+          utr: utr || undefined,
+          referenceId: referenceId || null,
+          description: description || null,
+          paymentLinkId: paymentLinkId ? parseInt(paymentLinkId) : null,
+        },
+      });
+      toast.success("Transaction recorded successfully");
+      onSuccess();
+      handleClose();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to record transaction");
+    }
+  };
+
+  const selectedLink = paymentLinkId ? filteredLinks.find(l => String(l.id) === paymentLinkId) ?? linksData?.data?.find(l => String(l.id) === paymentLinkId) : null;
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="w-4 h-4 text-primary" />
+            Record Payment
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          {/* Merchant */}
+          <div className="space-y-1.5">
+            <Label>Merchant <span className="text-rose-500">*</span></Label>
+            <Select value={merchantId} onValueChange={handleMerchantChange} required>
+              <SelectTrigger>
+                <SelectValue placeholder="Select merchant…" />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                {(merchantsData?.data ?? []).map(m => (
+                  <SelectItem key={m.id} value={String(m.id)}>
+                    {m.businessName} <span className="text-muted-foreground text-xs ml-1">#{m.id}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Type & Status */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Type <span className="text-rose-500">*</span></Label>
+              <Select value={type} onValueChange={v => setType(v as any)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="deposit">Deposit</SelectItem>
+                  <SelectItem value="withdrawal">Withdrawal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status <span className="text-rose-500">*</span></Label>
+              <Select value={status} onValueChange={v => setStatus(v as any)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="success">Success</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Amount */}
+          <div className="space-y-1.5">
+            <Label>Amount (₹) <span className="text-rose-500">*</span></Label>
+            <Input
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="0.00"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Payment Link (deposit only, merchant required) */}
+          {type === "deposit" && merchantId && (
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5 text-muted-foreground" />
+                Payment Link <span className="text-xs text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              {selectedLink ? (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-primary/5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{selectedLink.title}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{selectedLink.slug}{selectedLink.amount ? ` · ₹${Number(selectedLink.amount).toLocaleString()}` : ""}</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs shrink-0" onClick={() => { setPaymentLinkId(""); setLinkSearch(""); }}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      className="pl-8 text-sm"
+                      placeholder="Search active payment links…"
+                      value={linkSearch}
+                      onChange={e => setLinkSearch(e.target.value)}
+                    />
+                  </div>
+                  {(linksData?.data?.length ?? 0) === 0 && !linkSearch && (
+                    <p className="text-xs text-muted-foreground px-1">No active payment links for this merchant</p>
+                  )}
+                  {filteredLinks.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto rounded-lg border divide-y divide-border bg-card/50">
+                      {filteredLinks.map(link => (
+                        <button
+                          key={link.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors"
+                          onClick={() => { setPaymentLinkId(String(link.id)); setLinkSearch(""); }}
+                        >
+                          <p className="text-sm font-medium">{link.title}</p>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                            {link.slug}
+                            {link.amount ? ` · ₹${Number(link.amount).toLocaleString()}` : ""}
+                            {link.maxPayments != null ? ` · ${link.paymentCount}/${link.maxPayments} payments` : ` · ${link.paymentCount} payments`}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Optional fields */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Optional Fields</p>
+            <div className="space-y-1.5">
+              <Label className="text-sm">UTR</Label>
+              <Input
+                className="font-mono text-sm"
+                placeholder="Auto-generated if empty"
+                value={utr}
+                onChange={e => setUtr(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Reference ID</Label>
+              <Input
+                className="text-sm"
+                placeholder="External reference…"
+                value={referenceId}
+                onChange={e => setReferenceId(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Description</Label>
+              <Input
+                className="text-sm"
+                placeholder="Payment description…"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isPending}>Cancel</Button>
+            <Button type="submit" disabled={isPending || !merchantId || !amount}>
+              {isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> Recording…</> : "Record Payment"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AdminTransactions() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -131,6 +383,7 @@ export default function AdminTransactions() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [selectedTxId, setSelectedTxId] = useState<number | null>(null);
+  const [recordDialogOpen, setRecordDialogOpen] = useState(false);
 
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(
     () => qc.invalidateQueries({ queryKey: ["/api/transactions"] })
@@ -172,6 +425,9 @@ export default function AdminTransactions() {
             <RefreshCw className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`} /> Refresh
           </Button>
           <ExportCsvButton onExport={exportCsv} />
+          <Button size="sm" onClick={() => setRecordDialogOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" /> Record Payment
+          </Button>
         </div>
       </div>
 
@@ -350,7 +606,9 @@ export default function AdminTransactions() {
                   <TableCell><Badge variant="outline" className="text-xs">{tx.type}</Badge></TableCell>
                   <TableCell><StatusBadge status={tx.status} /></TableCell>
                   <TableCell className="text-right font-mono font-medium">₹{Number(tx.amount).toLocaleString()}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground font-mono">{tx.referenceId || "—"}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground font-mono">
+                    {tx.referenceId || ((tx as any).paymentLinkId ? <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />Link #{(tx as any).paymentLinkId}</span> : "—")}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{format(new Date(tx.createdAt), "MMM d, HH:mm")}</TableCell>
                 </TableRow>
               ))}
@@ -373,6 +631,12 @@ export default function AdminTransactions() {
         id={selectedTxId}
         open={selectedTxId != null}
         onClose={() => setSelectedTxId(null)}
+      />
+
+      <RecordPaymentDialog
+        open={recordDialogOpen}
+        onClose={() => setRecordDialogOpen(false)}
+        onSuccess={() => qc.invalidateQueries({ queryKey: ["/api/transactions"] })}
       />
     </div>
   );

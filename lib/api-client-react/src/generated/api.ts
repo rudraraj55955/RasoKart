@@ -29,8 +29,10 @@ import type {
   AdminAuditLogInput,
   AdminAuditLogListResponse,
   AdminAuditLogStatsResponse,
+  AdminCreateTransactionInput,
   AdminNotificationListResponse,
   AdminRiskStats,
+  AdminUpdateTransactionInput,
   ApiKey,
   ApiKeyWithSecret,
   ApiMonitoringStats,
@@ -2547,6 +2549,77 @@ export function useListTransactions<TData = Awaited<ReturnType<typeof listTransa
 
 
 
+export const getAdminCreateTransactionUrl = () => {
+
+
+
+
+  return `/api/transactions`
+}
+
+/**
+ * @summary Admin — manually record a transaction against a merchant (optionally attributed to a payment link)
+ */
+export const adminCreateTransaction = async (adminCreateTransactionInput: AdminCreateTransactionInput, options?: RequestInit): Promise<Transaction> => {
+
+  return customFetch<Transaction>(getAdminCreateTransactionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminCreateTransactionInput,)
+  }
+);}
+
+
+
+
+export const getAdminCreateTransactionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminCreateTransaction>>, TError,{data: BodyType<AdminCreateTransactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminCreateTransaction>>, TError,{data: BodyType<AdminCreateTransactionInput>}, TContext> => {
+
+const mutationKey = ['adminCreateTransaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminCreateTransaction>>, {data: BodyType<AdminCreateTransactionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminCreateTransaction(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminCreateTransactionMutationResult = NonNullable<Awaited<ReturnType<typeof adminCreateTransaction>>>
+    export type AdminCreateTransactionMutationBody = BodyType<AdminCreateTransactionInput>
+    export type AdminCreateTransactionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Admin — manually record a transaction against a merchant (optionally attributed to a payment link)
+ */
+export const useAdminCreateTransaction = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminCreateTransaction>>, TError,{data: BodyType<AdminCreateTransactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminCreateTransaction>>,
+        TError,
+        {data: BodyType<AdminCreateTransactionInput>},
+        TContext
+      > => {
+      return useMutation(getAdminCreateTransactionMutationOptions(options));
+    }
+
 export const getSimulatePaymentUrl = () => {
 
 
@@ -2694,6 +2767,78 @@ export function useGetTransaction<TData = Awaited<ReturnType<typeof getTransacti
 
 
 
+
+export const getAdminUpdateTransactionUrl = (id: number,) => {
+
+
+
+
+  return `/api/transactions/${id}`
+}
+
+/**
+ * @summary Admin — update transaction status or payment link attribution
+ */
+export const adminUpdateTransaction = async (id: number,
+    adminUpdateTransactionInput: AdminUpdateTransactionInput, options?: RequestInit): Promise<Transaction> => {
+
+  return customFetch<Transaction>(getAdminUpdateTransactionUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      adminUpdateTransactionInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdateTransactionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateTransaction>>, TError,{id: number;data: BodyType<AdminUpdateTransactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateTransaction>>, TError,{id: number;data: BodyType<AdminUpdateTransactionInput>}, TContext> => {
+
+const mutationKey = ['adminUpdateTransaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateTransaction>>, {id: number;data: BodyType<AdminUpdateTransactionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adminUpdateTransaction(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateTransactionMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateTransaction>>>
+    export type AdminUpdateTransactionMutationBody = BodyType<AdminUpdateTransactionInput>
+    export type AdminUpdateTransactionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Admin — update transaction status or payment link attribution
+ */
+export const useAdminUpdateTransaction = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateTransaction>>, TError,{id: number;data: BodyType<AdminUpdateTransactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateTransaction>>,
+        TError,
+        {id: number;data: BodyType<AdminUpdateTransactionInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateTransactionMutationOptions(options));
+    }
 
 export const getSearchByUtrUrl = (params: SearchByUtrParams,) => {
   const normalizedParams = new URLSearchParams();

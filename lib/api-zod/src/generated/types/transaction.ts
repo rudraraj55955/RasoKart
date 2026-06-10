@@ -13,6 +13,11 @@ export interface Transaction {
   merchantId: number;
   /** @nullable */
   virtualAccountId?: number | null;
+  /**
+     * Payment link this transaction was attributed to
+     * @nullable
+     */
+  paymentLinkId?: number | null;
   /** @nullable */
   merchantName?: string | null;
   type: TransactionType;
