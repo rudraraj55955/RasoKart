@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey } from "@workspace/api-client-react";
@@ -76,6 +76,10 @@ interface SettingsData {
   reconciliation_schedule: string | null;
 }
 
+interface SmtpStatus {
+  configured: boolean;
+}
+
 export default function AdminSettings() {
   const qc = useQueryClient();
   const [financeEmail, setFinanceEmail] = useState<string>("");
@@ -95,6 +99,13 @@ export default function AdminSettings() {
       onError: (err: Error) => toast.error(err.message),
     },
   });
+
+  const { data: smtpStatus } = useQuery<SmtpStatus>({
+    queryKey: ["/api/settings/smtp-status"],
+    queryFn: () => apiGet("/settings/smtp-status"),
+  });
+
+  const smtpConfigured = smtpStatus?.configured ?? null;
 
   const { data, isLoading } = useQuery<SettingsData>({
     queryKey: ["/api/settings"],
@@ -245,9 +256,23 @@ export default function AdminSettings() {
       {/* Finance Report Email */}
       <Card className="border-border/50">
         <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <Mail className="w-4 h-4 text-muted-foreground" />
-            <CardTitle className="text-base">Finance Report Recipients</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Mail className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-base">Finance Report Recipients</CardTitle>
+            </div>
+            {smtpConfigured === true && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
+                <Wifi className="w-3 h-3" />
+                SMTP ready
+              </span>
+            )}
+            {smtpConfigured === false && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-400">
+                <WifiOff className="w-3 h-3" />
+                SMTP not configured
+              </span>
+            )}
           </div>
           <CardDescription className="text-sm">
             After each reconciliation run completes, a summary email with the full CSV report attached
@@ -313,9 +338,11 @@ export default function AdminSettings() {
                 size="sm"
                 variant="outline"
                 onClick={() => sendTestEmail()}
-                disabled={sendingTest || isLoading || (!testEmailTo.trim() && !currentEmail)}
+                disabled={sendingTest || isLoading || smtpConfigured === false || (!testEmailTo.trim() && !currentEmail)}
                 title={
-                  !testEmailTo.trim() && !currentEmail
+                  smtpConfigured === false
+                    ? "SMTP is not configured — set SMTP_HOST, SMTP_USER, and SMTP_PASS on the server"
+                    : !testEmailTo.trim() && !currentEmail
                     ? "Enter an address above or save a finance report email first"
                     : testEmailTo.trim()
                     ? `Send test to ${testEmailTo.trim()}`

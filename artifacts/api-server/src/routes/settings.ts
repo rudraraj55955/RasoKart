@@ -82,6 +82,16 @@ router.put("/:key", async (req, res, next) => {
   }
 });
 
+// GET /api/settings/smtp-status
+router.get("/smtp-status", (_req, res) => {
+  const configured = Boolean(
+    process.env["SMTP_HOST"] &&
+    process.env["SMTP_USER"] &&
+    process.env["SMTP_PASS"]
+  );
+  res.json({ configured });
+});
+
 // POST /api/settings/test-email
 router.post("/test-email", async (req, res, next) => {
   try {
