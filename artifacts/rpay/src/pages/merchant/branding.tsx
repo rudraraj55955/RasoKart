@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Palette, ImageIcon, Save, Eye, RotateCcw, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Palette, ImageIcon, Save, Eye, RotateCcw, CheckCircle2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 const PRESET_COLORS = [
@@ -32,6 +33,7 @@ export default function MerchantBranding() {
   const [logoUrl, setLogoUrl] = useState("");
   const [brandColor, setBrandColor] = useState("");
   const [logoError, setLogoError] = useState(false);
+  const [savedLogoUrl, setSavedLogoUrl] = useState<string | null>(null);
 
   const updateBranding = useUpdateMerchantBranding();
 
@@ -43,8 +45,11 @@ export default function MerchantBranding() {
     })
       .then(r => r.json())
       .then(data => {
-        setLogoUrl(data.logoUrl ?? "");
+        const url = data.logoUrl ?? "";
+        setLogoUrl(url);
+        setSavedLogoUrl(url || null);
         setBrandColor(data.brandColor ?? "");
+        setLogoError(false);
       })
       .catch(() => {});
   }, [merchantId]);
@@ -63,6 +68,9 @@ export default function MerchantBranding() {
         onSuccess: () => {
           toast.success("Branding saved");
           qc.invalidateQueries({ queryKey: ["getMerchant"] });
+          const newSaved = logoUrl.trim() || null;
+          setSavedLogoUrl(newSaved);
+          if (!newSaved) setLogoError(false);
         },
         onError: () => toast.error("Failed to save branding"),
       }
@@ -72,6 +80,7 @@ export default function MerchantBranding() {
   function handleReset() {
     setLogoUrl("");
     setBrandColor("");
+    setLogoError(false);
   }
 
   const accent = brandColor && isValidHex(brandColor) ? brandColor : null;
@@ -84,6 +93,16 @@ export default function MerchantBranding() {
           Customise how your payment page looks to customers — add your logo and brand colour.
         </p>
       </div>
+
+      {/* Saved logo broken warning */}
+      {logoError && savedLogoUrl && logoUrl === savedLogoUrl && (
+        <Alert variant="destructive" className="border-amber-500/50 bg-amber-500/10 text-amber-400 [&>svg]:text-amber-400">
+          <TriangleAlert className="h-4 w-4" />
+          <AlertDescription>
+            Your saved logo URL can't be loaded — it may have been moved, deleted, or blocked by CORS. Customers on your payment page will see the default RasoKart branding instead. Update the URL below and save to fix this.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Logo */}
       <Card>
