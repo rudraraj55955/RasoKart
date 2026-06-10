@@ -40,7 +40,6 @@ import type {
   AuthResponse,
   BroadcastNotificationInput,
   BroadcastNotificationResult,
-  BulkAssignMerchantPlan200,
   BulkAssignPlanInput,
   BulkDeleteQrCodes200,
   BulkDeleteQrCodesInput,
@@ -1611,9 +1610,9 @@ export const getBulkAssignMerchantPlanUrl = () => {
 /**
  * @summary Bulk-assign a plan to multiple merchants (admin only)
  */
-export const bulkAssignMerchantPlan = async (bulkAssignPlanInput: BulkAssignPlanInput, options?: RequestInit): Promise<BulkAssignMerchantPlan200> => {
+export const bulkAssignMerchantPlan = async (bulkAssignPlanInput: BulkAssignPlanInput, options?: RequestInit): Promise<BulkMerchantActionResult> => {
 
-  return customFetch<BulkAssignMerchantPlan200>(getBulkAssignMerchantPlanUrl(),
+  return customFetch<BulkMerchantActionResult>(getBulkAssignMerchantPlanUrl(),
   {
     ...options,
     method: 'POST',

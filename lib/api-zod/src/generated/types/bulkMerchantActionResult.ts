@@ -5,8 +5,10 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { BulkMerchantActionResultItem } from './bulkMerchantActionResultItem';
 
 export interface BulkMerchantActionResult {
   updated: number;
   failed: number;
+  results: BulkMerchantActionResultItem[];
 }

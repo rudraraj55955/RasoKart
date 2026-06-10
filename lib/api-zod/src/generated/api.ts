@@ -431,7 +431,13 @@ export const BulkApproveMerchantsBody = zod.object({
 
 export const BulkApproveMerchantsResponse = zod.object({
   "updated": zod.number(),
-  "failed": zod.number()
+  "failed": zod.number(),
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "success": zod.boolean(),
+  "reason": zod.string().nullish()
+}))
 })
 
 
@@ -445,7 +451,13 @@ export const BulkSuspendMerchantsBody = zod.object({
 
 export const BulkSuspendMerchantsResponse = zod.object({
   "updated": zod.number(),
-  "failed": zod.number()
+  "failed": zod.number(),
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "success": zod.boolean(),
+  "reason": zod.string().nullish()
+}))
 })
 
 
@@ -461,7 +473,13 @@ export const BulkAssignMerchantPlanBody = zod.object({
 
 export const BulkAssignMerchantPlanResponse = zod.object({
   "updated": zod.number(),
-  "failed": zod.number()
+  "failed": zod.number(),
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "success": zod.boolean(),
+  "reason": zod.string().nullish()
+}))
 })
 
 

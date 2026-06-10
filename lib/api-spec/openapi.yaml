@@ -471,13 +471,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [updated, failed]
-                properties:
-                  updated:
-                    type: integer
-                  failed:
-                    type: integer
+                $ref: "#/components/schemas/BulkMerchantActionResult"
 
   /merchants/{id}/assign-plan:
     post:
@@ -3660,14 +3654,31 @@ components:
           type: string
           enum: [suspend, reinstate]
 
+    BulkMerchantActionResultItem:
+      type: object
+      required: [id, name, success]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        success:
+          type: boolean
+        reason:
+          type: ["string", "null"]
+
     BulkMerchantActionResult:
       type: object
-      required: [updated, failed]
+      required: [updated, failed, results]
       properties:
         updated:
           type: integer
         failed:
           type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkMerchantActionResultItem"
 
     BulkAssignPlanInput:
       type: object

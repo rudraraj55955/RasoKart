@@ -137,9 +137,18 @@ export interface BulkSuspendInput {
   action: BulkSuspendInputAction;
 }
 
+export interface BulkMerchantActionResultItem {
+  id: number;
+  name: string;
+  success: boolean;
+  /** @nullable */
+  reason?: string | null;
+}
+
 export interface BulkMerchantActionResult {
   updated: number;
   failed: number;
+  results: BulkMerchantActionResultItem[];
 }
 
 export interface BulkAssignPlanInput {
@@ -1913,11 +1922,6 @@ export const ListMerchantsExpiryStatus = {
   expiring: 'expiring',
   expired: 'expired',
 } as const;
-
-export type BulkAssignMerchantPlan200 = {
-  updated: number;
-  failed: number;
-};
 
 export type ListInvoicesParams = {
 merchantId?: number;

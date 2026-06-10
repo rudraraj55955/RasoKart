@@ -321,22 +321,36 @@ router.post("/bulk-approve", requireAdmin, async (req, res) => {
 
   let updated = 0;
   let failed = 0;
+  const results: { id: number; name: string; success: boolean; reason: string | null }[] = [];
 
   for (const merchantId of merchantIds as number[]) {
+    const [existing] = await db.select({ id: merchantsTable.id, businessName: merchantsTable.businessName, status: merchantsTable.status })
+      .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);
+    const name = existing?.businessName ?? `Merchant #${merchantId}`;
     try {
-      const [merchant] = await db.update(merchantsTable)
+      if (!existing) {
+        results.push({ id: merchantId, name, success: false, reason: "Not found" });
+        failed++;
+        continue;
+      }
+      if (existing.status === "approved") {
+        results.push({ id: merchantId, name, success: false, reason: "Already approved" });
+        failed++;
+        continue;
+      }
+      await db.update(merchantsTable)
         .set({ status: "approved", rejectionReason: null })
-        .where(eq(merchantsTable.id, merchantId))
-        .returning();
-      if (!merchant) { failed++; continue; }
+        .where(eq(merchantsTable.id, merchantId));
       await db.insert(auditLogsTable).values({
         adminId: user.id, adminEmail: user.email, action: "merchant_approved",
         targetType: "merchant", targetId: merchantId,
         details: JSON.stringify({ bulk: true }),
         ipAddress: (req as any).ip ?? null,
       });
+      results.push({ id: merchantId, name, success: true, reason: null });
       updated++;
     } catch {
+      results.push({ id: merchantId, name, success: false, reason: "Unexpected error" });
       failed++;
     }
   }
@@ -348,7 +362,7 @@ router.post("/bulk-approve", requireAdmin, async (req, res) => {
     ipAddress: (req as any).ip ?? null,
   });
 
-  res.json({ updated, failed });
+  res.json({ updated, failed, results });
 });
 
 // POST /api/merchants/bulk-suspend
@@ -363,14 +377,25 @@ router.post("/bulk-suspend", requireAdmin, async (req, res) => {
   const newStatus = action === "suspend" ? "suspended" : "approved";
   let updated = 0;
   let failed = 0;
+  const results: { id: number; name: string; success: boolean; reason: string | null }[] = [];
 
   for (const merchantId of merchantIds as number[]) {
+    const [existing] = await db.select({ id: merchantsTable.id, businessName: merchantsTable.businessName, status: merchantsTable.status })
+      .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);
+    const name = existing?.businessName ?? `Merchant #${merchantId}`;
     try {
-      const [merchant] = await db.update(merchantsTable)
-        .set({ status: newStatus })
-        .where(eq(merchantsTable.id, merchantId))
-        .returning();
-      if (!merchant) { failed++; continue; }
+      if (!existing) {
+        results.push({ id: merchantId, name, success: false, reason: "Not found" });
+        failed++;
+        continue;
+      }
+      if (existing.status === newStatus) {
+        const alreadyMsg = action === "suspend" ? "Already suspended" : "Already active";
+        results.push({ id: merchantId, name, success: false, reason: alreadyMsg });
+        failed++;
+        continue;
+      }
+      await db.update(merchantsTable).set({ status: newStatus }).where(eq(merchantsTable.id, merchantId));
       await db.insert(auditLogsTable).values({
         adminId: user.id, adminEmail: user.email,
         action: action === "suspend" ? "merchant_suspended" : "merchant_reinstated",
@@ -378,8 +403,10 @@ router.post("/bulk-suspend", requireAdmin, async (req, res) => {
         details: JSON.stringify({ bulk: true }),
         ipAddress: (req as any).ip ?? null,
       });
+      results.push({ id: merchantId, name, success: true, reason: null });
       updated++;
     } catch {
+      results.push({ id: merchantId, name, success: false, reason: "Unexpected error" });
       failed++;
     }
   }
@@ -392,7 +419,7 @@ router.post("/bulk-suspend", requireAdmin, async (req, res) => {
     ipAddress: (req as any).ip ?? null,
   });
 
-  res.json({ updated, failed });
+  res.json({ updated, failed, results });
 });
 
 // POST /api/merchants/bulk-assign-plan
@@ -410,9 +437,18 @@ router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
   const expiresAtDate = expiresAt ? new Date(expiresAt) : null;
   let updated = 0;
   let failed = 0;
+  const results: { id: number; name: string; success: boolean; reason: string | null }[] = [];
 
   for (const merchantId of merchantIds as number[]) {
+    const [merchantRow] = await db.select({ id: merchantsTable.id, businessName: merchantsTable.businessName })
+      .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);
+    const name = merchantRow?.businessName ?? `Merchant #${merchantId}`;
     try {
+      if (!merchantRow) {
+        results.push({ id: merchantId, name, success: false, reason: "Not found" });
+        failed++;
+        continue;
+      }
       const existing = await db.select().from(merchantPlansTable).where(eq(merchantPlansTable.merchantId, merchantId)).limit(1);
       const fromPlanId = existing.length > 0 ? existing[0].planId : null;
       const updateSet: Record<string, unknown> = { planId, assignedBy: user.id, notes: notes ?? null, status: "active" };
@@ -435,8 +471,10 @@ router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
         details: JSON.stringify({ planName: plan.name, fromPlanId, toPlanId: planId, bulk: true }),
         ipAddress: (req as any).ip ?? null,
       });
+      results.push({ id: merchantId, name, success: true, reason: null });
       updated++;
     } catch {
+      results.push({ id: merchantId, name, success: false, reason: "Unexpected error" });
       failed++;
     }
   }
@@ -448,7 +486,7 @@ router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
     ipAddress: (req as any).ip ?? null,
   });
 
-  res.json({ updated, failed });
+  res.json({ updated, failed, results });
 });
 
 // POST /api/merchants/:id/assign-plan
