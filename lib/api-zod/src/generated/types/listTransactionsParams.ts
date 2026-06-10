@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListTransactionsConnectionProvider } from './listTransactionsConnectionProvider';
 import type { ListTransactionsStatus } from './listTransactionsStatus';
 import type { ListTransactionsType } from './listTransactionsType';
 
@@ -17,6 +18,7 @@ dateFrom?: string;
 dateTo?: string;
 amountMin?: number;
 amountMax?: number;
+connectionProvider?: ListTransactionsConnectionProvider;
 page?: number;
 limit?: number;
 };

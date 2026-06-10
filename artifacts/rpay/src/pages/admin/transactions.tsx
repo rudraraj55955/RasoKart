@@ -664,12 +664,22 @@ function RecordPaymentDialog({ open, onClose, onSuccess }: { open: boolean; onCl
   );
 }
 
+const PROVIDERS = [
+  { value: "phonepe", label: "PhonePe" },
+  { value: "paytm", label: "Paytm" },
+  { value: "bharatpe", label: "BharatPe" },
+  { value: "yono_sbi", label: "YONO SBI" },
+  { value: "hdfc_smarthub", label: "HDFC SmartHub" },
+  { value: "upi_id", label: "UPI" },
+] as const;
+
 export default function AdminTransactions() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [utrSearch, setUtrSearch] = useState("");
   const [type, setType] = useState("all");
   const [status, setStatus] = useState("all");
+  const [provider, setProvider] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -686,6 +696,7 @@ export default function AdminTransactions() {
     search,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    connectionProvider: provider !== "all" ? provider as any : undefined,
     page,
     limit: 20,
   });
@@ -700,6 +711,7 @@ export default function AdminTransactions() {
     search: search || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    connectionProvider: provider !== "all" ? provider : undefined,
   });
 
   const stats = data?.stats;
@@ -826,8 +838,8 @@ export default function AdminTransactions() {
       <Card>
         <CardHeader className="pb-4">
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input className="pl-9" placeholder="Search UTR or reference..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
               </div>
@@ -846,6 +858,15 @@ export default function AdminTransactions() {
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="success">Success</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={provider} onValueChange={v => { setProvider(v); setPage(1); }}>
+                <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Providers" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Providers</SelectItem>
+                  {PROVIDERS.map(p => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

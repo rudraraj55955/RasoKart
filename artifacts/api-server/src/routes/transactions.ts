@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, transactionsTable, merchantsTable, qrCodesTable, virtualAccountsTable, ledgerEntriesTable, auditLogsTable, merchantConnectionsTable, paymentLinksTable } from "@workspace/db";
-import { eq, ilike, and, count, sql, gte, lte, or } from "drizzle-orm";
+import { eq, ilike, and, count, sql, gte, lte, or, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -33,7 +33,7 @@ async function expirePaymentLinks() {
 router.get("/", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { type, status, search, merchantId, dateFrom, dateTo, amountMin, amountMax, page = "1", limit = "20" } = req.query as Record<string, string>;
+    const { type, status, search, merchantId, dateFrom, dateTo, amountMin, amountMax, connectionProvider, page = "1", limit = "20" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -44,6 +44,13 @@ router.get("/", async (req, res, next) => {
     if (type && type !== "all") conditions.push(eq(transactionsTable.type, type));
     if (status && status !== "all") conditions.push(eq(transactionsTable.status, status));
     if (merchantId && user.role === "admin") conditions.push(eq(transactionsTable.merchantId, parseInt(merchantId)));
+    if (connectionProvider) {
+      const matchingConnectionIds = db
+        .select({ id: merchantConnectionsTable.id })
+        .from(merchantConnectionsTable)
+        .where(eq(merchantConnectionsTable.provider, connectionProvider));
+      conditions.push(inArray(transactionsTable.connectionId, matchingConnectionIds));
+    }
     if (search) {
       conditions.push(
         or(
@@ -381,7 +388,7 @@ router.post("/simulate", async (req, res, next) => {
 // GET /api/transactions/export/csv
 router.get("/export/csv", async (req, res) => {
   const user = (req as any).user;
-  const { type, status, search, merchantId, dateFrom, dateTo } = req.query as Record<string, string>;
+  const { type, status, search, merchantId, dateFrom, dateTo, connectionProvider } = req.query as Record<string, string>;
 
   const conditions = [];
   const merchantCond = buildMerchantCondition(user);
@@ -389,6 +396,13 @@ router.get("/export/csv", async (req, res) => {
   if (type && type !== "all") conditions.push(eq(transactionsTable.type, type));
   if (status && status !== "all") conditions.push(eq(transactionsTable.status, status));
   if (merchantId && user.role === "admin") conditions.push(eq(transactionsTable.merchantId, parseInt(merchantId)));
+  if (connectionProvider) {
+    const matchingConnectionIds = db
+      .select({ id: merchantConnectionsTable.id })
+      .from(merchantConnectionsTable)
+      .where(eq(merchantConnectionsTable.provider, connectionProvider));
+    conditions.push(inArray(transactionsTable.connectionId, matchingConnectionIds));
+  }
   if (search) {
     conditions.push(
       or(

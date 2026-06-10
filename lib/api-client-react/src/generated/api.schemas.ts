@@ -1991,6 +1991,7 @@ dateFrom?: string;
 dateTo?: string;
 amountMin?: number;
 amountMax?: number;
+connectionProvider?: ListTransactionsConnectionProvider;
 page?: number;
 limit?: number;
 };
@@ -2012,6 +2013,18 @@ export const ListTransactionsStatus = {
   success: 'success',
   failed: 'failed',
   all: 'all',
+} as const;
+
+export type ListTransactionsConnectionProvider = typeof ListTransactionsConnectionProvider[keyof typeof ListTransactionsConnectionProvider];
+
+
+export const ListTransactionsConnectionProvider = {
+  phonepe: 'phonepe',
+  paytm: 'paytm',
+  bharatpe: 'bharatpe',
+  yono_sbi: 'yono_sbi',
+  hdfc_smarthub: 'hdfc_smarthub',
+  upi_id: 'upi_id',
 } as const;
 
 export type SearchByUtrParams = {

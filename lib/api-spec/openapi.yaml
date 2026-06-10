@@ -854,6 +854,11 @@ paths:
           in: query
           schema:
             type: number
+        - name: connectionProvider
+          in: query
+          schema:
+            type: string
+            enum: [phonepe, paytm, bharatpe, yono_sbi, hdfc_smarthub, upi_id]
         - name: page
           in: query
           schema:

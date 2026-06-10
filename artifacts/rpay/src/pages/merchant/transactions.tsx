@@ -243,9 +243,19 @@ function ProviderBadge({ provider }: { provider: string | null | undefined }) {
   );
 }
 
+const PROVIDERS = [
+  { value: "phonepe", label: "PhonePe" },
+  { value: "paytm", label: "Paytm" },
+  { value: "bharatpe", label: "BharatPe" },
+  { value: "yono_sbi", label: "YONO SBI" },
+  { value: "hdfc_smarthub", label: "HDFC SmartHub" },
+  { value: "upi_id", label: "UPI" },
+] as const;
+
 export default function MerchantTransactions() {
   const [type, setType] = useState("all");
   const [status, setStatus] = useState("all");
+  const [provider, setProvider] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -294,6 +304,7 @@ export default function MerchantTransactions() {
     ...(activeDateTo ? { dateTo: activeDateTo } : {}),
     ...(amountMin != null ? { amountMin } : {}),
     ...(amountMax != null ? { amountMax } : {}),
+    ...(provider !== "all" ? { connectionProvider: provider as any } : {}),
   });
   const { data: utrResult, isLoading: utrLoading, error: utrError } = useSearchByUtr(
     { utr: utrSearch || "" },
@@ -413,6 +424,7 @@ export default function MerchantTransactions() {
     const params = new URLSearchParams();
     if (type && type !== "all") params.set("type", type);
     if (status && status !== "all") params.set("status", status);
+    if (provider && provider !== "all") params.set("connectionProvider", provider);
     if (utrSearch) params.set("search", utrSearch);
     if (activeDateFrom) params.set("dateFrom", activeDateFrom);
     if (activeDateTo) params.set("dateTo", activeDateTo);
@@ -436,8 +448,9 @@ export default function MerchantTransactions() {
   const hasUtrSearch = !!utrSearch;
   const hasTypeFilter = type !== "all";
   const hasStatusFilter = status !== "all";
+  const hasProviderFilter = provider !== "all";
   const hasDateFilter = !!(activeDateFrom || activeDateTo);
-  const anyFilterActive = hasSmartFilter || hasUtrSearch || hasTypeFilter || hasStatusFilter || hasDateFilter;
+  const anyFilterActive = hasSmartFilter || hasUtrSearch || hasTypeFilter || hasStatusFilter || hasProviderFilter || hasDateFilter;
 
   // Check if the current active smart filter is already saved
   const isCurrentFilterSaved = hasSmartFilter && savedFilters.some(
@@ -696,6 +709,15 @@ export default function MerchantTransactions() {
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="success">Success</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={provider} onValueChange={v => { setProvider(v); setPage(1); }}>
+                <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Providers" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Providers</SelectItem>
+                  {PROVIDERS.map(p => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -97,6 +97,7 @@ export * from './listReconciliationRunItemsParams';
 export * from './listReconciliationRunsParams';
 export * from './listSettlementsParams';
 export * from './listSettlementsStatus';
+export * from './listTransactionsConnectionProvider';
 export * from './listTransactionsParams';
 export * from './listTransactionsStatus';
 export * from './listTransactionsType';
