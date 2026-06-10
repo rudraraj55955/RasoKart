@@ -1981,6 +1981,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiMonitoringStats"
 
+  /audit-logs/stats:
+    get:
+      operationId: getAdminAuditLogStats
+      tags: [dashboard]
+      summary: Get audit log summary stats
+      responses:
+        "200":
+          description: Audit log stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuditLogStatsResponse"
+
   /audit-logs:
     get:
       operationId: listAdminAuditLogs
@@ -4173,6 +4186,13 @@ components:
           type: ["integer", "null"]
         details:
           type: ["string", "null"]
+
+    AdminAuditLogStatsResponse:
+      type: object
+      required: [csvExportsLast30Days]
+      properties:
+        csvExportsLast30Days:
+          type: integer
 
     AdminAuditLogListResponse:
       type: object

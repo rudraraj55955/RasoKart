@@ -28,6 +28,7 @@ import type {
   AdminAuditLog,
   AdminAuditLogInput,
   AdminAuditLogListResponse,
+  AdminAuditLogStatsResponse,
   AdminNotificationListResponse,
   AdminRiskStats,
   ApiKey,
@@ -6494,6 +6495,83 @@ export function useGetApiMonitoringStats<TData = Awaited<ReturnType<typeof getAp
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetApiMonitoringStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAdminAuditLogStatsUrl = () => {
+
+
+
+
+  return `/api/audit-logs/stats`
+}
+
+/**
+ * @summary Get audit log summary stats
+ */
+export const getAdminAuditLogStats = async ( options?: RequestInit): Promise<AdminAuditLogStatsResponse> => {
+
+  return customFetch<AdminAuditLogStatsResponse>(getGetAdminAuditLogStatsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminAuditLogStatsQueryKey = () => {
+    return [
+    `/api/audit-logs/stats`
+    ] as const;
+    }
+
+
+export const getGetAdminAuditLogStatsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminAuditLogStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAuditLogStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminAuditLogStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminAuditLogStats>>> = ({ signal }) => getAdminAuditLogStats({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminAuditLogStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminAuditLogStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminAuditLogStats>>>
+export type GetAdminAuditLogStatsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get audit log summary stats
+ */
+
+export function useGetAdminAuditLogStats<TData = Awaited<ReturnType<typeof getAdminAuditLogStats>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAuditLogStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminAuditLogStatsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

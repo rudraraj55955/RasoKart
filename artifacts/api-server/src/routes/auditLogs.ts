@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, auditLogsTable } from "@workspace/db";
-import { eq, ilike, and, count, sql, or } from "drizzle-orm";
+import { eq, ilike, and, count, sql, or, gte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
@@ -13,6 +13,25 @@ function ensureAdmin(req: any, res: any): boolean {
   }
   return true;
 }
+
+router.get("/stats", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(auditLogsTable)
+    .where(
+      and(
+        eq(auditLogsTable.action, "csv_export"),
+        gte(auditLogsTable.createdAt, thirtyDaysAgo),
+      ),
+    );
+
+  res.json({ csvExportsLast30Days: total });
+});
 
 router.get("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;

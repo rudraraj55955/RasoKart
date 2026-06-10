@@ -2029,6 +2029,14 @@ export const GetApiMonitoringStatsResponse = zod.object({
 
 
 /**
+ * @summary Get audit log summary stats
+ */
+export const GetAdminAuditLogStatsResponse = zod.object({
+  "csvExportsLast30Days": zod.number()
+})
+
+
+/**
  * @summary List admin audit logs
  */
 export const ListAdminAuditLogsQueryParams = zod.object({

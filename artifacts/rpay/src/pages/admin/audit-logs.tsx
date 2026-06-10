@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListAdminAuditLogs } from "@workspace/api-client-react";
+import { useListAdminAuditLogs, useGetAdminAuditLogStats } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Shield, Search, Eye, Activity } from "lucide-react";
+import { Shield, Search, Eye, Activity, FileDown } from "lucide-react";
 import { format } from "date-fns";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
@@ -40,6 +40,9 @@ export default function AdminAuditLogs() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any | null>(null);
 
+  const { data: statsData } = useGetAdminAuditLogStats();
+  const csvExportsLast30Days = statsData?.csvExportsLast30Days ?? 0;
+
   const { data, isLoading } = useListAdminAuditLogs({
     action: action === "all" ? undefined : action,
     search: search || undefined,
@@ -49,6 +52,12 @@ export default function AdminAuditLogs() {
 
   const logs = data?.data ?? [];
   const total = data?.total ?? 0;
+
+  function handleExportStatClick() {
+    setAction("csv_export");
+    setPage(1);
+    setSearch("");
+  }
 
   return (
     <div className="space-y-6">
@@ -62,6 +71,26 @@ export default function AdminAuditLogs() {
           <span>{total} events logged</span>
         </div>
       </div>
+
+      <button
+        onClick={handleExportStatClick}
+        className="w-full text-left group"
+      >
+        <Card className="border-sky-500/20 bg-sky-500/5 hover:bg-sky-500/10 hover:border-sky-500/40 transition-colors cursor-pointer">
+          <CardContent className="flex items-center gap-4 py-4 px-5">
+            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 shrink-0">
+              <FileDown className="w-5 h-5 text-sky-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-2xl font-bold text-sky-400 leading-none">{csvExportsLast30Days}</p>
+              <p className="text-xs text-muted-foreground mt-1">CSV exports in the last 30 days</p>
+            </div>
+            <span className="text-xs text-sky-400/70 group-hover:text-sky-400 transition-colors font-medium">
+              Filter to exports →
+            </span>
+          </CardContent>
+        </Card>
+      </button>
 
       <Card>
         <CardHeader className="pb-4">

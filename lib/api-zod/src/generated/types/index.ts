@@ -15,6 +15,7 @@ export * from './accountDetailVisibilityResponse';
 export * from './adminAuditLog';
 export * from './adminAuditLogInput';
 export * from './adminAuditLogListResponse';
+export * from './adminAuditLogStatsResponse';
 export * from './adminNotification';
 export * from './adminNotificationListResponse';
 export * from './adminNotificationSeverity';

@@ -1094,6 +1094,10 @@ export interface AdminAuditLogInput {
   details?: string | null;
 }
 
+export interface AdminAuditLogStatsResponse {
+  csvExportsLast30Days: number;
+}
+
 export interface AdminAuditLogListResponse {
   data: AdminAuditLog[];
   total: number;
