@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -579,6 +579,7 @@ export default function AdminReconciliation() {
   const [resolveItem, setResolveItem] = useState<any | null>(null);
   const [exportFilter, setExportFilter] = useState<"all" | "matched" | "unmatched_deposit" | "unmatched_settlement">("all");
   const [csvExportFilter, setCsvExportFilter] = useState<"all" | "matched" | "unmatched">("all");
+  const [isExporting, setIsExporting] = useState(false);
 
   const schedulerQuery = useQuery({
     queryKey: ["/api/reconciliation/scheduler-status"],
@@ -868,6 +869,8 @@ export default function AdminReconciliation() {
                     unmatched: "Unmatched only",
                   };
                   function doExport(filter: "all" | "matched" | "unmatched") {
+                    if (isExporting) return;
+                    setIsExporting(true);
                     const token = getToken();
                     const statusParam = filter !== "all" ? `?status=${filter}` : "";
                     const suffix = filter !== "all" ? `-${filter}` : "";
@@ -886,7 +889,8 @@ export default function AdminReconciliation() {
                         a.click();
                         URL.revokeObjectURL(url);
                       })
-                      .catch(() => toast.error("Failed to export CSV"));
+                      .catch(() => toast.error("Failed to export CSV"))
+                      .finally(() => setIsExporting(false));
                   }
                   return (
                     <div className="flex items-center">
@@ -895,10 +899,15 @@ export default function AdminReconciliation() {
                         size="sm"
                         className="h-7 gap-1.5 text-xs rounded-r-none border-r-0"
                         onClick={() => doExport(csvExportFilter)}
+                        disabled={isExporting}
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        Export CSV
-                        {csvExportFilter !== "all" && (
+                        {isExporting ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        {isExporting ? "Exporting…" : "Export CSV"}
+                        {!isExporting && csvExportFilter !== "all" && (
                           <span className="text-primary/80">· {CSV_FILTER_LABELS[csvExportFilter]}</span>
                         )}
                       </Button>
@@ -908,6 +917,7 @@ export default function AdminReconciliation() {
                             variant="outline"
                             size="sm"
                             className="h-7 px-1.5 rounded-l-none border-l-0 text-muted-foreground"
+                            disabled={isExporting}
                           >
                             <ChevronDown className="w-3.5 h-3.5" />
                           </Button>
