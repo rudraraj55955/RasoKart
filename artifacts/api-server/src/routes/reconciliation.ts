@@ -230,4 +230,78 @@ router.patch("/items/:id/resolve", async (req, res, next) => {
   }
 });
 
+// GET /api/reconciliation/runs/:id/export.csv
+router.get("/runs/:id/export.csv", async (req, res, next) => {
+  try {
+    const runId = parseInt(req.params['id'] as string);
+    const { status } = req.query as Record<string, string>;
+
+    const [run] = await db.select().from(reconciliationRunsTable).where(eq(reconciliationRunsTable.id, runId)).limit(1);
+    if (!run) { res.status(404).json({ error: "Run not found" }); return; }
+
+    const conditions = [eq(reconciliationItemsTable.runId, runId)];
+    if (status && status !== "all") conditions.push(eq(reconciliationItemsTable.status, status));
+
+    const where = and(...conditions);
+
+    const items = await db
+      .select({
+        item: reconciliationItemsTable,
+        txUtr: transactionsTable.utr,
+        txAmount: transactionsTable.amount,
+        txCreatedAt: transactionsTable.createdAt,
+        merchantName: merchantsTable.businessName,
+      })
+      .from(reconciliationItemsTable)
+      .leftJoin(transactionsTable, eq(reconciliationItemsTable.transactionId, transactionsTable.id))
+      .leftJoin(merchantsTable, eq(reconciliationItemsTable.merchantId, merchantsTable.id))
+      .where(where)
+      .orderBy(sql`${reconciliationItemsTable.status} ASC, ${reconciliationItemsTable.id} ASC`);
+
+    const settlementIds = items
+      .map(i => i.item.settlementId)
+      .filter((id): id is number => id !== null);
+
+    const settlements = settlementIds.length > 0
+      ? await db.select({ id: settlementsTable.id, referenceNumber: settlementsTable.referenceNumber, amount: settlementsTable.requestedAmount, status: settlementsTable.status })
+          .from(settlementsTable)
+          .where(inArray(settlementsTable.id, settlementIds))
+      : [];
+
+    const settlementMap = new Map(settlements.map(s => [s.id, s]));
+
+    function escapeCsv(val: string | number | null | undefined): string {
+      if (val === null || val === undefined) return "";
+      const str = String(val);
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    }
+
+    const headers = ["Item ID", "Merchant", "Status", "Amount", "Transaction UTR", "Settlement Ref", "Matched At"];
+    const rows = items.map(({ item, txUtr, merchantName }) => {
+      const settlement = item.settlementId ? (settlementMap.get(item.settlementId) ?? null) : null;
+      return [
+        escapeCsv(item.id),
+        escapeCsv(merchantName ?? `Merchant #${item.merchantId}`),
+        escapeCsv(item.status),
+        escapeCsv(Number(item.amount).toFixed(2)),
+        escapeCsv(txUtr ?? ""),
+        escapeCsv(settlement?.referenceNumber ?? (settlement ? `#${settlement.id}` : "")),
+        escapeCsv(item.matchedAt ? new Date(item.matchedAt).toISOString() : ""),
+      ].join(",");
+    });
+
+    const csv = [headers.join(","), ...rows].join("\n");
+    const filename = `reconciliation-run-${runId}${status && status !== "all" ? `-${status}` : ""}.csv`;
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

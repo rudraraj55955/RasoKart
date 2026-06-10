@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
@@ -355,6 +355,7 @@ export default function AdminReconciliation() {
   const [dateTo, setDateTo] = useState(today);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [resolveItem, setResolveItem] = useState<any | null>(null);
+  const [exportFilter, setExportFilter] = useState<"all" | "matched" | "unmatched_deposit" | "unmatched_settlement">("all");
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["/api/reconciliation/runs"],
@@ -540,12 +541,52 @@ export default function AdminReconciliation() {
       </Card>
 
       {/* Detail Dialog */}
-      <Dialog open={!!selectedRunId} onOpenChange={open => !open && setSelectedRunId(null)}>
+      <Dialog 
+        open={!!selectedRunId} 
+        onOpenChange={open => {
+          if (!open) {
+            setSelectedRunId(null);
+            setExportFilter("all");
+          }
+        }}
+      >
         <DialogContent className="max-w-6xl max-h-[88vh] flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <GitMerge className="w-4 h-4 text-primary" />
               Run #{selectedRunId} — Reconciliation Details
+              <div className="ml-auto flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => {
+                    const token = getToken();
+                    const statusParam = exportFilter !== "all" ? `?status=${exportFilter}` : "";
+                    const suffix = exportFilter !== "all" ? `-${exportFilter}` : "";
+                    
+                    fetch(`/api/reconciliation/runs/${selectedRunId}/export.csv${statusParam}`, {
+                      headers: { Authorization: `Bearer ${token}` },
+                    })
+                      .then(res => {
+                        if (!res.ok) throw new Error("Export failed");
+                        return res.blob();
+                      })
+                      .then(blob => {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `reconciliation-run-${selectedRunId}${suffix}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      })
+                      .catch(() => toast.error("Failed to export CSV"));
+                  }}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export CSV {exportFilter !== "all" && `(${exportFilter})`}
+                </Button>
+              </div>
             </DialogTitle>
           </DialogHeader>
 
@@ -573,10 +614,51 @@ export default function AdminReconciliation() {
             </div>
           )}
 
+          {/* Filter Tabs */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "all", label: "All Items", count: allItems.length },
+              { id: "matched", label: "Matched", count: matchedItems.length, color: "text-emerald-400" },
+              { id: "unmatched_deposit", label: "Unmatched Deposits", count: allItems.filter(i => i.status === "unmatched_deposit").length, color: "text-orange-400" },
+              { id: "unmatched_settlement", label: "Unmatched Settlements", count: allItems.filter(i => i.status === "unmatched_settlement").length, color: "text-red-400" },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setExportFilter(tab.id as any)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+                  exportFilter === tab.id
+                    ? "bg-primary/10 border-primary/30 text-primary"
+                    : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                <span className={tab.color}>{tab.label}</span>
+                <Badge variant="secondary" className="h-4 px-1 text-[10px] bg-muted/50">
+                  {tab.count}
+                </Badge>
+              </button>
+            ))}
+          </div>
+
           {detailQuery.isLoading ? (
             <div className="py-10 text-center text-muted-foreground text-sm">Loading items…</div>
+          ) : exportFilter !== "all" ? (
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pr-1">
+                {allItems
+                  .filter(i => i.status === exportFilter)
+                  .map((item: any) => (
+                    <div key={item.id}>
+                      {item.status === "matched" ? (
+                        <MatchedPairCard item={item} />
+                      ) : (
+                        <UnmatchedCard item={item} onResolve={setResolveItem} />
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-hidden min-h-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-hidden min-h-0 relative">
               {/* Left column — Matched pairs */}
               <div className="flex flex-col min-h-0">
                 <div className="flex items-center gap-2 mb-3">
@@ -644,6 +726,24 @@ export default function AdminReconciliation() {
                   )}
                 </div>
               </div>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {(() => {
+                const filtered = allItems.filter(i => i.status === exportFilter);
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-10 text-center text-muted-foreground text-xs border border-dashed border-border/40 rounded-md">
+                      No items with status "{exportFilter}" in this run
+                    </div>
+                  );
+                }
+                return filtered.map((item: any) =>
+                  item.status === "matched"
+                    ? <MatchedPairCard key={item.id} item={item} />
+                    : <UnmatchedCard key={item.id} item={item} />
+                );
+              })()}
             </div>
           )}
         </DialogContent>
