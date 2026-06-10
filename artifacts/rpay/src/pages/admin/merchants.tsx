@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useLocation } from "wouter";
 import { useUpload } from "@workspace/object-storage-web";
 import {
   useListMerchants, useApproveMerchant, useRejectMerchant,
@@ -46,6 +47,7 @@ const PLAN_SUB_STATUS_COLOR: Record<string, string> = {
 };
 
 export default function AdminMerchants() {
+  const [, navigate] = useLocation();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -981,7 +983,20 @@ export default function AdminMerchants() {
                 {/* QR Code lifecycle breakdown */}
                 {merchantPlanUsage && (
                   <div className="border-t border-primary/10 pt-2 space-y-1.5">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">QR Code Usage</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">QR Code Usage</p>
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                        onClick={() => {
+                          const name = encodeURIComponent(assignPlanMerchant?.name ?? "");
+                          closeAssignPlan();
+                          navigate(`/admin/qr-codes?merchant=${name}`);
+                        }}
+                      >
+                        View QR Codes →
+                      </button>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded-md bg-background/50 border border-border/40 px-2.5 py-2 space-y-1.5">
                         <p className="text-xs font-medium text-foreground">Dynamic QR</p>

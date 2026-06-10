@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useListQrCodes, useDeleteQrCode, useGetQrCodeStats } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -24,10 +24,22 @@ export default function AdminQrCodes() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
-  const [merchantName, setMerchantName] = useState("");
+  const [merchantName, setMerchantName] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("merchant") ?? "";
+  });
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const m = params.get("merchant");
+    if (m) {
+      setMerchantName(m);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(
     () => qc.invalidateQueries({ queryKey: ["/api/qr-codes"] })
