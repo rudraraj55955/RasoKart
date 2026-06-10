@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/auth-context";
 import { UserRole, useGetMyPlanUsage } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
@@ -177,6 +177,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
       items: [
         { title: "Audit Logs", icon: Shield, href: "/admin/audit-logs" },
         { title: "User Roles", icon: UserCog, href: "/admin/user-roles" },
+        { title: "Settings", icon: Settings, href: "/admin/settings" },
       ],
     },
   ];

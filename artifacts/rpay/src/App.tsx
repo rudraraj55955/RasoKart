@@ -42,6 +42,7 @@ import AdminMerchantAccess from "@/pages/admin/merchant-access";
 import AdminLedger from "@/pages/admin/ledger";
 import AdminReconciliation from "@/pages/admin/reconciliation";
 import AdminPaymentLinks from "@/pages/admin/payment-links";
+import AdminSettings from "@/pages/admin/settings";
 import PayPage from "@/pages/pay";
 
 // Merchant Pages
@@ -141,6 +142,7 @@ function Router() {
       <Route path="/admin/ledger"><AdminRoute component={AdminLedger} /></Route>
       <Route path="/admin/reconciliation"><AdminRoute component={AdminReconciliation} /></Route>
       <Route path="/admin/payment-links"><AdminRoute component={AdminPaymentLinks} /></Route>
+      <Route path="/admin/settings"><AdminRoute component={AdminSettings} /></Route>
 
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>

@@ -24,6 +24,7 @@ import {
   systemConfigTable,
   SYSTEM_CONFIG_KEYS,
   SYSTEM_CONFIG_DEFAULTS,
+  systemSettingsTable,
 } from "@workspace/db";
 
 const PLAN_TIERS = [
@@ -708,6 +709,12 @@ export async function seed() {
       .onConflictDoNothing();
   }
   console.log("System config defaults seeded");
+
+  // Seed system settings defaults (idempotent)
+  await db
+    .insert(systemSettingsTable)
+    .values({ key: "finance_report_email", value: null })
+    .onConflictDoNothing();
 
   console.log("Seed complete.");
 }

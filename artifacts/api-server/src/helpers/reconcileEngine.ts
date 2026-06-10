@@ -11,6 +11,7 @@ import {
 import { eq, and, gte, lte, inArray, sql, or, isNull, isNotNull, ne } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { createBulkNotifications } from "./notifications";
+import { sendReconciliationReportEmail } from "./reconcileEmail";
 
 export interface ReconcileOptions {
   dateFrom: string;
@@ -182,6 +183,11 @@ export async function runReconciliation(opts: ReconcileOptions) {
       })
       .where(eq(reconciliationRunsTable.id, run.id))
       .returning();
+
+    // Send reconciliation report email (non-blocking, best-effort)
+    sendReconciliationReportEmail(updated.id).catch(err => {
+      logger.error({ err, runId: updated.id }, "Unexpected error in reconciliation report email");
+    });
 
     return updated;
   } catch (err) {
