@@ -36,3 +36,13 @@ export const reconciliationItemsTable = pgTable("reconciliation_items", {
   resolutionNotes: text("resolution_notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const reconciliationEmailLogsTable = pgTable("reconciliation_email_logs", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull(),
+  emailType: text("email_type").notNull(),
+  recipients: text("recipients").notNull(),
+  status: text("status").notNull().default("sent"),
+  errorMessage: text("error_message"),
+  sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2 } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -627,6 +627,7 @@ export default function AdminReconciliation() {
   const [exportFilter, setExportFilter] = useState<"all" | "matched" | "unmatched_deposit" | "unmatched_settlement">("all");
   const [csvExportFilter, setCsvExportFilter] = useState<"all" | "matched" | "unmatched">("all");
   const [isExporting, setIsExporting] = useState(false);
+  const [emailLogOpen, setEmailLogOpen] = useState(false);
 
   const schedulerQuery = useQuery({
     queryKey: ["/api/reconciliation/scheduler-status"],
@@ -643,6 +644,12 @@ export default function AdminReconciliation() {
   const detailQuery = useQuery({
     queryKey: ["/api/reconciliation/runs", selectedRunId, "items"],
     queryFn: () => apiGet(`/reconciliation/runs/${selectedRunId}/items?limit=200`),
+    enabled: !!selectedRunId,
+  });
+
+  const emailLogsQuery = useQuery({
+    queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"],
+    queryFn: () => apiGet(`/reconciliation/runs/${selectedRunId}/email-logs`),
     enabled: !!selectedRunId,
   });
 
@@ -841,12 +848,14 @@ export default function AdminReconciliation() {
                     <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Matched Amt</th>
                     <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Unmatched Amt</th>
                     <th className="text-center px-4 py-2.5 text-xs text-muted-foreground font-medium">Status</th>
+                    <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Last Emailed</th>
                     <th className="px-4 py-2.5"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
                   {runs.map((run: any) => {
                     const meta = STATUS_META[run.status] ?? STATUS_META.complete;
+                    const lastEmail = run.lastEmail as { sentAt: string; status: string; recipients: string } | null;
                     return (
                       <tr key={run.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-3">
@@ -881,6 +890,27 @@ export default function AdminReconciliation() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
+                          {lastEmail ? (
+                            <div className="flex items-center gap-1.5">
+                              {lastEmail.status === "sent" ? (
+                                <MailCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              ) : (
+                                <MailX className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                              )}
+                              <div>
+                                <p className={`text-xs font-medium ${lastEmail.status === "sent" ? "text-emerald-400" : "text-red-400"}`}>
+                                  {lastEmail.status === "sent" ? "Sent" : "Failed"}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+                                  {formatDistanceToNow(new Date(lastEmail.sentAt), { addSuffix: true })}
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/40">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -908,6 +938,7 @@ export default function AdminReconciliation() {
             setSelectedRunId(null);
             setExportFilter("all");
             setCsvExportFilter("all");
+            setEmailLogOpen(false);
           }
         }}
       >
@@ -1028,6 +1059,83 @@ export default function AdminReconciliation() {
               ))}
             </div>
           )}
+
+          {/* Email Delivery Log */}
+          {(() => {
+            const emailLogs: Array<{ id: number; emailType: string; recipients: string; status: string; errorMessage: string | null; sentAt: string }> = emailLogsQuery.data?.data ?? [];
+            const hasSent = emailLogs.some(l => l.status === "sent");
+            const hasFailed = emailLogs.some(l => l.status === "failed");
+            const indicatorIcon = hasFailed
+              ? <MailX className="w-3.5 h-3.5 text-red-400" />
+              : hasSent
+              ? <MailCheck className="w-3.5 h-3.5 text-emerald-400" />
+              : <Mail className="w-3.5 h-3.5 text-muted-foreground/50" />;
+            const indicatorLabel = hasFailed
+              ? <span className="text-red-400">Some emails failed</span>
+              : hasSent
+              ? <span className="text-emerald-400">All emails sent</span>
+              : <span className="text-muted-foreground/50">No emails sent</span>;
+
+            return (
+              <div className="border border-border/50 rounded-md">
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/20 transition-colors rounded-md"
+                  onClick={() => setEmailLogOpen(v => !v)}
+                >
+                  {indicatorIcon}
+                  <span className="font-medium text-xs">Email Delivery Log</span>
+                  <span className="text-xs ml-1">{indicatorLabel}</span>
+                  {emailLogs.length > 0 && (
+                    <Badge variant="secondary" className="h-4 px-1.5 text-[10px] ml-0.5">{emailLogs.length}</Badge>
+                  )}
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground ml-auto transition-transform ${emailLogOpen ? "rotate-180" : ""}`} />
+                </button>
+                {emailLogOpen && (
+                  <div className="border-t border-border/50 px-3 py-2.5 space-y-2">
+                    {emailLogsQuery.isLoading ? (
+                      <p className="text-xs text-muted-foreground">Loading…</p>
+                    ) : emailLogs.length === 0 ? (
+                      <p className="text-xs text-muted-foreground/50">No email sends recorded for this run.</p>
+                    ) : (
+                      emailLogs.map(log => (
+                        <div key={log.id} className={`rounded-md border px-3 py-2 text-xs ${
+                          log.status === "sent"
+                            ? "border-emerald-500/20 bg-emerald-500/5"
+                            : "border-red-500/20 bg-red-500/5"
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            {log.status === "sent"
+                              ? <MailCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                              : <MailX className="w-3 h-3 text-red-400 shrink-0" />
+                            }
+                            <span className={`font-medium ${log.status === "sent" ? "text-emerald-400" : "text-red-400"}`}>
+                              {log.status === "sent" ? "Sent" : "Failed"}
+                            </span>
+                            <Badge className={`text-[10px] px-1.5 py-0 h-4 border ${
+                              log.emailType === "report"
+                                ? "bg-violet-500/10 text-violet-400 border-violet-500/30"
+                                : "bg-orange-500/10 text-orange-400 border-orange-500/30"
+                            }`}>
+                              {log.emailType === "report" ? "Report" : "Unmatched Alert"}
+                            </Badge>
+                            <span className="text-muted-foreground/50 ml-auto whitespace-nowrap">
+                              {new Date(log.sentAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <p className="text-muted-foreground/70 truncate">
+                            <span className="text-muted-foreground/40">To: </span>{log.recipients || "—"}
+                          </p>
+                          {log.errorMessage && (
+                            <p className="text-red-400/70 mt-1 italic">{log.errorMessage}</p>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Filter Tabs */}
           <div className="flex flex-wrap gap-2">

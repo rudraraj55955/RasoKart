@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTable, settlementsTable, merchantsTable, auditLogsTable } from "@workspace/db";
-import { eq, and, gte, lte, inArray, sql, count, or, isNull, isNotNull, gt } from "drizzle-orm";
+import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTable, settlementsTable, merchantsTable, auditLogsTable, reconciliationEmailLogsTable } from "@workspace/db";
+import { eq, and, gte, lte, inArray, sql, count, or, isNull, isNotNull, gt, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { runReconciliation } from "../helpers/reconcileEngine";
 import { loadReconConfig } from "../helpers/reconScheduler";
@@ -116,8 +116,33 @@ router.get("/runs", async (req, res, next) => {
       .limit(limitNum)
       .offset(offset);
 
+    const runIds = rows.map(r => r.run.id);
+    let lastEmailByRun: Map<number, { sentAt: Date; status: string; recipients: string }> = new Map();
+
+    if (runIds.length > 0) {
+      const emailLogs = await db
+        .select()
+        .from(reconciliationEmailLogsTable)
+        .where(inArray(reconciliationEmailLogsTable.runId, runIds))
+        .orderBy(desc(reconciliationEmailLogsTable.sentAt));
+
+      for (const log of emailLogs) {
+        if (!lastEmailByRun.has(log.runId)) {
+          lastEmailByRun.set(log.runId, {
+            sentAt: log.sentAt,
+            status: log.status,
+            recipients: log.recipients,
+          });
+        }
+      }
+    }
+
     res.json({
-      data: rows.map(r => ({ ...mapRun(r.run), merchantName: r.merchantName ?? null })),
+      data: rows.map(r => ({
+        ...mapRun(r.run),
+        merchantName: r.merchantName ?? null,
+        lastEmail: lastEmailByRun.get(r.run.id) ?? null,
+      })),
       total,
       page: pageNum,
       limit: limitNum,
@@ -263,6 +288,26 @@ router.patch("/items/:id/resolve", async (req, res, next) => {
     });
 
     res.json({ ...updated, amount: Number(updated.amount) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reconciliation/runs/:id/email-logs
+router.get("/runs/:id/email-logs", async (req, res, next) => {
+  try {
+    const runId = parseInt(req.params['id'] as string);
+
+    const [run] = await db.select().from(reconciliationRunsTable).where(eq(reconciliationRunsTable.id, runId)).limit(1);
+    if (!run) { res.status(404).json({ error: "Run not found" }); return; }
+
+    const logs = await db
+      .select()
+      .from(reconciliationEmailLogsTable)
+      .where(eq(reconciliationEmailLogsTable.runId, runId))
+      .orderBy(desc(reconciliationEmailLogsTable.sentAt));
+
+    res.json({ data: logs });
   } catch (err) {
     next(err);
   }

@@ -1,4 +1,4 @@
-import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTable, settlementsTable, merchantsTable, systemSettingsTable, usersTable } from "@workspace/db";
+import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTable, settlementsTable, merchantsTable, systemSettingsTable, usersTable, reconciliationEmailLogsTable } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
@@ -236,6 +236,7 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
 
     const html = buildUnmatchedAlertHtml(run);
     const subject = `[RasoKart] ⚠️ Unmatched Items Found — Auto-Reconciliation Run #${runId} (${run.dateFrom} to ${run.dateTo})`;
+    const recipientList = admins.map(a => a.email).join(", ");
 
     const results = await Promise.allSettled(
       admins.map(admin =>
@@ -246,12 +247,36 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
     const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
     const failed = results.length - sent;
 
+    const overallStatus = failed === results.length ? "failed" : "sent";
+    const firstError = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    const errorMessage = firstError ? String(firstError.reason) : (failed > 0 ? `${failed} of ${results.length} recipients failed` : null);
+
+    await db.insert(reconciliationEmailLogsTable).values({
+      runId,
+      emailType: "unmatched_alert",
+      recipients: recipientList,
+      status: overallStatus,
+      errorMessage,
+    });
+
     logger.info(
       { runId, totalAdmins: admins.length, sent, failed },
       "Admin unmatched-items alert emails dispatched"
     );
   } catch (err) {
     logger.error({ err, runId }, "Failed to send admin unmatched-items alert emails");
+
+    try {
+      await db.insert(reconciliationEmailLogsTable).values({
+        runId,
+        emailType: "unmatched_alert",
+        recipients: "",
+        status: "failed",
+        errorMessage: String(err),
+      });
+    } catch (logErr) {
+      logger.error({ logErr, runId }, "Failed to write email log for unmatched-items alert");
+    }
   }
 }
 
@@ -297,15 +322,35 @@ export async function sendReconciliationReportEmail(runId: number): Promise<void
 
     const [primaryRecipient, ...ccRecipients] = recipients;
 
-    await sendMail({
-      to: primaryRecipient,
-      ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
-      subject,
-      html,
-      attachments: [{ filename, content: csv, contentType: "text/csv" }],
-    });
+    try {
+      await sendMail({
+        to: primaryRecipient,
+        ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
+        subject,
+        html,
+        attachments: [{ filename, content: csv, contentType: "text/csv" }],
+      });
 
-    logger.info({ runId, recipients }, "Reconciliation report email sent");
+      await db.insert(reconciliationEmailLogsTable).values({
+        runId,
+        emailType: "report",
+        recipients: recipients.join(", "),
+        status: "sent",
+        errorMessage: null,
+      });
+
+      logger.info({ runId, recipients }, "Reconciliation report email sent");
+    } catch (sendErr) {
+      await db.insert(reconciliationEmailLogsTable).values({
+        runId,
+        emailType: "report",
+        recipients: recipients.join(", "),
+        status: "failed",
+        errorMessage: String(sendErr),
+      });
+
+      logger.error({ err: sendErr, runId }, "Failed to send reconciliation report email");
+    }
   } catch (err) {
     logger.error({ err, runId }, "Failed to send reconciliation report email");
   }
