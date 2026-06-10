@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, auditLogsTable } from "@workspace/db";
+import { db, auditLogsTable, scheduledAuditReportsTable } from "@workspace/db";
 import { eq, ilike, and, count, sql, or, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
@@ -183,6 +183,87 @@ router.post("/", async (req, res) => {
   }).returning();
 
   res.status(201).json({ ...log, createdAt: log.createdAt.toISOString() });
+});
+
+function serializeSchedule(s: typeof scheduledAuditReportsTable.$inferSelect) {
+  return {
+    ...s,
+    lastSentAt: s.lastSentAt ? s.lastSentAt.toISOString() : null,
+    createdAt: s.createdAt.toISOString(),
+    updatedAt: s.updatedAt.toISOString(),
+  };
+}
+
+router.get("/schedules", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const rows = await db.select().from(scheduledAuditReportsTable).orderBy(scheduledAuditReportsTable.createdAt);
+  res.json({ data: rows.map(serializeSchedule) });
+});
+
+router.post("/schedules", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const { frequency, recipientEmail } = req.body;
+
+  if (!frequency || !["daily", "weekly", "monthly"].includes(frequency)) {
+    res.status(400).json({ error: "frequency must be daily, weekly, or monthly" });
+    return;
+  }
+  if (!recipientEmail || typeof recipientEmail !== "string") {
+    res.status(400).json({ error: "recipientEmail is required" });
+    return;
+  }
+
+  const [schedule] = await db.insert(scheduledAuditReportsTable).values({
+    frequency,
+    recipientEmail: recipientEmail.trim(),
+    isActive: true,
+  }).returning();
+
+  res.status(201).json(serializeSchedule(schedule));
+});
+
+router.patch("/schedules/:id", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const id = parseInt(req.params['id'] as string);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { frequency, recipientEmail, isActive } = req.body;
+  const updates: Partial<{ frequency: string; recipientEmail: string; isActive: boolean; updatedAt: Date }> = {
+    updatedAt: new Date(),
+  };
+
+  if (frequency !== undefined) {
+    if (!["daily", "weekly", "monthly"].includes(frequency)) {
+      res.status(400).json({ error: "frequency must be daily, weekly, or monthly" });
+      return;
+    }
+    updates.frequency = frequency;
+  }
+  if (recipientEmail !== undefined) updates.recipientEmail = (recipientEmail as string).trim();
+  if (isActive !== undefined) updates.isActive = Boolean(isActive);
+
+  const [updated] = await db
+    .update(scheduledAuditReportsTable)
+    .set(updates)
+    .where(eq(scheduledAuditReportsTable.id, id))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Schedule not found" }); return; }
+  res.json(serializeSchedule(updated));
+});
+
+router.delete("/schedules/:id", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const id = parseInt(req.params['id'] as string);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [deleted] = await db
+    .delete(scheduledAuditReportsTable)
+    .where(eq(scheduledAuditReportsTable.id, id))
+    .returning();
+
+  if (!deleted) { res.status(404).json({ error: "Schedule not found" }); return; }
+  res.json({ success: true });
 });
 
 export default router;

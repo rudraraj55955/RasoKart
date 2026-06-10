@@ -1420,6 +1420,59 @@ export interface ApiMonitoringStats {
   recentErrors: ApiMonitoringStatsRecentErrorsItem[];
 }
 
+export type AuditReportScheduleFrequency = typeof AuditReportScheduleFrequency[keyof typeof AuditReportScheduleFrequency];
+
+
+export const AuditReportScheduleFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface AuditReportSchedule {
+  id: number;
+  frequency: AuditReportScheduleFrequency;
+  recipientEmail: string;
+  isActive: boolean;
+  /** @nullable */
+  lastSentAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AuditReportScheduleInputFrequency = typeof AuditReportScheduleInputFrequency[keyof typeof AuditReportScheduleInputFrequency];
+
+
+export const AuditReportScheduleInputFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface AuditReportScheduleInput {
+  frequency: AuditReportScheduleInputFrequency;
+  recipientEmail: string;
+}
+
+export type AuditReportSchedulePatchFrequency = typeof AuditReportSchedulePatchFrequency[keyof typeof AuditReportSchedulePatchFrequency];
+
+
+export const AuditReportSchedulePatchFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface AuditReportSchedulePatch {
+  frequency?: AuditReportSchedulePatchFrequency;
+  recipientEmail?: string;
+  isActive?: boolean;
+}
+
+export interface AuditReportScheduleListResponse {
+  data: AuditReportSchedule[];
+}
+
 export interface AdminAuditLog {
   id: number;
   adminId: number;

@@ -2576,6 +2576,98 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiMonitoringStats"
 
+  /audit-logs/schedules:
+    get:
+      operationId: listAuditReportSchedules
+      tags: [dashboard]
+      summary: List audit report schedules
+      responses:
+        "200":
+          description: List of audit report schedules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReportScheduleListResponse"
+        "403":
+          description: Forbidden
+    post:
+      operationId: createAuditReportSchedule
+      tags: [dashboard]
+      summary: Create an audit report schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditReportScheduleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReportSchedule"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+
+  /audit-logs/schedules/{id}:
+    patch:
+      operationId: updateAuditReportSchedule
+      tags: [dashboard]
+      summary: Update an audit report schedule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditReportSchedulePatch"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReportSchedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAuditReportSchedule
+      tags: [dashboard]
+      summary: Delete an audit report schedule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /audit-logs/stats:
     get:
       operationId: getAdminAuditLogStats
@@ -5375,6 +5467,56 @@ components:
               httpStatus: { type: ["integer", "null"] }
               merchantName: { type: ["string", "null"] }
               createdAt: { type: string }
+
+    AuditReportSchedule:
+      type: object
+      required: [id, frequency, recipientEmail, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        recipientEmail:
+          type: string
+        isActive:
+          type: boolean
+        lastSentAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    AuditReportScheduleInput:
+      type: object
+      required: [frequency, recipientEmail]
+      properties:
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        recipientEmail:
+          type: string
+
+    AuditReportSchedulePatch:
+      type: object
+      properties:
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        recipientEmail:
+          type: string
+        isActive:
+          type: boolean
+
+    AuditReportScheduleListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditReportSchedule"
 
     AdminAuditLog:
       type: object

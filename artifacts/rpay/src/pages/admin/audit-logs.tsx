@@ -1,17 +1,25 @@
 import { useState } from "react";
-import { useListAdminAuditLogs, useGetAdminAuditLogStats } from "@workspace/api-client-react";
+import {
+  useListAdminAuditLogs, useGetAdminAuditLogStats,
+  useListAuditReportSchedules, useCreateAuditReportSchedule,
+  useUpdateAuditReportSchedule, useDeleteAuditReportSchedule,
+  getListAuditReportSchedulesQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Shield, Search, Eye, Activity, FileDown, CalendarIcon, X,
   CheckCircle2, XCircle, UserPlus, UserCog,
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
   Users, Loader2, QrCode, Landmark,
+  Clock, Mail, Plus, Ban,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
@@ -781,6 +789,230 @@ function ActionBadge({ action }: { action: string }) {
   );
 }
 
+const FREQUENCY_LABELS: Record<string, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+};
+
+function ScheduledReportsPanel() {
+  const queryClient = useQueryClient();
+  const { data: schedulesData, isLoading } = useListAuditReportSchedules();
+  const createSchedule = useCreateAuditReportSchedule();
+  const updateSchedule = useUpdateAuditReportSchedule();
+  const deleteSchedule = useDeleteAuditReportSchedule();
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newFrequency, setNewFrequency] = useState("weekly");
+  const [adding, setAdding] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const schedules = schedulesData?.data ?? [];
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getListAuditReportSchedulesQueryKey() });
+
+  async function handleAdd() {
+    if (!newEmail.trim()) return;
+    setAdding(true);
+    try {
+      await createSchedule.mutateAsync({ data: { frequency: newFrequency as "daily" | "weekly" | "monthly", recipientEmail: newEmail.trim() } });
+      invalidate();
+      setShowAdd(false);
+      setNewEmail("");
+      setNewFrequency("weekly");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleToggleActive(id: number, isActive: boolean) {
+    await updateSchedule.mutateAsync({ id, data: { isActive: !isActive } });
+    invalidate();
+  }
+
+  async function handleDelete(id: number) {
+    setDeleting(true);
+    try {
+      await deleteSchedule.mutateAsync({ id });
+      invalidate();
+      setConfirmDeleteId(null);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-violet-400" />
+            <CardTitle className="text-base font-semibold">Scheduled Email Reports</CardTitle>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowAdd(true)}
+            className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/50"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            Add Schedule
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Automatically email audit log CSV reports on a recurring schedule. Reports are sent to the configured address.
+        </p>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => <div key={i} className="h-14 bg-muted/30 rounded-lg animate-pulse" />)}
+          </div>
+        ) : schedules.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+            <Mail className="w-7 h-7 opacity-30" />
+            <p className="text-sm">No scheduled reports configured</p>
+            <p className="text-xs opacity-60">Add a schedule to receive automatic audit log emails</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {schedules.map((s: any) => (
+              <div
+                key={s.id}
+                className={`flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${
+                  s.isActive
+                    ? "border-violet-500/20 bg-violet-500/5"
+                    : "border-border/40 bg-muted/10 opacity-60"
+                }`}
+              >
+                <div className="flex items-center justify-center w-8 h-8 rounded-md bg-violet-500/10 border border-violet-500/20 shrink-0">
+                  <Mail className="w-4 h-4 text-violet-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium truncate">{s.recipientEmail}</span>
+                    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
+                      s.isActive
+                        ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
+                        : "bg-muted/30 text-muted-foreground border-border/50"
+                    }`}>
+                      {FREQUENCY_LABELS[s.frequency] ?? s.frequency}
+                    </span>
+                    {!s.isActive && (
+                      <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400">
+                        <Ban className="w-2.5 h-2.5" />
+                        Paused
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {s.lastSentAt
+                      ? `Last sent: ${format(new Date(s.lastSentAt), "MMM d, yyyy 'at' HH:mm")}`
+                      : "Not yet sent"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleToggleActive(s.id, s.isActive)}
+                    className={`text-xs h-7 px-2 ${
+                      s.isActive
+                        ? "text-muted-foreground hover:text-amber-400"
+                        : "text-muted-foreground hover:text-emerald-400"
+                    }`}
+                    title={s.isActive ? "Pause schedule" : "Resume schedule"}
+                  >
+                    {s.isActive ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setConfirmDeleteId(s.id)}
+                    className="text-xs h-7 px-2 text-muted-foreground hover:text-rose-400"
+                    title="Delete schedule"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={showAdd} onOpenChange={open => { if (!open) { setShowAdd(false); setNewEmail(""); setNewFrequency("weekly"); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Scheduled Report</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Recipient Email</Label>
+              <Input
+                type="email"
+                placeholder="compliance@example.com"
+                value={newEmail}
+                onChange={e => setNewEmail(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleAdd(); }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Frequency</Label>
+              <Select value={newFrequency} onValueChange={setNewFrequency}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The CSV attachment will contain all audit log entries from the previous {newFrequency === "daily" ? "24 hours" : newFrequency === "weekly" ? "7 days" : "30 days"}.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowAdd(false)} disabled={adding}>Cancel</Button>
+            <Button
+              onClick={handleAdd}
+              disabled={adding || !newEmail.trim()}
+              className="bg-violet-600 hover:bg-violet-500 text-white"
+            >
+              {adding ? "Adding…" : "Add Schedule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDeleteId !== null} onOpenChange={open => { if (!open) setConfirmDeleteId(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Cancel Schedule</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will permanently remove the scheduled report. No more emails will be sent to this address.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmDeleteId(null)} disabled={deleting}>Keep</Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmDeleteId !== null && handleDelete(confirmDeleteId)}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Cancel Schedule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
 export default function AdminAuditLogs() {
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("all");
@@ -892,6 +1124,8 @@ export default function AdminAuditLogs() {
           </CardContent>
         </Card>
       </button>
+
+      <ScheduledReportsPanel />
 
       <Card>
         <CardHeader className="pb-4">

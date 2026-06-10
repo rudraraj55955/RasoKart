@@ -5,6 +5,7 @@ import { seed } from "./seed";
 import cron from "node-cron";
 import { processPendingRetries } from "./helpers/callbackRetry";
 import { initReconciliationScheduler } from "./helpers/reconScheduler";
+import { initAuditReportScheduler } from "./helpers/auditReportScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -50,6 +51,7 @@ async function main() {
   }
 
   await initReconciliationScheduler();
+  initAuditReportScheduler();
   scheduleCallbackRetryWorker();
 
   app.listen(port, (err) => {

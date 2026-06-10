@@ -37,6 +37,10 @@ import type {
   ApiKeyWithSecret,
   ApiMonitoringStats,
   AssignPlanInput,
+  AuditReportSchedule,
+  AuditReportScheduleInput,
+  AuditReportScheduleListResponse,
+  AuditReportSchedulePatch,
   AuthResponse,
   BroadcastNotificationInput,
   BroadcastNotificationResult,
@@ -8222,6 +8226,296 @@ export function useGetApiMonitoringStats<TData = Awaited<ReturnType<typeof getAp
 
 
 
+
+export const getListAuditReportSchedulesUrl = () => {
+
+
+
+
+  return `/api/audit-logs/schedules`
+}
+
+/**
+ * @summary List audit report schedules
+ */
+export const listAuditReportSchedules = async ( options?: RequestInit): Promise<AuditReportScheduleListResponse> => {
+
+  return customFetch<AuditReportScheduleListResponse>(getListAuditReportSchedulesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAuditReportSchedulesQueryKey = () => {
+    return [
+    `/api/audit-logs/schedules`
+    ] as const;
+    }
+
+
+export const getListAuditReportSchedulesQueryOptions = <TData = Awaited<ReturnType<typeof listAuditReportSchedules>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAuditReportSchedules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAuditReportSchedulesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAuditReportSchedules>>> = ({ signal }) => listAuditReportSchedules({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAuditReportSchedules>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAuditReportSchedulesQueryResult = NonNullable<Awaited<ReturnType<typeof listAuditReportSchedules>>>
+export type ListAuditReportSchedulesQueryError = ErrorType<void>
+
+
+/**
+ * @summary List audit report schedules
+ */
+
+export function useListAuditReportSchedules<TData = Awaited<ReturnType<typeof listAuditReportSchedules>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAuditReportSchedules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAuditReportSchedulesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAuditReportScheduleUrl = () => {
+
+
+
+
+  return `/api/audit-logs/schedules`
+}
+
+/**
+ * @summary Create an audit report schedule
+ */
+export const createAuditReportSchedule = async (auditReportScheduleInput: AuditReportScheduleInput, options?: RequestInit): Promise<AuditReportSchedule> => {
+
+  return customFetch<AuditReportSchedule>(getCreateAuditReportScheduleUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      auditReportScheduleInput,)
+  }
+);}
+
+
+
+
+export const getCreateAuditReportScheduleMutationOptions = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAuditReportSchedule>>, TError,{data: BodyType<AuditReportScheduleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAuditReportSchedule>>, TError,{data: BodyType<AuditReportScheduleInput>}, TContext> => {
+
+const mutationKey = ['createAuditReportSchedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAuditReportSchedule>>, {data: BodyType<AuditReportScheduleInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAuditReportSchedule(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAuditReportScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof createAuditReportSchedule>>>
+    export type CreateAuditReportScheduleMutationBody = BodyType<AuditReportScheduleInput>
+    export type CreateAuditReportScheduleMutationError = ErrorType<ErrorResponse | void>
+
+    /**
+ * @summary Create an audit report schedule
+ */
+export const useCreateAuditReportSchedule = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAuditReportSchedule>>, TError,{data: BodyType<AuditReportScheduleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAuditReportSchedule>>,
+        TError,
+        {data: BodyType<AuditReportScheduleInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAuditReportScheduleMutationOptions(options));
+    }
+
+export const getUpdateAuditReportScheduleUrl = (id: number,) => {
+
+
+
+
+  return `/api/audit-logs/schedules/${id}`
+}
+
+/**
+ * @summary Update an audit report schedule
+ */
+export const updateAuditReportSchedule = async (id: number,
+    auditReportSchedulePatch: AuditReportSchedulePatch, options?: RequestInit): Promise<AuditReportSchedule> => {
+
+  return customFetch<AuditReportSchedule>(getUpdateAuditReportScheduleUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      auditReportSchedulePatch,)
+  }
+);}
+
+
+
+
+export const getUpdateAuditReportScheduleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAuditReportSchedule>>, TError,{id: number;data: BodyType<AuditReportSchedulePatch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAuditReportSchedule>>, TError,{id: number;data: BodyType<AuditReportSchedulePatch>}, TContext> => {
+
+const mutationKey = ['updateAuditReportSchedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAuditReportSchedule>>, {id: number;data: BodyType<AuditReportSchedulePatch>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAuditReportSchedule(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAuditReportScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof updateAuditReportSchedule>>>
+    export type UpdateAuditReportScheduleMutationBody = BodyType<AuditReportSchedulePatch>
+    export type UpdateAuditReportScheduleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update an audit report schedule
+ */
+export const useUpdateAuditReportSchedule = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAuditReportSchedule>>, TError,{id: number;data: BodyType<AuditReportSchedulePatch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAuditReportSchedule>>,
+        TError,
+        {id: number;data: BodyType<AuditReportSchedulePatch>},
+        TContext
+      > => {
+      return useMutation(getUpdateAuditReportScheduleMutationOptions(options));
+    }
+
+export const getDeleteAuditReportScheduleUrl = (id: number,) => {
+
+
+
+
+  return `/api/audit-logs/schedules/${id}`
+}
+
+/**
+ * @summary Delete an audit report schedule
+ */
+export const deleteAuditReportSchedule = async (id: number, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getDeleteAuditReportScheduleUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAuditReportScheduleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAuditReportSchedule>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAuditReportSchedule>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteAuditReportSchedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAuditReportSchedule>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAuditReportSchedule(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAuditReportScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAuditReportSchedule>>>
+
+    export type DeleteAuditReportScheduleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete an audit report schedule
+ */
+export const useDeleteAuditReportSchedule = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAuditReportSchedule>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAuditReportSchedule>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAuditReportScheduleMutationOptions(options));
+    }
 
 export const getGetAdminAuditLogStatsUrl = () => {
 

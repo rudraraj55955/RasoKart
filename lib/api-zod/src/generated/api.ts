@@ -2580,6 +2580,67 @@ export const GetApiMonitoringStatsResponse = zod.object({
 
 
 /**
+ * @summary List audit report schedules
+ */
+export const ListAuditReportSchedulesResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "recipientEmail": zod.string(),
+  "isActive": zod.boolean(),
+  "lastSentAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Create an audit report schedule
+ */
+export const CreateAuditReportScheduleBody = zod.object({
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "recipientEmail": zod.string()
+})
+
+
+/**
+ * @summary Update an audit report schedule
+ */
+export const UpdateAuditReportScheduleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAuditReportScheduleBody = zod.object({
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']).optional(),
+  "recipientEmail": zod.string().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateAuditReportScheduleResponse = zod.object({
+  "id": zod.number(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "recipientEmail": zod.string(),
+  "isActive": zod.boolean(),
+  "lastSentAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete an audit report schedule
+ */
+export const DeleteAuditReportScheduleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAuditReportScheduleResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
  * @summary Get audit log summary stats
  */
 export const GetAdminAuditLogStatsResponse = zod.object({
