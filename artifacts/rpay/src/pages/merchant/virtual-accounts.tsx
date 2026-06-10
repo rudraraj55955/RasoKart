@@ -785,6 +785,35 @@ export default function MerchantVirtualAccounts() {
                       </CardContent>
                     </Card>
                   )}
+                  {(() => {
+                    const lastBalance = [...chartData].reverse().find(p => p.balance !== undefined)?.balance
+                      ?? parseFloat(selectedVa?.balance ?? "0");
+                    const lastCollection = [...chartData].reverse().find(p => p.totalCollection !== undefined)?.totalCollection
+                      ?? parseFloat(selectedVa?.totalCollection ?? "0");
+                    const totalCollected = isNaN(lastCollection) ? 0 : lastCollection;
+                    const netBalance = isNaN(lastBalance) ? 0 : lastBalance;
+                    const impliedSettlements = totalCollected - netBalance;
+                    const fmt = (v: number) =>
+                      `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    return (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-center">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Total Collected</p>
+                          <p className="text-sm font-semibold font-mono text-blue-400">{fmt(totalCollected)}</p>
+                        </div>
+                        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-center">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Net Balance</p>
+                          <p className="text-sm font-semibold font-mono text-emerald-400">{fmt(netBalance)}</p>
+                        </div>
+                        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-center">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Implied Settlements</p>
+                          <p className={`text-sm font-semibold font-mono ${impliedSettlements > 0 ? "text-amber-400" : "text-muted-foreground"}`}>
+                            {fmt(impliedSettlements)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="space-y-2">
                     {balList.map((entry: (typeof balList)[number]) => (
                       <div key={entry.id} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
