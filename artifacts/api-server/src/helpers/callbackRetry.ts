@@ -1,7 +1,9 @@
-import { db, callbackLogsTable, usersTable } from "@workspace/db";
+import { db, callbackLogsTable, usersTable, notificationsTable } from "@workspace/db";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { createNotification } from "./notifications";
+
+const WEBHOOK_FAILURE_WINDOW_HOURS = 1;
 
 async function notifyWebhookFailure(merchantId: number, url: string, attempts: number, qrCodeId: number | null): Promise<void> {
   const [user] = await db
@@ -12,13 +14,36 @@ async function notifyWebhookFailure(merchantId: number, url: string, attempts: n
 
   if (!user) return;
 
+  // Deduplication: at most one alert per merchant per configurable window.
+  // The hour bucket (UTC "YYYY-MM-DDTHH") encodes the window boundary so the
+  // same key cannot match across hours.
+  const now = new Date();
+  const windowHour = Math.floor(now.getUTCHours() / WEBHOOK_FAILURE_WINDOW_HOURS) * WEBHOOK_FAILURE_WINDOW_HOURS;
+  const hourBucket = `${now.toISOString().slice(0, 11)}${String(windowHour).padStart(2, "0")}`;
+  const dedupeKey = `webhook_failure_${merchantId}_${hourBucket}`;
+
+  const [existing] = await db
+    .select({ id: notificationsTable.id })
+    .from(notificationsTable)
+    .where(and(
+      eq(notificationsTable.userId, user.id),
+      eq(notificationsTable.type, "webhook_failure"),
+      sql`${notificationsTable.metadata}->>'dedupeKey' = ${dedupeKey}`,
+    ))
+    .limit(1);
+
+  if (existing) {
+    logger.info({ merchantId, dedupeKey }, "Webhook failure notification suppressed (duplicate within window)");
+    return;
+  }
+
   const qrLabel = qrCodeId != null ? ` (QR Code #${qrCodeId})` : "";
   await createNotification({
     userId: user.id,
     type: "webhook_failure",
     title: "Webhook Delivery Failed",
     body: `Callback to ${url} failed after ${attempts} attempt${attempts !== 1 ? "s" : ""}${qrLabel}. Please check your endpoint and ensure it returns a 2xx response.`,
-    metadata: { qrCodeId, url, attempts },
+    metadata: { qrCodeId, url, attempts, dedupeKey },
   });
 }
 
