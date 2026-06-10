@@ -11,6 +11,21 @@ import { Download, Search, X, Info } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { getToken } from "@/lib/auth";
 
+function highlightUtr(utr: string, search: string) {
+  if (!search) return <>{utr}</>;
+  const idx = utr.toLowerCase().indexOf(search.toLowerCase());
+  if (idx === -1) return <>{utr}</>;
+  return (
+    <>
+      {utr.slice(0, idx)}
+      <mark className="bg-amber-400/30 text-amber-200 rounded-sm px-0.5 not-italic font-semibold">
+        {utr.slice(idx, idx + search.length)}
+      </mark>
+      {utr.slice(idx + search.length)}
+    </>
+  );
+}
+
 const DATE_PRESETS = [
   {
     label: "Last 7 days",
@@ -242,7 +257,7 @@ export default function MerchantTransactions() {
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-10">No transactions yet</TableCell></TableRow>
               ) : data?.data?.map(tx => (
                 <TableRow key={tx.id} className={utrSearch ? "bg-amber-500/5 ring-1 ring-inset ring-amber-500/20" : ""}>
-                  <TableCell className="font-mono text-xs">{tx.utr}</TableCell>
+                  <TableCell className="font-mono text-xs">{highlightUtr(tx.utr ?? "", utrSearch)}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{tx.type}</Badge></TableCell>
                   <TableCell><StatusBadge status={tx.status} /></TableCell>
                   <TableCell className="text-right font-mono font-semibold">₹{Number(tx.amount).toLocaleString()}</TableCell>
