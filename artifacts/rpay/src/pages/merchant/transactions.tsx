@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, Search, X, Info, Sparkles, Zap } from "lucide-react";
+import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { getToken } from "@/lib/auth";
 
@@ -330,6 +330,10 @@ export default function MerchantTransactions() {
 
   const hasSmartFilter = smartFilter !== null;
   const hasUtrSearch = !!utrSearch;
+  const hasTypeFilter = type !== "all";
+  const hasStatusFilter = status !== "all";
+  const hasDateFilter = !!(activeDateFrom || activeDateTo);
+  const anyFilterActive = hasSmartFilter || hasUtrSearch || hasTypeFilter || hasStatusFilter || hasDateFilter;
 
   return (
     <div className="space-y-6">
@@ -448,6 +452,43 @@ export default function MerchantTransactions() {
               </button>
             </span>
           )}
+        </div>
+      )}
+
+      {/* Live Filter Summary Bar */}
+      {anyFilterActive && (
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider mr-1">Filter results</span>
+            <div className="flex items-center gap-1.5 text-sm">
+              <Hash className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="font-semibold text-foreground">
+                {isLoading ? <span className="inline-block w-8 h-3.5 bg-muted/60 rounded animate-pulse" /> : (data?.total ?? 0).toLocaleString()}
+              </span>
+              <span className="text-muted-foreground">transactions</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-semibold text-emerald-400">
+                {isLoading ? <span className="inline-block w-16 h-3.5 bg-muted/60 rounded animate-pulse" /> : `₹${(data?.stats?.depositVolume ?? 0).toLocaleString()}`}
+              </span>
+              <span className="text-muted-foreground">deposit volume</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm">
+              <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+              <span className="font-semibold text-green-400">
+                {isLoading ? <span className="inline-block w-6 h-3.5 bg-muted/60 rounded animate-pulse" /> : (data?.stats?.successCount ?? 0).toLocaleString()}
+              </span>
+              <span className="text-muted-foreground">success</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm">
+              <XCircle className="w-3.5 h-3.5 text-rose-400" />
+              <span className="font-semibold text-rose-400">
+                {isLoading ? <span className="inline-block w-6 h-3.5 bg-muted/60 rounded animate-pulse" /> : (data?.stats?.failedCount ?? 0).toLocaleString()}
+              </span>
+              <span className="text-muted-foreground">failed</span>
+            </div>
+          </div>
         </div>
       )}
 
