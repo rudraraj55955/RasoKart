@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { ShieldCheck } from "lucide-react";
+import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 
 export function AuthLayout({ children, title, subtitle }: { children: ReactNode, title: string, subtitle?: string }) {
   return (
@@ -9,8 +9,8 @@ export function AuthLayout({ children, title, subtitle }: { children: ReactNode,
       
       <div className="w-full max-w-md z-10">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-4 border border-primary/20">
-            <ShieldCheck className="w-6 h-6 text-primary" />
+          <div className="mb-4">
+            <RasoKartLogo size={52} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
           {subtitle && <p className="text-muted-foreground mt-2">{subtitle}</p>}

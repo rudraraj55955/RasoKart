@@ -1,3 +1,20 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+  <rect width="180" height="180" rx="36" fill="#0f172a"/>
+  <rect x="4" y="4" width="172" height="172" rx="33" fill="url(#grad)" opacity="0.15"/>
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="text-grad" x1="30" y1="50" x2="150" y2="130" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <!-- R -->
+  <text x="22" y="128" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="105" fill="url(#text-grad)" letter-spacing="-4">R</text>
+  <!-- K -->
+  <text x="82" y="128" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="105" fill="url(#text-grad)" letter-spacing="-4">K</text>
+  <!-- Accent dot -->
+  <circle cx="152" cy="42" r="10" fill="#06b6d4" opacity="0.9"/>
 </svg>

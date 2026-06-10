@@ -3,10 +3,11 @@ import { useAuth } from "@/lib/auth-context";
 import { UserRole, useGetMyPlanUsage } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, ShieldCheck, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2 } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
+import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -190,9 +191,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
       <div className="flex min-h-screen bg-background w-full">
         <Sidebar variant="sidebar" className="border-r border-border/50">
           <SidebarHeader className="p-4 flex flex-row items-center gap-2">
-            <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center border border-primary/30 shrink-0">
-              <ShieldCheck className="w-4 h-4 text-primary" />
-            </div>
+            <RasoKartLogo size={32} className="shrink-0" />
             <div className="flex flex-col flex-1 min-w-0">
               <span className="font-bold text-sm tracking-wide">RasoKart</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{portalLabel}</span>
