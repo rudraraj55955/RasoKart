@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
@@ -16,6 +16,13 @@ const formatUser = (u: any) => ({
   merchantId: u.merchantId,
   createdAt: u.createdAt,
 });
+
+async function logAudit(req: any, action: string, targetId: number | null, details: object) {
+  await db.insert(auditLogsTable).values({
+    adminId: req.user.id, adminEmail: req.user.email, action,
+    targetType: "user", targetId, details: JSON.stringify(details), ipAddress: req.ip ?? null,
+  });
+}
 
 // GET /api/users
 router.get("/", async (req, res) => {
@@ -49,29 +56,47 @@ router.post("/", async (req, res) => {
     role,
     isActive: true,
   }).returning();
+  await logAudit(req, "user_created", user.id, { email: user.email, name: user.name, role: user.role });
   res.status(201).json(formatUser(user));
 });
 
 // PUT /api/users/:id
 router.put("/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params['id'] as string);
   const { name, email, isActive, role } = req.body;
+
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
   const updates: any = {};
   if (name !== undefined) updates.name = name;
   if (email !== undefined) updates.email = email.toLowerCase();
   if (isActive !== undefined) updates.isActive = isActive;
   if (role !== undefined) updates.role = role;
+
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning();
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
   }
+
+  if (role !== undefined && role !== existing.role) {
+    await logAudit(req, "user_role_changed", user.id, {
+      email: user.email,
+      fromRole: existing.role,
+      toRole: role,
+    });
+  }
+
   res.json(formatUser(user));
 });
 
 // DELETE /api/users/:id
 router.delete("/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params['id'] as string);
   const currentUser = (req as any).user;
   if (id === currentUser.id) {
     res.status(400).json({ error: "Cannot delete your own account" });
