@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, auditLogsTable } from "@workspace/db";
-import { eq, ilike, and, count, sql, or, gte } from "drizzle-orm";
+import { eq, ilike, and, count, sql, or, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
@@ -36,7 +36,7 @@ router.get("/stats", async (req, res) => {
 router.get("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
-  const { page = "1", limit = "20", action, search } = req.query as Record<string, string>;
+  const { page = "1", limit = "20", action, search, dateFrom, dateTo } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -51,6 +51,16 @@ router.get("/", async (req, res) => {
         ilike(auditLogsTable.targetType, `%${search}%`),
       )!
     );
+  }
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    from.setUTCHours(0, 0, 0, 0);
+    if (!isNaN(from.getTime())) conditions.push(gte(auditLogsTable.createdAt, from));
+  }
+  if (dateTo) {
+    const to = new Date(dateTo);
+    to.setUTCHours(23, 59, 59, 999);
+    if (!isNaN(to.getTime())) conditions.push(lte(auditLogsTable.createdAt, to));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;

@@ -1912,6 +1912,14 @@ page?: number;
 limit?: number;
 action?: string;
 search?: string;
+/**
+ * Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)
+ */
+dateFrom?: string;
+/**
+ * Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)
+ */
+dateTo?: string;
 };
 
 export type ListMerchantFeaturesParams = {

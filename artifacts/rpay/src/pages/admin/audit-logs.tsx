@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Shield, Search, Eye, Activity, FileDown } from "lucide-react";
+import { Shield, Search, Eye, Activity, FileDown, CalendarIcon, X } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
@@ -106,15 +106,29 @@ function ActionBadge({ action }: { action: string }) {
 export default function AdminAuditLogs() {
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any | null>(null);
 
   const { data: statsData } = useGetAdminAuditLogStats();
   const csvExportsLast30Days = statsData?.csvExportsLast30Days ?? 0;
 
+  const hasDateFilter = dateFrom !== "" || dateTo !== "";
+
+  function resetFilters() {
+    setSearch("");
+    setAction("all");
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  }
+
   const { data, isLoading } = useListAdminAuditLogs({
     action: action === "all" ? undefined : action,
     search: search || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
     page,
     limit: 20,
   } as any);
@@ -163,25 +177,79 @@ export default function AdminAuditLogs() {
 
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Search by admin or action..."
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
-              />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder="Search by admin or action..."
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPage(1); }}
+                />
+              </div>
+              <Select value={action} onValueChange={v => { setAction(v); setPage(1); }}>
+                <SelectTrigger className="w-[200px]"><SelectValue placeholder="Action type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Actions</SelectItem>
+                  {ALL_ACTIONS.map(a => (
+                    <SelectItem key={a} value={a}>{ACTION_LABELS[a].label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={action} onValueChange={v => { setAction(v); setPage(1); }}>
-              <SelectTrigger className="w-[200px]"><SelectValue placeholder="Action type" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Actions</SelectItem>
-                {ALL_ACTIONS.map(a => (
-                  <SelectItem key={a} value={a}>{ACTION_LABELS[a].label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+              <div className="flex items-center gap-2 flex-1">
+                <CalendarIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="relative flex-1">
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      max={dateTo || undefined}
+                      onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                      className="text-sm [color-scheme:dark]"
+                      aria-label="Date from"
+                    />
+                    {dateFrom && (
+                      <button
+                        onClick={() => { setDateFrom(""); setPage(1); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label="Clear from date"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <span className="text-muted-foreground text-sm shrink-0">to</span>
+                  <div className="relative flex-1">
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      min={dateFrom || undefined}
+                      onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                      className="text-sm [color-scheme:dark]"
+                      aria-label="Date to"
+                    />
+                    {dateTo && (
+                      <button
+                        onClick={() => { setDateTo(""); setPage(1); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label="Clear to date"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {(hasDateFilter || search !== "" || action !== "all") && (
+                <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground hover:text-foreground shrink-0">
+                  <X className="w-3.5 h-3.5 mr-1.5" />
+                  Clear filters
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
