@@ -6,6 +6,7 @@ import {
   useGetVirtualAccountTransactions,
   useGetVirtualAccountBalanceHistory,
   useListVaBalanceAudit,
+  useBackfillVaBalanceHistory,
 } from "@workspace/api-client-react";
 import {
   LineChart,
@@ -103,6 +104,7 @@ export default function AdminVirtualAccounts() {
 
   const updateMutation = useUpdateVirtualAccount();
   const deleteMutation = useDeleteVirtualAccount();
+  const backfillMutation = useBackfillVaBalanceHistory();
 
   const { data: historyData, isLoading: historyLoading } = useGetVirtualAccountTransactions(
     selectedVa?.id ?? 0,
@@ -501,6 +503,28 @@ export default function AdminVirtualAccounts() {
                       <X className="w-3.5 h-3.5 mr-1.5" />Clear filters
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={backfillMutation.isPending}
+                    onClick={() => {
+                      backfillMutation.mutate(undefined, {
+                        onSuccess: (result) => {
+                          if (result.rowsUpdated === 0) {
+                            toast.info("No rows needed backfilling");
+                          } else {
+                            toast.success(`Backfilled ${result.rowsUpdated} history row${result.rowsUpdated !== 1 ? "s" : ""} across ${result.vasProcessed} virtual account${result.vasProcessed !== 1 ? "s" : ""}`);
+                          }
+                          qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] });
+                        },
+                        onError: () => toast.error("Backfill failed"),
+                      });
+                    }}
+                    className="text-muted-foreground whitespace-nowrap"
+                  >
+                    <History className="w-3.5 h-3.5 mr-1.5" />
+                    {backfillMutation.isPending ? "Backfilling…" : "Backfill History"}
+                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -555,11 +579,13 @@ export default function AdminVirtualAccounts() {
                               <span className="text-rose-400">₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                               <span className="text-muted-foreground">→</span>
                               <span className="text-emerald-400">₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                              {entry.backfilled && <span className="text-[10px] text-amber-500/70 italic ml-0.5">est.</span>}
                             </div>
                           ) : (
                             <div className="flex items-center gap-1 text-xs font-mono">
                               <span className="text-muted-foreground/60">₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                               <span className="text-[10px] text-muted-foreground/40 italic">unchanged</span>
+                              {entry.backfilled && <span className="text-[10px] text-amber-500/70 italic">est.</span>}
                             </div>
                           )
                         ) : (
@@ -573,11 +599,13 @@ export default function AdminVirtualAccounts() {
                               <span className="text-rose-400">₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                               <span className="text-muted-foreground">→</span>
                               <span className="text-emerald-400">₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                              {entry.backfilled && <span className="text-[10px] text-amber-500/70 italic ml-0.5">est.</span>}
                             </div>
                           ) : (
                             <div className="flex items-center gap-1 text-xs font-mono">
                               <span className="text-muted-foreground/60">₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                               <span className="text-[10px] text-muted-foreground/40 italic">unchanged</span>
+                              {entry.backfilled && <span className="text-[10px] text-amber-500/70 italic">est.</span>}
                             </div>
                           )
                         ) : (
@@ -1045,6 +1073,7 @@ export default function AdminVirtualAccounts() {
                                     <span className="text-[10px] text-muted-foreground/50 italic">unchanged</span>
                                   </>
                                 )}
+                                {entry.backfilled && <span className="text-[10px] text-amber-500/70 italic">est.</span>}
                               </div>
                             ) : null}
                             {entry.oldTotalCollection != null && entry.newTotalCollection != null ? (
@@ -1068,6 +1097,7 @@ export default function AdminVirtualAccounts() {
                                     <span className="text-[10px] text-muted-foreground/50 italic">unchanged</span>
                                   </>
                                 )}
+                                {entry.backfilled && <span className="text-[10px] text-amber-500/70 italic">est.</span>}
                               </div>
                             ) : null}
                           </div>

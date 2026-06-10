@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, boolean } from "drizzle-orm/pg-core";
 
 export const vaBalanceHistoryTable = pgTable("va_balance_history", {
   id: serial("id").primaryKey(),
@@ -11,6 +11,7 @@ export const vaBalanceHistoryTable = pgTable("va_balance_history", {
   oldTotalCollection: text("old_total_collection"),
   newTotalCollection: text("new_total_collection"),
   reason: text("reason"),
+  backfilled: boolean("backfilled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -2415,6 +2415,15 @@ export const CreateVirtualAccountBody = zod.object({
 
 
 /**
+ * @summary Backfill null balance/totalCollection fields on existing VA history rows (admin only)
+ */
+export const BackfillVaBalanceHistoryResponse = zod.object({
+  "rowsUpdated": zod.number(),
+  "vasProcessed": zod.number()
+})
+
+
+/**
  * @summary Export balance change history for all VAs of a merchant as CSV (admin only)
  */
 export const ExportMerchantBalanceHistoryQueryParams = zod.object({
@@ -2458,6 +2467,7 @@ export const ListVaBalanceAuditResponse = zod.object({
   "oldTotalCollection": zod.string().nullish(),
   "newTotalCollection": zod.string().nullish(),
   "reason": zod.string().nullish(),
+  "backfilled": zod.boolean(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -2490,6 +2500,7 @@ export const GetVirtualAccountBalanceHistoryResponse = zod.object({
   "oldTotalCollection": zod.string().nullish(),
   "newTotalCollection": zod.string().nullish(),
   "reason": zod.string().nullish(),
+  "backfilled": zod.boolean(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),

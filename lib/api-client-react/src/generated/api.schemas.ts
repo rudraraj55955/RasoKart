@@ -1371,6 +1371,7 @@ export interface VaBalanceAuditEntry {
   newTotalCollection?: string | null;
   /** @nullable */
   reason?: string | null;
+  backfilled: boolean;
   createdAt: string;
 }
 
@@ -1397,6 +1398,7 @@ export interface VaBalanceHistoryEntry {
   newTotalCollection?: string | null;
   /** @nullable */
   reason?: string | null;
+  backfilled: boolean;
   createdAt: string;
 }
 
@@ -2282,6 +2284,11 @@ export const ListVirtualAccountsStatus = {
   closed: 'closed',
   all: 'all',
 } as const;
+
+export type BackfillVaBalanceHistory200 = {
+  rowsUpdated: number;
+  vasProcessed: number;
+};
 
 export type ExportMerchantBalanceHistoryParams = {
 merchantId: number;

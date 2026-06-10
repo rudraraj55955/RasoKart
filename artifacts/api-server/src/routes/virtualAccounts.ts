@@ -164,6 +164,90 @@ router.get("/export/csv", async (req, res) => {
   res.send(csv);
 });
 
+// POST /api/virtual-accounts/backfill (admin only)
+router.post("/backfill", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { inArray } = await import("drizzle-orm");
+
+  const allVas = await db.select({
+    id: virtualAccountsTable.id,
+    balance: virtualAccountsTable.balance,
+    totalCollection: virtualAccountsTable.totalCollection,
+  }).from(virtualAccountsTable);
+
+  let rowsUpdated = 0;
+  let vasProcessed = 0;
+
+  for (const va of allVas) {
+    const rows = await db.select()
+      .from(vaBalanceHistoryTable)
+      .where(eq(vaBalanceHistoryTable.virtualAccountId, va.id))
+      .orderBy(desc(vaBalanceHistoryTable.createdAt));
+
+    const nullRows = rows.filter(r =>
+      r.oldBalance == null || r.newBalance == null ||
+      r.oldTotalCollection == null || r.newTotalCollection == null
+    );
+
+    if (!nullRows.length) continue;
+
+    vasProcessed++;
+
+    // Walk backwards from current VA state to fill in nulls
+    let runningBalance = va.balance;
+    let runningTotalCollection = va.totalCollection;
+
+    for (const row of rows) {
+      const updates: Record<string, string | boolean> = {};
+      let needsUpdate = false;
+
+      // Fill newBalance from running state if null
+      const resolvedNewBalance = row.newBalance ?? runningBalance;
+      const resolvedNewTotalCollection = row.newTotalCollection ?? runningTotalCollection;
+
+      if (row.newBalance == null) {
+        updates.newBalance = resolvedNewBalance;
+        needsUpdate = true;
+      }
+      if (row.newTotalCollection == null) {
+        updates.newTotalCollection = resolvedNewTotalCollection;
+        needsUpdate = true;
+      }
+
+      // Fill oldBalance: if null, balance was unchanged so oldBalance = resolvedNewBalance
+      if (row.oldBalance == null) {
+        updates.oldBalance = resolvedNewBalance;
+        needsUpdate = true;
+        // Balance unchanged, running state stays the same
+      } else {
+        // Balance changed; the state before this row was oldBalance
+        runningBalance = row.oldBalance;
+      }
+
+      if (row.oldTotalCollection == null) {
+        updates.oldTotalCollection = resolvedNewTotalCollection;
+        needsUpdate = true;
+        // TotalCollection unchanged, running state stays the same
+      } else {
+        runningTotalCollection = row.oldTotalCollection;
+      }
+
+      if (needsUpdate) {
+        updates.backfilled = true;
+        await db.update(vaBalanceHistoryTable)
+          .set(updates)
+          .where(eq(vaBalanceHistoryTable.id, row.id));
+        rowsUpdated++;
+      }
+    }
+  }
+
+  req.log.info({ rowsUpdated, vasProcessed }, "va_balance_history_backfill_complete");
+  res.json({ rowsUpdated, vasProcessed });
+});
+
 // GET /api/virtual-accounts/balance-history/export (admin only — all VAs for a merchant)
 router.get("/balance-history/export", async (req, res) => {
   const user = (req as any).user;
@@ -297,6 +381,7 @@ router.get("/balance-audit", async (req, res) => {
       oldTotalCollection: vaBalanceHistoryTable.oldTotalCollection,
       newTotalCollection: vaBalanceHistoryTable.newTotalCollection,
       reason: vaBalanceHistoryTable.reason,
+      backfilled: vaBalanceHistoryTable.backfilled,
       createdAt: vaBalanceHistoryTable.createdAt,
     })
     .from(vaBalanceHistoryTable)
@@ -308,9 +393,19 @@ router.get("/balance-audit", async (req, res) => {
     .offset(offset);
 
   const data = rows.map(r => ({
-    ...r,
+    id: r.id,
+    virtualAccountId: r.virtualAccountId,
+    accountNumber: r.accountNumber,
     merchantName: r.merchantName ?? null,
+    changedBy: r.changedBy,
+    changedByRole: r.changedByRole,
+    changedByName: r.changedByName,
+    oldBalance: r.oldBalance,
+    newBalance: r.newBalance,
+    oldTotalCollection: r.oldTotalCollection,
+    newTotalCollection: r.newTotalCollection,
     reason: r.reason ?? null,
+    backfilled: r.backfilled,
     createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
   }));
 
@@ -355,6 +450,7 @@ router.get("/:id/balance-history", async (req, res) => {
     oldTotalCollection: e.oldTotalCollection ?? null,
     newTotalCollection: e.newTotalCollection ?? null,
     reason: e.reason ?? null,
+    backfilled: e.backfilled,
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : String(e.createdAt),
   }));
 
