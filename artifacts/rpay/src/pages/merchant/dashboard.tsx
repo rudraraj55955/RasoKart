@@ -1,14 +1,13 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink, useGetCallbackSecret, useListApiKeys } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert, X } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { useState } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 
@@ -122,9 +121,6 @@ export default function MerchantDashboard() {
   const { data: myPlan } = useGetMyPlan();
   const { data: usage } = useGetMyPlanUsage();
   const { data: connectionsRaw, isLoading: connectionsLoading } = useListMerchantConnections();
-  const { data: callbackSecret } = useGetCallbackSecret();
-  const { data: apiKeys } = useListApiKeys();
-  const [callbackBannerDismissed, setCallbackBannerDismissed] = useState(false);
   const { data: allPaymentLinks, isLoading: paymentLinksLoading } = useQuery<PaymentLink[]>({
     queryKey: ["payment-links-all-for-dashboard"],
     queryFn: fetchAllPaymentLinks,
@@ -158,9 +154,6 @@ export default function MerchantDashboard() {
   });
 
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
-
-  const hasActiveApiKey = Array.isArray(apiKeys) && apiKeys.some(k => k.isActive);
-  const showCallbackWarning = !callbackBannerDismissed && callbackSecret != null && !callbackSecret.isSet && hasActiveApiKey;
 
   const allLinks = allPaymentLinks ?? [];
   const activeLinks = allLinks.filter(l => l.status === ListPaymentLinksStatus.active);
@@ -236,38 +229,6 @@ export default function MerchantDashboard() {
             <Link href="/merchant/plan">
               <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 shrink-0">View Plan</Button>
             </Link>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Callback secret warning */}
-      {showCallbackWarning && (
-        <Card className="border-orange-500/40 bg-orange-950/20">
-          <CardContent className="py-4 flex items-center gap-3">
-            <ShieldAlert className="w-5 h-5 text-orange-400 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-orange-400 font-medium">Callback Secret Not Configured</p>
-              <p className="text-xs text-orange-400/70">
-                You have an active API key but no callback signing secret. Without it, payment notifications on{" "}
-                <code className="font-mono bg-orange-900/30 px-1 rounded">POST /api/callbacks</code> cannot be verified and may be spoofed.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link href="/merchant/webhook">
-                <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10">
-                  Set Up Secret
-                </Button>
-              </Link>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-orange-400/60 hover:text-orange-400 hover:bg-orange-500/10"
-                onClick={() => setCallbackBannerDismissed(true)}
-                aria-label="Dismiss callback secret warning"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
           </CardContent>
         </Card>
       )}
