@@ -1031,11 +1031,30 @@ export default function AdminMerchants() {
               );
             })()}
 
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Plan Expiry Date (optional)</Label>
-              <Input type="date" value={bulkExpiresAt} onChange={e => setBulkExpiresAt(e.target.value)} min={new Date().toISOString().split("T")[0]} />
-              <p className="text-xs text-muted-foreground">Leave empty for no expiry.</p>
-            </div>
+            {(() => {
+              const plan = bulkPlanId ? plans?.find(p => String(p.id) === bulkPlanId) : undefined;
+              const isPaid = plan && plan.monthlyFee !== "0" && plan.name.toLowerCase() !== "custom";
+              return (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    Plan Expiry Date{isPaid ? <span className="text-rose-400">*</span> : <span className="text-muted-foreground">(optional)</span>}
+                  </Label>
+                  <Input type="date" value={bulkExpiresAt} onChange={e => setBulkExpiresAt(e.target.value)} min={new Date().toISOString().split("T")[0]} />
+                  {isPaid && !bulkExpiresAt ? (
+                    <div className="flex items-start gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2.5 text-rose-400">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <p className="text-xs leading-relaxed">
+                        <span className="font-semibold">Expiry date is required</span> for paid plans ({plan.name}).
+                        Set a date to enable the assign button.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{isPaid ? "" : "Leave empty for no expiry."}</p>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Short / far expiry warnings — bulk */}
             {bulkExpiresAt && (() => {
@@ -1066,9 +1085,16 @@ export default function AdminMerchants() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={closeBulkDialog}>Cancel</Button>
-            <Button onClick={handleBulkAssign} disabled={!bulkPlanId || bulkAssignMutation.isPending}>
-              {bulkAssignMutation.isPending ? "Assigning..." : `Assign to ${selected.size} Merchant${selected.size !== 1 ? "s" : ""}`}
-            </Button>
+            {(() => {
+              const plan = bulkPlanId ? plans?.find(p => String(p.id) === bulkPlanId) : undefined;
+              const isPaid = plan && plan.monthlyFee !== "0" && plan.name.toLowerCase() !== "custom";
+              const missingExpiry = isPaid && !bulkExpiresAt;
+              return (
+                <Button onClick={handleBulkAssign} disabled={!bulkPlanId || !!missingExpiry || bulkAssignMutation.isPending}>
+                  {bulkAssignMutation.isPending ? "Assigning..." : `Assign to ${selected.size} Merchant${selected.size !== 1 ? "s" : ""}`}
+                </Button>
+              );
+            })()}
           </DialogFooter>
         </DialogContent>
       </Dialog>
