@@ -150,7 +150,24 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
                 {/* Payment Link row — read or edit */}
                 {!isEditMode ? (
                   paymentLinkId != null ? (
-                    <DetailRow label="Payment Link" value={`#${paymentLinkId}`} mono />
+                    linkLoading ? (
+                      <div className="flex items-center justify-between gap-4 px-4 py-3">
+                        <span className="text-sm text-muted-foreground shrink-0">Payment Link</span>
+                        <span className="flex items-center gap-1.5 text-sm text-muted-foreground font-mono">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> #{paymentLinkId}
+                        </span>
+                      </div>
+                    ) : paymentLink ? (
+                      <div className="flex items-center justify-between gap-4 px-4 py-3">
+                        <span className="text-sm text-muted-foreground shrink-0">Payment Link</span>
+                        <div className="text-right min-w-0">
+                          <p className="text-sm font-medium truncate">{paymentLink.title}</p>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{paymentLink.slug} · #{paymentLinkId}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <DetailRow label="Payment Link" value={`#${paymentLinkId}`} mono />
+                    )
                   ) : null
                 ) : (
                   <div className="px-4 py-3 space-y-2">
