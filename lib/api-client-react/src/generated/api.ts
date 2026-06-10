@@ -47,6 +47,7 @@ import type {
   DeleteAccountDetail200,
   ErrorResponse,
   ExpiryCheckResult,
+  GetVirtualAccountBalanceHistoryParams,
   HealthStatus,
   Invoice,
   InvoiceInput,
@@ -140,6 +141,7 @@ import type {
   UserInput,
   UserListResponse,
   UserUpdate,
+  VaBalanceHistoryListResponse,
   VaTransactionListResponse,
   VirtualAccount,
   VirtualAccountInput,
@@ -6285,6 +6287,95 @@ export const useCreateVirtualAccount = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateVirtualAccountMutationOptions(options));
     }
+
+export const getGetVirtualAccountBalanceHistoryUrl = (id: number,
+    params?: GetVirtualAccountBalanceHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/virtual-accounts/${id}/balance-history?${stringifiedParams}` : `/api/virtual-accounts/${id}/balance-history`
+}
+
+/**
+ * @summary Get balance change history for a virtual account
+ */
+export const getVirtualAccountBalanceHistory = async (id: number,
+    params?: GetVirtualAccountBalanceHistoryParams, options?: RequestInit): Promise<VaBalanceHistoryListResponse> => {
+
+  return customFetch<VaBalanceHistoryListResponse>(getGetVirtualAccountBalanceHistoryUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVirtualAccountBalanceHistoryQueryKey = (id: number,
+    params?: GetVirtualAccountBalanceHistoryParams,) => {
+    return [
+    `/api/virtual-accounts/${id}/balance-history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetVirtualAccountBalanceHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getVirtualAccountBalanceHistory>>, TError = ErrorType<unknown>>(id: number,
+    params?: GetVirtualAccountBalanceHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVirtualAccountBalanceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVirtualAccountBalanceHistoryQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVirtualAccountBalanceHistory>>> = ({ signal }) => getVirtualAccountBalanceHistory(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVirtualAccountBalanceHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVirtualAccountBalanceHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getVirtualAccountBalanceHistory>>>
+export type GetVirtualAccountBalanceHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get balance change history for a virtual account
+ */
+
+export function useGetVirtualAccountBalanceHistory<TData = Awaited<ReturnType<typeof getVirtualAccountBalanceHistory>>, TError = ErrorType<unknown>>(
+ id: number,
+    params?: GetVirtualAccountBalanceHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVirtualAccountBalanceHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVirtualAccountBalanceHistoryQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetVirtualAccountTransactionsUrl = (id: number,) => {
 

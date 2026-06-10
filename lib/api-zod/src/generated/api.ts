@@ -2014,6 +2014,37 @@ export const CreateVirtualAccountBody = zod.object({
 
 
 /**
+ * @summary Get balance change history for a virtual account
+ */
+export const GetVirtualAccountBalanceHistoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetVirtualAccountBalanceHistoryQueryParams = zod.object({
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const GetVirtualAccountBalanceHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "virtualAccountId": zod.number(),
+  "changedBy": zod.number(),
+  "changedByRole": zod.string(),
+  "changedByName": zod.string(),
+  "oldBalance": zod.string().nullish(),
+  "newBalance": zod.string().nullish(),
+  "oldTotalCollection": zod.string().nullish(),
+  "newTotalCollection": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Get transaction history for a virtual account
  */
 export const GetVirtualAccountTransactionsParams = zod.object({

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, virtualAccountsTable, merchantsTable, transactionsTable } from "@workspace/db";
+import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceHistoryTable, usersTable } from "@workspace/db";
 import { eq, and, ilike, count, or, desc, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
@@ -142,6 +142,49 @@ router.post("/", async (req, res) => {
   res.status(201).json({ ...row, merchantName: null });
 });
 
+// GET /api/virtual-accounts/:id/balance-history
+router.get("/:id/balance-history", async (req, res) => {
+  const user = (req as any).user;
+  const id = parseInt(req.params['id'] as string);
+
+  const vaConditions = [eq(virtualAccountsTable.id, id)];
+  if (user.role !== "admin") vaConditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));
+
+  const [va] = await db.select().from(virtualAccountsTable).where(and(...vaConditions)).limit(1);
+  if (!va) { res.status(404).json({ error: "Virtual account not found" }); return; }
+
+  const { page = "1", limit = "50" } = req.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+  const offset = (pageNum - 1) * limitNum;
+
+  const [{ total }] = await db.select({ total: count() })
+    .from(vaBalanceHistoryTable)
+    .where(eq(vaBalanceHistoryTable.virtualAccountId, id));
+
+  const entries = await db.select()
+    .from(vaBalanceHistoryTable)
+    .where(eq(vaBalanceHistoryTable.virtualAccountId, id))
+    .orderBy(desc(vaBalanceHistoryTable.createdAt))
+    .limit(limitNum)
+    .offset(offset);
+
+  const data = entries.map(e => ({
+    id: e.id,
+    virtualAccountId: e.virtualAccountId,
+    changedBy: e.changedBy,
+    changedByRole: e.changedByRole,
+    changedByName: e.changedByName,
+    oldBalance: e.oldBalance ?? null,
+    newBalance: e.newBalance ?? null,
+    oldTotalCollection: e.oldTotalCollection ?? null,
+    newTotalCollection: e.newTotalCollection ?? null,
+    createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : String(e.createdAt),
+  }));
+
+  res.json({ data, total: Number(total), page: pageNum, limit: limitNum });
+});
+
 // GET /api/virtual-accounts/:id/transactions
 router.get("/:id/transactions", async (req, res) => {
   const user = (req as any).user;
@@ -187,30 +230,46 @@ router.put("/:id", async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const { label, status, balance, totalCollection } = req.body;
 
-  const lookupConditions = [eq(virtualAccountsTable.id, id)];
-  if (user.role !== "admin") lookupConditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));
-  const [existing] = await db.select().from(virtualAccountsTable).where(and(...lookupConditions)).limit(1);
+  const conditions = [eq(virtualAccountsTable.id, id)];
+  if (user.role !== "admin") conditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));
+
+  const [existing] = await db.select().from(virtualAccountsTable).where(and(...conditions)).limit(1);
   if (!existing) { res.status(404).json({ error: "Virtual account not found" }); return; }
 
   if (balance !== undefined || totalCollection !== undefined) {
     const effectiveBalance = balance !== undefined ? parseFloat(balance) : parseFloat(existing.balance);
     const effectiveTotalCollection = totalCollection !== undefined ? parseFloat(totalCollection) : parseFloat(existing.totalCollection);
     if (!isNaN(effectiveBalance) && !isNaN(effectiveTotalCollection) && effectiveBalance > effectiveTotalCollection) {
-      res.status(400).json({ error: "Current balance cannot exceed total collection." }); return;
+      res.status(400).json({ error: "Balance cannot exceed total collection" }); return;
     }
   }
-
   const update: Record<string, unknown> = {};
   if (label !== undefined) update.label = label;
   if (status !== undefined) update.status = status;
   if (balance !== undefined) update.balance = balance;
   if (totalCollection !== undefined) update.totalCollection = totalCollection;
 
-  const conditions = [eq(virtualAccountsTable.id, id)];
-  if (user.role !== "admin") conditions.push(eq(virtualAccountsTable.merchantId, user.merchantId!));
-
   const [row] = await db.update(virtualAccountsTable).set(update).where(and(...conditions)).returning();
   if (!row) { res.status(404).json({ error: "Virtual account not found" }); return; }
+
+  const balanceChanged = balance !== undefined && balance !== existing.balance;
+  const totalCollectionChanged = totalCollection !== undefined && totalCollection !== existing.totalCollection;
+
+  if (balanceChanged || totalCollectionChanged) {
+    const [actingUser] = await db.select({ name: usersTable.name }).from(usersTable)
+      .where(eq(usersTable.id, user.id)).limit(1);
+    await db.insert(vaBalanceHistoryTable).values({
+      virtualAccountId: id,
+      changedBy: user.id,
+      changedByRole: user.role,
+      changedByName: actingUser?.name ?? user.email ?? "Unknown",
+      oldBalance: balanceChanged ? existing.balance : null,
+      newBalance: balanceChanged ? balance : null,
+      oldTotalCollection: totalCollectionChanged ? existing.totalCollection : null,
+      newTotalCollection: totalCollectionChanged ? totalCollection : null,
+    });
+  }
+
   const [merchant] = await db.select({ businessName: merchantsTable.businessName })
     .from(merchantsTable).where(eq(merchantsTable.id, row.merchantId)).limit(1);
   res.json({ ...row, merchantName: merchant?.businessName ?? null });

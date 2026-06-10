@@ -1944,6 +1944,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/VirtualAccount"
 
+  /virtual-accounts/{id}/balance-history:
+    get:
+      operationId: getVirtualAccountBalanceHistory
+      tags: [virtual-accounts]
+      summary: Get balance change history for a virtual account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Balance change history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaBalanceHistoryListResponse"
+
   /virtual-accounts/{id}/transactions:
     get:
       operationId: getVirtualAccountTransactions
@@ -4234,6 +4261,46 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VaTransaction"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    VaBalanceHistoryEntry:
+      type: object
+      required: [id, virtualAccountId, changedBy, changedByRole, changedByName, createdAt]
+      properties:
+        id:
+          type: integer
+        virtualAccountId:
+          type: integer
+        changedBy:
+          type: integer
+        changedByRole:
+          type: string
+        changedByName:
+          type: string
+        oldBalance:
+          type: ["string", "null"]
+        newBalance:
+          type: ["string", "null"]
+        oldTotalCollection:
+          type: ["string", "null"]
+        newTotalCollection:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    VaBalanceHistoryListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VaBalanceHistoryEntry"
         total:
           type: integer
         page:

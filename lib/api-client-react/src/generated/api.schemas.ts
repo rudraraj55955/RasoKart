@@ -1092,6 +1092,30 @@ export interface VaTransactionListResponse {
   limit: number;
 }
 
+export interface VaBalanceHistoryEntry {
+  id: number;
+  virtualAccountId: number;
+  changedBy: number;
+  changedByRole: string;
+  changedByName: string;
+  /** @nullable */
+  oldBalance?: string | null;
+  /** @nullable */
+  newBalance?: string | null;
+  /** @nullable */
+  oldTotalCollection?: string | null;
+  /** @nullable */
+  newTotalCollection?: string | null;
+  createdAt: string;
+}
+
+export interface VaBalanceHistoryListResponse {
+  data: VaBalanceHistoryEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export type ApiMonitoringStatsRecentErrorsItem = {
   url?: string;
   status?: string;
@@ -1774,6 +1798,11 @@ export const ListVirtualAccountsStatus = {
   closed: 'closed',
   all: 'all',
 } as const;
+
+export type GetVirtualAccountBalanceHistoryParams = {
+page?: number;
+limit?: number;
+};
 
 export type ListAdminAuditLogsParams = {
 page?: number;

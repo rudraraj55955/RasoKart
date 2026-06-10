@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { useListVirtualAccounts, useUpdateVirtualAccount, useDeleteVirtualAccount, useGetVirtualAccountTransactions } from "@workspace/api-client-react";
+import {
+  useListVirtualAccounts,
+  useUpdateVirtualAccount,
+  useDeleteVirtualAccount,
+  useGetVirtualAccountTransactions,
+  useGetVirtualAccountBalanceHistory,
+} from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode } from "lucide-react";
+import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode, History } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
@@ -41,6 +47,7 @@ export default function AdminVirtualAccounts() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [selectedVa, setSelectedVa] = useState<VaRow | null>(null);
+  const [drawerTab, setDrawerTab] = useState<"transactions" | "history">("transactions");
   const [editVa, setEditVa] = useState<VaRow | null>(null);
   const [editForm, setEditForm] = useState({ balance: "", totalCollection: "" });
   const [editError, setEditError] = useState<string | null>(null);
@@ -64,6 +71,12 @@ export default function AdminVirtualAccounts() {
 
   const { data: historyData, isLoading: historyLoading } = useGetVirtualAccountTransactions(
     selectedVa?.id ?? 0,
+    { query: { enabled: !!selectedVa } as any }
+  );
+
+  const { data: balHistoryData, isLoading: balHistoryLoading } = useGetVirtualAccountBalanceHistory(
+    selectedVa?.id ?? 0,
+    undefined,
     { query: { enabled: !!selectedVa } as any }
   );
 
@@ -98,7 +111,12 @@ export default function AdminVirtualAccounts() {
     updateMutation.mutate(
       { id: editVa!.id, data: { balance: balance.toFixed(2), totalCollection: totalCollection.toFixed(2) } as any },
       {
-        onSuccess: () => { toast.success("Balance updated"); setEditVa(null); qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] }); },
+        onSuccess: () => {
+          toast.success("Balance updated");
+          setEditVa(null);
+          qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] });
+          qc.invalidateQueries({ queryKey: [`/api/virtual-accounts/${editVa!.id}/balance-history`] });
+        },
         onError: (err: any) => {
           const msg = err?.response?.data?.error ?? err?.response?.data?.message ?? null;
           setEditError(msg ?? "Failed to update balance.");
@@ -126,6 +144,7 @@ export default function AdminVirtualAccounts() {
 
   const txList = historyData?.data ?? [];
   const txCount = txList.length;
+  const balList = balHistoryData?.data ?? [];
 
   const handleCopyUpiId = (va: VaRow) => {
     const upiId = buildUpiId(va.accountNumber, va.ifsc);
@@ -236,7 +255,7 @@ export default function AdminVirtualAccounts() {
               ) : !data?.data?.length ? (
                 <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-10">No virtual accounts found</TableCell></TableRow>
               ) : (data.data as VaRow[]).map(va => (
-                <TableRow key={va.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedVa(va)}>
+                <TableRow key={va.id} className="cursor-pointer hover:bg-muted/30" onClick={() => { setSelectedVa(va); setDrawerTab("transactions"); }}>
                   <TableCell className="font-medium text-sm">{va.merchantName ?? "—"}</TableCell>
                   <TableCell className="text-sm">{va.accountHolder}</TableCell>
                   <TableCell className="font-mono text-xs">{va.accountNumber}</TableCell>
@@ -257,8 +276,12 @@ export default function AdminVirtualAccounts() {
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       <Button size="icon" variant="ghost" className="h-8 w-8" title="View Transactions"
-                        onClick={() => setSelectedVa(va)}>
+                        onClick={() => { setSelectedVa(va); setDrawerTab("transactions"); }}>
                         <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                        title="Balance History" onClick={() => { setSelectedVa(va); setDrawerTab("history"); }}>
+                        <History className="w-3.5 h-3.5" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
                         title="Update Balance" onClick={() => openEditBalance(va)}>
@@ -343,11 +366,11 @@ export default function AdminVirtualAccounts() {
         </DialogContent>
       </Dialog>
 
-      {/* Transaction Drawer */}
+      {/* Detail Drawer */}
       <Sheet open={!!selectedVa} onOpenChange={v => { if (!v) setSelectedVa(null); }}>
         <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader className="mb-4">
-            <SheetTitle>Transaction History</SheetTitle>
+            <SheetTitle>Virtual Account Detail</SheetTitle>
             {selectedVa && (
               <div className="text-sm text-muted-foreground space-y-0.5">
                 <p className="font-medium text-foreground">{selectedVa.merchantName ?? "Unknown Merchant"}</p>
@@ -430,56 +453,145 @@ export default function AdminVirtualAccounts() {
             </Card>
           )}
 
-          <p className="text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Transaction History</p>
+          {/* Tabs */}
+          <div className="flex gap-1 mb-4 border-b border-border">
+            <button
+              onClick={() => setDrawerTab("transactions")}
+              className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide border-b-2 transition-colors ${
+                drawerTab === "transactions"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Transaction History
+            </button>
+            <button
+              onClick={() => setDrawerTab("history")}
+              className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide border-b-2 transition-colors flex items-center gap-1.5 ${
+                drawerTab === "history"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <History className="w-3 h-3" />
+              Balance Changes
+              {balList.length > 0 && (
+                <span className="ml-1 bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {balHistoryData?.total ?? balList.length}
+                </span>
+              )}
+            </button>
+          </div>
 
-          {historyLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-12 bg-muted/50 rounded animate-pulse" />
-              ))}
-            </div>
-          ) : !txList.length ? (
-            <div className="text-center text-muted-foreground py-12">
-              <p className="text-sm">No transactions found</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>UTR</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {txList.map(tx => (
-                  <TableRow key={tx.id}>
-                    <TableCell className="font-mono text-xs">#{tx.id}</TableCell>
-                    <TableCell className="font-mono text-sm font-semibold">
-                      ₹{parseFloat(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs capitalize">{tx.type}</Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{tx.utr ?? "—"}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={tx.status === "success" ? "default" : tx.status === "failed" ? "destructive" : "secondary"}
-                        className="text-xs"
-                      >
-                        {tx.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {format(new Date(tx.createdAt), "MMM d, yyyy HH:mm")}
-                    </TableCell>
-                  </TableRow>
+          {drawerTab === "transactions" ? (
+            historyLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="h-12 bg-muted/50 rounded animate-pulse" />
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            ) : !txList.length ? (
+              <div className="text-center text-muted-foreground py-12">
+                <p className="text-sm">No transactions found</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>UTR</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {txList.map(tx => (
+                    <TableRow key={tx.id}>
+                      <TableCell className="font-mono text-xs">#{tx.id}</TableCell>
+                      <TableCell className="font-mono text-sm font-semibold">
+                        ₹{parseFloat(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs capitalize">{tx.type}</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{tx.utr ?? "—"}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={tx.status === "success" ? "default" : tx.status === "failed" ? "destructive" : "secondary"}
+                          className="text-xs"
+                        >
+                          {tx.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {format(new Date(tx.createdAt), "MMM d, yyyy HH:mm")}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )
+          ) : (
+            balHistoryLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-16 bg-muted/50 rounded animate-pulse" />
+                ))}
+              </div>
+            ) : !balList.length ? (
+              <div className="text-center text-muted-foreground py-12">
+                <History className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No balance changes recorded yet</p>
+                <p className="text-xs mt-1 opacity-60">Manual balance edits will appear here</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {balList.map(entry => (
+                  <div key={entry.id} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${entry.changedByRole === "admin" ? "bg-violet-400" : "bg-blue-400"}`} />
+                        <span className="text-sm font-medium">{entry.changedByName}</span>
+                        <Badge variant="outline" className="text-[10px] capitalize px-1.5">
+                          {entry.changedByRole}
+                        </Badge>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(entry.createdAt), "MMM d, yyyy HH:mm")}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {entry.oldBalance != null && entry.newBalance != null && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground w-28 shrink-0">Balance</span>
+                          <span className="font-mono text-rose-400">
+                            ₹{parseFloat(entry.oldBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="font-mono text-emerald-400">
+                            ₹{parseFloat(entry.newBalance).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
+                      {entry.oldTotalCollection != null && entry.newTotalCollection != null && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground w-28 shrink-0">Total Collection</span>
+                          <span className="font-mono text-rose-400">
+                            ₹{parseFloat(entry.oldTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="font-mono text-emerald-400">
+                            ₹{parseFloat(entry.newTotalCollection).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </SheetContent>
       </Sheet>

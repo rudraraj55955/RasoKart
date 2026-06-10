@@ -24,3 +24,4 @@ export * from "./providerVisibility";
 export * from "./notifications";
 export * from "./reconciliation";
 export * from "./paymentLinks";
+export * from "./vaBalanceHistory";
