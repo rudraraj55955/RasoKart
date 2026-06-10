@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListProviders } from "@workspace/api-client-react";
+import { useListProviders, useListMerchantConnections } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, AtSign, Smartphone, Store, Landmark, Building, Zap, RefreshCw } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Search, AtSign, Smartphone, Store, Landmark, Building, Zap, RefreshCw, Link2 } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_META: Record<string, { label: string; color: string; live: boolean }> = {
@@ -38,6 +39,23 @@ function ProviderIcon({ slug }: { slug: string }) {
   return ICONS[slug] ?? <Zap className="w-7 h-7 text-muted-foreground" />;
 }
 
+function usagePct(used: number, limit: number) {
+  if (limit <= 0) return 0;
+  return Math.min(100, Math.round((used / limit) * 100));
+}
+
+function usageColor(pct: number) {
+  if (pct >= 100) return "text-rose-400";
+  if (pct >= 80) return "text-amber-400";
+  return "text-emerald-400";
+}
+
+function progressColor(pct: number) {
+  if (pct >= 100) return "[&>div]:bg-rose-500";
+  if (pct >= 80) return "[&>div]:bg-amber-500";
+  return "[&>div]:bg-emerald-500";
+}
+
 export default function MerchantConnect() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -47,6 +65,8 @@ export default function MerchantConnect() {
 
   const { data, isLoading, refetch } = useListProviders();
   const providers = data?.data ?? [];
+
+  const { data: connections, isLoading: connectionsLoading } = useListMerchantConnections();
 
   const filtered = providers.filter(p => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase());
@@ -78,6 +98,66 @@ export default function MerchantConnect() {
         <span><span className="font-semibold text-emerald-400">{liveProviders.length}</span> ready to connect</span>
         {comingSoon.length > 0 && (<><span>·</span><span><span className="font-semibold text-sky-400">{comingSoon.length}</span> coming soon</span></>)}
       </div>
+
+      {/* Active connections with monthly usage */}
+      {(connectionsLoading || (connections && connections.length > 0)) && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+            <Link2 className="w-3.5 h-3.5" /> Your Active Connections
+          </h2>
+          {connectionsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {Array.from({ length: 2 }).map((_, i) => <Card key={i} className="animate-pulse h-28 bg-muted/30" />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {connections!.map(conn => {
+                const pct = usagePct(conn.monthlyUsed, conn.monthlyLimit);
+                const hasLimit = conn.monthlyLimit > 0;
+                const usedFmt = `₹${Math.round(conn.monthlyUsed).toLocaleString("en-IN")}`;
+                const limitFmt = hasLimit ? `₹${Math.round(conn.monthlyLimit).toLocaleString("en-IN")}` : null;
+                return (
+                  <Card key={conn.id} className={`border-border/60 bg-card ${!conn.isActive ? "opacity-60" : ""}`}>
+                    <CardContent className="pt-4 pb-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-background border border-border/60 flex items-center justify-center shrink-0">
+                            <ProviderIcon slug={conn.provider} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold capitalize">{conn.provider.replace(/_/g, " ")}</p>
+                            <p className="text-xs text-muted-foreground">Provider connection</p>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className={`text-xs ${conn.isActive ? "border-emerald-500/40 text-emerald-400" : "border-muted text-muted-foreground"}`}>
+                          {conn.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">Used this month</span>
+                          <span className={`font-semibold tabular-nums ${hasLimit ? usageColor(pct) : "text-foreground"}`}>
+                            {usedFmt}{hasLimit ? ` / ${limitFmt}` : ""}
+                          </span>
+                        </div>
+                        {hasLimit && (
+                          <>
+                            <Progress value={pct} className={`h-1.5 bg-muted/40 ${progressColor(pct)}`} />
+                            <p className="text-xs text-muted-foreground text-right">{pct}% of monthly limit</p>
+                          </>
+                        )}
+                        {!hasLimit && (
+                          <p className="text-xs text-muted-foreground">No monthly limit set</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">

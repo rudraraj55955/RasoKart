@@ -156,6 +156,7 @@ export default function AdminQrProviders() {
                 <TableHead>Merchant</TableHead>
                 <TableHead>Provider</TableHead>
                 <TableHead>Monthly Limit</TableHead>
+                <TableHead>Used This Month</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Assigned</TableHead>
                 <TableHead></TableHead>
@@ -164,11 +165,11 @@ export default function AdminQrProviders() {
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 6 }).map((_, i) => (
-                  <TableRow key={i}>{Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
+                  <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
                 ))
               ) : !rows.length ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-16">
+                  <TableCell colSpan={7} className="text-center py-16">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <Link2 className="w-8 h-8 opacity-30" />
                       <p className="text-sm">No QR provider assignments yet</p>
@@ -176,17 +177,33 @@ export default function AdminQrProviders() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : rows.map((row: any) => (
+              ) : rows.map((row: any) => {
+                const limit = Number(row.monthlyLimit ?? 0);
+                const used = Number(row.monthlyUsed ?? 0);
+                const hasLimit = limit > 0;
+                const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                const usedColor = hasLimit && pct >= 100 ? "text-rose-400" : hasLimit && pct >= 80 ? "text-amber-400" : "text-foreground";
+                return (
                 <TableRow key={row.id}>
                   <TableCell>
                     <div>
-                      <p className="text-sm font-medium">{row.merchantName ?? `Merchant #${row.merchantId}`}</p>
-                      <p className="text-xs text-muted-foreground">ID #{row.merchantId}</p>
+                      <p className="text-sm font-medium">{row.businessName ?? row.merchantName ?? `Merchant #${row.merchantId}`}</p>
+                      <p className="text-xs text-muted-foreground">{row.merchantEmail ?? `ID #${row.merchantId}`}</p>
                     </div>
                   </TableCell>
                   <TableCell><ProviderBadge provider={row.provider} /></TableCell>
                   <TableCell className="font-mono text-sm">
-                    {Number(row.monthlyLimit) > 0 ? `₹${Number(row.monthlyLimit).toLocaleString("en-IN")}` : "No limit"}
+                    {hasLimit ? `₹${limit.toLocaleString("en-IN")}` : <span className="text-muted-foreground text-xs">No limit</span>}
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <p className={`font-mono text-sm tabular-nums ${usedColor}`}>
+                        ₹{used.toLocaleString("en-IN")}
+                      </p>
+                      {hasLimit && (
+                        <p className="text-xs text-muted-foreground">{pct}% of limit</p>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-xs ${row.isActive ? "border-emerald-500/40 text-emerald-400" : "border-muted text-muted-foreground"}`}>
@@ -207,7 +224,8 @@ export default function AdminQrProviders() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
