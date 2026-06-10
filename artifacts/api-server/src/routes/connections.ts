@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { db, merchantConnectionsTable, merchantsTable, transactionsTable, paymentLinksTable, notificationsTable } from "@workspace/db";
+import { db, merchantConnectionsTable, merchantsTable, transactionsTable, paymentLinksTable } from "@workspace/db";
 import { eq, and, ilike, or, count, sql, sum, isNull, gte, lt } from "drizzle-orm";
+import { maybeNotifyProviderLimit, maybeNotifyProviderLimitReset } from "../helpers/providerLimitNotifier";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { deriveUpiPayloadFromConnections } from "../helpers/upiPayload";
 import { logger } from "../lib/logger";
@@ -135,16 +136,22 @@ router.get("/", async (req, res) => {
 
   // Merchant: own connections
   const merchantId: number = user.merchantId!;
-  const rows = await db.select().from(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, merchantId));
+  const [rows, merchantRow] = await Promise.all([
+    db.select().from(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, merchantId)),
+    db.select({ email: merchantsTable.email, businessName: merchantsTable.businessName })
+      .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1),
+  ]);
   const connUsageMap = await getMonthlyUsedByConnectionId(merchantId);
+  const merchantEmail = merchantRow[0]?.email ?? "";
+  const merchantName = merchantRow[0]?.businessName ?? "";
 
-  // Fire-and-forget: create provider limit and reset notifications as needed
+  // Fire-and-forget: create provider limit and reset notifications (+ email alerts) as needed
   const formatted = rows.map(r => formatConn(r, connUsageMap.get(r.id) ?? 0));
   Promise.all(
     formatted
       .filter(r => r.isActive && r.monthlyLimit > 0)
       .flatMap(r => [
-        maybeNotifyProviderLimit(user.id, r.provider, r.monthlyUsed, r.monthlyLimit),
+        maybeNotifyProviderLimit(user.id, r.provider, r.monthlyUsed, r.monthlyLimit, merchantEmail, merchantName),
         maybeNotifyProviderLimitReset(user.id, r.provider, r.monthlyLimit),
       ])
   ).catch((err) => {
@@ -153,115 +160,6 @@ router.get("/", async (req, res) => {
 
   res.json(formatted);
 });
-
-/**
- * Creates provider limit notifications when usage crosses 80% or 100% of the
- * monthly limit. Both thresholds are evaluated independently so that jumping
- * straight from <80% to >=100% fires both notifications. Deduplication is
- * enforced by a partial unique index in the DB (notifications_provider_limit_dedup_idx),
- * with `.onConflictDoNothing()` as the DB-level guard against races.
- */
-async function maybeNotifyProviderLimit(
-  userId: number,
-  provider: string,
-  monthlyUsed: number,
-  monthlyLimit: number,
-): Promise<void> {
-  if (monthlyLimit <= 0) return;
-  const pct = monthlyUsed / monthlyLimit;
-  if (pct < 0.8) return;
-
-  const now = new Date();
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const usedFmt = Math.round(monthlyUsed).toLocaleString("en-IN");
-  const limitFmt = Math.round(monthlyLimit).toLocaleString("en-IN");
-  const pctStr = Math.round(pct * 100);
-
-  // Both thresholds are checked independently:
-  // - warning fires once when usage first crosses 80%
-  // - reached fires once when usage first hits 100%
-  // If usage jumps straight from <80% to >=100%, both notifications are created.
-  const candidates: Array<{ type: string; title: string; body: string }> = [];
-
-  if (pct >= 0.8) {
-    candidates.push({
-      type: "provider_limit_warning",
-      title: `${provider} limit at ${pctStr}%`,
-      body: `You have used ₹${usedFmt} of your ₹${limitFmt} monthly limit for ${provider}. Consider upgrading your plan or reducing usage.`,
-    });
-  }
-
-  if (pct >= 1) {
-    candidates.push({
-      type: "provider_limit_reached",
-      title: `${provider} monthly limit reached`,
-      body: `You have used ₹${usedFmt} of your ₹${limitFmt} monthly limit for ${provider}. New payments via this provider may be rejected until next month.`,
-    });
-  }
-
-  for (const entry of candidates) {
-    // onConflictDoNothing() is the DB-level idempotency guard backed by the
-    // partial unique index `notifications_provider_limit_dedup_idx` created in seed.ts.
-    await db.insert(notificationsTable)
-      .values({
-        userId,
-        type: entry.type,
-        title: entry.title,
-        body: entry.body,
-        metadata: { provider, monthKey },
-        isRead: false,
-      })
-      .onConflictDoNothing();
-  }
-}
-
-/**
- * Creates a `provider_limit_reset` notification when a new calendar month begins
- * and the merchant had a `provider_limit_reached` notification last month for
- * the same provider. Fires at most once per provider per month — deduplicated by
- * the partial unique index `notifications_provider_limit_reset_dedup_idx`.
- */
-async function maybeNotifyProviderLimitReset(
-  userId: number,
-  provider: string,
-  monthlyLimit: number,
-): Promise<void> {
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-  // Compute last month
-  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}`;
-
-  // Check if this merchant had a provider_limit_reached notification last month
-  const [prior] = await db
-    .select({ id: notificationsTable.id })
-    .from(notificationsTable)
-    .where(
-      and(
-        eq(notificationsTable.userId, userId),
-        eq(notificationsTable.type, "provider_limit_reached"),
-        sql`${notificationsTable.metadata}->>'provider' = ${provider}`,
-        sql`${notificationsTable.metadata}->>'monthKey' = ${lastMonthKey}`,
-      )
-    )
-    .limit(1);
-
-  if (!prior) return;
-
-  const limitFmt = Math.round(monthlyLimit).toLocaleString("en-IN");
-
-  await db.insert(notificationsTable)
-    .values({
-      userId,
-      type: "provider_limit_reset",
-      title: `${provider} monthly limit has reset`,
-      body: `Your monthly limit for ${provider} has reset to ₹${limitFmt}. Payments via this provider are now available again for the new month.`,
-      metadata: { provider, currentMonthKey, lastMonthKey },
-      isRead: false,
-    })
-    .onConflictDoNothing();
-}
 
 /**
  * After a connection is created or updated, backfill upiPayload on all of the

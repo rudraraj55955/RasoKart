@@ -6,6 +6,7 @@ import cron from "node-cron";
 import { processPendingRetries } from "./helpers/callbackRetry";
 import { initReconciliationScheduler } from "./helpers/reconScheduler";
 import { initAuditReportScheduler } from "./helpers/auditReportScheduler";
+import { startProviderLimitAlertScheduler } from "./helpers/providerLimitScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -52,6 +53,7 @@ async function main() {
 
   await initReconciliationScheduler();
   initAuditReportScheduler();
+  startProviderLimitAlertScheduler();
   scheduleCallbackRetryWorker();
 
   app.listen(port, (err) => {
