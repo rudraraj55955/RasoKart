@@ -335,6 +335,57 @@ export const UnsuspendMerchantResponse = zod.object({
 
 
 /**
+ * @summary Get QR and resource usage for a merchant (admin only)
+ */
+export const GetMerchantPlanUsageAdminParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetMerchantPlanUsageAdminResponse = zod.object({
+  "planName": zod.string().optional(),
+  "isExpired": zod.boolean().optional(),
+  "expiresAt": zod.string().nullish(),
+  "daysUntilExpiry": zod.number().nullish(),
+  "apiAccess": zod.boolean().optional(),
+  "webhookAccess": zod.boolean().optional(),
+  "settlementFee": zod.string().optional(),
+  "depositFee": zod.string().optional(),
+  "dynamicQr": zod.object({
+  "used": zod.number(),
+  "limit": zod.number(),
+  "usedCount": zod.number().optional(),
+  "expiredCount": zod.number().optional()
+}),
+  "staticQr": zod.object({
+  "used": zod.number(),
+  "limit": zod.number(),
+  "usedCount": zod.number().optional(),
+  "expiredCount": zod.number().optional()
+}),
+  "virtualAccount": zod.object({
+  "used": zod.number(),
+  "limit": zod.number()
+}),
+  "paymentLink": zod.object({
+  "used": zod.number(),
+  "limit": zod.number()
+}),
+  "payout": zod.object({
+  "used": zod.number(),
+  "limit": zod.number()
+}),
+  "dailyTransaction": zod.object({
+  "used": zod.number(),
+  "limit": zod.number()
+}),
+  "monthlyTransaction": zod.object({
+  "used": zod.number(),
+  "limit": zod.number()
+})
+})
+
+
+/**
  * @summary Get plan history for a merchant (admin only)
  */
 export const GetMerchantPlanHistoryParams = zod.object({

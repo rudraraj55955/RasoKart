@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { getMerchantPlanUsage } from "../helpers/planLimits";
 
 const router = Router();
 
@@ -229,6 +230,14 @@ router.get("/:id/plan", requireAdmin, async (req, res) => {
     .where(eq(merchantPlansTable.merchantId, id)).limit(1);
   if (rows.length === 0 || !rows[0].plan) { res.status(404).json({ error: "No plan assigned" }); return; }
   res.json(buildPlanResponse(rows[0].mp, rows[0].plan!));
+});
+
+// GET /api/merchants/:id/plan/usage
+router.get("/:id/plan/usage", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params["id"] as string);
+  const usage = await getMerchantPlanUsage(id);
+  if (!usage) { res.status(404).json({ error: "No plan assigned" }); return; }
+  res.json(usage);
 });
 
 // GET /api/merchants/:id/plan/history

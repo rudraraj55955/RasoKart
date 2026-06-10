@@ -6,7 +6,7 @@ import {
   useUpgradeMerchantPlan, useDowngradeMerchantPlan, useSuspendMerchantPlan,
   useReinstateMerchantPlan, useRenewMerchantPlan, useBulkAssignMerchantPlan,
   useBulkApproveMerchants, useBulkSuspendMerchants,
-  useUpdateMerchantBranding,
+  useUpdateMerchantBranding, useGetMerchantPlanUsageAdmin,
   getListMerchantsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -81,6 +81,10 @@ export default function AdminMerchants() {
   const { data: planHistory } = useGetMerchantPlanHistory(
     assignPlanMerchant?.id ?? 0,
     { query: { enabled: !!assignPlanMerchant && showHistory, queryKey: ["getMerchantPlanHistory", assignPlanMerchant?.id ?? 0] } }
+  );
+  const { data: merchantPlanUsage } = useGetMerchantPlanUsageAdmin(
+    assignPlanMerchant?.id ?? 0,
+    { query: { enabled: !!assignPlanMerchant && !!currentMerchantPlan, queryKey: ["getMerchantPlanUsageAdmin", assignPlanMerchant?.id ?? 0] } }
   );
   const updateBrandingMutation = useUpdateMerchantBranding();
   const approveMutation = useApproveMerchant();
@@ -840,6 +844,55 @@ export default function AdminMerchants() {
                     Expiry
                   </div>
                 </div>
+
+                {/* QR Code lifecycle breakdown */}
+                {merchantPlanUsage && (
+                  <div className="border-t border-primary/10 pt-2 space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">QR Code Usage</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-md bg-background/50 border border-border/40 px-2.5 py-2 space-y-1.5">
+                        <p className="text-xs font-medium text-foreground">Dynamic QR</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                          <span className="text-emerald-400">
+                            <span className="font-semibold">{merchantPlanUsage.dynamicQr.used}</span>
+                            <span className="text-muted-foreground"> active</span>
+                          </span>
+                          <span className="text-sky-400">
+                            <span className="font-semibold">{merchantPlanUsage.dynamicQr.usedCount ?? 0}</span>
+                            <span className="text-muted-foreground"> used</span>
+                          </span>
+                          <span className="text-rose-400">
+                            <span className="font-semibold">{merchantPlanUsage.dynamicQr.expiredCount ?? 0}</span>
+                            <span className="text-muted-foreground"> expired</span>
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Limit: {merchantPlanUsage.dynamicQr.limit >= 999 ? "∞" : merchantPlanUsage.dynamicQr.limit}
+                        </div>
+                      </div>
+                      <div className="rounded-md bg-background/50 border border-border/40 px-2.5 py-2 space-y-1.5">
+                        <p className="text-xs font-medium text-foreground">Static QR</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                          <span className="text-emerald-400">
+                            <span className="font-semibold">{merchantPlanUsage.staticQr.used}</span>
+                            <span className="text-muted-foreground"> active</span>
+                          </span>
+                          <span className="text-sky-400">
+                            <span className="font-semibold">{merchantPlanUsage.staticQr.usedCount ?? 0}</span>
+                            <span className="text-muted-foreground"> used</span>
+                          </span>
+                          <span className="text-rose-400">
+                            <span className="font-semibold">{merchantPlanUsage.staticQr.expiredCount ?? 0}</span>
+                            <span className="text-muted-foreground"> expired</span>
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Limit: {merchantPlanUsage.staticQr.limit >= 999 ? "∞" : merchantPlanUsage.staticQr.limit}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/5 p-3 flex items-center gap-2 text-muted-foreground">

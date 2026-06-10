@@ -1222,6 +1222,83 @@ export const useUnsuspendMerchant = <TError = ErrorType<unknown>,
       return useMutation(getUnsuspendMerchantMutationOptions(options));
     }
 
+export const getGetMerchantPlanUsageAdminUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/plan/usage`
+}
+
+/**
+ * @summary Get QR and resource usage for a merchant (admin only)
+ */
+export const getMerchantPlanUsageAdmin = async (id: number, options?: RequestInit): Promise<PlanUsage> => {
+
+  return customFetch<PlanUsage>(getGetMerchantPlanUsageAdminUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMerchantPlanUsageAdminQueryKey = (id: number,) => {
+    return [
+    `/api/merchants/${id}/plan/usage`
+    ] as const;
+    }
+
+
+export const getGetMerchantPlanUsageAdminQueryOptions = <TData = Awaited<ReturnType<typeof getMerchantPlanUsageAdmin>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlanUsageAdmin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMerchantPlanUsageAdminQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMerchantPlanUsageAdmin>>> = ({ signal }) => getMerchantPlanUsageAdmin(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlanUsageAdmin>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMerchantPlanUsageAdminQueryResult = NonNullable<Awaited<ReturnType<typeof getMerchantPlanUsageAdmin>>>
+export type GetMerchantPlanUsageAdminQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get QR and resource usage for a merchant (admin only)
+ */
+
+export function useGetMerchantPlanUsageAdmin<TData = Awaited<ReturnType<typeof getMerchantPlanUsageAdmin>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantPlanUsageAdmin>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMerchantPlanUsageAdminQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getGetMerchantPlanHistoryUrl = (id: number,) => {
 
 
