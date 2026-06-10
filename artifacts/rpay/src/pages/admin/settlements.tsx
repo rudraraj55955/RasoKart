@@ -9,6 +9,7 @@ import {
   useMarkSettlementPaid,
   getListSettlementsQueryKey,
   getGetSettlementStatsQueryKey,
+  listSettlements,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -24,8 +26,9 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { ChevronDown, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock, CheckCircle2, DollarSign, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock, CheckCircle2, DollarSign, RefreshCw, CheckSquare } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 type ActionType = "process" | "approve" | "reject" | "hold" | "mark-paid";
 
@@ -35,7 +38,6 @@ interface ActionModal {
   merchantName?: string | null;
   amount: number;
 }
-
 
 export default function AdminSettlements() {
   const qc = useQueryClient();
@@ -49,6 +51,13 @@ export default function AdminSettlements() {
   const [remark, setRemark] = useState("");
   const [refNumber, setRefNumber] = useState("");
   const [actionError, setActionError] = useState("");
+
+  // Bulk selection state
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selectAllMode, setSelectAllMode] = useState(false);
+  const [bulkAction, setBulkAction] = useState<"approve" | "reject" | null>(null);
+  const [bulkRemark, setBulkRemark] = useState("");
+  const [bulkError, setBulkError] = useState("");
 
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(() => {
     qc.invalidateQueries({ queryKey: getListSettlementsQueryKey() });
@@ -140,6 +149,109 @@ export default function AdminSettlements() {
     "mark-paid": "text-teal-400",
   };
 
+  // Cross-page selection helpers
+  const total = data?.total ?? 0;
+  const pageItems = filtered ?? [];
+  const allPageIds = pageItems.map(s => s.id);
+  const allPageSelected = allPageIds.length > 0 && allPageIds.every(id => selected.has(id));
+  const somePageSelected = allPageIds.some(id => selected.has(id));
+  const selectedOnPage = allPageIds.filter(id => selected.has(id)).length;
+  const selectedOffPage = selected.size - selectedOnPage;
+
+  const clearSelection = () => { setSelected(new Set()); setSelectAllMode(false); };
+
+  const handleSearchChange = (v: string) => { setSearch(v); setPage(1); clearSelection(); };
+  const handleStatusChange = (v: string) => { setStatus(v); setPage(1); clearSelection(); };
+
+  const handleSelectAllPages = async () => {
+    const PAGE_SIZE = 100;
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    try {
+      const pages = await Promise.all(
+        Array.from({ length: totalPages }, (_, i) =>
+          listSettlements({
+            status: status !== "all" ? (status as any) : undefined,
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+            page: i + 1,
+            limit: PAGE_SIZE,
+          })
+        )
+      );
+      const allIds = pages.flatMap(p => p.data.map(s => s.id));
+      if (allIds.length !== total) {
+        toast.error("Could not select all settlements — please try again");
+        return;
+      }
+      setSelected(new Set(allIds));
+      setSelectAllMode(true);
+    } catch {
+      toast.error("Failed to select all settlements");
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (allPageSelected) {
+      setSelected(prev => {
+        const next = new Set(prev);
+        allPageIds.forEach(id => next.delete(id));
+        return next;
+      });
+      setSelectAllMode(false);
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        allPageIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    setSelectAllMode(false);
+  };
+
+  // Bulk approve/reject via sequential individual mutations
+  const handleBulkAction = async () => {
+    if (!bulkAction || selected.size === 0) return;
+    setBulkError("");
+    if (!bulkRemark.trim()) {
+      setBulkError("Remark is required");
+      return;
+    }
+
+    const ids = Array.from(selected);
+    let succeeded = 0;
+    let failed = 0;
+
+    await Promise.allSettled(
+      ids.map(id =>
+        (bulkAction === "approve"
+          ? approveMut.mutateAsync({ id, data: { remark: bulkRemark } })
+          : rejectMut.mutateAsync({ id, data: { remark: bulkRemark } })
+        ).then(() => { succeeded++; }).catch(() => { failed++; })
+      )
+    );
+
+    qc.invalidateQueries({ queryKey: getListSettlementsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetSettlementStatsQueryKey() });
+
+    if (failed === 0) {
+      toast.success(`${succeeded} settlement${succeeded !== 1 ? "s" : ""} ${bulkAction === "approve" ? "approved" : "rejected"}`);
+    } else {
+      toast.warning(`${succeeded} succeeded, ${failed} failed`);
+    }
+
+    setBulkAction(null);
+    setBulkRemark("");
+    clearSelection();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -215,15 +327,76 @@ export default function AdminSettlements() {
         ))}
       </div>
 
+      {/* Bulk action toolbar */}
+      {selected.size > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5">
+          <div className="flex items-center gap-3 flex-wrap">
+            <CheckSquare className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-sm font-medium text-primary">
+              {selectAllMode ? `All ${total} settlements selected` : `${selected.size} settlement${selected.size !== 1 ? "s" : ""} selected`}
+              {!selectAllMode && selectedOffPage > 0 && (
+                <span className="text-xs text-primary/60 ml-1.5">(includes {selectedOffPage} from other page{selectedOffPage !== 1 ? "s" : ""})</span>
+              )}
+            </span>
+            <div className="flex gap-2 ml-auto flex-wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                onClick={() => { setBulkRemark(""); setBulkError(""); setBulkAction("approve"); }}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-rose-400 border-rose-500/30 hover:bg-rose-500/10"
+                onClick={() => { setBulkRemark(""); setBulkError(""); setBulkAction("reject"); }}
+              >
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Reject
+              </Button>
+              <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={clearSelection}>
+                Clear
+              </Button>
+            </div>
+          </div>
+          {/* Select all pages banner */}
+          {!selectAllMode && allPageSelected && total > pageItems.length && (
+            <div className="text-xs text-center text-primary/70 border-t border-primary/20 pt-2">
+              All {pageItems.length} settlements on this page are selected.{" "}
+              <button
+                className="underline text-primary font-medium hover:text-primary/80"
+                onClick={handleSelectAllPages}
+              >
+                Select all {total} settlements
+              </button>
+            </div>
+          )}
+          {selectAllMode && (
+            <div className="text-xs text-center text-primary/70 border-t border-primary/20 pt-2">
+              All {total} settlements are selected.{" "}
+              <button
+                className="underline text-primary font-medium hover:text-primary/80"
+                onClick={clearSelection}
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <Card>
         <CardHeader className="pb-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input className="pl-9" placeholder="Search by merchant name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+                <Input className="pl-9" placeholder="Search by merchant name..." value={search} onChange={e => handleSearchChange(e.target.value)} />
               </div>
-              <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+              <Select value={status} onValueChange={v => handleStatusChange(v)}>
                 <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
@@ -238,14 +411,14 @@ export default function AdminSettlements() {
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">From</span>
-                <Input type="date" className="w-40" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+                <Input type="date" className="w-40" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); clearSelection(); }} />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">To</span>
-                <Input type="date" className="w-40" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+                <Input type="date" className="w-40" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); clearSelection(); }} />
               </div>
               {(dateFrom || dateTo) && (
-                <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+                <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); clearSelection(); }}>
                   <X className="w-3.5 h-3.5 mr-1" /> Clear
                 </Button>
               )}
@@ -256,6 +429,13 @@ export default function AdminSettlements() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allPageSelected ? true : somePageSelected ? "indeterminate" : false}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all on this page"
+                  />
+                </TableHead>
                 <TableHead className="w-8" />
                 <TableHead>Merchant</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
@@ -266,17 +446,24 @@ export default function AdminSettlements() {
             </TableHeader>
             <TableBody>
               {isLoading ? Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>{Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
-              )) : filtered?.length === 0 ? (
+                <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
+              )) : pageItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10">No settlements found</TableCell>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">No settlements found</TableCell>
                 </TableRow>
-              ) : filtered?.map(s => {
+              ) : pageItems.map(s => {
                 const isExpanded = expandedId === s.id;
                 const amount = Number(s.requestedAmount ?? s.amount);
                 return (
                   <>
-                    <TableRow key={s.id}>
+                    <TableRow key={s.id} className={selected.has(s.id) ? "bg-primary/5" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selected.has(s.id)}
+                          onCheckedChange={() => toggleSelect(s.id)}
+                          aria-label={`Select settlement ${s.id}`}
+                        />
+                      </TableCell>
                       <TableCell className="w-8">
                         <button
                           onClick={() => setExpandedId(isExpanded ? null : s.id)}
@@ -358,6 +545,7 @@ export default function AdminSettlements() {
                     {isExpanded && (
                       <TableRow key={`${s.id}-detail`} className="bg-muted/10">
                         <TableCell />
+                        <TableCell />
                         <TableCell colSpan={5} className="py-3">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                             {s.requestedNote && (
@@ -405,7 +593,7 @@ export default function AdminSettlements() {
       {data && data.total > 20 && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            Showing {filtered?.length ?? 0} of {data.total}
+            Showing {pageItems.length} of {data.total}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>
@@ -414,7 +602,7 @@ export default function AdminSettlements() {
         </div>
       )}
 
-      {/* Action Modal */}
+      {/* Single-row action modal */}
       <Dialog open={!!actionModal} onOpenChange={open => { if (!open) { setActionModal(null); setRemark(""); setRefNumber(""); setActionError(""); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -465,6 +653,46 @@ export default function AdminSettlements() {
                 className={actionModal ? actionColors[actionModal.type]?.replace("text-", "hover:bg-").replace("400", "500/20") : ""}
               >
                 {isPending ? "Processing..." : actionModal ? actionLabels[actionModal.type] : "Confirm"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk action modal */}
+      <Dialog open={!!bulkAction} onOpenChange={open => { if (!open) { setBulkAction(null); setBulkRemark(""); setBulkError(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {bulkAction === "approve" ? "Bulk Approve Settlements" : "Bulk Reject Settlements"}
+            </DialogTitle>
+            <DialogDescription>
+              This will {bulkAction} <span className="font-semibold text-foreground">{selected.size} settlement{selected.size !== 1 ? "s" : ""}</span>.
+              A single remark will be applied to all.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="bulk-remark">Remark <span className="text-rose-500">*</span></Label>
+              <Textarea
+                id="bulk-remark"
+                placeholder="Add a remark for this bulk action..."
+                rows={3}
+                value={bulkRemark}
+                onChange={e => setBulkRemark(e.target.value)}
+              />
+            </div>
+            {bulkError && (
+              <p className="text-sm text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-md px-3 py-2">{bulkError}</p>
+            )}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setBulkAction(null)}>Cancel</Button>
+              <Button
+                onClick={handleBulkAction}
+                disabled={isPending}
+                className={bulkAction === "approve" ? "text-emerald-400 hover:bg-emerald-500/20" : "text-rose-400 hover:bg-rose-500/20"}
+              >
+                {isPending ? "Processing..." : bulkAction === "approve" ? `Approve ${selected.size}` : `Reject ${selected.size}`}
               </Button>
             </div>
           </div>
