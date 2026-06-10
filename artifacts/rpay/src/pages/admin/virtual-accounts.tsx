@@ -344,6 +344,18 @@ export default function AdminVirtualAccounts() {
                 value={editForm.balance}
                 onChange={e => setEditForm(f => ({ ...f, balance: e.target.value }))}
               />
+              {(() => {
+                const tc = parseFloat(editForm.totalCollection);
+                const bal = parseFloat(editForm.balance);
+                const exceeded = !isNaN(bal) && !isNaN(tc) && bal > tc;
+                if (isNaN(tc) || tc < 0) return null;
+                return (
+                  <p className={`text-xs flex items-center gap-1 ${exceeded ? "text-rose-400" : "text-muted-foreground"}`}>
+                    <AlertCircle className={`w-3 h-3 shrink-0 ${exceeded ? "opacity-100" : "opacity-0"}`} />
+                    Cannot exceed Total Collection (₹{tc.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                  </p>
+                );
+              })()}
             </div>
             <div className="space-y-1.5">
               <Label>Total Collection (₹)</Label>
