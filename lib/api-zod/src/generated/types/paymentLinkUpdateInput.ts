@@ -14,6 +14,11 @@ export interface PaymentLinkUpdateInput {
   /** @nullable */
   amount?: string | null;
   status?: PaymentLinkUpdateInputStatus;
+  /**
+     * If set, the link expires automatically after this many payments
+     * @nullable
+     */
+  maxPayments?: number | null;
   /** @nullable */
   expiresAt?: string | null;
   /** @nullable */

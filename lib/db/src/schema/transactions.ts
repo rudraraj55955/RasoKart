@@ -8,6 +8,7 @@ export const transactionsTable = pgTable("transactions", {
   virtualAccountId: integer("virtual_account_id"),
   qrCodeId: integer("qr_code_id"), // set when this transaction was triggered by a QR code payment callback
   provider: text("provider"), // payment provider key e.g. phonepe | paytm | upi_id — null for legacy records
+  paymentLinkId: integer("payment_link_id"),
   type: text("type").notNull(), // deposit | withdrawal
   status: text("status").notNull().default("pending"), // pending | success | failed
   amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),

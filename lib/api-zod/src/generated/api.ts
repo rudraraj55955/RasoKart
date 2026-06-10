@@ -1908,6 +1908,8 @@ export const ListPaymentLinksResponse = zod.object({
   "url": zod.string().optional(),
   "upiPayload": zod.string().nullish(),
   "status": zod.enum(['active', 'inactive', 'expired']),
+  "paymentCount": zod.number().describe('Number of transactions recorded through this link'),
+  "maxPayments": zod.number().nullish().describe('If set, the link expires automatically after this many payments'),
   "expiresAt": zod.string().nullish(),
   "callbackUrl": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1926,6 +1928,7 @@ export const CreatePaymentLinkBody = zod.object({
   "title": zod.string(),
   "description": zod.string().nullish(),
   "amount": zod.string().nullish(),
+  "maxPayments": zod.number().nullish().describe('If set, the link expires automatically after this many payments'),
   "expiresAt": zod.string().nullish(),
   "callbackUrl": zod.string().nullish()
 })
@@ -1950,6 +1953,8 @@ export const GetPaymentLinkResponse = zod.object({
   "url": zod.string().optional(),
   "upiPayload": zod.string().nullish(),
   "status": zod.enum(['active', 'inactive', 'expired']),
+  "paymentCount": zod.number().describe('Number of transactions recorded through this link'),
+  "maxPayments": zod.number().nullish().describe('If set, the link expires automatically after this many payments'),
   "expiresAt": zod.string().nullish(),
   "callbackUrl": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -1969,6 +1974,7 @@ export const UpdatePaymentLinkBody = zod.object({
   "description": zod.string().nullish(),
   "amount": zod.string().nullish(),
   "status": zod.enum(['active', 'inactive', 'expired']).optional(),
+  "maxPayments": zod.number().nullish().describe('If set, the link expires automatically after this many payments'),
   "expiresAt": zod.string().nullish(),
   "callbackUrl": zod.string().nullish()
 })
@@ -1985,6 +1991,8 @@ export const UpdatePaymentLinkResponse = zod.object({
   "url": zod.string().optional(),
   "upiPayload": zod.string().nullish(),
   "status": zod.enum(['active', 'inactive', 'expired']),
+  "paymentCount": zod.number().describe('Number of transactions recorded through this link'),
+  "maxPayments": zod.number().nullish().describe('If set, the link expires automatically after this many payments'),
   "expiresAt": zod.string().nullish(),
   "callbackUrl": zod.string().nullish(),
   "createdAt": zod.string(),

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, paymentLinksTable, merchantsTable, merchantConnectionsTable } from "@workspace/db";
+import { db, paymentLinksTable, merchantsTable, merchantConnectionsTable, transactionsTable } from "@workspace/db";
 import { eq, and, ilike, count, desc, gte, lte, or, sql, isNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
@@ -18,12 +18,19 @@ function buildUrl(slug: string, req: any): string {
   return `${proto}://${host}/pay/${slug}`;
 }
 
-function serializeLink(link: typeof paymentLinksTable.$inferSelect, merchantName: string | null | undefined, req: any) {
+function serializeLink(
+  link: typeof paymentLinksTable.$inferSelect,
+  merchantName: string | null | undefined,
+  req: any,
+  paymentCount: number = 0,
+) {
   return {
     ...link,
     merchantName: merchantName ?? null,
     url: buildUrl(link.slug, req),
     expiresAt: link.expiresAt instanceof Date ? link.expiresAt.toISOString() : link.expiresAt,
+    paymentCount,
+    maxPayments: link.maxPayments ?? null,
   };
 }
 
@@ -31,6 +38,11 @@ async function expireOldLinks() {
   await db.execute(sql`
     UPDATE payment_links SET status = 'expired'
     WHERE expires_at IS NOT NULL AND expires_at < NOW() AND status = 'active'
+  `);
+  await db.execute(sql`
+    UPDATE payment_links SET status = 'expired'
+    WHERE max_payments IS NOT NULL AND status = 'active'
+      AND (SELECT COUNT(*) FROM transactions WHERE payment_link_id = payment_links.id) >= max_payments
   `);
 }
 
@@ -57,6 +69,15 @@ router.get("/public/:slug", async (req, res) => {
   if (link.expiresAt && new Date() > link.expiresAt && link.status === "active") {
     await db.update(paymentLinksTable).set({ status: "expired" }).where(eq(paymentLinksTable.id, link.id));
     link.status = "expired";
+  }
+
+  if (link.maxPayments != null && link.status === "active") {
+    const [{ total }] = await db.select({ total: count() }).from(transactionsTable)
+      .where(eq(transactionsTable.paymentLinkId, link.id));
+    if (total >= link.maxPayments) {
+      await db.update(paymentLinksTable).set({ status: "expired" }).where(eq(paymentLinksTable.id, link.id));
+      link.status = "expired";
+    }
   }
 
   // If upiPayload was not saved at creation time (e.g. provider connected later),
@@ -149,7 +170,11 @@ router.get("/", async (req, res) => {
     .where(where);
   const total = countRows[0].total;
 
-  const rows = await db.select({ link: paymentLinksTable, merchantName: merchantsTable.businessName })
+  const rows = await db.select({
+    link: paymentLinksTable,
+    merchantName: merchantsTable.businessName,
+    paymentCount: sql<number>`(SELECT COUNT(*) FROM transactions WHERE payment_link_id = ${paymentLinksTable.id})::int`,
+  })
     .from(paymentLinksTable)
     .leftJoin(merchantsTable, eq(paymentLinksTable.merchantId, merchantsTable.id))
     .where(where)
@@ -157,7 +182,7 @@ router.get("/", async (req, res) => {
     .orderBy(desc(paymentLinksTable.createdAt));
 
   res.json({
-    data: rows.map(r => serializeLink(r.link, r.merchantName, req)),
+    data: rows.map(r => serializeLink(r.link, r.merchantName, req, Number(r.paymentCount))),
     total, page: pageNum, limit: limitNum,
   });
 });
@@ -170,21 +195,25 @@ router.get("/:id", async (req, res) => {
   const conds = [eq(paymentLinksTable.id, id)];
   if (user.role !== "admin") conds.push(eq(paymentLinksTable.merchantId, user.merchantId!));
 
-  const rows = await db.select({ link: paymentLinksTable, merchantName: merchantsTable.businessName })
+  const rows = await db.select({
+    link: paymentLinksTable,
+    merchantName: merchantsTable.businessName,
+    paymentCount: sql<number>`(SELECT COUNT(*) FROM transactions WHERE payment_link_id = ${paymentLinksTable.id})::int`,
+  })
     .from(paymentLinksTable)
     .leftJoin(merchantsTable, eq(paymentLinksTable.merchantId, merchantsTable.id))
     .where(and(...conds))
     .limit(1);
 
   if (!rows.length) { res.status(404).json({ error: "Payment link not found" }); return; }
-  res.json(serializeLink(rows[0].link, rows[0].merchantName, req));
+  res.json(serializeLink(rows[0].link, rows[0].merchantName, req, Number(rows[0].paymentCount)));
 });
 
 // POST /api/payment-links
 router.post("/", async (req, res) => {
   const user = (req as any).user;
   const merchantId = user.merchantId!;
-  const { title, description, amount, expiresAt, callbackUrl } = req.body;
+  const { title, description, amount, maxPayments, expiresAt, callbackUrl } = req.body;
 
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
 
@@ -228,24 +257,26 @@ router.post("/", async (req, res) => {
     slug,
     upiPayload,
     status: "active",
+    maxPayments: maxPayments != null ? parseInt(maxPayments) : null,
     expiresAt: expiresAt ? new Date(expiresAt) : null,
     callbackUrl: callbackUrl ?? null,
   }).returning();
 
-  res.status(201).json(serializeLink(row, merchantName, req));
+  res.status(201).json(serializeLink(row, merchantName, req, 0));
 });
 
 // PUT /api/payment-links/:id
 router.put("/:id", async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params["id"] as string);
-  const { title, description, amount, status, expiresAt, callbackUrl } = req.body;
+  const { title, description, amount, status, maxPayments, expiresAt, callbackUrl } = req.body;
 
   const update: Record<string, unknown> = {};
   if (title !== undefined) update.title = title;
   if (description !== undefined) update.description = description;
   if (amount !== undefined) update.amount = amount;
   if (status !== undefined) update.status = status;
+  if (maxPayments !== undefined) update.maxPayments = maxPayments != null ? parseInt(maxPayments) : null;
   if (expiresAt !== undefined) update.expiresAt = expiresAt ? new Date(expiresAt) : null;
   if (callbackUrl !== undefined) update.callbackUrl = callbackUrl;
 
@@ -254,7 +285,10 @@ router.put("/:id", async (req, res) => {
 
   const [row] = await db.update(paymentLinksTable).set(update).where(and(...conds)).returning();
   if (!row) { res.status(404).json({ error: "Payment link not found" }); return; }
-  res.json(serializeLink(row, null, req));
+
+  const [pcRow] = await db.select({ total: count() }).from(transactionsTable)
+    .where(eq(transactionsTable.paymentLinkId, id));
+  res.json(serializeLink(row, null, req, pcRow?.total ?? 0));
 });
 
 // DELETE /api/payment-links/:id

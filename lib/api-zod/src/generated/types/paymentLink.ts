@@ -23,6 +23,13 @@ export interface PaymentLink {
   /** @nullable */
   upiPayload?: string | null;
   status: PaymentLinkStatus;
+  /** Number of transactions recorded through this link */
+  paymentCount: number;
+  /**
+     * If set, the link expires automatically after this many payments
+     * @nullable
+     */
+  maxPayments?: number | null;
   /** @nullable */
   expiresAt?: string | null;
   /** @nullable */

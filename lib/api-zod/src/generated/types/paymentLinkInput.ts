@@ -12,6 +12,11 @@ export interface PaymentLinkInput {
   description?: string | null;
   /** @nullable */
   amount?: string | null;
+  /**
+     * If set, the link expires automatically after this many payments
+     * @nullable
+     */
+  maxPayments?: number | null;
   /** @nullable */
   expiresAt?: string | null;
   /** @nullable */

@@ -12,6 +12,7 @@ export const paymentLinksTable = pgTable("payment_links", {
   slug: text("slug").notNull().unique(),
   upiPayload: text("upi_payload"),
   status: text("status").notNull().default("active"),
+  maxPayments: integer("max_payments"),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   callbackUrl: text("callback_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

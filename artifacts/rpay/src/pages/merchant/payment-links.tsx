@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Trash2, Link2, Copy, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
+import { Search, Plus, Trash2, Link2, Copy, ExternalLink, CheckCircle2, XCircle, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -30,6 +30,8 @@ type LinkRow = {
   url?: string;
   upiPayload?: string | null;
   status: string;
+  paymentCount: number;
+  maxPayments?: number | null;
   expiresAt?: string | null;
   callbackUrl?: string | null;
   createdAt: string;
@@ -46,6 +48,35 @@ function copyToClipboard(text: string, label: string) {
   navigator.clipboard.writeText(text).then(() => toast.success(`${label} copied`));
 }
 
+function PaymentCountCell({ link }: { link: LinkRow }) {
+  const count = link.paymentCount ?? 0;
+  const max = link.maxPayments;
+  const nearLimit = max != null && count >= max * 0.8;
+  const atLimit = max != null && count >= max;
+
+  if (max == null) {
+    return (
+      <span className={`font-mono text-sm tabular-nums ${count > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
+        {count}
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className={`font-mono text-sm tabular-nums ${atLimit ? "text-rose-400" : nearLimit ? "text-amber-400" : "text-emerald-400"}`}>
+        {count} / {max}
+      </span>
+      <div className="w-16 h-1 rounded-full bg-muted/50 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${atLimit ? "bg-rose-500" : nearLimit ? "bg-amber-500" : "bg-emerald-500"}`}
+          style={{ width: `${Math.min(100, (count / max) * 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function MerchantPaymentLinks() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("all");
@@ -58,6 +89,7 @@ export default function MerchantPaymentLinks() {
     title: "",
     description: "",
     amount: "",
+    maxPayments: "",
     expiresAt: "",
     callbackUrl: "",
   });
@@ -69,7 +101,7 @@ export default function MerchantPaymentLinks() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/payment-links"] });
 
-  const resetForm = () => setForm({ title: "", description: "", amount: "", expiresAt: "", callbackUrl: "" });
+  const resetForm = () => setForm({ title: "", description: "", amount: "", maxPayments: "", expiresAt: "", callbackUrl: "" });
 
   const handleCreate = () => {
     if (!form.title.trim()) { toast.error("Title is required"); return; }
@@ -79,6 +111,7 @@ export default function MerchantPaymentLinks() {
           title: form.title.trim(),
           description: form.description || null,
           amount: form.amount || null,
+          maxPayments: form.maxPayments ? parseInt(form.maxPayments) : null,
           expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
           callbackUrl: form.callbackUrl || null,
         } as any,
@@ -117,8 +150,10 @@ export default function MerchantPaymentLinks() {
     });
   };
 
-  const activeCount = data?.data?.filter((l: LinkRow) => l.status === "active").length ?? 0;
-  const inactiveCount = data?.data?.filter((l: LinkRow) => l.status === "inactive").length ?? 0;
+  const links = (data?.data ?? []) as LinkRow[];
+  const activeCount = links.filter(l => l.status === "active").length;
+  const inactiveCount = links.filter(l => l.status === "inactive").length;
+  const totalPayments = links.reduce((sum, l) => sum + (l.paymentCount ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -133,11 +168,12 @@ export default function MerchantPaymentLinks() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total", value: data?.total ?? 0, color: "text-primary", bg: "bg-primary/10" },
-          { label: "Active", value: activeCount, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-          { label: "Inactive", value: inactiveCount, color: "text-amber-400", bg: "bg-amber-500/10" },
+          { label: "Total Links", value: data?.total ?? 0, color: "text-primary", bg: "bg-primary/10", icon: Link2 },
+          { label: "Active", value: activeCount, color: "text-emerald-400", bg: "bg-emerald-500/10", icon: Link2 },
+          { label: "Inactive", value: inactiveCount, color: "text-amber-400", bg: "bg-amber-500/10", icon: Link2 },
+          { label: "Total Payments", value: totalPayments, color: "text-violet-400", bg: "bg-violet-500/10", icon: Hash },
         ].map(stat => (
           <Card key={stat.label}>
             <CardContent className="pt-5 pb-4">
@@ -147,7 +183,7 @@ export default function MerchantPaymentLinks() {
                   <p className={`text-2xl font-bold mt-1 ${stat.color}`}>{stat.value}</p>
                 </div>
                 <div className={`w-10 h-10 ${stat.bg} rounded-lg flex items-center justify-center`}>
-                  <Link2 className={`w-5 h-5 ${stat.color}`} />
+                  <stat.icon className={`w-5 h-5 ${stat.color}`} />
                 </div>
               </div>
             </CardContent>
@@ -182,6 +218,7 @@ export default function MerchantPaymentLinks() {
                 <TableHead>Title</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>URL</TableHead>
+                <TableHead>Payments</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Expires</TableHead>
                 <TableHead>Created</TableHead>
@@ -192,20 +229,20 @@ export default function MerchantPaymentLinks() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
                     ))}
                   </TableRow>
                 ))
-              ) : !data?.data?.length ? (
+              ) : !links.length ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-14">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-14">
                     <Link2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No payment links yet</p>
                     <p className="text-xs mt-1 opacity-60">Create your first link to share with customers</p>
                   </TableCell>
                 </TableRow>
-              ) : (data.data as LinkRow[]).map(link => {
+              ) : links.map(link => {
                 const isExpired = link.expiresAt ? new Date(link.expiresAt) < new Date() : false;
                 const payUrl = link.url ?? `${window.location.origin}/pay/${link.slug}`;
                 return (
@@ -231,6 +268,9 @@ export default function MerchantPaymentLinks() {
                           <ExternalLink className="w-3 h-3" />
                         </a>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <PaymentCountCell link={link} />
                     </TableCell>
                     <TableCell>{statusBadge(isExpired && link.status === "active" ? "expired" : link.status)}</TableCell>
                     <TableCell className="text-xs">
@@ -295,10 +335,17 @@ export default function MerchantPaymentLinks() {
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 className="resize-none h-20" />
             </div>
-            <div className="space-y-1.5">
-              <Label>Amount (₹) <span className="text-muted-foreground text-xs">(optional — leave blank for open amount)</span></Label>
-              <Input type="number" step="0.01" placeholder="e.g. 1500.00" value={form.amount}
-                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Amount (₹) <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Input type="number" step="0.01" placeholder="e.g. 1500.00" value={form.amount}
+                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Max Payments <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Input type="number" min="1" step="1" placeholder="e.g. 10" value={form.maxPayments}
+                  onChange={e => setForm(f => ({ ...f, maxPayments: e.target.value }))} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Expiry <span className="text-muted-foreground text-xs">(optional)</span></Label>
@@ -310,6 +357,11 @@ export default function MerchantPaymentLinks() {
               <Input type="url" placeholder="https://your-site.com/webhook" value={form.callbackUrl}
                 onChange={e => setForm(f => ({ ...f, callbackUrl: e.target.value }))} />
             </div>
+            {form.maxPayments && (
+              <p className="text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2">
+                This link will automatically expire after <span className="text-foreground font-medium">{form.maxPayments}</span> payment{parseInt(form.maxPayments) !== 1 ? "s" : ""} are recorded.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowCreate(false); resetForm(); }}>Cancel</Button>

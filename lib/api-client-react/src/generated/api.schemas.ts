@@ -986,6 +986,13 @@ export interface PaymentLink {
   /** @nullable */
   upiPayload?: string | null;
   status: PaymentLinkStatus;
+  /** Number of transactions recorded through this link */
+  paymentCount: number;
+  /**
+     * If set, the link expires automatically after this many payments
+     * @nullable
+     */
+  maxPayments?: number | null;
   /** @nullable */
   expiresAt?: string | null;
   /** @nullable */
@@ -1000,6 +1007,11 @@ export interface PaymentLinkInput {
   description?: string | null;
   /** @nullable */
   amount?: string | null;
+  /**
+     * If set, the link expires automatically after this many payments
+     * @nullable
+     */
+  maxPayments?: number | null;
   /** @nullable */
   expiresAt?: string | null;
   /** @nullable */
@@ -1022,6 +1034,11 @@ export interface PaymentLinkUpdateInput {
   /** @nullable */
   amount?: string | null;
   status?: PaymentLinkUpdateInputStatus;
+  /**
+     * If set, the link expires automatically after this many payments
+     * @nullable
+     */
+  maxPayments?: number | null;
   /** @nullable */
   expiresAt?: string | null;
   /** @nullable */

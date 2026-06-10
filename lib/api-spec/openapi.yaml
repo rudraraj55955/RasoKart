@@ -4202,7 +4202,7 @@ components:
 
     PaymentLink:
       type: object
-      required: [id, merchantId, title, currency, slug, status, createdAt]
+      required: [id, merchantId, title, currency, slug, status, paymentCount, createdAt]
       properties:
         id:
           type: integer
@@ -4227,6 +4227,12 @@ components:
         status:
           type: string
           enum: [active, inactive, expired]
+        paymentCount:
+          type: integer
+          description: Number of transactions recorded through this link
+        maxPayments:
+          type: ["integer", "null"]
+          description: If set, the link expires automatically after this many payments
         expiresAt:
           type: ["string", "null"]
         callbackUrl:
@@ -4246,6 +4252,9 @@ components:
           type: ["string", "null"]
         amount:
           type: ["string", "null"]
+        maxPayments:
+          type: ["integer", "null"]
+          description: If set, the link expires automatically after this many payments
         expiresAt:
           type: ["string", "null"]
         callbackUrl:
@@ -4263,6 +4272,9 @@ components:
         status:
           type: string
           enum: [active, inactive, expired]
+        maxPayments:
+          type: ["integer", "null"]
+          description: If set, the link expires automatically after this many payments
         expiresAt:
           type: ["string", "null"]
         callbackUrl:
