@@ -390,6 +390,35 @@ export default function AdminAuditLogs() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExportCsv() {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (action && action !== "all") params.set("action", action);
+      if (search) params.set("search", search);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+
+      const token = localStorage.getItem("rasokart_token");
+      const res = await fetch(`/api/audit-logs/export?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!res.ok) throw new Error("Export failed");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const { data: statsData } = useGetAdminAuditLogStats();
   const csvExportsLast30Days = statsData?.csvExportsLast30Days ?? 0;
@@ -523,12 +552,24 @@ export default function AdminAuditLogs() {
                   </div>
                 </div>
               </div>
-              {(hasDateFilter || search !== "" || action !== "all") && (
-                <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground hover:text-foreground shrink-0">
-                  <X className="w-3.5 h-3.5 mr-1.5" />
-                  Clear filters
+              <div className="flex items-center gap-2 shrink-0">
+                {(hasDateFilter || search !== "" || action !== "all") && (
+                  <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground hover:text-foreground">
+                    <X className="w-3.5 h-3.5 mr-1.5" />
+                    Clear filters
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCsv}
+                  disabled={exporting}
+                  className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
+                >
+                  <FileDown className="w-3.5 h-3.5 mr-1.5" />
+                  {exporting ? "Exporting…" : "Export CSV"}
                 </Button>
-              )}
+              </div>
             </div>
           </div>
         </CardHeader>

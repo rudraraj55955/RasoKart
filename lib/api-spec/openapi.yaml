@@ -2438,6 +2438,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdminAuditLogStatsResponse"
 
+  /audit-logs/export:
+    get:
+      operationId: exportAdminAuditLogsCsv
+      tags: [dashboard]
+      summary: Export audit logs as CSV
+      parameters:
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: dateFrom
+          in: query
+          description: "Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)"
+          schema: { type: string, format: date }
+        - name: dateTo
+          in: query
+          description: "Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)"
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+        "403":
+          description: Forbidden
+
   /audit-logs:
     get:
       operationId: listAdminAuditLogs

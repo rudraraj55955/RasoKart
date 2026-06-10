@@ -82,6 +82,84 @@ router.get("/", async (req, res) => {
   });
 });
 
+router.get("/export", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const user = (req as any).user;
+
+  const { action, search, dateFrom, dateTo } = req.query as Record<string, string>;
+
+  const conditions: any[] = [];
+  if (action && action !== "all") conditions.push(eq(auditLogsTable.action, action));
+  if (search) {
+    conditions.push(
+      or(
+        ilike(auditLogsTable.adminEmail, `%${search}%`),
+        ilike(auditLogsTable.action, `%${search}%`),
+        ilike(auditLogsTable.targetType, `%${search}%`),
+      )!
+    );
+  }
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    from.setUTCHours(0, 0, 0, 0);
+    if (!isNaN(from.getTime())) conditions.push(gte(auditLogsTable.createdAt, from));
+  }
+  if (dateTo) {
+    const to = new Date(dateTo);
+    to.setUTCHours(23, 59, 59, 999);
+    if (!isNaN(to.getTime())) conditions.push(lte(auditLogsTable.createdAt, to));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const rows = await db
+    .select()
+    .from(auditLogsTable)
+    .where(where)
+    .orderBy(sql`${auditLogsTable.createdAt} DESC`);
+
+  function escapeCsv(val: string | null | undefined): string {
+    if (val == null) return "";
+    const s = String(val);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  }
+
+  const header = ["ID", "Admin Email", "Admin ID", "Action", "Target Type", "Target ID", "IP Address", "Timestamp"];
+  const csvRows = rows.map(r => [
+    escapeCsv(String(r.id)),
+    escapeCsv(r.adminEmail),
+    escapeCsv(String(r.adminId)),
+    escapeCsv(r.action),
+    escapeCsv(r.targetType),
+    escapeCsv(r.targetId != null ? String(r.targetId) : null),
+    escapeCsv(r.ipAddress),
+    escapeCsv(r.createdAt.toISOString()),
+  ].join(","));
+
+  const csv = [header.join(","), ...csvRows].join("\n");
+
+  await db.insert(auditLogsTable).values({
+    adminId: user.id,
+    adminEmail: user.email,
+    action: "csv_export",
+    targetType: "audit_logs",
+    targetId: null,
+    details: JSON.stringify({
+      rowCount: rows.length,
+      filters: { action: action ?? null, search: search ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null },
+    }),
+    ipAddress: req.ip ?? null,
+  });
+
+  const filename = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(csv);
+});
+
 router.post("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
   const user = (req as any).user;
