@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useUpload } from "@workspace/object-storage-web";
 import {
   useListMerchants, useApproveMerchant, useRejectMerchant,
   useSuspendMerchant, useUnsuspendMerchant,
@@ -22,7 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -55,6 +56,20 @@ export default function AdminMerchants() {
   const [brandingLogoUrl, setBrandingLogoUrl] = useState("");
   const [brandingColor, setBrandingColor] = useState("");
   const [brandingLogoError, setBrandingLogoError] = useState(false);
+  const brandingFileInputRef = useRef<HTMLInputElement>(null);
+  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  const { uploadFile: uploadLogo, isUploading: isUploadingLogo } = useUpload({
+    basePath: `${base}/api/storage`,
+    requestHeaders: {
+      Authorization: `Bearer ${localStorage.getItem("rasokart_token") ?? ""}`,
+    },
+    onSuccess: (response) => {
+      setBrandingLogoUrl(`${base}/api/storage${response.objectPath}`);
+      setBrandingLogoError(false);
+      toast.success("Logo uploaded");
+    },
+    onError: () => toast.error("Logo upload failed"),
+  });
   const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string } | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [expiresAt, setExpiresAt] = useState<string>("");
@@ -645,7 +660,48 @@ export default function AdminMerchants() {
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Paintbrush className="w-4 h-4 text-violet-400" /> Branding — {brandingMerchant?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="adminLogoUrl">Logo URL</Label>
+              <Label>Upload Logo File</Label>
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  disabled={isUploadingLogo}
+                  onClick={() => brandingFileInputRef.current?.click()}
+                >
+                  {isUploadingLogo ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+                  ) : (
+                    <><Upload className="w-4 h-4" /> Choose File</>
+                  )}
+                </Button>
+                {brandingLogoUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-muted-foreground"
+                    onClick={() => { setBrandingLogoUrl(""); setBrandingLogoError(false); }}
+                  >
+                    <X className="w-3.5 h-3.5" /> Remove
+                  </Button>
+                )}
+                <input
+                  ref={brandingFileInputRef}
+                  type="file"
+                  accept="image/png,image/svg+xml,image/webp,image/jpeg,image/gif"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadLogo(file);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="adminLogoUrl">Or paste a URL</Label>
               <Input
                 id="adminLogoUrl"
                 placeholder="https://yourbrand.com/logo.png"

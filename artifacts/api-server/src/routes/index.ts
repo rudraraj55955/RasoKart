@@ -27,6 +27,7 @@ import reconciliationRouter from "./reconciliation";
 import paymentLinksRouter from "./paymentLinks";
 import systemConfigRouter from "./systemConfig";
 import settingsRouter from "./settings";
+import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
@@ -58,5 +59,6 @@ router.use("/reconciliation", reconciliationRouter);
 router.use("/payment-links", paymentLinksRouter);
 router.use("/system-config", systemConfigRouter);
 router.use("/settings", settingsRouter);
+router.use(storageRouter);
 
 export default router;

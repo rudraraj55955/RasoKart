@@ -1,13 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useUpdateMerchantBranding } from "@workspace/api-client-react";
+import { useUpload } from "@workspace/object-storage-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Palette, ImageIcon, Save, Eye, RotateCcw, CheckCircle2, TriangleAlert } from "lucide-react";
+import { Palette, ImageIcon, Save, Eye, RotateCcw, CheckCircle2, TriangleAlert, Upload, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const PRESET_COLORS = [
@@ -34,12 +35,28 @@ export default function MerchantBranding() {
   const [brandColor, setBrandColor] = useState("");
   const [logoError, setLogoError] = useState(false);
   const [savedLogoUrl, setSavedLogoUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+  const { uploadFile, isUploading } = useUpload({
+    basePath: `${base}/api/storage`,
+    requestHeaders: {
+      Authorization: `Bearer ${localStorage.getItem("rasokart_token") ?? ""}`,
+    },
+    onSuccess: (response) => {
+      const servedUrl = `${base}/api/storage${response.objectPath}`;
+      setLogoUrl(servedUrl);
+      setLogoError(false);
+      toast.success("Logo uploaded");
+    },
+    onError: () => toast.error("Logo upload failed"),
+  });
 
   const updateBranding = useUpdateMerchantBranding();
 
   useEffect(() => {
     if (!merchantId) return;
-    const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
     fetch(`${base}/api/merchants/${merchantId}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem("rasokart_token")}` },
     })
@@ -83,6 +100,13 @@ export default function MerchantBranding() {
     setLogoError(false);
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploadFile(file);
+    e.target.value = "";
+  }
+
   const accent = brandColor && isValidHex(brandColor) ? brandColor : null;
 
   return (
@@ -113,17 +137,57 @@ export default function MerchantBranding() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Upload button */}
           <div className="space-y-2">
-            <Label htmlFor="logoUrl">Logo URL</Label>
+            <Label>Upload Logo File</Label>
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {isUploading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Choose File</>
+                )}
+              </Button>
+              {logoUrl && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 text-muted-foreground"
+                  onClick={() => { setLogoUrl(""); setLogoError(false); }}
+                >
+                  <X className="w-3.5 h-3.5" /> Remove
+                </Button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/svg+xml,image/webp,image/jpeg,image/gif"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              PNG, SVG, WebP, or JPEG. Max display height is 40 px.
+            </p>
+          </div>
+
+          {/* URL fallback */}
+          <div className="space-y-2">
+            <Label htmlFor="logoUrl">Or paste a URL</Label>
             <Input
               id="logoUrl"
               placeholder="https://yourbrand.com/logo.png"
               value={logoUrl}
               onChange={e => { setLogoUrl(e.target.value); setLogoError(false); }}
             />
-            <p className="text-xs text-muted-foreground">
-              A public URL to your logo image (PNG, SVG, or WebP recommended). Max display height is 40 px.
-            </p>
           </div>
 
           {logoUrl && (
