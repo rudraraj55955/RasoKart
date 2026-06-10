@@ -56,8 +56,10 @@ import type {
   DeleteAccountDetail200,
   ErrorResponse,
   ExpiryCheckResult,
+  ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
   GetVirtualAccountBalanceHistoryParams,
+  GetWebhookLogsParams,
   HealthStatus,
   Invoice,
   InvoiceInput,
@@ -3519,6 +3521,91 @@ export const useRevokeApiKey = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRevokeApiKeyMutationOptions(options));
     }
+
+export const getGetWebhookLogsUrl = (params?: GetWebhookLogsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/webhooks/logs?${stringifiedParams}` : `/api/webhooks/logs`
+}
+
+/**
+ * Returns the last N callback log entries for the merchant's webhook, ordered newest first.
+ * @summary Get recent webhook delivery logs for the authenticated merchant
+ */
+export const getWebhookLogs = async (params?: GetWebhookLogsParams, options?: RequestInit): Promise<CallbackLogListResponse> => {
+
+  return customFetch<CallbackLogListResponse>(getGetWebhookLogsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebhookLogsQueryKey = (params?: GetWebhookLogsParams,) => {
+    return [
+    `/api/webhooks/logs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWebhookLogsQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookLogs>>, TError = ErrorType<unknown>>(params?: GetWebhookLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebhookLogsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookLogs>>> = ({ signal }) => getWebhookLogs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebhookLogsQueryResult = NonNullable<Awaited<ReturnType<typeof getWebhookLogs>>>
+export type GetWebhookLogsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get recent webhook delivery logs for the authenticated merchant
+ */
+
+export function useGetWebhookLogs<TData = Awaited<ReturnType<typeof getWebhookLogs>>, TError = ErrorType<unknown>>(
+ params?: GetWebhookLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebhookLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetWebhookConfigUrl = () => {
 
@@ -7820,6 +7907,90 @@ export function useGetAdminAuditLogStats<TData = Awaited<ReturnType<typeof getAd
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAdminAuditLogStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportAdminAuditLogsCsvUrl = (params?: ExportAdminAuditLogsCsvParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/audit-logs/export?${stringifiedParams}` : `/api/audit-logs/export`
+}
+
+/**
+ * @summary Export audit logs as CSV
+ */
+export const exportAdminAuditLogsCsv = async (params?: ExportAdminAuditLogsCsvParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportAdminAuditLogsCsvUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportAdminAuditLogsCsvQueryKey = (params?: ExportAdminAuditLogsCsvParams,) => {
+    return [
+    `/api/audit-logs/export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportAdminAuditLogsCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportAdminAuditLogsCsv>>, TError = ErrorType<void>>(params?: ExportAdminAuditLogsCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminAuditLogsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportAdminAuditLogsCsvQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportAdminAuditLogsCsv>>> = ({ signal }) => exportAdminAuditLogsCsv(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportAdminAuditLogsCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportAdminAuditLogsCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportAdminAuditLogsCsv>>>
+export type ExportAdminAuditLogsCsvQueryError = ErrorType<void>
+
+
+/**
+ * @summary Export audit logs as CSV
+ */
+
+export function useExportAdminAuditLogsCsv<TData = Awaited<ReturnType<typeof exportAdminAuditLogsCsv>>, TError = ErrorType<void>>(
+ params?: ExportAdminAuditLogsCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminAuditLogsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportAdminAuditLogsCsvQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -1,10 +1,31 @@
 import { Router } from "express";
-import { db, webhooksTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, webhooksTable, callbackLogsTable } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
 router.use(requireAuth);
+
+// GET /api/webhooks/logs — recent delivery logs for the merchant
+router.get("/logs", async (req, res) => {
+  const user = (req as any).user;
+  const merchantId = user.role === "merchant" ? user.merchantId! : undefined;
+  if (!merchantId) {
+    res.status(403).json({ error: "Merchants only" });
+    return;
+  }
+
+  const limitNum = Math.min(50, Math.max(1, parseInt((req.query['limit'] as string) || "10")));
+
+  const data = await db
+    .select()
+    .from(callbackLogsTable)
+    .where(eq(callbackLogsTable.merchantId, merchantId))
+    .orderBy(sql`${callbackLogsTable.createdAt} DESC`)
+    .limit(limitNum);
+
+  res.json({ data, total: data.length, page: 1, limit: limitNum });
+});
 
 // GET /api/webhooks
 router.get("/", async (req, res) => {

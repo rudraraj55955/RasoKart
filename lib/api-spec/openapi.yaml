@@ -1116,6 +1116,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
 
+  /webhooks/logs:
+    get:
+      operationId: getWebhookLogs
+      tags: [webhooks]
+      summary: Get recent webhook delivery logs for the authenticated merchant
+      description: Returns the last N callback log entries for the merchant's webhook, ordered newest first.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+          description: Number of recent log entries to return (default 10, max 50)
+      responses:
+        "200":
+          description: Recent webhook delivery logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallbackLogListResponse"
+
   /webhooks:
     get:
       operationId: getWebhookConfig

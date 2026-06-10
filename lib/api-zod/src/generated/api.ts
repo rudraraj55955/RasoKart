@@ -1085,6 +1085,42 @@ export const RevokeApiKeyResponse = zod.object({
 
 
 /**
+ * Returns the last N callback log entries for the merchant's webhook, ordered newest first.
+ * @summary Get recent webhook delivery logs for the authenticated merchant
+ */
+export const getWebhookLogsQueryLimitDefault = 10;
+export const getWebhookLogsQueryLimitMax = 50;
+
+
+
+export const GetWebhookLogsQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getWebhookLogsQueryLimitMax).default(getWebhookLogsQueryLimitDefault).describe('Number of recent log entries to return (default 10, max 50)')
+})
+
+export const GetWebhookLogsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "qrCodeId": zod.number().nullish(),
+  "transactionId": zod.number().nullable(),
+  "url": zod.string(),
+  "status": zod.enum(['success', 'failed', 'pending_retry']),
+  "httpStatus": zod.number().nullable(),
+  "requestBody": zod.string().nullish(),
+  "responseBody": zod.string().nullish(),
+  "attempts": zod.number().optional(),
+  "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
+  "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
+  "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Get webhook configuration
  */
 export const GetWebhookConfigResponse = zod.object({
@@ -2435,6 +2471,17 @@ export const GetApiMonitoringStatsResponse = zod.object({
  */
 export const GetAdminAuditLogStatsResponse = zod.object({
   "csvExportsLast30Days": zod.number()
+})
+
+
+/**
+ * @summary Export audit logs as CSV
+ */
+export const ExportAdminAuditLogsCsvQueryParams = zod.object({
+  "action": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional(),
+  "dateFrom": zod.date().optional().describe('Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)'),
+  "dateTo": zod.date().optional().describe('Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)')
 })
 
 

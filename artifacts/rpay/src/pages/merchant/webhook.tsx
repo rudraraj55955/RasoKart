@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey } from "@workspace/api-client-react";
+import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 const EVENTS = [
   { id: "payment.success", label: "Payment Success" },
@@ -22,10 +23,36 @@ const EVENTS = [
   { id: "settlement.processed", label: "Settlement Processed" },
 ];
 
+function StatusBadge({ status }: { status: string }) {
+  if (status === "success") {
+    return (
+      <span className="flex items-center gap-1 text-emerald-400">
+        <CheckCircle2 className="w-3.5 h-3.5" />
+        <span className="text-xs font-medium">Success</span>
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="flex items-center gap-1 text-rose-400">
+        <XCircle className="w-3.5 h-3.5" />
+        <span className="text-xs font-medium">Failed</span>
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-amber-400">
+      <Clock className="w-3.5 h-3.5" />
+      <span className="text-xs font-medium">Pending retry</span>
+    </span>
+  );
+}
+
 export default function MerchantWebhook() {
   const qc = useQueryClient();
   const { data: config, isLoading } = useGetWebhookConfig();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
+  const { data: logsData, isLoading: logsLoading } = useGetWebhookLogs({ limit: 10 });
   const updateMutation = useUpdateWebhookConfig();
   const rotateMutation = useRotateCallbackSecret();
 
@@ -71,6 +98,8 @@ export default function MerchantWebhook() {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard");
   };
+
+  const logs = logsData?.data ?? [];
 
   if (isLoading) return <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-muted/50 rounded-lg animate-pulse" />)}</div>;
 
@@ -123,6 +152,65 @@ export default function MerchantWebhook() {
         <Save className="w-4 h-4 mr-2" />
         {updateMutation.isPending ? "Saving..." : "Save Configuration"}
       </Button>
+
+      {/* Recent Deliveries */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary" />
+            <CardTitle>Recent Deliveries</CardTitle>
+          </div>
+          <CardDescription>Last 10 webhook delivery attempts to your endpoint</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {logsLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-14 bg-muted/40 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <Activity className="w-8 h-8 text-muted-foreground/40 mb-3" />
+              <p className="text-sm text-muted-foreground">No deliveries yet</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Delivery logs appear here once webhooks are triggered</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {logs.map(log => (
+                <div key={log.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                  <div className="w-28 shrink-0">
+                    <StatusBadge status={log.status} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-mono text-muted-foreground truncate" title={log.url}>{log.url}</p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-xs text-muted-foreground/70">
+                        {log.httpStatus != null ? (
+                          <span className={log.httpStatus >= 200 && log.httpStatus < 300 ? "text-emerald-400/80" : "text-rose-400/80"}>
+                            HTTP {log.httpStatus}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50">No response</span>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground/50">·</span>
+                      <span className="text-xs text-muted-foreground/70">
+                        {log.attempts} {log.attempts === 1 ? "attempt" : "attempts"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground/60 shrink-0 text-right">
+                    {log.createdAt
+                      ? formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })
+                      : "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border-primary/20">
         <CardHeader>

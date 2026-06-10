@@ -1956,6 +1956,15 @@ export const ListWithdrawalsStatus = {
   all: 'all',
 } as const;
 
+export type GetWebhookLogsParams = {
+/**
+ * Number of recent log entries to return (default 10, max 50)
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+};
+
 export type ListCallbackLogsParams = {
 status?: ListCallbackLogsStatus;
 /**
@@ -2113,6 +2122,19 @@ limit?: number;
 export type GetVirtualAccountBalanceHistoryParams = {
 page?: number;
 limit?: number;
+};
+
+export type ExportAdminAuditLogsCsvParams = {
+action?: string;
+search?: string;
+/**
+ * Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)
+ */
+dateFrom?: string;
+/**
+ * Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)
+ */
+dateTo?: string;
 };
 
 export type ListAdminAuditLogsParams = {
