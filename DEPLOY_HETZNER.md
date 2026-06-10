@@ -5,6 +5,24 @@
 - Hetzner Cloud account
 - Domain pointed to your VPS IP (`rasokart.com`)
 - SSH access to your VPS
+- GitHub repo: `https://github.com/rudraraj55955/RPAY.git`
+
+---
+
+## Quick Update (Existing Deployment)
+
+If the VPS is already running, SSH in and run:
+
+```bash
+cd /home/rasokart/app
+git pull origin main
+pnpm install --frozen-lockfile
+pnpm --filter @workspace/db run push          # only if schema changed
+pnpm --filter @workspace/api-server run build
+pm2 restart rasokart-api
+BASE_PATH=/ pnpm --filter @workspace/rpay run build
+# nginx serves the updated dist/ folder automatically
+```
 
 ---
 
@@ -83,15 +101,14 @@ useradd -m -s /bin/bash rasokart
 su - rasokart
 
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/RasoKart.git /home/rasokart/app
+git clone https://github.com/rudraraj55955/RPAY.git /home/rasokart/app
 cd /home/rasokart/app
 
 # Install dependencies
 pnpm install --frozen-lockfile
 
-# Build all packages
-pnpm run build
-pnpm --filter @workspace/api-server run build
+# Build lib packages (required before frontend/server build)
+pnpm run typecheck:libs
 ```
 
 ---
@@ -122,6 +139,9 @@ cd /home/rasokart/app
 DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rasokart \
   pnpm --filter @workspace/db run push
 ```
+
+The API server seed runs automatically on startup — it creates the admin account
+(`admin@rasokart.com` / `Admin@123456`) and demo merchant data idempotently.
 
 ---
 
@@ -157,7 +177,7 @@ EOF
 # Create log directory
 mkdir -p /var/log/rasokart && chown rasokart:rasokart /var/log/rasokart
 
-# Build and start
+# Build API server and start
 cd /home/rasokart/app/artifacts/api-server
 pnpm run build
 
@@ -187,8 +207,8 @@ BASE_PATH=/ pnpm run build
 # /etc/nginx/sites-available/rasokart
 server {
     listen 80;
-    server_name rasokart.com;
-    return 301 https://$host$request_uri;
+    server_name rasokart.com www.rasokart.com;
+    return 301 https://rasokart.com$request_uri;
 }
 
 server {
@@ -218,7 +238,7 @@ server {
         proxy_buffering    off;
     }
 
-    # Frontend — serve static files
+    # Frontend — serve static files (React SPA)
     root /home/rasokart/app/artifacts/rpay/dist;
     index index.html;
 
@@ -226,7 +246,7 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Cache static assets
+    # Cache static assets aggressively
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2|woff|ttf)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
@@ -239,8 +259,9 @@ server {
 ln -s /etc/nginx/sites-available/rasokart /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 
-# Get SSL certificate
-certbot --nginx -d rasokart.com --non-interactive --agree-tos -m admin@rasokart.com
+# Get SSL certificate (www + apex)
+certbot --nginx -d rasokart.com -d www.rasokart.com \
+  --non-interactive --agree-tos -m admin@rasokart.com
 ```
 
 ---
@@ -261,18 +282,33 @@ pm2 logs rasokart-api --lines 50
 curl -s -X POST https://rasokart.com/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@rasokart.com","password":"Admin@123456"}'
+
+# Confirm landing page loads
+curl -sI https://rasokart.com | grep HTTP
 ```
+
+### Route verification
+
+| URL | Expected |
+|-----|----------|
+| `https://rasokart.com/` | Public landing page |
+| `https://rasokart.com/admin` | Admin login |
+| `https://rasokart.com/merchant` | Merchant login |
+| `https://rasokart.com/agent` | Agent login |
+| `https://rasokart.com/merchant/apply` | Merchant application |
+| `https://rasokart.com/admin/dashboard` | Admin dashboard (after login) |
+| `https://rasokart.com/merchant/dashboard` | Merchant dashboard (after login) |
+| `https://rasokart.com/agent/dashboard` | Agent dashboard (after login) |
 
 ---
 
-## 11. Change Default Admin Password
+## 11. Change Default Passwords
 
 **Immediately after deploying to production:**
 
-1. Log in to the admin portal at `https://rasokart.com/admin/login`
-2. Navigate to Account Settings
-3. Change the admin password to a strong, unique password
-4. Update the merchant demo passwords or remove demo accounts
+1. Log in to the admin portal at `https://rasokart.com/admin`
+2. Navigate to **Users** → change admin password
+3. Remove or suspend demo merchant accounts (`merchant@demo.com`, `merchant2@demo.com`)
 
 ---
 
@@ -283,10 +319,12 @@ curl -s -X POST https://rasokart.com/api/auth/login \
 cd /home/rasokart/app
 git pull origin main
 pnpm install --frozen-lockfile
-pnpm --filter @workspace/db run push   # if schema changed
+pnpm run typecheck:libs                        # rebuild lib declarations
+pnpm --filter @workspace/db run push          # if schema changed
 pnpm --filter @workspace/api-server run build
 pm2 restart rasokart-api
-pnpm --filter @workspace/rpay run build
+BASE_PATH=/ pnpm --filter @workspace/rpay run build
+# nginx serves updated dist/ automatically
 ```
 
 ### Backups
@@ -317,36 +355,33 @@ echo "0 2 * * * rasokart pg_dump -U rasokart_user rasokart | gzip > /backups/ras
 
 ## 13. Monitoring (Optional)
 
-### Hetzner monitoring (built-in)
-- CPU, RAM, network graphs in Hetzner Cloud console
-
 ### Uptime monitoring
 - Add `https://rasokart.com/api/healthz` to UptimeRobot (free tier)
 
 ### Error alerting
-- PM2 can send email/webhook on process crash:
-  ```bash
-  pm2 install pm2-slack    # Slack alerts
-  pm2 install pm2-logrotate
-  ```
+```bash
+pm2 install pm2-slack       # Slack alerts on crash
+pm2 install pm2-logrotate   # Auto log rotation
+```
 
 ---
 
-## Architecture Diagram
+## Architecture
 
 ```
 Internet
     │
     ▼
-[Hetzner VPS - Ubuntu 24.04]
+[Hetzner VPS — Ubuntu 24.04]
     │
-[Nginx :443]
-    ├── /api/* → [Express API :8080]
+[Nginx :443]  ←  TLS termination + static files
+    ├── /api/* → [Express API :8080 via PM2]
     │                    │
     │              [PostgreSQL :5432]
     │
     └── /* → [Vite static dist]
-                  (React SPA)
+              React SPA (landing + admin + merchant + agent portals)
+              Routes: /  /admin  /merchant  /agent  /agent/dashboard  …
 ```
 
 ---
@@ -356,11 +391,15 @@ Internet
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `SESSION_SECRET` | ✅ | 64-char random secret for sessions |
+| `SESSION_SECRET` | ✅ | 64-char random secret for JWT signing |
 | `PORT` | ✅ | API server port (default 8080) |
 | `NODE_ENV` | ✅ | Set to `production` |
-| `JWT_SECRET` | Optional | Defaults to SESSION_SECRET if not set |
+| `SMTP_HOST` | Optional | SMTP server for finance report emails |
+| `SMTP_PORT` | Optional | SMTP port (default 587) |
+| `SMTP_USER` | Optional | SMTP username |
+| `SMTP_PASS` | Optional | SMTP password |
+| `SMTP_FROM` | Optional | From address for outbound emails |
 
 ---
 
-*Generated by RasoKart production audit — 2026-06-08*
+*Last updated: 2026-06-10*

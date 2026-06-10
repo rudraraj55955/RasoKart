@@ -19,6 +19,7 @@ import MerchantRegister from "@/pages/merchant/register";
 import MerchantPending from "@/pages/merchant/pending";
 import MerchantSuspended from "@/pages/merchant/suspended";
 import AgentLogin from "@/pages/agent/login";
+import AgentDashboard from "@/pages/agent/dashboard";
 
 // Admin Pages
 import AdminDashboard from "@/pages/admin/dashboard";
@@ -122,6 +123,9 @@ function Router() {
       <Route path="/admin" component={AdminLogin} />
       <Route path="/merchant" component={MerchantLogin} />
       <Route path="/agent" component={AgentLogin} />
+
+      {/* Agent dashboard */}
+      <Route path="/agent/dashboard"><AdminRoute component={AgentDashboard} /></Route>
       <Route path="/merchant/apply" component={MerchantRegister} />
       <Route path="/merchant/pending" component={MerchantPending} />
       <Route path="/merchant/suspended" component={MerchantSuspended} />

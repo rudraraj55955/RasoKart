@@ -22,6 +22,11 @@ import {
   Mail,
   Phone,
   MapPin,
+  IndianRupee,
+  BookOpen,
+  Terminal,
+  Webhook,
+  Key,
 } from "lucide-react";
 
 const services = [
@@ -116,7 +121,9 @@ export default function Landing() {
           </div>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
             <a href="#services" className="transition-colors hover:text-foreground">Services</a>
-            <a href="#features" className="transition-colors hover:text-foreground">Features</a>
+            <a href="#features" className="transition-colors hover:text-foreground">Dashboard</a>
+            <a href="#settlement" className="transition-colors hover:text-foreground">Settlement</a>
+            <a href="#api-docs" className="transition-colors hover:text-foreground">API Docs</a>
             <a href="#plans" className="transition-colors hover:text-foreground">Plans</a>
             <a href="#contact" className="transition-colors hover:text-foreground">Contact</a>
           </nav>
@@ -311,6 +318,196 @@ export default function Landing() {
                 <Button className="gap-2 bg-gradient-to-r from-amber-500 to-rose-500 text-white hover:opacity-90">
                   Apply Now
                   <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SETTLEMENT DASHBOARD */}
+      <section id="settlement" className="relative py-24">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute right-0 top-0 h-[400px] w-[400px] rounded-full bg-violet-500/8 blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="grid items-center gap-16 lg:grid-cols-2">
+            {/* Visual mock */}
+            <div className="order-2 lg:order-1">
+              <div className="rounded-2xl border border-border/40 bg-card/40 p-6 backdrop-blur-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="text-sm font-semibold">Settlement Overview</span>
+                  <Badge className="border-emerald-400/30 bg-emerald-400/10 text-emerald-400" variant="outline">Live</Badge>
+                </div>
+                <div className="space-y-3">
+                  {[
+                    { label: "Total Collected", value: "₹12,45,600", change: "+8.2%", color: "text-emerald-400" },
+                    { label: "Pending Settlement", value: "₹3,20,000", change: "4 requests", color: "text-amber-400" },
+                    { label: "Settled This Month", value: "₹9,25,600", change: "12 batches", color: "text-cyan-400" },
+                    { label: "Available Balance", value: "₹1,82,400", change: "Withdrawable", color: "text-violet-400" },
+                  ].map((row) => (
+                    <div key={row.label} className="flex items-center justify-between rounded-xl border border-border/30 bg-background/30 px-4 py-3">
+                      <div>
+                        <div className="text-xs text-muted-foreground">{row.label}</div>
+                        <div className={`text-lg font-bold ${row.color}`}>{row.value}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">{row.change}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <div className="flex-1 rounded-lg border border-border/30 bg-emerald-500/10 px-3 py-2 text-center text-xs text-emerald-400">Request Settlement</div>
+                  <div className="flex-1 rounded-lg border border-border/30 bg-primary/10 px-3 py-2 text-center text-xs text-primary">View History</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Copy */}
+            <div className="order-1 lg:order-2">
+              <Badge className="mb-4 border-violet-400/30 bg-violet-400/10 text-violet-400" variant="outline">
+                Settlement Dashboard
+              </Badge>
+              <h2 className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl">
+                Track Every Rupee,{" "}
+                <span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
+                  Settle on Schedule
+                </span>
+              </h2>
+              <p className="mb-6 text-muted-foreground">
+                Merchants get a real-time settlement dashboard showing collected funds, pending
+                disbursements, and full balance history — with one-click withdrawal requests.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { icon: IndianRupee, label: "Real-time balance visibility" },
+                  { icon: CheckCircle2, label: "One-click withdrawal requests" },
+                  { icon: BarChart3, label: "Collection trend charts" },
+                  { icon: FileText, label: "Downloadable settlement CSV" },
+                  { icon: Bell, label: "Settlement status alerts" },
+                  { icon: TrendingUp, label: "Month-on-month comparison" },
+                ].map((f) => (
+                  <div key={f.label} className="flex items-center gap-2 text-sm text-foreground/80">
+                    <f.icon className="h-4 w-4 shrink-0 text-violet-400" />
+                    <span>{f.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-8">
+                <Link href="/merchant/apply">
+                  <Button className="gap-2 bg-gradient-to-r from-violet-500 to-cyan-500 text-white hover:opacity-90">
+                    Get Merchant Access
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* API DOCUMENTATION */}
+      <section id="api-docs" className="relative py-24">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute left-0 top-1/2 h-[400px] w-[400px] -translate-y-1/2 rounded-full bg-cyan-500/8 blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="mb-16 text-center">
+            <Badge className="mb-4 border-cyan-400/30 bg-cyan-400/10 text-cyan-400" variant="outline">
+              API Documentation
+            </Badge>
+            <h2 className="text-4xl font-bold tracking-tight sm:text-5xl">
+              Build on RasoKart's{" "}
+              <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                REST API
+              </span>
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
+              A clean, versioned REST API with webhook events, HMAC signature verification,
+              and a full sandbox environment for integration testing.
+            </p>
+          </div>
+
+          <div className="grid gap-8 lg:grid-cols-2">
+            {/* Code block */}
+            <div className="rounded-2xl border border-border/40 bg-zinc-950 p-6 font-mono text-sm">
+              <div className="mb-3 flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-rose-500" />
+                <div className="h-3 w-3 rounded-full bg-amber-500" />
+                <div className="h-3 w-3 rounded-full bg-emerald-500" />
+                <span className="ml-2 text-xs text-zinc-500">collect-payment.sh</span>
+              </div>
+              <pre className="overflow-x-auto leading-relaxed text-zinc-300">
+{`curl -X POST https://rasokart.com/api/callbacks \\
+  -H "Content-Type: application/json" \\
+  -H "X-Api-Key: rasokart_live_your_key" \\
+  -H "X-Signature: sha256=abc123..." \\
+  -d '{
+    "amount": 50000,
+    "orderId": "ORD-2026-001",
+    "merchantRef": "INV-101",
+    "description": "Product purchase"
+  }'
+
+# Response
+{
+  "status": "success",
+  "transactionId": 4821,
+  "utr": "SBIN0002026061001234",
+  "amount": 50000,
+  "timestamp": "2026-06-10T12:34:56Z"
+}`}
+              </pre>
+            </div>
+
+            {/* Feature list */}
+            <div className="flex flex-col justify-center gap-6">
+              {[
+                {
+                  icon: Key,
+                  title: "API Key Authentication",
+                  desc: "Scoped API keys with prefix `rasokart_live_` for production and `rasokart_secret_` for server-side operations.",
+                  color: "text-cyan-400",
+                  bg: "bg-cyan-400/10",
+                },
+                {
+                  icon: Webhook,
+                  title: "Webhook Callbacks",
+                  desc: "Real-time HTTPS callbacks with HMAC-SHA256 signature verification. Automatic retry with exponential back-off.",
+                  color: "text-violet-400",
+                  bg: "bg-violet-400/10",
+                },
+                {
+                  icon: Terminal,
+                  title: "Sandbox Environment",
+                  desc: "Simulate deposits, test webhook delivery, and verify signature handling — without moving real money.",
+                  color: "text-emerald-400",
+                  bg: "bg-emerald-400/10",
+                },
+                {
+                  icon: BookOpen,
+                  title: "Interactive Docs",
+                  desc: "Full OpenAPI documentation with request/response examples, error codes, and code snippets in multiple languages.",
+                  color: "text-amber-400",
+                  bg: "bg-amber-400/10",
+                },
+              ].map((f) => (
+                <div key={f.title} className="flex gap-4">
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${f.bg}`}>
+                    <f.icon className={`h-5 w-5 ${f.color}`} />
+                  </div>
+                  <div>
+                    <div className="mb-1 font-semibold">{f.title}</div>
+                    <div className="text-sm text-muted-foreground">{f.desc}</div>
+                  </div>
+                </div>
+              ))}
+
+              <Link href="/merchant/api-docs">
+                <Button variant="outline" className="w-fit gap-2 border-border/60">
+                  <BookOpen className="h-4 w-4" />
+                  View Full API Docs
                 </Button>
               </Link>
             </div>

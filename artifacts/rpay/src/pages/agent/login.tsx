@@ -38,7 +38,7 @@ export default function AgentLogin() {
         onSuccess: (res) => {
           setAuthToken(res.token);
           toast.success("Welcome back, Agent.");
-          setLocation("/admin/dashboard");
+          setLocation("/agent/dashboard");
         },
         onError: (err) => {
           toast.error(err.message || "Login failed");
