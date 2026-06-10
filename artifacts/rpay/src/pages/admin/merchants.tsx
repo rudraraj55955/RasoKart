@@ -25,7 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -1419,6 +1419,22 @@ export default function AdminMerchants() {
                 </div>
               );
               return null;
+            })()}
+
+            {/* Manual renewal reminder — shown for paid plans with an expiry date */}
+            {expiresAt && (() => {
+              const plan = selectedPlanId ? plans?.find(p => String(p.id) === selectedPlanId) : undefined;
+              const isPaid = plan && plan.monthlyFee !== "0" && plan.name.toLowerCase() !== "custom";
+              if (!isPaid) return null;
+              const expiryFormatted = format(new Date(expiresAt), "MMM d, yyyy");
+              return (
+                <div className="flex items-start gap-2.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-sky-400">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p className="text-xs leading-relaxed">
+                    <span className="font-semibold">Renewal is manual.</span> This plan has no automatic renewal — it will expire on {expiryFormatted}. Make sure to schedule a renewal before that date or the merchant's access will lapse.
+                  </p>
+                </div>
+              );
             })()}
 
             {/* Notes */}
