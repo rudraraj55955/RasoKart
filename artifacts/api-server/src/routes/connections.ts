@@ -63,7 +63,7 @@ async function buildMonthlyUsageMap(connectionIds: number[]): Promise<Map<number
 }
 
 // GET /api/connections
-// Admin: returns paginated { data, total } for all merchants, with search/provider/page/limit
+// Admin: returns paginated { data, total, activeCount, inactiveCount } for all merchants, with search/provider/page/limit
 // Merchant: returns flat array of own connections
 router.get("/", async (req, res) => {
   const user = (req as any).user;
@@ -74,9 +74,13 @@ router.get("/", async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
 
-    const conditions: any[] = [];
-    if (provider && provider !== "") conditions.push(eq(merchantConnectionsTable.provider, provider));
-    if (merchantId && !isNaN(parseInt(merchantId))) conditions.push(eq(merchantConnectionsTable.merchantId, parseInt(merchantId)));
+    // Base conditions (without status) — used for computing per-status counts
+    const baseConditions: any[] = [];
+    if (provider && provider !== "") baseConditions.push(eq(merchantConnectionsTable.provider, provider));
+    if (merchantId && !isNaN(parseInt(merchantId))) baseConditions.push(eq(merchantConnectionsTable.merchantId, parseInt(merchantId)));
+
+    // Full conditions (with status) — used for paginated data and total count
+    const conditions = [...baseConditions];
     if (status === "active") conditions.push(eq(merchantConnectionsTable.isActive, true));
     else if (status === "inactive") conditions.push(eq(merchantConnectionsTable.isActive, false));
 
@@ -85,35 +89,57 @@ router.get("/", async (req, res) => {
         ilike(merchantsTable.businessName, `%${search}%`),
         ilike(merchantsTable.email, `%${search}%`)
       )!;
-      const joined = await db
-        .select({ conn: merchantConnectionsTable, businessName: merchantsTable.businessName, merchantEmail: merchantsTable.email })
-        .from(merchantConnectionsTable)
-        .innerJoin(merchantsTable, eq(merchantConnectionsTable.merchantId, merchantsTable.id))
-        .where(conditions.length ? and(...conditions, nameSearch) : nameSearch)
-        .orderBy(sql`${merchantsTable.businessName} ASC`)
-        .limit(limitNum)
-        .offset(offset);
 
-      const [{ total: totalCount }] = await db
-        .select({ total: count() })
-        .from(merchantConnectionsTable)
-        .innerJoin(merchantsTable, eq(merchantConnectionsTable.merchantId, merchantsTable.id))
-        .where(conditions.length ? and(...conditions, nameSearch) : nameSearch);
+      const baseWhereSearch = baseConditions.length ? and(...baseConditions, nameSearch) : nameSearch;
+      const whereSearch = conditions.length ? and(...conditions, nameSearch) : nameSearch;
 
-      const connectionIds = joined.map(r => r.conn.id);
-      const usageMap = await buildMonthlyUsageMap(connectionIds);
+      const [joined, [{ total: totalCount }], [statusCounts]] = await Promise.all([
+        db
+          .select({ conn: merchantConnectionsTable, businessName: merchantsTable.businessName, merchantEmail: merchantsTable.email })
+          .from(merchantConnectionsTable)
+          .innerJoin(merchantsTable, eq(merchantConnectionsTable.merchantId, merchantsTable.id))
+          .where(whereSearch)
+          .orderBy(sql`${merchantsTable.businessName} ASC`)
+          .limit(limitNum)
+          .offset(offset),
+        db
+          .select({ total: count() })
+          .from(merchantConnectionsTable)
+          .innerJoin(merchantsTable, eq(merchantConnectionsTable.merchantId, merchantsTable.id))
+          .where(whereSearch),
+        db
+          .select({
+            activeCount: sql<number>`cast(count(*) filter (where ${merchantConnectionsTable.isActive}) as int)`,
+            inactiveCount: sql<number>`cast(count(*) filter (where not ${merchantConnectionsTable.isActive}) as int)`,
+          })
+          .from(merchantConnectionsTable)
+          .innerJoin(merchantsTable, eq(merchantConnectionsTable.merchantId, merchantsTable.id))
+          .where(baseWhereSearch),
+      ]);
+
+      const usageMap = await buildMonthlyUsageMap(joined.map(r => r.conn.id));
 
       res.json({
         data: joined.map(r => ({ ...formatConn(r.conn, usageMap.get(r.conn.id) ?? 0), businessName: r.businessName, merchantEmail: r.merchantEmail })),
         total: totalCount,
         page: pageNum,
         limit: limitNum,
+        activeCount: statusCounts.activeCount,
+        inactiveCount: statusCounts.inactiveCount,
       });
       return;
     }
 
     const where = conditions.length ? and(...conditions) : undefined;
-    const [{ total: totalCount }] = await db.select({ total: count() }).from(merchantConnectionsTable).where(where);
+    const baseWhere = baseConditions.length ? and(...baseConditions) : undefined;
+
+    const [[{ total: totalCount }], [statusCounts]] = await Promise.all([
+      db.select({ total: count() }).from(merchantConnectionsTable).where(where),
+      db.select({
+        activeCount: sql<number>`cast(count(*) filter (where ${merchantConnectionsTable.isActive}) as int)`,
+        inactiveCount: sql<number>`cast(count(*) filter (where not ${merchantConnectionsTable.isActive}) as int)`,
+      }).from(merchantConnectionsTable).where(baseWhere),
+    ]);
 
     const joined = await db
       .select({ conn: merchantConnectionsTable, businessName: merchantsTable.businessName, merchantEmail: merchantsTable.email })
@@ -124,14 +150,15 @@ router.get("/", async (req, res) => {
       .limit(limitNum)
       .offset(offset);
 
-    const connectionIds = joined.map(r => r.conn.id);
-    const usageMap = await buildMonthlyUsageMap(connectionIds);
+    const usageMap = await buildMonthlyUsageMap(joined.map(r => r.conn.id));
 
     res.json({
       data: joined.map(r => ({ ...formatConn(r.conn, usageMap.get(r.conn.id) ?? 0), businessName: r.businessName, merchantEmail: r.merchantEmail })),
       total: totalCount,
       page: pageNum,
       limit: limitNum,
+      activeCount: statusCounts.activeCount,
+      inactiveCount: statusCounts.inactiveCount,
     });
     return;
   }

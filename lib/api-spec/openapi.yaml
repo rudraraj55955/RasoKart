@@ -2146,7 +2146,10 @@ paths:
             enum: [active, inactive]
       responses:
         "200":
-          description: List of connections
+          description: >
+            Merchant: flat array of own connections.
+            Admin: paginated object { data, total, page, limit, activeCount, inactiveCount } —
+            counts reflect provider/merchant/search filters but ignore the status filter.
           content:
             application/json:
               schema:
@@ -6016,6 +6019,29 @@ components:
       properties:
         enabled:
           type: boolean
+
+    ConnectionsListPage:
+      type: object
+      description: Paginated admin response for GET /connections. Includes per-status counts respecting all filters except status itself.
+      required: [data, total, page, limit, activeCount, inactiveCount]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MerchantConnection"
+        total:
+          type: integer
+          description: Total count of connections matching all active filters (including status).
+        page:
+          type: integer
+        limit:
+          type: integer
+        activeCount:
+          type: integer
+          description: Number of active connections matching provider/merchant/search filters (ignores status filter).
+        inactiveCount:
+          type: integer
+          description: Number of inactive connections matching provider/merchant/search filters (ignores status filter).
 
     MerchantConnection:
       type: object

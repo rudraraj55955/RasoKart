@@ -963,6 +963,21 @@ export interface MerchantConnection {
   updatedAt?: string;
 }
 
+/**
+ * Paginated admin response for GET /connections. Includes per-status counts respecting all filters except status itself.
+ */
+export interface ConnectionsListPage {
+  data: MerchantConnection[];
+  /** Total count of connections matching all active filters (including status). */
+  total: number;
+  page: number;
+  limit: number;
+  /** Number of active connections matching provider/merchant/search filters (ignores status filter). */
+  activeCount: number;
+  /** Number of inactive connections matching provider/merchant/search filters (ignores status filter). */
+  inactiveCount: number;
+}
+
 export interface MerchantConnectionInput {
   provider: string;
   /** @nullable */

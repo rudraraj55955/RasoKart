@@ -70,6 +70,7 @@ export * from './callbackSecretStatus';
 export * from './callbackStatsResponse';
 export * from './callbackWindowInput';
 export * from './chartDataPoint';
+export * from './connectionsListPage';
 export * from './createMerchantFilterPresetInput';
 export * from './createMerchantFilterPresetInputPayload';
 export * from './createMerchantFilterPresetInputPresetType';

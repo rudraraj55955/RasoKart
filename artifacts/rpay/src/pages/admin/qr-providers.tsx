@@ -70,6 +70,8 @@ export default function AdminQrProviders() {
 
   const rows: any[] = data?.data ?? [];
   const total: number = data?.total ?? 0;
+  const activeCount: number | undefined = data?.activeCount;
+  const inactiveCount: number | undefined = data?.inactiveCount;
   const merchants: any[] = merchantData?.data ?? [];
 
   const createMutation = useMutation({
@@ -150,11 +152,15 @@ export default function AdminQrProviders() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-[150px]"><SelectValue placeholder="All statuses" /></SelectTrigger>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="All statuses" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Deactivated</SelectItem>
+                <SelectItem value="active">
+                  Active{activeCount !== undefined ? ` (${activeCount})` : ""}
+                </SelectItem>
+                <SelectItem value="inactive">
+                  Deactivated{inactiveCount !== undefined ? ` (${inactiveCount})` : ""}
+                </SelectItem>
               </SelectContent>
             </Select>
             {(search !== "" || providerFilter !== "all" || statusFilter !== "all") && (
