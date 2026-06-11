@@ -85,6 +85,7 @@ export default function AdminMerchants() {
   const [showHistory, setShowHistory] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"upgrade" | "downgrade" | "suspend" | "reinstate" | "renew" | null>(null);
   const [renewExpiresAt, setRenewExpiresAt] = useState<string>("");
+  const [actionExpiresAt, setActionExpiresAt] = useState<string>("");
   const [confirmSecretReset, setConfirmSecretReset] = useState(false);
 
   // Bulk selection state
@@ -229,13 +230,14 @@ export default function AdminMerchants() {
       qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
       setConfirmAction(null);
       setActionNotes("");
+      setActionExpiresAt("");
       extra?.();
     };
 
     if (action === "upgrade" || action === "downgrade") {
       if (!selectedPlanId) return;
       const mutation = action === "upgrade" ? upgradeMutation : downgradeMutation;
-      mutation.mutate({ id, data: { planId: parseInt(selectedPlanId), notes } }, {
+      mutation.mutate({ id, data: { planId: parseInt(selectedPlanId), expiresAt: actionExpiresAt || null, notes } }, {
         onSuccess: () => afterSuccess(`Plan ${action}d`, () => setSelectedPlanId("")),
         onError: () => toast.error(`Failed to ${action} plan`),
       });
@@ -1562,10 +1564,10 @@ export default function AdminMerchants() {
               <div className="space-y-3">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Actions</p>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10" onClick={() => { setConfirmAction("upgrade"); setSelectedPlanId(""); setActionNotes(""); }}>
+                  <Button size="sm" variant="outline" className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10" onClick={() => { setConfirmAction("upgrade"); setSelectedPlanId(""); setActionNotes(""); setActionExpiresAt(""); }}>
                     <TrendingUp className="w-3.5 h-3.5 mr-1" />Upgrade
                   </Button>
-                  <Button size="sm" variant="outline" className="text-amber-400 border-amber-500/30 hover:bg-amber-500/10" onClick={() => { setConfirmAction("downgrade"); setSelectedPlanId(""); setActionNotes(""); }}>
+                  <Button size="sm" variant="outline" className="text-amber-400 border-amber-500/30 hover:bg-amber-500/10" onClick={() => { setConfirmAction("downgrade"); setSelectedPlanId(""); setActionNotes(""); setActionExpiresAt(""); }}>
                     <TrendingDown className="w-3.5 h-3.5 mr-1" />Downgrade
                   </Button>
                   {currentMerchantPlan.status !== "suspended" ? (
@@ -1587,19 +1589,60 @@ export default function AdminMerchants() {
                   <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-3">
                     <p className="text-sm font-medium capitalize">{confirmAction} Plan</p>
                     {(confirmAction === "upgrade" || confirmAction === "downgrade") && (
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Select Target Plan</Label>
-                        <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
-                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choose plan..." /></SelectTrigger>
-                          <SelectContent>
-                            {plans?.filter(p => String(p.id) !== String(currentMerchantPlan.planId))
-                              .map(plan => (
-                              <SelectItem key={plan.id} value={String(plan.id)}>
-                                {plan.name}{plan.monthlyFee !== "0" ? ` — ₹${parseInt(plan.monthlyFee).toLocaleString()}/mo` : " — Free"}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Select Target Plan</Label>
+                          <Select value={selectedPlanId} onValueChange={v => { setSelectedPlanId(v); setActionExpiresAt(""); }}>
+                            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Choose plan..." /></SelectTrigger>
+                            <SelectContent>
+                              {plans?.filter(p => String(p.id) !== String(currentMerchantPlan.planId))
+                                .map(plan => (
+                                <SelectItem key={plan.id} value={String(plan.id)}>
+                                  {plan.name}{plan.monthlyFee !== "0" ? ` — ₹${parseInt(plan.monthlyFee).toLocaleString()}/mo` : " — Free"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {selectedPlanId && (() => {
+                          const targetPlan = plans?.find(p => String(p.id) === selectedPlanId);
+                          const isPaid = targetPlan && targetPlan.monthlyFee !== "0" && targetPlan.name.toLowerCase() !== "custom";
+                          return (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5" />
+                                Plan Expiry Date{isPaid ? <span className="text-rose-400">*</span> : <span className="text-muted-foreground">(optional)</span>}
+                              </Label>
+                              <Input type="date" className="h-8 text-sm" value={actionExpiresAt} onChange={e => setActionExpiresAt(e.target.value)} min={new Date().toISOString().split("T")[0]} />
+                              {isPaid && !actionExpiresAt ? (
+                                <div className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-2 text-rose-400">
+                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                  <p className="text-xs leading-relaxed">
+                                    <span className="font-semibold">Expiry date is required</span> for paid plans ({targetPlan.name}).
+                                    Set a date to confirm.
+                                  </p>
+                                </div>
+                              ) : actionExpiresAt ? (() => {
+                                const days = Math.round((new Date(actionExpiresAt).getTime() - Date.now()) / 86400000);
+                                if (days < 7) return (
+                                  <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-2 text-yellow-400">
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                    <p className="text-xs leading-relaxed"><span className="font-semibold">This plan expires very soon</span> — did you mean a longer period?</p>
+                                  </div>
+                                );
+                                if (days > 730) return (
+                                  <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-2 text-yellow-400">
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                    <p className="text-xs leading-relaxed"><span className="font-semibold">This expiry date is over 2 years away</span> — please confirm.</p>
+                                  </div>
+                                );
+                                return null;
+                              })() : (
+                                <p className="text-xs text-muted-foreground">Leave empty for no expiry.</p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                     {confirmAction === "renew" && (
@@ -1648,8 +1691,8 @@ export default function AdminMerchants() {
                       <Input className="h-8 text-sm" value={actionNotes} onChange={e => setActionNotes(e.target.value)} placeholder="Internal note..." />
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => { setConfirmAction(null); setActionNotes(""); }}>Cancel</Button>
-                      <Button size="sm" onClick={() => handlePlanAction(confirmAction)} disabled={isActionPending || ((confirmAction === "upgrade" || confirmAction === "downgrade") && !selectedPlanId)}>
+                      <Button size="sm" variant="outline" onClick={() => { setConfirmAction(null); setActionNotes(""); setActionExpiresAt(""); }}>Cancel</Button>
+                      <Button size="sm" onClick={() => handlePlanAction(confirmAction)} disabled={isActionPending || ((confirmAction === "upgrade" || confirmAction === "downgrade") && (!selectedPlanId || (() => { const tp = plans?.find(p => String(p.id) === selectedPlanId); return !!(tp && tp.monthlyFee !== "0" && tp.name.toLowerCase() !== "custom" && !actionExpiresAt); })()))}>
                         {isActionPending ? "Processing..." : `Confirm ${confirmAction.charAt(0).toUpperCase() + confirmAction.slice(1)}`}
                       </Button>
                     </div>
