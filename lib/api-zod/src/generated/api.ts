@@ -4028,3 +4028,44 @@ export const GetStorageObjectParams = zod.object({
 })
 
 
+/**
+ * @summary List saved smart search filter presets for the current admin
+ */
+export const ListSavedFiltersResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "rawInput": zod.string(),
+  "filterData": zod.record(zod.string(), zod.unknown()).describe('SmartFilter JSON object'),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Save a named smart search filter preset
+ */
+export const createSavedFilterBodyNameMax = 40;
+
+
+
+
+export const CreateSavedFilterBody = zod.object({
+  "name": zod.string().min(1).max(createSavedFilterBodyNameMax),
+  "rawInput": zod.string().min(1),
+  "filterData": zod.record(zod.string(), zod.unknown()).describe('SmartFilter JSON object')
+})
+
+
+/**
+ * @summary Delete a saved filter preset
+ */
+export const DeleteSavedFilterParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteSavedFilterResponse = zod.object({
+  "message": zod.string()
+})
+
+

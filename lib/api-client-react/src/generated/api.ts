@@ -62,6 +62,7 @@ import type {
   CallbackStatsResponse,
   CallbackWindowInput,
   ChartDataPoint,
+  CreateSavedFilterInput,
   CreateSettlementInput,
   DashboardStats,
   DeleteAccountDetail200,
@@ -98,6 +99,7 @@ import type {
   ListQrCodesParams,
   ListReconciliationRunItemsParams,
   ListReconciliationRunsParams,
+  ListSavedFilters200,
   ListSettlementsParams,
   ListTransactionsParams,
   ListUsersParams,
@@ -165,6 +167,7 @@ import type {
   ResendReconciliationReportEmail200,
   RetryCallback200,
   RetryWebhookLog200,
+  SavedFilter,
   ScheduleRenewalInput,
   SearchByUtrParams,
   Settlement,
@@ -13150,4 +13153,222 @@ export function useGetStorageObject<TData = Awaited<ReturnType<typeof getStorage
 
 
 
+
+export const getListSavedFiltersUrl = () => {
+
+
+
+
+  return `/api/saved-filters`
+}
+
+/**
+ * @summary List saved smart search filter presets for the current admin
+ */
+export const listSavedFilters = async ( options?: RequestInit): Promise<ListSavedFilters200> => {
+
+  return customFetch<ListSavedFilters200>(getListSavedFiltersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSavedFiltersQueryKey = () => {
+    return [
+    `/api/saved-filters`
+    ] as const;
+    }
+
+
+export const getListSavedFiltersQueryOptions = <TData = Awaited<ReturnType<typeof listSavedFilters>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSavedFilters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSavedFiltersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSavedFilters>>> = ({ signal }) => listSavedFilters({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSavedFilters>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSavedFiltersQueryResult = NonNullable<Awaited<ReturnType<typeof listSavedFilters>>>
+export type ListSavedFiltersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List saved smart search filter presets for the current admin
+ */
+
+export function useListSavedFilters<TData = Awaited<ReturnType<typeof listSavedFilters>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSavedFilters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSavedFiltersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSavedFilterUrl = () => {
+
+
+
+
+  return `/api/saved-filters`
+}
+
+/**
+ * @summary Save a named smart search filter preset
+ */
+export const createSavedFilter = async (createSavedFilterInput: CreateSavedFilterInput, options?: RequestInit): Promise<SavedFilter> => {
+
+  return customFetch<SavedFilter>(getCreateSavedFilterUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSavedFilterInput,)
+  }
+);}
+
+
+
+
+export const getCreateSavedFilterMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSavedFilter>>, TError,{data: BodyType<CreateSavedFilterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSavedFilter>>, TError,{data: BodyType<CreateSavedFilterInput>}, TContext> => {
+
+const mutationKey = ['createSavedFilter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSavedFilter>>, {data: BodyType<CreateSavedFilterInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSavedFilter(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSavedFilterMutationResult = NonNullable<Awaited<ReturnType<typeof createSavedFilter>>>
+    export type CreateSavedFilterMutationBody = BodyType<CreateSavedFilterInput>
+    export type CreateSavedFilterMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save a named smart search filter preset
+ */
+export const useCreateSavedFilter = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSavedFilter>>, TError,{data: BodyType<CreateSavedFilterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSavedFilter>>,
+        TError,
+        {data: BodyType<CreateSavedFilterInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSavedFilterMutationOptions(options));
+    }
+
+export const getDeleteSavedFilterUrl = (id: number,) => {
+
+
+
+
+  return `/api/saved-filters/${id}`
+}
+
+/**
+ * @summary Delete a saved filter preset
+ */
+export const deleteSavedFilter = async (id: number, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getDeleteSavedFilterUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSavedFilterMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSavedFilter>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSavedFilter>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteSavedFilter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSavedFilter>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSavedFilter(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSavedFilterMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSavedFilter>>>
+
+    export type DeleteSavedFilterMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a saved filter preset
+ */
+export const useDeleteSavedFilter = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSavedFilter>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSavedFilter>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteSavedFilterMutationOptions(options));
+    }
 

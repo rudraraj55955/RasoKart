@@ -59,6 +59,8 @@ tags:
     description: System-wide configuration settings for admins
   - name: storage
     description: Object storage upload and serving endpoints
+  - name: saved-filters
+    description: Admin-scoped saved smart search filter presets
 paths:
   /healthz:
     get:
@@ -4098,8 +4100,133 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /saved-filters:
+    get:
+      operationId: listSavedFilters
+      tags: [saved-filters]
+      summary: List saved smart search filter presets for the current admin
+      responses:
+        '200':
+          description: List of saved filters.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SavedFilter'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      operationId: createSavedFilter
+      tags: [saved-filters]
+      summary: Save a named smart search filter preset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSavedFilterInput'
+      responses:
+        '201':
+          description: Created saved filter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedFilter'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /saved-filters/{id}:
+    delete:
+      operationId: deleteSavedFilter
+      tags: [saved-filters]
+      summary: Delete a saved filter preset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
+    SavedFilter:
+      type: object
+      required: [id, name, rawInput, filterData, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        rawInput:
+          type: string
+        filterData:
+          type: object
+          description: SmartFilter JSON object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateSavedFilterInput:
+      type: object
+      required: [name, rawInput, filterData]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        rawInput:
+          type: string
+          minLength: 1
+        filterData:
+          type: object
+          description: SmartFilter JSON object
+          additionalProperties: true
+
     HealthStatus:
       type: object
       properties:

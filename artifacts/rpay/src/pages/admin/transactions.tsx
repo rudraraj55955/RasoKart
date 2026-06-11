@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
-import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants, useGetPaymentLink } from "@workspace/api-client-react";
+import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants, useGetPaymentLink, useListSavedFilters, useCreateSavedFilter, useDeleteSavedFilter } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -135,25 +135,21 @@ function parseSmartQuery(raw: string): SmartFilter | null {
   return hasContent ? filter : null;
 }
 
-interface SavedFilter {
-  id: string;
+interface SmartFilterShape {
+  amountMin?: number;
+  amountMax?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  txType?: "deposit" | "withdrawal";
+  txStatus?: "pending" | "success" | "failed";
+}
+
+interface SavedFilterItem {
+  id: number;
   name: string;
-  filter: SmartFilter;
   rawInput: string;
-}
-
-const ADMIN_SAVED_FILTERS_KEY = "rasokart_admin_saved_filters";
-
-function loadSavedFilters(): SavedFilter[] {
-  try {
-    const raw = localStorage.getItem(ADMIN_SAVED_FILTERS_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as SavedFilter[];
-  } catch { return []; }
-}
-
-function storeSavedFilters(filters: SavedFilter[]): void {
-  localStorage.setItem(ADMIN_SAVED_FILTERS_KEY, JSON.stringify(filters));
+  filterData: SmartFilterShape;
+  createdAt: string;
 }
 
 function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open: boolean; onClose: () => void }) {
@@ -854,7 +850,10 @@ export default function AdminTransactions() {
   const smartInputRef = useRef<HTMLInputElement>(null);
 
   // Saved filters state
-  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => loadSavedFilters());
+  const { data: savedFiltersData } = useListSavedFilters();
+  const savedFilters: SavedFilterItem[] = (savedFiltersData?.data ?? []) as SavedFilterItem[];
+  const { mutateAsync: createSavedFilterMutation, isPending: isSavingFilter } = useCreateSavedFilter();
+  const { mutateAsync: deleteSavedFilterMutation } = useDeleteSavedFilter();
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveFilterName, setSaveFilterName] = useState("");
   const [saveFilterNameError, setSaveFilterNameError] = useState("");
@@ -942,47 +941,55 @@ export default function AdminTransactions() {
     smartInputRef.current?.focus();
   };
 
-  const applySavedFilter = (saved: SavedFilter) => {
-    setSmartFilter(saved.filter);
+  const applySavedFilter = (saved: SavedFilterItem) => {
+    const f = saved.filterData;
+    setSmartFilter(f as SmartFilter);
     setSmartInput(saved.rawInput);
     setSmartError("");
     setShowSaveInput(false);
     setSaveFilterName("");
     setSaveFilterNameError("");
-    if (saved.filter.dateFrom != null) { setDateFrom(""); setDateTo(""); }
+    if (f.dateFrom != null) { setDateFrom(""); setDateTo(""); }
     setPage(1);
   };
 
-  const confirmSaveFilter = () => {
+  const confirmSaveFilter = async () => {
     const trimmed = saveFilterName.trim();
     if (!trimmed) { setSaveFilterNameError("Please enter a name for this filter."); saveNameInputRef.current?.focus(); return; }
     if (!smartFilter) return;
     if (savedFilters.some(f => f.name.toLowerCase() === trimmed.toLowerCase())) {
       setSaveFilterNameError("A filter with this name already exists."); saveNameInputRef.current?.focus(); return;
     }
-    const newFilter: SavedFilter = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: trimmed, filter: smartFilter, rawInput: smartInput,
-    };
-    const updated = [...savedFilters, newFilter];
-    setSavedFilters(updated);
-    storeSavedFilters(updated);
-    setShowSaveInput(false);
-    setSaveFilterName("");
-    setSaveFilterNameError("");
+    try {
+      await createSavedFilterMutation({ data: { name: trimmed, rawInput: smartInput, filterData: smartFilter as Record<string, unknown> } });
+      await qc.invalidateQueries({ queryKey: ["/api/saved-filters"] });
+      setShowSaveInput(false);
+      setSaveFilterName("");
+      setSaveFilterNameError("");
+    } catch (err: any) {
+      if (err?.status === 409 || err?.message?.includes("already exists")) {
+        setSaveFilterNameError("A filter with this name already exists.");
+        saveNameInputRef.current?.focus();
+      } else {
+        toast.error("Failed to save filter");
+      }
+    }
   };
 
   const cancelSaveFilter = () => { setShowSaveInput(false); setSaveFilterName(""); setSaveFilterNameError(""); };
 
-  const deleteSavedFilter = (id: string) => {
-    const updated = savedFilters.filter(f => f.id !== id);
-    setSavedFilters(updated);
-    storeSavedFilters(updated);
+  const deleteSavedFilter = async (id: number) => {
+    try {
+      await deleteSavedFilterMutation({ id });
+      await qc.invalidateQueries({ queryKey: ["/api/saved-filters"] });
+    } catch {
+      toast.error("Failed to delete filter");
+    }
   };
 
   const hasSmartFilter = smartFilter !== null;
   const isCurrentFilterSaved = hasSmartFilter && savedFilters.some(
-    f => f.rawInput === smartInput && JSON.stringify(f.filter) === JSON.stringify(smartFilter)
+    f => f.rawInput === smartInput && JSON.stringify(f.filterData) === JSON.stringify(smartFilter)
   );
   const anyFilterActive = hasSmartFilter || !!search || !!utrSearch || type !== "all" || status !== "all" || provider !== "all" || !!(activeDateFrom || activeDateTo);
 
@@ -1165,7 +1172,9 @@ export default function AdminTransactions() {
                 />
                 {saveFilterNameError && <p className="mt-1 text-xs text-rose-400">{saveFilterNameError}</p>}
               </div>
-              <Button size="sm" onClick={confirmSaveFilter} className="h-8 shrink-0">Save</Button>
+              <Button size="sm" onClick={confirmSaveFilter} disabled={isSavingFilter} className="h-8 shrink-0">
+                {isSavingFilter ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Saving…</> : "Save"}
+              </Button>
               <Button size="sm" variant="ghost" onClick={cancelSaveFilter} className="h-8 shrink-0 px-2"><X className="w-4 h-4" /></Button>
             </div>
           )}

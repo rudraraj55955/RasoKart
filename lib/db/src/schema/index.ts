@@ -32,3 +32,4 @@ export * from "./scheduledAuditReports";
 export * from "./scheduledAuditReportLogs";
 export * from "./uploadedObjects";
 export * from "./callbackNonces";
+export * from "./savedFilters";

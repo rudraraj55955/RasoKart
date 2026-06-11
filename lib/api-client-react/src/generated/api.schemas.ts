@@ -5,6 +5,37 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+/**
+ * SmartFilter JSON object
+ */
+export type SavedFilterFilterData = { [key: string]: unknown };
+
+export interface SavedFilter {
+  id: number;
+  name: string;
+  rawInput: string;
+  /** SmartFilter JSON object */
+  filterData: SavedFilterFilterData;
+  createdAt: string;
+}
+
+/**
+ * SmartFilter JSON object
+ */
+export type CreateSavedFilterInputFilterData = { [key: string]: unknown };
+
+export interface CreateSavedFilterInput {
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  name: string;
+  /** @minLength 1 */
+  rawInput: string;
+  /** SmartFilter JSON object */
+  filterData: CreateSavedFilterInputFilterData;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -2649,5 +2680,9 @@ export type GetReconciliationRunEmailLogs200 = {
 
 export type ResendReconciliationReportEmail200 = {
   ok?: boolean;
+};
+
+export type ListSavedFilters200 = {
+  data: SavedFilter[];
 };
 
