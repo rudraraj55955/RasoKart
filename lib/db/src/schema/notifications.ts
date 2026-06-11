@@ -19,14 +19,26 @@ export const notificationsTable = pgTable("notifications", {
   // Dedup index: at most one provider_limit_warning and one provider_limit_reached
   // per user, per provider, per billing month (monthKey = "YYYY-MM").
   // onConflictDoNothing() in maybeNotifyProviderLimit() relies on this.
+  // NOTE: all columns expressed as sql`` to prevent Drizzle misassigning
+  // operator classes (int4_ops/text_ops) when mixing column refs with SQL exprs.
   uniqueIndex("notifications_provider_limit_dedup_idx")
-    .on(table.userId, table.type, sql`((metadata->>'provider'))`, sql`((metadata->>'monthKey'))`)
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'provider'))`,
+      sql`((metadata->>'monthKey'))`,
+    )
     .where(sql`type IN ('provider_limit_warning', 'provider_limit_reached')`),
   // Dedup index: at most one provider_limit_reset per user, per provider, per
   // current billing month (currentMonthKey = "YYYY-MM").
   // onConflictDoNothing() in maybeNotifyProviderLimitReset() relies on this.
   uniqueIndex("notifications_provider_limit_reset_dedup_idx")
-    .on(table.userId, table.type, sql`((metadata->>'provider'))`, sql`((metadata->>'currentMonthKey'))`)
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'provider'))`,
+      sql`((metadata->>'currentMonthKey'))`,
+    )
     .where(sql`type = 'provider_limit_reset'`),
 ]);
 
