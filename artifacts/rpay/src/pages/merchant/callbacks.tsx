@@ -47,12 +47,51 @@ function RetryHistorySection({ logId: _logId }: { logId: number }) {
 }
 
 const RETRY_COOLDOWN_DEFAULT = 30;
+const COOLDOWN_STORAGE_PREFIX = "rasokart_retry_cooldown_";
+
+function getCooldownKey(logId: number) {
+  return `${COOLDOWN_STORAGE_PREFIX}${logId}`;
+}
+
+function readStoredCooldown(logId: number): number | null {
+  try {
+    const raw = sessionStorage.getItem(getCooldownKey(logId));
+    if (!raw) return null;
+    const until = parseInt(raw, 10);
+    if (!Number.isFinite(until) || until <= Date.now()) {
+      sessionStorage.removeItem(getCooldownKey(logId));
+      return null;
+    }
+    return until;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredCooldown(logId: number, until: number) {
+  try {
+    sessionStorage.setItem(getCooldownKey(logId), String(until));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function clearStoredCooldown(logId: number) {
+  try {
+    sessionStorage.removeItem(getCooldownKey(logId));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 function CallbackRow({ log, activeQrFilter, onFilterByQr }: { log: any; activeQrFilter: number | undefined; onFilterByQr: (id: number) => void }) {
   const [open, setOpen] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
-  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(() => readStoredCooldown(log.id));
+  const [secondsLeft, setSecondsLeft] = useState(() => {
+    const stored = readStoredCooldown(log.id);
+    return stored != null ? Math.ceil((stored - Date.now()) / 1000) : 0;
+  });
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -62,6 +101,7 @@ function CallbackRow({ log, activeQrFilter, onFilterByQr }: { log: any; activeQr
       if (remaining <= 0) {
         setSecondsLeft(0);
         setCooldownUntil(null);
+        clearStoredCooldown(log.id);
       } else {
         setSecondsLeft(remaining);
       }
@@ -69,10 +109,12 @@ function CallbackRow({ log, activeQrFilter, onFilterByQr }: { log: any; activeQr
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [cooldownUntil]);
+  }, [cooldownUntil, log.id]);
 
   const startCooldown = (seconds: number) => {
-    setCooldownUntil(Date.now() + seconds * 1000);
+    const until = Date.now() + seconds * 1000;
+    writeStoredCooldown(log.id, until);
+    setCooldownUntil(until);
     setSecondsLeft(seconds);
   };
 
