@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +10,7 @@ import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -20,7 +22,8 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function MerchantLogin() {
   const [_, setLocation] = useLocation();
   const { login: setAuthToken } = useAuth();
-  
+  const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -45,7 +48,15 @@ export default function MerchantLogin() {
           setLocation("/merchant/dashboard");
         },
         onError: (err) => {
-          toast.error(err.message || "Login failed");
+          const e = err as unknown as Record<string, unknown>;
+          if (e["status"] === 429) {
+            const headers = e["headers"] as Headers | undefined;
+            const resetHeader = headers?.get("RateLimit-Reset") ?? headers?.get("ratelimit-reset");
+            const seconds = resetHeader ? parseInt(resetHeader, 10) : 60;
+            setRateLimitSeconds(Number.isFinite(seconds) && seconds > 0 ? seconds : 60);
+            return;
+          }
+          toast.error(e["message"] as string || "Login failed");
         },
       }
     );
@@ -53,6 +64,15 @@ export default function MerchantLogin() {
 
   return (
     <AuthLayout title="Merchant Portal" subtitle="Sign in to your RasoKart dashboard">
+      {rateLimitSeconds !== null && (
+        <div className="mb-6">
+          <RateLimitBanner
+            retryAfterSeconds={rateLimitSeconds}
+            message="Too many login attempts. Please wait before trying again."
+            onDismiss={() => setRateLimitSeconds(null)}
+          />
+        </div>
+      )}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <FormField
@@ -81,14 +101,14 @@ export default function MerchantLogin() {
               </FormItem>
             )}
           />
-          <Button 
-            type="submit" 
-            className="w-full" 
-            disabled={loginMutation.isPending}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loginMutation.isPending || rateLimitSeconds !== null}
           >
             {loginMutation.isPending ? "Authenticating..." : "Sign in"}
           </Button>
-          
+
           <div className="text-center mt-4 text-sm text-muted-foreground">
             Don't have an account?{" "}
             <Link href="/merchant/apply" className="text-primary hover:underline">
