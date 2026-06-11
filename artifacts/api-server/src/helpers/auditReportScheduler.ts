@@ -1,8 +1,9 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { db, scheduledAuditReportsTable, scheduledAuditReportLogsTable, auditLogsTable } from "@workspace/db";
+import { db, scheduledAuditReportsTable, scheduledAuditReportLogsTable, auditLogsTable, usersTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
+import { createBulkNotifications } from "./notifications";
 
 let scheduledTask: ScheduledTask | null = null;
 
@@ -170,6 +171,38 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
     logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length, isRetry }, "Scheduled audit report sent");
   } else {
     logger.warn({ scheduleId: schedule.id, errorMessage, isRetry }, "Scheduled audit report send failed");
+
+    if (isRetry) {
+      try {
+        const admins = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+        if (admins.length > 0) {
+          const appDomain = process.env["APP_DOMAIN"] ?? "https://rasokart.com";
+          const scheduleLink = `${appDomain}/admin/audit-logs`;
+          await createBulkNotifications(admins.map(a => ({
+            userId: a.id,
+            type: "report_delivery_failure" as const,
+            title: "Scheduled Report Delivery Failed",
+            body: `The ${schedule.frequency} audit report scheduled for ${schedule.recipientEmail} could not be delivered after the automatic retry. Please check the recipient email address and SMTP configuration. View the schedule in Audit Logs.`,
+            metadata: {
+              scheduleId: schedule.id,
+              recipientEmail: schedule.recipientEmail,
+              frequency: schedule.frequency,
+              error: errorMessage,
+              scheduleLink,
+            },
+          })));
+
+          logger.info({ scheduleId: schedule.id, adminCount: admins.length }, "Admin notifications sent for scheduled audit report delivery failure");
+        }
+      } catch (notifyErr) {
+        logger.error({ err: notifyErr, scheduleId: schedule.id }, "Failed to insert admin notifications for scheduled audit report delivery failure");
+      }
+    }
+
     throw new Error(errorMessage ?? "Send failed");
   }
   return sent;

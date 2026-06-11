@@ -10,6 +10,7 @@ export type NotificationType =
   | "system_notice"
   | "webhook_failure"
   | "reconciliation_email_failure"
+  | "report_delivery_failure"
   | "webhook_secret_rotation_reminder"
   | "webhook_secret_rotation_overdue";
 
