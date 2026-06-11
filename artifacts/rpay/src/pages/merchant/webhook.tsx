@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound } from "lucide-react";
+import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
   if (value === true) {
@@ -23,7 +24,6 @@ function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }
   }
   return <span className="text-muted-foreground text-xs">— None</span>;
 }
-import { formatDistanceToNow } from "date-fns";
 
 const EVENTS = [
   { id: "payment.success", label: "Payment Success" },
@@ -586,34 +586,78 @@ export default function MerchantWebhook() {
         <CardContent className="space-y-4">
           {secretLoading ? (
             <div className="h-10 bg-muted/50 rounded animate-pulse" />
-          ) : (
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/20 border border-border/50">
-              <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${secretStatus?.isSet ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-                <div>
-                  <p className="text-sm font-medium">{secretStatus?.isSet ? "Secret configured" : "No secret configured"}</p>
-                  {secretStatus?.isSet && secretStatus.secretPrefix && (
-                    <p className="text-xs text-muted-foreground font-mono">{secretStatus.secretPrefix}</p>
-                  )}
+          ) : (() => {
+            const ageInDays = secretStatus?.isSet && secretStatus.lastRotatedAt != null
+              ? differenceInDays(new Date(), new Date(secretStatus.lastRotatedAt))
+              : null;
+            const daysLeft = ageInDays != null ? Math.max(0, 90 - ageInDays) : null;
+            const isOverdue = ageInDays != null && ageInDays >= 90;
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/20 border border-border/50">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${secretStatus?.isSet ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                    <div>
+                      <p className="text-sm font-medium">{secretStatus?.isSet ? "Secret configured" : "No secret configured"}</p>
+                      {secretStatus?.isSet && secretStatus.secretPrefix && (
+                        <p className="text-xs text-muted-foreground font-mono">{secretStatus.secretPrefix}</p>
+                      )}
+                      {secretStatus?.isSet && secretStatus.lastRotatedAt != null && (
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">
+                          Last rotated: {format(new Date(secretStatus.lastRotatedAt), "dd MMM yyyy")}
+                          {" "}
+                          <span className="text-muted-foreground/50">
+                            ({formatDistanceToNow(new Date(secretStatus.lastRotatedAt), { addSuffix: true })})
+                          </span>
+                          {daysLeft != null && !isOverdue && (
+                            <span className={`ml-2 font-medium ${daysLeft <= 14 ? "text-amber-400/90" : "text-muted-foreground/60"}`}>
+                              · Rotation due in {daysLeft} day{daysLeft !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {secretStatus?.isSet && (
+                      <Badge variant="secondary" className="text-[10px] text-emerald-400 border-emerald-500/30 bg-emerald-500/10">Active</Badge>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRotateSecret}
+                      disabled={rotateMutation.isPending}
+                      className="gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      {secretStatus?.isSet ? "Rotate" : "Generate"}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {secretStatus?.isSet && (
-                  <Badge variant="secondary" className="text-[10px] text-emerald-400 border-emerald-500/30 bg-emerald-500/10">Active</Badge>
+                {isOverdue && ageInDays != null && (
+                  <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-medium">Rotation overdue — </span>
+                      <span className="text-xs text-amber-400/80">
+                        This secret is {ageInDays} days old. Rotate it now to keep your integration secure.
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRotateSecret}
+                      disabled={rotateMutation.isPending}
+                      className="shrink-0 gap-1.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/60 hover:text-amber-300 h-7 px-2.5 text-xs"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Rotate now
+                    </Button>
+                  </div>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRotateSecret}
-                  disabled={rotateMutation.isPending}
-                  className="gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  {secretStatus?.isSet ? "Rotate" : "Generate"}
-                </Button>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>When a secret is set, every inbound callback request must include:</p>
