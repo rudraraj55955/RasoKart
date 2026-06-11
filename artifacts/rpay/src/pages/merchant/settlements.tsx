@@ -68,6 +68,21 @@ interface CustomDatePreset {
 }
 
 const CUSTOM_DATE_PRESETS_KEY = "rasokart_custom_date_presets_settlements";
+const LAST_DATE_RANGE_KEY = "rasokart_last_date_range_settlements";
+
+function loadLastDateRange(): { from: string; to: string } {
+  try {
+    const raw = localStorage.getItem(LAST_DATE_RANGE_KEY);
+    if (!raw) return { from: "", to: "" };
+    const parsed = JSON.parse(raw) as { from: string; to: string };
+    if (typeof parsed.from === "string" && typeof parsed.to === "string") return parsed;
+    return { from: "", to: "" };
+  } catch { return { from: "", to: "" }; }
+}
+
+function saveLastDateRange(from: string, to: string): void {
+  localStorage.setItem(LAST_DATE_RANGE_KEY, JSON.stringify({ from, to }));
+}
 
 function loadCustomDatePresets(): CustomDatePreset[] {
   try {
@@ -90,8 +105,8 @@ export default function MerchantSettlements() {
   const [reqAmount, setReqAmount] = useState("");
   const [reqNote, setReqNote] = useState("");
   const [reqError, setReqError] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => loadLastDateRange().from);
+  const [dateTo, setDateTo] = useState(() => loadLastDateRange().to);
 
   const [customDatePresets, setCustomDatePresets] = useState<CustomDatePreset[]>(() => loadCustomDatePresets());
   const [showSaveDatePreset, setShowSaveDatePreset] = useState(false);
@@ -104,6 +119,10 @@ export default function MerchantSettlements() {
       setTimeout(() => saveDatePresetNameRef.current?.focus(), 50);
     }
   }, [showSaveDatePreset]);
+
+  useEffect(() => {
+    saveLastDateRange(dateFrom, dateTo);
+  }, [dateFrom, dateTo]);
 
   const applyPreset = (preset: (typeof DATE_PRESETS)[number]) => {
     const { from, to } = preset.getRange();
