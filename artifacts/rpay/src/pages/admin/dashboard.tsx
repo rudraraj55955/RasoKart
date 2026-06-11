@@ -1,7 +1,7 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes, useGetGithubSyncStatus } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap, Github } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from "recharts";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -29,6 +29,7 @@ export default function AdminDashboard() {
   const { data: risk } = useGetDashboardRisk();
   const { data: reconSummary } = useGetDashboardReconSummary();
   const { data: providerVolumes, isLoading: pvLoading } = useGetDashboardProviderVolumes();
+  const { data: githubSync } = useGetGithubSyncStatus();
 
   return (
     <div className="space-y-6">
@@ -197,6 +198,45 @@ export default function AdminDashboard() {
                     <p className="text-sm font-medium">{reconSummary.runAt ? format(new Date(reconSummary.runAt), "MMM d, yyyy") : "—"}</p>
                     <p className="text-[11px] text-muted-foreground">{reconSummary.runAt ? format(new Date(reconSummary.runAt), "h:mm a") : ""}</p>
                   </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {githubSync && (() => {
+        const isFailure = githubSync.status === "failure";
+        const isNever = githubSync.status === "never";
+        return (
+          <Card className={isFailure ? "border-rose-500/40 bg-rose-500/5" : isNever ? "border-border/50 bg-card/50" : "border-emerald-500/30 bg-emerald-500/5"}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isFailure ? "bg-rose-500/10" : isNever ? "bg-muted/30" : "bg-emerald-500/10"}`}>
+                  <Github className={`w-4 h-4 ${isFailure ? "text-rose-400" : isNever ? "text-muted-foreground" : "text-emerald-400"}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-xs text-muted-foreground">Last GitHub Sync</p>
+                    {!isNever && (
+                      <span className={`rounded-full text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide ${isFailure ? "bg-rose-500/20 text-rose-400 border-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"}`}>
+                        {isFailure ? "Failed" : "Success"}
+                      </span>
+                    )}
+                  </div>
+                  {isNever ? (
+                    <p className="text-sm text-muted-foreground">Never run</p>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                      <p className="text-sm font-medium">{githubSync.repo ?? "—"}</p>
+                      {githubSync.syncedAt && (
+                        <p className="text-xs text-muted-foreground">{format(new Date(githubSync.syncedAt), "MMM d, yyyy 'at' h:mm a")}</p>
+                      )}
+                    </div>
+                  )}
+                  {isFailure && githubSync.errorMessage && (
+                    <p className="text-xs text-rose-400 mt-1 truncate" title={githubSync.errorMessage}>{githubSync.errorMessage}</p>
+                  )}
                 </div>
               </div>
             </CardContent>

@@ -82,6 +82,7 @@ import type {
   GetVirtualAccountBalanceHistoryParams,
   GetWebhookLogAttempts200,
   GetWebhookLogsParams,
+  GithubSyncStatus,
   HealthStatus,
   Invoice,
   InvoiceInput,
@@ -15023,4 +15024,81 @@ export const useDeleteSavedFilter = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getDeleteSavedFilterMutationOptions(options));
     }
+
+export const getGetGithubSyncStatusUrl = () => {
+
+
+
+
+  return `/api/github-sync/status`
+}
+
+/**
+ * @summary Get last GitHub sync status
+ */
+export const getGithubSyncStatus = async ( options?: RequestInit): Promise<GithubSyncStatus> => {
+
+  return customFetch<GithubSyncStatus>(getGetGithubSyncStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGithubSyncStatusQueryKey = () => {
+    return [
+    `/api/github-sync/status`
+    ] as const;
+    }
+
+
+export const getGetGithubSyncStatusQueryOptions = <TData = Awaited<ReturnType<typeof getGithubSyncStatus>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGithubSyncStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGithubSyncStatus>>> = ({ signal }) => getGithubSyncStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGithubSyncStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getGithubSyncStatus>>>
+export type GetGithubSyncStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get last GitHub sync status
+ */
+
+export function useGetGithubSyncStatus<TData = Awaited<ReturnType<typeof getGithubSyncStatus>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGithubSyncStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 

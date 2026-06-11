@@ -6,6 +6,29 @@
  * OpenAPI spec version: 0.1.0
  */
 /**
+ * Outcome of the last GitHub sync run, or "never" if the script has not run yet
+ */
+export type GithubSyncStatusStatus = typeof GithubSyncStatusStatus[keyof typeof GithubSyncStatusStatus];
+
+
+export const GithubSyncStatusStatus = {
+  success: 'success',
+  failure: 'failure',
+  never: 'never',
+} as const;
+
+export interface GithubSyncStatus {
+  /** Outcome of the last GitHub sync run, or "never" if the script has not run yet */
+  status: GithubSyncStatusStatus;
+  /** ISO timestamp of when the last sync completed */
+  syncedAt?: string;
+  /** Error detail when status is "failure" */
+  errorMessage?: string;
+  /** GitHub repository that was synced */
+  repo?: string;
+}
+
+/**
  * SmartFilter JSON object
  */
 export type SavedFilterFilterData = { [key: string]: unknown };

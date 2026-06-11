@@ -93,6 +93,8 @@ export * from './getSignatureFailureAlertHistoryParams';
 export * from './getVirtualAccountBalanceHistoryParams';
 export * from './getWebhookLogAttempts200';
 export * from './getWebhookLogsParams';
+export * from './githubSyncStatus';
+export * from './githubSyncStatusStatus';
 export * from './healthStatus';
 export * from './invoice';
 export * from './invoiceInput';

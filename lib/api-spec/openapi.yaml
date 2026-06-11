@@ -61,6 +61,8 @@ tags:
     description: Object storage upload and serving endpoints
   - name: saved-filters
     description: Admin-scoped saved smart search filter presets
+  - name: github-sync
+    description: GitHub repository sync status
 paths:
   /healthz:
     get:
@@ -4651,8 +4653,54 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /github-sync/status:
+    get:
+      operationId: getGithubSyncStatus
+      tags: [github-sync]
+      summary: Get last GitHub sync status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: GitHub sync status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubSyncStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
+    GithubSyncStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [success, failure, never]
+          description: Outcome of the last GitHub sync run, or "never" if the script has not run yet
+        syncedAt:
+          type: string
+          format: date-time
+          description: ISO timestamp of when the last sync completed
+        errorMessage:
+          type: string
+          description: Error detail when status is "failure"
+        repo:
+          type: string
+          description: GitHub repository that was synced
+
     SavedFilter:
       type: object
       required: [id, name, rawInput, filterData, createdAt]

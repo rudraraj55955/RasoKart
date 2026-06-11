@@ -1,9 +1,11 @@
 import { execSync } from "child_process";
+import { writeFileSync } from "fs";
 import { sendAdminAlert } from "./mailer.js";
 
 const GITHUB_REPO =
   process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
 const REMOTE_NAME = "github";
+const STATUS_FILE = new URL("../../.github-sync-status.json", import.meta.url).pathname;
 
 function run(cmd: string, opts: { stdio?: "pipe" | "inherit" } = {}) {
   return execSync(cmd, { stdio: opts.stdio ?? "pipe" });
@@ -71,6 +73,21 @@ function buildFailureHtml(reason: string, detail: string): string {
 </html>`;
 }
 
+function writeStatus(status: "success" | "failure", errorMessage?: string) {
+  const payload: Record<string, string> = {
+    status,
+    syncedAt: new Date().toISOString(),
+    repo: GITHUB_REPO,
+  };
+  if (errorMessage) {
+    payload["errorMessage"] = errorMessage;
+  }
+  try {
+    writeFileSync(STATUS_FILE, JSON.stringify(payload, null, 2), "utf-8");
+  } catch {
+  }
+}
+
 async function main() {
   const token = process.env["GITHUB_TOKEN"];
 
@@ -102,11 +119,13 @@ async function main() {
     }
     run(`git push ${REMOTE_NAME} HEAD:main --force`, { stdio: "inherit" });
     console.log("GITHUB_SYNC: Sync complete.");
+    writeStatus("success");
   } catch (err: unknown) {
     const message =
       err instanceof Error
         ? err.message.replace(token, "<REDACTED>")
         : String(err).replace(token, "<REDACTED>");
+    writeStatus("failure", message);
     const pushError = new Error(`Push failed — ${message}`);
 
     await sendAdminAlert({
