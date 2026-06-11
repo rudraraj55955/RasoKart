@@ -24,8 +24,12 @@ router.post("/login", loginLimiter, async (req, res, next) => {
       return;
     }
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase())).limit(1);
-    if (!user || !user.isActive) {
+    if (!user) {
       res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+    if (!user.isActive) {
+      res.status(401).json({ error: "Account suspended. Please contact support." });
       return;
     }
     const valid = await bcrypt.compare(password, user.passwordHash);

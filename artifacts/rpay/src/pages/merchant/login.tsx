@@ -11,6 +11,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ShieldAlert } from "lucide-react";
+
+const ACCOUNT_SUSPENDED_MESSAGE = "Account suspended. Please contact support.";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -23,6 +27,7 @@ export default function MerchantLogin() {
   const [_, setLocation] = useLocation();
   const { login: setAuthToken } = useAuth();
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
+  const [accountSuspended, setAccountSuspended] = useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -56,6 +61,11 @@ export default function MerchantLogin() {
             setRateLimitSeconds(Number.isFinite(seconds) && seconds > 0 ? seconds : 60);
             return;
           }
+          if (e["status"] === 401 && (e["data"] as Record<string, unknown> | null)?.["error"] === ACCOUNT_SUSPENDED_MESSAGE) {
+            setAccountSuspended(true);
+            return;
+          }
+          setAccountSuspended(false);
           toast.error(e["message"] as string || "Login failed");
         },
       }
@@ -64,6 +74,17 @@ export default function MerchantLogin() {
 
   return (
     <AuthLayout title="Merchant Portal" subtitle="Sign in to your RasoKart dashboard">
+      {accountSuspended && (
+        <div className="mb-6">
+          <Alert className="border-red-500/50 bg-red-500/10 text-red-400 [&>svg]:text-red-400">
+            <ShieldAlert className="h-4 w-4" />
+            <AlertDescription className="pl-1">
+              <span className="font-medium">Your account has been suspended.</span>{" "}
+              <span className="text-red-300/80">Please contact support to restore access.</span>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
       {rateLimitSeconds !== null && (
         <div className="mb-6">
           <RateLimitBanner
