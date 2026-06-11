@@ -25,7 +25,7 @@ import {
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
   Users, Loader2, QrCode, Landmark,
   Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle, Settings,
-  MonitorPlay,
+  MonitorPlay, GitMerge,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
@@ -62,6 +62,10 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   virtual_account_deleted:  { label: "VA Deleted",            color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   test_email_sent:          { label: "Test Email Sent",       color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
   setting_updated:          { label: "Setting Updated",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  reconciliation_run:       { label: "Reconciliation Run",    color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" },
+  reconciliation_item_resolved: { label: "Item Resolved",    color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  reconciliation_unmatched_alert_resent: { label: "Unmatched Alert Resent", color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  reconciliation_report_email_resent: { label: "Report Email Resent", color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
@@ -77,6 +81,7 @@ const TARGET_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "provider",           label: "Provider" },
   { value: "merchant_features",  label: "Merchant Features" },
   { value: "settlements",        label: "Settlements" },
+  { value: "reconciliation_run",  label: "Reconciliation Run" },
   { value: "reconciliation_item",label: "Reconciliation Item" },
   { value: "system_config",      label: "System Config" },
   { value: "audit_logs",         label: "Audit Logs" },
@@ -911,6 +916,112 @@ function SettingUpdatedDetails({ log }: { log: any }) {
   );
 }
 
+function ReconciliationRunDetails({ log }: { log: any }) {
+  let parsed: {
+    runId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    merchantId?: number | null;
+    triggeredBy?: string;
+    totalDeposits?: number;
+    totalSettlements?: number;
+    totalMatched?: number;
+    totalUnmatched?: number;
+    matchedAmount?: number;
+    unmatchedAmount?: number;
+    status?: string;
+    notes?: string | null;
+  } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const isAuto = parsed.triggeredBy === "auto";
+  const matched = parsed.totalMatched ?? 0;
+  const unmatched = parsed.totalUnmatched ?? 0;
+  const total = matched + unmatched;
+  const matchRate = total > 0 ? Math.round((matched / total) * 100) : null;
+
+  const dateFrom = parsed.dateFrom;
+  const dateTo = parsed.dateTo;
+  const hasDateRange = dateFrom || dateTo;
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<GitMerge className="w-5 h-5 text-cyan-400" />}
+        title={
+          matched > 0 && unmatched === 0
+            ? `Reconciliation complete — ${matched} matched`
+            : matched > 0
+            ? `${matched} matched, ${unmatched} unmatched`
+            : unmatched > 0
+            ? `${unmatched} unmatched items`
+            : "Reconciliation run completed"
+        }
+        subtitle={matchRate != null ? `${matchRate}% match rate` : undefined}
+        colorClass="bg-cyan-500/10 border-cyan-500/20"
+      />
+
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {hasDateRange && (
+          <div>
+            <span className="text-xs text-muted-foreground">Date range: </span>
+            <span className="text-xs font-medium">
+              {dateFrom ? formatDateLabel(dateFrom) : "—"}
+              {" – "}
+              {dateTo ? formatDateLabel(dateTo) : "—"}
+            </span>
+          </div>
+        )}
+        <DetailRow
+          label="Scope"
+          value={parsed.merchantId != null ? `Merchant #${parsed.merchantId}` : "All merchants"}
+        />
+        <DetailRow label="Triggered by" value={<span className="capitalize">{isAuto ? "System (auto)" : "Admin (manual)"}</span>} />
+        {parsed.totalDeposits != null && (
+          <DetailRow label="Deposits processed" value={parsed.totalDeposits.toLocaleString()} />
+        )}
+        {parsed.totalSettlements != null && (
+          <DetailRow label="Settlements processed" value={parsed.totalSettlements.toLocaleString()} />
+        )}
+        <DetailRow
+          label="Matched"
+          value={<span className="text-emerald-400 font-medium">{matched.toLocaleString()}</span>}
+        />
+        <DetailRow
+          label="Unmatched"
+          value={
+            unmatched > 0
+              ? <span className="text-rose-400 font-medium">{unmatched.toLocaleString()}</span>
+              : <span className="text-emerald-400 font-medium">0</span>
+          }
+        />
+        {parsed.matchedAmount != null && (
+          <DetailRow
+            label="Matched amount"
+            value={<span className="font-mono">₹{Number(parsed.matchedAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>}
+          />
+        )}
+        {parsed.unmatchedAmount != null && parsed.unmatchedAmount > 0 && (
+          <DetailRow
+            label="Unmatched amount"
+            value={<span className="font-mono text-rose-400">₹{Number(parsed.unmatchedAmount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>}
+          />
+        )}
+        {parsed.runId != null && (
+          <DetailRow label="Run ID" value={<span className="font-mono">#{parsed.runId}</span>} />
+        )}
+      </div>
+
+      {parsed.notes && (
+        <div className="rounded-lg bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground mb-1">Notes</p>
+          <p className="text-xs">{parsed.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RawJsonDetails({ log }: { log: any }) {
   return (
     <div className="rounded-lg bg-muted/20 p-3">
@@ -976,6 +1087,8 @@ function ActionDetails({ log }: { log: any }) {
       return <TestEmailSentDetails log={log} />;
     case "setting_updated":
       return <SettingUpdatedDetails log={log} />;
+    case "reconciliation_run":
+      return <ReconciliationRunDetails log={log} />;
     default:
       return <RawJsonDetails log={log} />;
   }

@@ -85,6 +85,30 @@ router.post("/run", async (req, res, next) => {
       notes: typeof notes === "string" && notes.trim() ? notes.trim() : null,
     });
 
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "reconciliation_run",
+      targetType: "reconciliation_run",
+      targetId: updated.id,
+      details: JSON.stringify({
+        runId: updated.id,
+        dateFrom,
+        dateTo,
+        merchantId: parsedMerchantId ?? null,
+        triggeredBy: "manual",
+        totalDeposits: updated.totalDeposits,
+        totalSettlements: updated.totalSettlements,
+        totalMatched: updated.totalMatched,
+        totalUnmatched: updated.totalUnmatched,
+        matchedAmount: Number(updated.matchedAmount),
+        unmatchedAmount: Number(updated.unmatchedAmount),
+        status: updated.status,
+        notes: typeof notes === "string" && notes.trim() ? notes.trim() : null,
+      }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
     res.status(201).json(mapRun(updated));
   } catch (err) {
     next(err);
