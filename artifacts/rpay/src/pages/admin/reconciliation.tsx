@@ -837,6 +837,15 @@ export default function AdminReconciliation() {
     onError: (err: any) => toast.error(`Resend failed: ${err.message}`),
   });
 
+  const resendAlertMutation = useMutation({
+    mutationFn: () => apiPost(`/reconciliation/runs/${selectedRunId}/resend-alert`, {}),
+    onSuccess: () => {
+      toast.success("Unmatched-items alert email resent");
+      qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
+    },
+    onError: (err: any) => toast.error(`Resend failed: ${err.message}`),
+  });
+
   const runs = data?.data ?? [];
   const historyTotal: number = data?.total ?? 0;
   const failedEmailRuns: ReconciliationRun[] = runs.filter((r: ReconciliationRun) => r.lastEmail?.status === "failed");
@@ -1483,6 +1492,19 @@ export default function AdminReconciliation() {
                         </Button>
                       );
                     })()}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-7 text-xs gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300"
+                      onClick={() => resendAlertMutation.mutate()}
+                      disabled={resendAlertMutation.isPending}
+                    >
+                      {resendAlertMutation.isPending
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <AlertTriangle className="w-3 h-3" />
+                      }
+                      {resendAlertMutation.isPending ? "Sending…" : "Re-send Alert Email"}
+                    </Button>
                   </div>
                 )}
               </div>
