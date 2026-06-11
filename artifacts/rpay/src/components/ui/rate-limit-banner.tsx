@@ -49,3 +49,31 @@ export function RateLimitBanner({
     </Alert>
   );
 }
+
+export function useRateLimit() {
+  const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
+
+  function handleRateLimitError(err: unknown): boolean {
+    const e = err as Record<string, unknown>;
+    const status = (e["status"] as number | undefined) ?? (e["response"] as Record<string, unknown> | undefined)?.["status"] as number | undefined;
+    if (status === 429) {
+      const headers = (e["headers"] as Headers | undefined) ?? (e["response"] as Record<string, unknown> | undefined)?.["headers"] as Headers | undefined;
+      const resetHeader = headers?.get?.("RateLimit-Reset") ?? headers?.get?.("ratelimit-reset");
+      const seconds = resetHeader ? parseInt(resetHeader, 10) : 60;
+      setRateLimitSeconds(Number.isFinite(seconds) && seconds > 0 ? seconds : 60);
+      return true;
+    }
+    return false;
+  }
+
+  function dismiss() {
+    setRateLimitSeconds(null);
+  }
+
+  return {
+    rateLimitSeconds,
+    isRateLimited: rateLimitSeconds !== null,
+    handleRateLimitError,
+    dismiss,
+  };
+}

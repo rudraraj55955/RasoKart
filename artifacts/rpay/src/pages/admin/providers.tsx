@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search, GripVertical, Megaphone } from "lucide-react";
+import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   live:         { label: "Live",        color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
@@ -43,7 +44,13 @@ async function apiPut(path: string, body: object) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(text) as Error & { status: number; headers: Headers };
+    err.status = res.status;
+    err.headers = res.headers;
+    throw err;
+  }
   return res.json();
 }
 
@@ -126,6 +133,10 @@ export default function AdminProviders() {
     ? allData.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.slug.includes(search.toLowerCase()))
     : localIds.map(id => allData.find(p => p.id === id)).filter(Boolean) as typeof allData;
 
+  // Rate-limit guards
+  const reorderRateLimit = useRateLimit();
+  const visRateLimit = useRateLimit();
+
   // Mutations
   const createMut = useCreateProvider();
   const updateMut = useUpdateProvider();
@@ -136,7 +147,10 @@ export default function AdminProviders() {
   const reorderMut = useMutation({
     mutationFn: (order: number[]) => apiPut("/providers/reorder", { order }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Sort order saved"); },
-    onError: () => toast.error("Failed to save sort order"),
+    onError: (err) => {
+      if (reorderRateLimit.handleRateLimitError(err)) return;
+      toast.error("Failed to save sort order");
+    },
   });
 
   // Merchant visibility drawer data
@@ -197,14 +211,20 @@ export default function AdminProviders() {
   function handleGlobalVisibility(providerId: number, visible: boolean) {
     setVisMut.mutate({ id: providerId, data: { merchantId: null, visible } }, {
       onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); refetchVis(); toast.success(visible ? "Enabled for all merchants" : "Disabled for all merchants"); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to update visibility"),
+      onError: (e: any) => {
+        if (visRateLimit.handleRateLimitError(e)) return;
+        toast.error(e?.response?.data?.error ?? "Failed to update visibility");
+      },
     });
   }
 
   function handleMerchantToggle(providerId: number, merchantId: number, visible: boolean) {
     setVisMut.mutate({ id: providerId, data: { merchantId, visible } }, {
       onSuccess: () => { refetchVis(); qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Visibility updated"); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed"),
+      onError: (e: any) => {
+        if (visRateLimit.handleRateLimitError(e)) return;
+        toast.error(e?.response?.data?.error ?? "Failed");
+      },
     });
   }
 
@@ -313,6 +333,13 @@ export default function AdminProviders() {
           <GripVertical className="w-3 h-3" /> Drag rows to reorder — sort order is saved automatically
         </p>
       )}
+      {reorderRateLimit.isRateLimited && reorderRateLimit.rateLimitSeconds !== null && (
+        <RateLimitBanner
+          retryAfterSeconds={reorderRateLimit.rateLimitSeconds}
+          message="Too many reorder requests. Please wait before saving again."
+          onDismiss={reorderRateLimit.dismiss}
+        />
+      )}
 
       {/* Providers table */}
       <Card className="bg-card border-border/50">
@@ -351,14 +378,14 @@ export default function AdminProviders() {
                     <TableRow
                       key={p.id}
                       className={`border-border/30 hover:bg-muted/20 transition-colors ${isDragTarget ? "bg-primary/5 border-t-primary/40" : ""}`}
-                      draggable={!isFiltering}
+                      draggable={!isFiltering && !reorderRateLimit.isRateLimited}
                       onDragStart={() => handleDragStart(p.id)}
                       onDragOver={e => handleDragOver(e, p.id)}
                       onDrop={() => handleDrop(p.id)}
                       onDragEnd={handleDragEnd}
                     >
                       {!isFiltering && (
-                        <TableCell className="w-8 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground">
+                        <TableCell className={`w-8 text-muted-foreground/40 ${reorderRateLimit.isRateLimited ? "cursor-not-allowed opacity-40" : "cursor-grab active:cursor-grabbing hover:text-muted-foreground"}`}>
                           <GripVertical className="w-4 h-4" />
                         </TableCell>
                       )}
@@ -595,6 +622,15 @@ export default function AdminProviders() {
               </SheetHeader>
 
               <div className="mt-6 space-y-4">
+                {/* Visibility rate-limit banner */}
+                {visRateLimit.isRateLimited && visRateLimit.rateLimitSeconds !== null && (
+                  <RateLimitBanner
+                    retryAfterSeconds={visRateLimit.rateLimitSeconds}
+                    message="Too many visibility changes. Please wait before trying again."
+                    onDismiss={visRateLimit.dismiss}
+                  />
+                )}
+
                 {/* Global toggle */}
                 <Card className="bg-card border-border/50">
                   <CardContent className="pt-4">
@@ -607,8 +643,8 @@ export default function AdminProviders() {
                         )}
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="text-emerald-400 border-emerald-500/30 h-7 text-xs" onClick={() => handleGlobalVisibility(visDrawer.id, true)}>Enable All</Button>
-                        <Button size="sm" variant="outline" className="text-rose-400 border-rose-500/30 h-7 text-xs" onClick={() => handleGlobalVisibility(visDrawer.id, false)}>Disable All</Button>
+                        <Button size="sm" variant="outline" className="text-emerald-400 border-emerald-500/30 h-7 text-xs" onClick={() => handleGlobalVisibility(visDrawer.id, true)} disabled={visRateLimit.isRateLimited || setVisMut.isPending}>Enable All</Button>
+                        <Button size="sm" variant="outline" className="text-rose-400 border-rose-500/30 h-7 text-xs" onClick={() => handleGlobalVisibility(visDrawer.id, false)} disabled={visRateLimit.isRateLimited || setVisMut.isPending}>Disable All</Button>
                       </div>
                     </div>
                   </CardContent>
@@ -660,6 +696,7 @@ export default function AdminProviders() {
                         <Switch
                           checked={m.visible}
                           onCheckedChange={v => handleMerchantToggle(visDrawer.id, m.merchantId, v)}
+                          disabled={visRateLimit.isRateLimited || setVisMut.isPending}
                           className="shrink-0"
                         />
                       </div>
