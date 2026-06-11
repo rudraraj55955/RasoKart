@@ -841,6 +841,31 @@ export interface SettlementMarkPaidInput {
   referenceNumber: string;
 }
 
+export type SettlementEventEvent = typeof SettlementEventEvent[keyof typeof SettlementEventEvent];
+
+
+export const SettlementEventEvent = {
+  requested: 'requested',
+  processing: 'processing',
+  approved: 'approved',
+  rejected: 'rejected',
+  paid: 'paid',
+  held: 'held',
+} as const;
+
+export interface SettlementEvent {
+  id: number;
+  settlementId: number;
+  event: SettlementEventEvent;
+  /** @nullable */
+  actorId?: number | null;
+  /** @nullable */
+  actorEmail?: string | null;
+  /** @nullable */
+  note?: string | null;
+  createdAt: string;
+}
+
 export type SettlementStatsCounts = {[key: string]: number};
 
 export interface SettlementStats {
@@ -2918,6 +2943,10 @@ export const ListSettlementsStatus = {
   paid: 'paid',
   all: 'all',
 } as const;
+
+export type GetSettlementHistory200 = {
+  data: SettlementEvent[];
+};
 
 export type ListUsersParams = {
 role?: ListUsersRole;

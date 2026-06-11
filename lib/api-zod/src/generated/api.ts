@@ -1988,6 +1988,26 @@ export const MarkSettlementPaidResponse = zod.object({
 
 
 /**
+ * @summary Get action trail for a settlement
+ */
+export const GetSettlementHistoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSettlementHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "settlementId": zod.number(),
+  "event": zod.enum(['requested', 'processing', 'approved', 'rejected', 'paid', 'held']),
+  "actorId": zod.number().nullish(),
+  "actorEmail": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
  * @summary List users (admin only)
  */
 export const ListUsersQueryParams = zod.object({

@@ -82,6 +82,7 @@ import type {
   GetAdminMerchantCredentialEventsParams,
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
+  GetSettlementHistory200,
   GetSignatureFailureAlertHistoryParams,
   GetVirtualAccountBalanceHistoryParams,
   GetWebhookLogAttempts200,
@@ -6254,6 +6255,83 @@ export const useMarkSettlementPaid = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getMarkSettlementPaidMutationOptions(options));
     }
+
+export const getGetSettlementHistoryUrl = (id: number,) => {
+
+
+
+
+  return `/api/settlements/${id}/history`
+}
+
+/**
+ * @summary Get action trail for a settlement
+ */
+export const getSettlementHistory = async (id: number, options?: RequestInit): Promise<GetSettlementHistory200> => {
+
+  return customFetch<GetSettlementHistory200>(getGetSettlementHistoryUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSettlementHistoryQueryKey = (id: number,) => {
+    return [
+    `/api/settlements/${id}/history`
+    ] as const;
+    }
+
+
+export const getGetSettlementHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getSettlementHistory>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSettlementHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSettlementHistoryQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSettlementHistory>>> = ({ signal }) => getSettlementHistory(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSettlementHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSettlementHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getSettlementHistory>>>
+export type GetSettlementHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get action trail for a settlement
+ */
+
+export function useGetSettlementHistory<TData = Awaited<ReturnType<typeof getSettlementHistory>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSettlementHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSettlementHistoryQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListUsersUrl = (params?: ListUsersParams,) => {
   const normalizedParams = new URLSearchParams();

@@ -5,6 +5,7 @@ import {
   useGetMe,
   useGetMerchant,
   useListWithdrawals,
+  useGetSettlementHistory,
   getListSettlementsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   AlertTriangle, ChevronDown, ChevronRight, Clock, Plus, CalendarRange, X,
   Search, Sparkles, Bookmark, BookmarkCheck, Trash2, Hash, TrendingUp,
+  CheckCircle2, XCircle, Loader2, PauseCircle, Banknote, Send,
 } from "lucide-react";
 import { getApiErrorMessage, isRateLimitError } from "@/lib/utils";
 import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
@@ -245,6 +247,103 @@ const SETTLEMENT_STATUSES = [
   { value: "paid", label: "Paid" },
   { value: "rejected", label: "Rejected" },
 ];
+
+// ── Settlement event config ───────────────────────────────────────────────────
+
+type EventType = "requested" | "processing" | "approved" | "rejected" | "paid" | "held";
+
+const EVENT_CONFIG: Record<EventType, { label: string; icon: React.ReactNode; color: string }> = {
+  requested: {
+    label: "Settlement Requested",
+    icon: <Send className="w-3.5 h-3.5" />,
+    color: "text-blue-400 bg-blue-500/10 border-blue-500/30",
+  },
+  processing: {
+    label: "Moved to Processing",
+    icon: <Loader2 className="w-3.5 h-3.5" />,
+    color: "text-amber-400 bg-amber-500/10 border-amber-500/30",
+  },
+  approved: {
+    label: "Approved",
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+  },
+  rejected: {
+    label: "Rejected",
+    icon: <XCircle className="w-3.5 h-3.5" />,
+    color: "text-rose-400 bg-rose-500/10 border-rose-500/30",
+  },
+  paid: {
+    label: "Payment Disbursed",
+    icon: <Banknote className="w-3.5 h-3.5" />,
+    color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+  },
+  held: {
+    label: "Put On Hold",
+    icon: <PauseCircle className="w-3.5 h-3.5" />,
+    color: "text-orange-400 bg-orange-500/10 border-orange-500/30",
+  },
+};
+
+function SettlementTimeline({ settlementId }: { settlementId: number }) {
+  const { data, isLoading } = useGetSettlementHistory(settlementId);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        Loading action trail…
+      </div>
+    );
+  }
+
+  const events = data?.data ?? [];
+
+  if (events.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic py-1">No recorded events yet.</p>
+    );
+  }
+
+  return (
+    <div className="space-y-0">
+      {events.map((ev, idx) => {
+        const cfg = EVENT_CONFIG[ev.event as EventType] ?? {
+          label: ev.event,
+          icon: <Clock className="w-3.5 h-3.5" />,
+          color: "text-muted-foreground bg-muted/20 border-border",
+        };
+        const isLast = idx === events.length - 1;
+        return (
+          <div key={ev.id} className="flex gap-3">
+            {/* Vertical connector + icon */}
+            <div className="flex flex-col items-center">
+              <div className={`flex items-center justify-center w-6 h-6 rounded-full border shrink-0 ${cfg.color}`}>
+                {cfg.icon}
+              </div>
+              {!isLast && <div className="w-px flex-1 bg-border/50 my-0.5 min-h-[14px]" />}
+            </div>
+            {/* Content */}
+            <div className={`pb-3 ${isLast ? "" : ""}`}>
+              <p className="text-sm font-medium leading-tight">{cfg.label}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {format(new Date(ev.createdAt), "MMM d, yyyy 'at' HH:mm")}
+                {ev.actorEmail && (
+                  <span className="ml-1.5">
+                    · <span className="text-foreground/70">{ev.actorEmail}</span>
+                  </span>
+                )}
+              </p>
+              {ev.note && (
+                <p className="text-xs text-muted-foreground mt-1 italic">"{ev.note}"</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function MerchantSettlements() {
   const [page, setPage] = useState(1);
@@ -1035,16 +1134,15 @@ export default function MerchantSettlements() {
                 </TableRow>
               ) : displayedRows.map(s => {
                 const isExpanded = expandedId === s.id;
-                const hasDetails = s.adminRemark || s.referenceNumber || s.paidAt || s.actionedByEmail;
                 return (
                   <>
                     <TableRow
                       key={s.id}
-                      className={hasDetails ? "cursor-pointer hover:bg-muted/30" : ""}
-                      onClick={() => hasDetails && setExpandedId(isExpanded ? null : s.id)}
+                      className="cursor-pointer hover:bg-muted/30"
+                      onClick={() => setExpandedId(isExpanded ? null : s.id)}
                     >
                       <TableCell className="w-8 text-muted-foreground">
-                        {hasDetails ? (isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />) : null}
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </TableCell>
                       <TableCell className="text-right font-mono font-semibold">
                         ₹{Number(s.requestedAmount ?? s.amount).toLocaleString()}
@@ -1061,34 +1159,28 @@ export default function MerchantSettlements() {
                       <TableCell className="text-sm text-muted-foreground">{format(new Date(s.createdAt), "MMM d, yyyy")}</TableCell>
                     </TableRow>
                     {isExpanded && (
-                      <TableRow key={`${s.id}-detail`} className="bg-muted/10">
+                      <TableRow key={`${s.id}-detail`} className="bg-muted/10 hover:bg-muted/10">
                         <TableCell />
-                        <TableCell colSpan={4} className="py-3">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                            {s.adminRemark && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-0.5">Admin Remark</p>
-                                <p className="font-medium">{s.adminRemark}</p>
-                              </div>
-                            )}
-                            {s.referenceNumber && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-0.5">Reference Number</p>
-                                <Badge variant="outline" className="font-mono text-xs">{s.referenceNumber}</Badge>
-                              </div>
-                            )}
-                            {s.paidAt && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-0.5">Paid At</p>
-                                <p className="font-medium">{format(new Date(s.paidAt), "MMM d, yyyy HH:mm")}</p>
-                              </div>
-                            )}
-                            {s.actionedByEmail && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-0.5">
-                                  {s.status === "paid" ? "Approved By" : s.status === "rejected" ? "Rejected By" : "Actioned By"}
-                                </p>
-                                <p className="font-medium">{s.actionedByEmail}</p>
+                        <TableCell colSpan={4} className="py-4">
+                          <div className="flex flex-col gap-4">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Action Trail</p>
+                              <SettlementTimeline settlementId={s.id} />
+                            </div>
+                            {(s.adminRemark || s.referenceNumber) && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm pt-3 border-t border-border/40">
+                                {s.adminRemark && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-0.5">Latest Admin Remark</p>
+                                    <p className="font-medium">{s.adminRemark}</p>
+                                  </div>
+                                )}
+                                {s.referenceNumber && (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground mb-0.5">Reference Number</p>
+                                    <Badge variant="outline" className="font-mono text-xs">{s.referenceNumber}</Badge>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

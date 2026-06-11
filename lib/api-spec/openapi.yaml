@@ -2101,6 +2101,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Settlement"
 
+  /settlements/{id}/history:
+    get:
+      operationId: getSettlementHistory
+      tags: [settlements]
+      summary: Get action trail for a settlement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Settlement action trail
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SettlementEvent"
+
   /users:
     get:
       operationId: listUsers
@@ -6244,6 +6269,26 @@ components:
         remark:
           type: string
         referenceNumber:
+          type: string
+
+    SettlementEvent:
+      type: object
+      required: [id, settlementId, event, createdAt]
+      properties:
+        id:
+          type: integer
+        settlementId:
+          type: integer
+        event:
+          type: string
+          enum: [requested, processing, approved, rejected, paid, held]
+        actorId:
+          type: ["integer", "null"]
+        actorEmail:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        createdAt:
           type: string
 
     SettlementStats:
