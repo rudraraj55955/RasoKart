@@ -137,6 +137,7 @@ import type {
   ProviderMerchantVisibility,
   ProviderReorderInput,
   ProviderVisibilityInput,
+  ProviderVolumeListResponse,
   PublicPaymentLink,
   QrCleanupConfig,
   QrCode,
@@ -9276,6 +9277,83 @@ export const useCreateAdminAuditLog = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateAdminAuditLogMutationOptions(options));
     }
+
+export const getGetDashboardProviderVolumesUrl = () => {
+
+
+
+
+  return `/api/dashboard/providers`
+}
+
+/**
+ * @summary Get transaction volume breakdown by provider (admin only)
+ */
+export const getDashboardProviderVolumes = async ( options?: RequestInit): Promise<ProviderVolumeListResponse> => {
+
+  return customFetch<ProviderVolumeListResponse>(getGetDashboardProviderVolumesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardProviderVolumesQueryKey = () => {
+    return [
+    `/api/dashboard/providers`
+    ] as const;
+    }
+
+
+export const getGetDashboardProviderVolumesQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardProviderVolumes>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardProviderVolumes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardProviderVolumesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardProviderVolumes>>> = ({ signal }) => getDashboardProviderVolumes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardProviderVolumes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardProviderVolumesQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardProviderVolumes>>>
+export type GetDashboardProviderVolumesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get transaction volume breakdown by provider (admin only)
+ */
+
+export function useGetDashboardProviderVolumes<TData = Awaited<ReturnType<typeof getDashboardProviderVolumes>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardProviderVolumes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardProviderVolumesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetDashboardMerchantVolumesUrl = () => {
 

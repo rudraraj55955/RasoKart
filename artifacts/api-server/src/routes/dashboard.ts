@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable } from "@workspace/db";
+import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable } from "@workspace/db";
 import { eq, sql, and, gte, count, inArray, lte, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
@@ -158,6 +158,48 @@ router.get("/chart", async (req, res, next) => {
     }
 
     res.json(Object.entries(dateMap).map(([date, vals]) => ({ date, ...vals })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/dashboard/providers — transaction volume breakdown by provider (admin only)
+router.get("/providers", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const rows = await db
+      .select({
+        provider: transactionsTable.provider,
+        total: sql<number>`COALESCE(SUM(CAST(${transactionsTable.amount} AS DECIMAL)), 0)`,
+        txCount: count(),
+        successCount: sql<number>`SUM(CASE WHEN ${transactionsTable.status} = 'success' THEN 1 ELSE 0 END)`,
+        failedCount: sql<number>`SUM(CASE WHEN ${transactionsTable.status} = 'failed' THEN 1 ELSE 0 END)`,
+      })
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.type, "deposit"), sql`${transactionsTable.provider} IS NOT NULL`))
+      .groupBy(transactionsTable.provider);
+
+    // Build a provider name map from the providers catalogue
+    const providerRows = await db.select({ slug: providersTable.slug, name: providersTable.name }).from(providersTable);
+    const providerNameMap: Record<string, string> = {};
+    for (const p of providerRows) {
+      providerNameMap[p.slug] = p.name;
+    }
+
+    const data = rows
+      .map((r) => ({
+        provider: r.provider ?? "unknown",
+        providerName: providerNameMap[r.provider ?? ""] ?? (r.provider ? r.provider.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Unknown"),
+        totalVolume: Number(r.total),
+        txCount: r.txCount,
+        successCount: Number(r.successCount),
+        failedCount: Number(r.failedCount),
+      }))
+      .sort((a, b) => b.totalVolume - a.totalVolume);
+
+    res.json({ data });
   } catch (err) {
     next(err);
   }

@@ -1,10 +1,10 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from "recharts";
 import { format } from "date-fns";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 const SEVERITY_STYLES: Record<string, string> = {
   error:   "bg-rose-500/10 text-rose-400 border-rose-500/20",
@@ -12,13 +12,23 @@ const SEVERITY_STYLES: Record<string, string> = {
   info:    "bg-primary/10 text-primary border-primary/20",
 };
 
+const PROVIDER_COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+];
+
 export default function AdminDashboard() {
+  const [, setLocation] = useLocation();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: chartData, isLoading: chartLoading } = useGetDashboardChart();
   const { data: merchantVolumes, isLoading: mvLoading } = useGetDashboardMerchantVolumes();
   const { data: notifications } = useGetDashboardNotifications();
   const { data: risk } = useGetDashboardRisk();
   const { data: reconSummary } = useGetDashboardReconSummary();
+  const { data: providerVolumes, isLoading: pvLoading } = useGetDashboardProviderVolumes();
 
   return (
     <div className="space-y-6">
@@ -224,6 +234,79 @@ export default function AdminDashboard() {
             </ResponsiveContainer>
           ) : (
             <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">No data available</div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Provider Volume Breakdown */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" />
+              <CardTitle className="text-base">Volume by Provider</CardTitle>
+            </div>
+            <Link href="/admin/transactions">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+                View all <ChevronRight className="w-3 h-3" />
+              </span>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {pvLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-12 bg-muted/20 rounded-lg animate-pulse" />)}
+            </div>
+          ) : providerVolumes && providerVolumes.data.length > 0 ? (() => {
+            const maxVol = Math.max(...providerVolumes.data.map((p) => p.totalVolume), 1);
+            return (
+              <div className="space-y-3">
+                {providerVolumes.data.map((p, i) => {
+                  const pct = Math.round((p.totalVolume / maxVol) * 100);
+                  const successRate = p.txCount > 0 ? Math.round((p.successCount / p.txCount) * 100) : 0;
+                  const color = PROVIDER_COLORS[i % PROVIDER_COLORS.length];
+                  return (
+                    <button
+                      key={p.provider}
+                      onClick={() => setLocation(`/admin/transactions?provider=${encodeURIComponent(p.provider)}`)}
+                      className="w-full text-left group rounded-lg border border-border/40 bg-muted/10 hover:bg-muted/20 hover:border-border/70 transition-all px-4 py-3"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span className="text-sm font-medium">{p.providerName}</span>
+                          <span className="text-[10px] text-muted-foreground bg-muted/30 px-1.5 py-0.5 rounded font-mono uppercase">{p.provider}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span className="font-mono font-semibold text-foreground">₹{p.totalVolume >= 1000000 ? `${(p.totalVolume / 1000000).toFixed(1)}M` : p.totalVolume >= 1000 ? `${(p.totalVolume / 1000).toFixed(1)}k` : p.totalVolume.toLocaleString()}</span>
+                          <span>{p.txCount} txn{p.txCount !== 1 ? "s" : ""}</span>
+                          <span className={successRate >= 80 ? "text-emerald-400" : successRate >= 50 ? "text-amber-400" : "text-rose-400"}>
+                            {successRate}% ok
+                          </span>
+                          <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </div>
+                      <div className="w-full bg-muted/30 rounded-full h-1.5">
+                        <div
+                          className="h-1.5 rounded-full transition-all"
+                          style={{ width: `${pct}%`, backgroundColor: color }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })() : (
+            <div className="py-8 flex flex-col items-center justify-center text-muted-foreground text-sm gap-1">
+              <Zap className="w-8 h-8 opacity-20 mb-1" />
+              <p>No provider data yet</p>
+              <p className="text-xs opacity-60">Transactions linked to providers will appear here</p>
+            </div>
           )}
         </CardContent>
       </Card>

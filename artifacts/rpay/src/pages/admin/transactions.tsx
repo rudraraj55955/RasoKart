@@ -818,9 +818,11 @@ function RecordPaymentDialog({ open, onClose, onSuccess }: { open: boolean; onCl
 }
 
 const PROVIDERS = [
+  { value: "google_pay", label: "Google Pay" },
   { value: "phonepe", label: "PhonePe" },
   { value: "paytm", label: "Paytm" },
-  { value: "bharatpe", label: "BharatPe" },
+  { value: "bharat_pe", label: "BharatPe" },
+  { value: "bharatpe", label: "BharatPe (legacy)" },
   { value: "yono_sbi", label: "YONO SBI" },
   { value: "hdfc_smarthub", label: "HDFC SmartHub" },
   { value: "upi_id", label: "UPI" },
@@ -855,6 +857,16 @@ export default function AdminTransactions() {
   const [saveFilterName, setSaveFilterName] = useState("");
   const [saveFilterNameError, setSaveFilterNameError] = useState("");
   const saveNameInputRef = useRef<HTMLInputElement>(null);
+
+  // Read ?provider= URL query param on mount and pre-fill the provider filter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const providerParam = params.get("provider");
+    if (providerParam && providerParam !== "all") {
+      setProvider(providerParam);
+      setPage(1);
+    }
+  }, []);
 
   useEffect(() => {
     if (showSaveInput) setTimeout(() => saveNameInputRef.current?.focus(), 50);

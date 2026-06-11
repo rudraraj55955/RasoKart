@@ -169,6 +169,8 @@ export * from './providerListResponse';
 export * from './providerMerchantVisibility';
 export * from './providerReorderInput';
 export * from './providerVisibilityInput';
+export * from './providerVolume';
+export * from './providerVolumeListResponse';
 export * from './publicPaymentLink';
 export * from './publicPaymentLinkStatus';
 export * from './qrCleanupConfig';

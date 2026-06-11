@@ -99,7 +99,13 @@ router.get("/", async (req, res, next) => {
         .select({ id: merchantConnectionsTable.id })
         .from(merchantConnectionsTable)
         .where(eq(merchantConnectionsTable.provider, connectionProvider));
-      conditions.push(inArray(transactionsTable.connectionId, matchingConnectionIds));
+      // Match either via connectionId FK or directly on transactions.provider (for legacy/direct-tagged rows)
+      conditions.push(
+        or(
+          inArray(transactionsTable.connectionId, matchingConnectionIds),
+          eq(transactionsTable.provider, connectionProvider)
+        )!
+      );
     }
     if (search) {
       conditions.push(
@@ -466,7 +472,13 @@ router.get("/export/csv", async (req, res) => {
       .select({ id: merchantConnectionsTable.id })
       .from(merchantConnectionsTable)
       .where(eq(merchantConnectionsTable.provider, connectionProvider));
-    conditions.push(inArray(transactionsTable.connectionId, matchingConnectionIds));
+    // Match either via connectionId FK or directly on transactions.provider (for legacy/direct-tagged rows)
+    conditions.push(
+      or(
+        inArray(transactionsTable.connectionId, matchingConnectionIds),
+        eq(transactionsTable.provider, connectionProvider)
+      )!
+    );
   }
   if (search) {
     conditions.push(

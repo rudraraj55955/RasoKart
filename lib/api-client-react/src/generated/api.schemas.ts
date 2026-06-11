@@ -1592,6 +1592,19 @@ export interface MerchantVolume {
   txCount: number;
 }
 
+export interface ProviderVolume {
+  provider: string;
+  providerName: string;
+  totalVolume: number;
+  txCount: number;
+  successCount: number;
+  failedCount: number;
+}
+
+export interface ProviderVolumeListResponse {
+  data: ProviderVolume[];
+}
+
 export interface MerchantVolumeListResponse {
   data: MerchantVolume[];
 }

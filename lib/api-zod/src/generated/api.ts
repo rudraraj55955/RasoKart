@@ -2874,6 +2874,21 @@ export const CreateAdminAuditLogBody = zod.object({
 
 
 /**
+ * @summary Get transaction volume breakdown by provider (admin only)
+ */
+export const GetDashboardProviderVolumesResponse = zod.object({
+  "data": zod.array(zod.object({
+  "provider": zod.string(),
+  "providerName": zod.string(),
+  "totalVolume": zod.number(),
+  "txCount": zod.number(),
+  "successCount": zod.number(),
+  "failedCount": zod.number()
+}))
+})
+
+
+/**
  * @summary Get merchant volume breakdown
  */
 export const GetDashboardMerchantVolumesResponse = zod.object({

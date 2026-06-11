@@ -2993,6 +2993,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdminAuditLog"
 
+  /dashboard/providers:
+    get:
+      operationId: getDashboardProviderVolumes
+      tags: [dashboard]
+      summary: Get transaction volume breakdown by provider (admin only)
+      responses:
+        "200":
+          description: Provider volume breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderVolumeListResponse"
+
   /dashboard/merchants:
     get:
       operationId: getDashboardMerchantVolumes
@@ -5969,6 +5982,32 @@ components:
           type: number
         txCount:
           type: integer
+
+    ProviderVolume:
+      type: object
+      required: [provider, providerName, totalVolume, txCount, successCount, failedCount]
+      properties:
+        provider:
+          type: string
+        providerName:
+          type: string
+        totalVolume:
+          type: number
+        txCount:
+          type: integer
+        successCount:
+          type: integer
+        failedCount:
+          type: integer
+
+    ProviderVolumeListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderVolume"
 
     MerchantVolumeListResponse:
       type: object

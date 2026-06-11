@@ -367,6 +367,41 @@ export async function seed() {
   }
   console.log("VA-linked transactions seeded");
 
+  // ── Provider-linked demo transactions — merchant-scoped guard ────────────
+  // Seeds transactions with a `provider` field set so the "Volume by Provider"
+  // dashboard widget has data to display in the demo environment.
+  {
+    const [provTxCount] = await db
+      .select({ c: count() })
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.merchantId, m1.id), sql`${transactionsTable.provider} IS NOT NULL`));
+
+    if (provTxCount.c === 0) {
+      const DEMO_PROVIDERS = ["google_pay", "phonepe", "paytm", "bharat_pe", "upi_id"];
+      const statuses: Array<"success" | "failed" | "pending"> = ["success", "success", "success", "failed", "pending"];
+      for (let i = 0; i < 40; i++) {
+        const merchantId = i % 3 === 0 ? m2.id : m1.id;
+        const provider = DEMO_PROVIDERS[i % DEMO_PROVIDERS.length];
+        const status = statuses[Math.floor(Math.random() * statuses.length)];
+        const amount = (Math.random() * 18000 + 500).toFixed(2);
+        const daysAgo = Math.floor(Math.random() * 30);
+        const utrSuffix = Math.random().toString(36).slice(2, 10).toUpperCase();
+        await db.insert(transactionsTable).values({
+          merchantId,
+          type: "deposit",
+          status,
+          amount,
+          currency: "INR",
+          provider,
+          utr: `PVRUTR${Date.now()}${utrSuffix}`,
+          description: `Deposit via ${provider.replace(/_/g, " ")}`,
+          createdAt: new Date(Date.now() - daysAgo * 86400000 - Math.random() * 86400000),
+        });
+      }
+    }
+  }
+  console.log("Provider-linked transactions seeded");
+
   // ── API Keys — merchant-scoped guard ────────────────────────────────────
   const [m1KeyCount] = await db.select({ c: count() }).from(apiKeysTable).where(eq(apiKeysTable.merchantId, m1.id));
   if (m1KeyCount.c === 0) {
