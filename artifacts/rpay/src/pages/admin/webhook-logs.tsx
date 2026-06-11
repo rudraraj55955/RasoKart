@@ -225,6 +225,17 @@ export default function AdminWebhookLogs() {
               </SelectContent>
             </Select>
           </div>
+          {merchantIdParam != null && (
+            <div className="flex items-center gap-2 px-1 pt-1">
+              <span className="text-xs text-muted-foreground">
+                Showing logs for:{" "}
+                <span className="font-medium text-foreground">
+                  {items[0]?.merchantName ?? "Merchant"}
+                </span>{" "}
+                <span className="text-muted-foreground/60">(#{merchantIdParam})</span>
+              </span>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -259,7 +270,13 @@ export default function AdminWebhookLogs() {
               ) : items.map((c: any) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-mono text-xs text-muted-foreground">#{c.id}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">#{c.merchantId}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {c.merchantName ? (
+                      <span>{c.merchantName} <span className="text-muted-foreground/50">(#{c.merchantId})</span></span>
+                    ) : (
+                      <span>#{c.merchantId}</span>
+                    )}
+                  </TableCell>
                   <TableCell className="max-w-[200px]">
                     <span className="font-mono text-xs truncate block" title={c.url}>{c.url}</span>
                   </TableCell>
@@ -319,8 +336,12 @@ export default function AdminWebhookLogs() {
                   <p className="font-semibold">{selected.attempts}</p>
                 </div>
                 <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Merchant ID</p>
-                  <p className="font-mono">#{selected.merchantId}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Merchant</p>
+                  {selected.merchantName ? (
+                    <p className="font-medium">{selected.merchantName} <span className="font-mono text-muted-foreground text-xs">(#{selected.merchantId})</span></p>
+                  ) : (
+                    <p className="font-mono">#{selected.merchantId}</p>
+                  )}
                 </div>
                 <div className="rounded-lg bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground mb-1">Signature</p>
