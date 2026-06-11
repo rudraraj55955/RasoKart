@@ -1619,6 +1619,10 @@ export interface AuditReportSchedulePatch {
   isActive?: boolean;
 }
 
+export interface AuditReportEmailPreview {
+  html: string;
+}
+
 export interface AuditReportScheduleListResponse {
   data: AuditReportSchedule[];
 }
@@ -2571,6 +2575,19 @@ export type GetVirtualAccountBalanceHistoryParams = {
 page?: number;
 limit?: number;
 };
+
+export type PreviewAuditReportEmailParams = {
+frequency: PreviewAuditReportEmailFrequency;
+};
+
+export type PreviewAuditReportEmailFrequency = typeof PreviewAuditReportEmailFrequency[keyof typeof PreviewAuditReportEmailFrequency];
+
+
+export const PreviewAuditReportEmailFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
 
 export type ListAuditReportScheduleLogsParams = {
 limit?: number;

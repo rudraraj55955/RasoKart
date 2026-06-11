@@ -38,6 +38,7 @@ import type {
   ApiKeyWithSecret,
   ApiMonitoringStats,
   AssignPlanInput,
+  AuditReportEmailPreview,
   AuditReportSchedule,
   AuditReportScheduleInput,
   AuditReportScheduleListResponse,
@@ -137,6 +138,7 @@ import type {
   PlanInput,
   PlanNoteInput,
   PlanUsage,
+  PreviewAuditReportEmailParams,
   Provider,
   ProviderBulkVisibilityInput,
   ProviderInput,
@@ -8904,6 +8906,90 @@ export function useGetApiMonitoringStats<TData = Awaited<ReturnType<typeof getAp
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetApiMonitoringStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPreviewAuditReportEmailUrl = (params: PreviewAuditReportEmailParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/audit-logs/schedules/preview?${stringifiedParams}` : `/api/audit-logs/schedules/preview`
+}
+
+/**
+ * @summary Preview the HTML email body for a scheduled audit report
+ */
+export const previewAuditReportEmail = async (params: PreviewAuditReportEmailParams, options?: RequestInit): Promise<AuditReportEmailPreview> => {
+
+  return customFetch<AuditReportEmailPreview>(getPreviewAuditReportEmailUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPreviewAuditReportEmailQueryKey = (params?: PreviewAuditReportEmailParams,) => {
+    return [
+    `/api/audit-logs/schedules/preview`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getPreviewAuditReportEmailQueryOptions = <TData = Awaited<ReturnType<typeof previewAuditReportEmail>>, TError = ErrorType<ErrorResponse | void>>(params: PreviewAuditReportEmailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof previewAuditReportEmail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPreviewAuditReportEmailQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof previewAuditReportEmail>>> = ({ signal }) => previewAuditReportEmail(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof previewAuditReportEmail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PreviewAuditReportEmailQueryResult = NonNullable<Awaited<ReturnType<typeof previewAuditReportEmail>>>
+export type PreviewAuditReportEmailQueryError = ErrorType<ErrorResponse | void>
+
+
+/**
+ * @summary Preview the HTML email body for a scheduled audit report
+ */
+
+export function usePreviewAuditReportEmail<TData = Awaited<ReturnType<typeof previewAuditReportEmail>>, TError = ErrorType<ErrorResponse | void>>(
+ params: PreviewAuditReportEmailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof previewAuditReportEmail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPreviewAuditReportEmailQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

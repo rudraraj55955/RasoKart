@@ -30,7 +30,7 @@ function buildAuditCsv(rows: typeof auditLogsTable.$inferSelect[]): string {
   return [header.join(","), ...csvRows].join("\n");
 }
 
-function buildEmailHtml(frequency: string, dateFrom: Date, dateTo: Date, rowCount: number): string {
+export function buildEmailHtml(frequency: string, dateFrom: Date, dateTo: Date, rowCount: number): string {
   const periodLabel = frequency === "daily"
     ? `Daily — Last 24 hours (${dateFrom.toISOString().slice(0, 16).replace("T", " ")} UTC to ${dateTo.toISOString().slice(0, 16).replace("T", " ")} UTC)`
     : frequency === "weekly"
@@ -83,7 +83,7 @@ function buildEmailHtml(frequency: string, dateFrom: Date, dateTo: Date, rowCoun
 </html>`;
 }
 
-function getDateRange(frequency: string): { dateFrom: Date; dateTo: Date } {
+export function getDateRange(frequency: string): { dateFrom: Date; dateTo: Date } {
   const now = new Date();
   const dateTo = new Date(now);
 

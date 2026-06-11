@@ -2855,6 +2855,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiMonitoringStats"
 
+  /audit-logs/schedules/preview:
+    get:
+      operationId: previewAuditReportEmail
+      tags: [dashboard]
+      summary: Preview the HTML email body for a scheduled audit report
+      parameters:
+        - name: frequency
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [daily, weekly, monthly]
+      responses:
+        "200":
+          description: Rendered email HTML preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReportEmailPreview"
+        "400":
+          description: Invalid frequency
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+
   /audit-logs/schedules:
     get:
       operationId: listAuditReportSchedules
@@ -6180,6 +6208,13 @@ components:
           type: string
         isActive:
           type: boolean
+
+    AuditReportEmailPreview:
+      type: object
+      required: [html]
+      properties:
+        html:
+          type: string
 
     AuditReportScheduleListResponse:
       type: object

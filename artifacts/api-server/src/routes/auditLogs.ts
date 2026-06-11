@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, auditLogsTable, scheduledAuditReportsTable, scheduledAuditReportLogsTable } from "@workspace/db";
 import { eq, ilike, and, count, sql, or, gte, lte, desc, getTableColumns } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { sendScheduledReport } from "../helpers/auditReportScheduler";
+import { sendScheduledReport, buildEmailHtml, getDateRange } from "../helpers/auditReportScheduler";
 
 const router = Router();
 router.use(requireAuth);
@@ -210,6 +210,20 @@ function deriveLastSendStatus(lastSuccess: boolean | null): "ok" | "failed" | "n
   if (lastSuccess === null) return "none";
   return lastSuccess ? "ok" : "failed";
 }
+
+router.get("/schedules/preview", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const { frequency } = req.query as Record<string, string>;
+
+  if (!frequency || !["daily", "weekly", "monthly"].includes(frequency)) {
+    res.status(400).json({ error: "frequency must be daily, weekly, or monthly" });
+    return;
+  }
+
+  const { dateFrom, dateTo } = getDateRange(frequency);
+  const html = buildEmailHtml(frequency, dateFrom, dateTo, 0);
+  res.json({ html });
+});
 
 router.get("/schedules", async (req, res) => {
   if (!ensureAdmin(req, res)) return;

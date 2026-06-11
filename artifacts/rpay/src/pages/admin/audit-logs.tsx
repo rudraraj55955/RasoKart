@@ -6,6 +6,7 @@ import {
   useSendAuditReportNow,
   getListAuditReportSchedulesQueryKey,
   useListAuditReportScheduleLogs,
+  previewAuditReportEmail,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
   Users, Loader2, QrCode, Landmark,
   Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle, Settings,
+  MonitorPlay,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
@@ -1161,6 +1163,8 @@ function ScheduledReportsPanel() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [sendingId, setSendingId] = useState<number | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   const schedules = schedulesData?.data ?? [];
 
@@ -1206,6 +1210,18 @@ function ScheduledReportsPanel() {
       toast.error("Failed to send report. Check mailer configuration.");
     } finally {
       setSendingId(null);
+    }
+  }
+
+  async function handlePreview() {
+    setLoadingPreview(true);
+    try {
+      const result = await previewAuditReportEmail({ frequency: newFrequency as "daily" | "weekly" | "monthly" });
+      setPreviewHtml(result.html);
+    } catch {
+      toast.error("Failed to load preview");
+    } finally {
+      setLoadingPreview(false);
     }
   }
 
@@ -1290,6 +1306,20 @@ function ScheduledReportsPanel() {
             <p className="text-xs text-muted-foreground">
               The CSV attachment will contain all audit log entries from the previous {newFrequency === "daily" ? "24 hours" : newFrequency === "weekly" ? "7 days" : "30 days"}.
             </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handlePreview}
+              disabled={loadingPreview}
+              className="w-full border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/50"
+            >
+              {loadingPreview
+                ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                : <MonitorPlay className="w-3.5 h-3.5 mr-1.5" />
+              }
+              {loadingPreview ? "Loading preview…" : "Preview email"}
+            </Button>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowAdd(false)} disabled={adding}>Cancel</Button>
@@ -1300,6 +1330,33 @@ function ScheduledReportsPanel() {
             >
               {adding ? "Adding…" : "Add Schedule"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewHtml !== null} onOpenChange={open => { if (!open) setPreviewHtml(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MonitorPlay className="w-4 h-4 text-violet-400" />
+              Email Preview — <span className="capitalize text-violet-400">{newFrequency}</span> Report
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-1">
+            This is a read-only preview. No email has been sent. The event count shown is a placeholder.
+          </p>
+          <div className="flex-1 min-h-0 overflow-hidden rounded-lg border border-border/50 mt-2">
+            {previewHtml && (
+              <iframe
+                srcDoc={previewHtml}
+                title="Email preview"
+                className="w-full h-full min-h-[460px]"
+                sandbox="allow-same-origin"
+              />
+            )}
+          </div>
+          <DialogFooter className="mt-2">
+            <Button variant="ghost" onClick={() => setPreviewHtml(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

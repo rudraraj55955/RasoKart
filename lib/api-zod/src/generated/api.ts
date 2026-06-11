@@ -2837,6 +2837,18 @@ export const GetApiMonitoringStatsResponse = zod.object({
 
 
 /**
+ * @summary Preview the HTML email body for a scheduled audit report
+ */
+export const PreviewAuditReportEmailQueryParams = zod.object({
+  "frequency": zod.enum(['daily', 'weekly', 'monthly'])
+})
+
+export const PreviewAuditReportEmailResponse = zod.object({
+  "html": zod.string()
+})
+
+
+/**
  * @summary List audit report schedules
  */
 export const ListAuditReportSchedulesResponse = zod.object({
