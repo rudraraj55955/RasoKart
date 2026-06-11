@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, notificationsTable, usersTable, merchantsTable, merchantPlansTable, plansTable } from "@workspace/db";
-import { eq, and, desc, count, lt, gte, or, sql, isNull } from "drizzle-orm";
+import { eq, and, desc, count, lt, gte, or, sql, isNull, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createBulkNotifications, createNotification } from "../helpers/notifications";
 import { runProviderLimitAlertScan } from "../helpers/providerLimitScheduler";
@@ -112,6 +112,58 @@ router.post("/broadcast", requireAdmin, async (req, res, next) => {
     })));
 
     res.json({ message: `Notification sent to ${targetUserIds.length} merchant(s)`, count: targetUserIds.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/notifications/security-reminder (admin only)
+// Sends a "set up your callback secret" in-app notification to each selected merchant
+// that doesn't already have a callback secret configured. Merchants who already have
+// a secret are silently skipped so the notification is never redundant.
+router.post("/security-reminder", requireAdmin, async (req, res, next) => {
+  try {
+    const { merchantIds } = req.body as { merchantIds?: unknown };
+    if (!Array.isArray(merchantIds) || merchantIds.length === 0) {
+      res.status(400).json({ error: "merchantIds must be a non-empty array" });
+      return;
+    }
+    const ids = merchantIds.map(Number).filter(n => !isNaN(n) && n > 0);
+    if (ids.length === 0) {
+      res.status(400).json({ error: "merchantIds must contain valid positive integers" });
+      return;
+    }
+
+    // Only target merchants that genuinely lack a callback secret
+    const targets = await db
+      .select({ merchantId: merchantsTable.id, userId: usersTable.id, businessName: merchantsTable.businessName })
+      .from(merchantsTable)
+      .innerJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
+      .where(and(
+        inArray(merchantsTable.id, ids),
+        isNull(merchantsTable.callbackSecret),
+      ));
+
+    const skipped = ids.length - targets.length;
+
+    if (targets.length === 0) {
+      res.json({ message: "All selected merchants already have a callback secret configured", sent: 0, skipped });
+      return;
+    }
+
+    await createBulkNotifications(targets.map(t => ({
+      userId: t.userId,
+      type: "system_notice" as const,
+      title: "Action Required: Set Up Your Callback Secret",
+      body: "Your account does not have a callback signing secret configured. Setting up a secret lets RasoKart sign every webhook payload so your server can verify authenticity. Go to Settings → Webhooks → Callback Secret to generate one.",
+      metadata: { reminderType: "callback_secret_setup", sentBy: (req as any).user.email },
+    })));
+
+    res.json({
+      message: `Security reminder sent to ${targets.length} merchant${targets.length !== 1 ? "s" : ""}`,
+      sent: targets.length,
+      skipped,
+    });
   } catch (err) {
     next(err);
   }

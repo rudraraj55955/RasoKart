@@ -2084,6 +2084,19 @@ export interface BroadcastNotificationResult {
   count: number;
 }
 
+export interface SecurityReminderInput {
+  /** IDs of merchants to remind; only those without a callback secret will receive a notification */
+  merchantIds: number[];
+}
+
+export interface SecurityReminderResult {
+  message: string;
+  /** Number of merchants who received a reminder notification */
+  sent: number;
+  /** Number of merchants skipped because they already have a callback secret */
+  skipped: number;
+}
+
 export interface ReconciliationRunInput {
   /** Start date (YYYY-MM-DD) */
   dateFrom: string;

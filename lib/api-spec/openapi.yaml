@@ -3851,6 +3851,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/BroadcastNotificationResult"
 
+  /notifications/security-reminder:
+    post:
+      operationId: sendSecurityReminder
+      tags: [notifications]
+      summary: Send callback-secret setup reminder to selected merchants (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityReminderInput"
+      responses:
+        "200":
+          description: Reminder result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityReminderResult"
+
   /notifications/check-expiry:
     get:
       operationId: checkPlanExpiry
@@ -7031,6 +7050,28 @@ components:
       properties:
         message: { type: string }
         count: { type: integer }
+
+    SecurityReminderInput:
+      type: object
+      required: [merchantIds]
+      properties:
+        merchantIds:
+          type: array
+          items:
+            type: integer
+          description: IDs of merchants to remind; only those without a callback secret will receive a notification
+
+    SecurityReminderResult:
+      type: object
+      required: [message, sent, skipped]
+      properties:
+        message: { type: string }
+        sent:
+          type: integer
+          description: Number of merchants who received a reminder notification
+        skipped:
+          type: integer
+          description: Number of merchants skipped because they already have a callback secret
 
     ReconciliationRunInput:
       type: object

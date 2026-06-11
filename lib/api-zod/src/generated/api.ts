@@ -3745,6 +3745,20 @@ export const BroadcastNotificationResponse = zod.object({
 
 
 /**
+ * @summary Send callback-secret setup reminder to selected merchants (admin only)
+ */
+export const SendSecurityReminderBody = zod.object({
+  "merchantIds": zod.array(zod.number()).describe('IDs of merchants to remind; only those without a callback secret will receive a notification')
+})
+
+export const SendSecurityReminderResponse = zod.object({
+  "message": zod.string(),
+  "sent": zod.number().describe('Number of merchants who received a reminder notification'),
+  "skipped": zod.number().describe('Number of merchants skipped because they already have a callback secret')
+})
+
+
+/**
  * @summary Trigger plan-expiry notification check (admin only)
  */
 export const CheckPlanExpiryResponse = zod.object({

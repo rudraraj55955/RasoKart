@@ -178,6 +178,8 @@ import type {
   SavedFilter,
   ScheduleRenewalInput,
   SearchByUtrParams,
+  SecurityReminderInput,
+  SecurityReminderResult,
   Settlement,
   SettlementActionInput,
   SettlementListResponse,
@@ -12204,6 +12206,77 @@ export const useBroadcastNotification = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getBroadcastNotificationMutationOptions(options));
+    }
+
+export const getSendSecurityReminderUrl = () => {
+
+
+
+
+  return `/api/notifications/security-reminder`
+}
+
+/**
+ * @summary Send callback-secret setup reminder to selected merchants (admin only)
+ */
+export const sendSecurityReminder = async (securityReminderInput: SecurityReminderInput, options?: RequestInit): Promise<SecurityReminderResult> => {
+
+  return customFetch<SecurityReminderResult>(getSendSecurityReminderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      securityReminderInput,)
+  }
+);}
+
+
+
+
+export const getSendSecurityReminderMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSecurityReminder>>, TError,{data: BodyType<SecurityReminderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendSecurityReminder>>, TError,{data: BodyType<SecurityReminderInput>}, TContext> => {
+
+const mutationKey = ['sendSecurityReminder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendSecurityReminder>>, {data: BodyType<SecurityReminderInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendSecurityReminder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendSecurityReminderMutationResult = NonNullable<Awaited<ReturnType<typeof sendSecurityReminder>>>
+    export type SendSecurityReminderMutationBody = BodyType<SecurityReminderInput>
+    export type SendSecurityReminderMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send callback-secret setup reminder to selected merchants (admin only)
+ */
+export const useSendSecurityReminder = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSecurityReminder>>, TError,{data: BodyType<SecurityReminderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendSecurityReminder>>,
+        TError,
+        {data: BodyType<SecurityReminderInput>},
+        TContext
+      > => {
+      return useMutation(getSendSecurityReminderMutationOptions(options));
     }
 
 export const getCheckPlanExpiryUrl = () => {

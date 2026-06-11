@@ -12,6 +12,7 @@ import {
   useGetAdminMerchantCallbackSecret, useResetAdminMerchantCallbackSecret,
   useUpdateMerchantCallbackWindow,
   useScheduleMerchantPlanRenewal, useGetMerchant,
+  useSendSecurityReminder,
   getListMerchantsQueryKey,
   listMerchants,
 } from "@workspace/api-client-react";
@@ -28,7 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -118,6 +119,7 @@ export default function AdminMerchants() {
   const [bulkStatusAction, setBulkStatusAction] = useState<"approve" | "suspend" | "reinstate" | null>(null);
   const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
   const [bulkRejectReason, setBulkRejectReason] = useState("");
+  const [securityReminderOpen, setSecurityReminderOpen] = useState(false);
 
   // Bulk result summary state
   const [bulkResultOpen, setBulkResultOpen] = useState(false);
@@ -190,6 +192,7 @@ export default function AdminMerchants() {
   const bulkApproveMutation = useBulkApproveMerchants();
   const bulkSuspendMutation = useBulkSuspendMerchants();
   const bulkRejectMutation = useBulkRejectMerchants();
+  const securityReminderMutation = useSendSecurityReminder();
 
   // Clean ?open= param from the URL immediately so back-navigation doesn't re-trigger the panel
   useEffect(() => {
@@ -593,6 +596,23 @@ export default function AdminMerchants() {
 
   const isBulkStatusPending = bulkApproveMutation.isPending || bulkSuspendMutation.isPending;
 
+  const handleSecurityReminder = () => {
+    const ids = Array.from(selected);
+    securityReminderMutation.mutate({ data: { merchantIds: ids } }, {
+      onSuccess: (result) => {
+        setSecurityReminderOpen(false);
+        if (result.sent === 0) {
+          toast.info("All selected merchants already have a callback secret configured");
+        } else if (result.skipped > 0) {
+          toast.success(`Reminder sent to ${result.sent} merchant${result.sent !== 1 ? "s" : ""} — ${result.skipped} already had a secret`);
+        } else {
+          toast.success(`Security reminder sent to ${result.sent} merchant${result.sent !== 1 ? "s" : ""}`);
+        }
+      },
+      onError: () => toast.error("Failed to send security reminder"),
+    });
+  };
+
   const handleBulkReject = () => {
     if (!bulkRejectReason.trim() || selected.size === 0) return;
     const ids = [...selected];
@@ -915,6 +935,15 @@ export default function AdminMerchants() {
                 <CreditCard className="w-3.5 h-3.5 mr-1.5" />
                 Assign Plan
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+                onClick={() => setSecurityReminderOpen(true)}
+              >
+                <Bell className="w-3.5 h-3.5 mr-1.5" />
+                Security Reminder
+              </Button>
               <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={clearSelection}>
                 Clear
               </Button>
@@ -1153,6 +1182,47 @@ export default function AdminMerchants() {
               disabled={!bulkRejectReason.trim() || bulkRejectMutation.isPending}
             >
               {bulkRejectMutation.isPending ? "Rejecting..." : `Reject ${selected.size} Merchant${selected.size !== 1 ? "s" : ""}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Security Reminder Dialog */}
+      <Dialog open={securityReminderOpen} onOpenChange={open => { if (!open) setSecurityReminderOpen(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="w-4 h-4 text-amber-400" />
+              Send Security Reminder
+            </DialogTitle>
+            <DialogDescription>
+              An in-app notification will be sent to each selected merchant that has not yet configured a callback signing secret. Merchants who already have a secret will be skipped automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-300 space-y-1">
+            <p className="font-medium">Notification content</p>
+            <p className="text-amber-300/80">
+              <span className="font-medium">Title:</span> Action Required: Set Up Your Callback Secret
+            </p>
+            <p className="text-amber-300/80 text-xs leading-relaxed">
+              <span className="font-medium">Body:</span> Your account does not have a callback signing secret configured. Setting up a secret lets RasoKart sign every webhook payload so your server can verify authenticity.
+            </p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {selected.size} merchant{selected.size !== 1 ? "s" : ""} selected — only those without a secret will receive this notification.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSecurityReminderOpen(false)}>Cancel</Button>
+            <Button
+              className="bg-amber-500 hover:bg-amber-600 text-black"
+              onClick={handleSecurityReminder}
+              disabled={securityReminderMutation.isPending}
+            >
+              {securityReminderMutation.isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Sending…</>
+              ) : (
+                <><Bell className="w-3.5 h-3.5 mr-1.5" />Send Reminder</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

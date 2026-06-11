@@ -233,6 +233,8 @@ export * from './savedFilter';
 export * from './savedFilterFilterData';
 export * from './scheduleRenewalInput';
 export * from './searchByUtrParams';
+export * from './securityReminderInput';
+export * from './securityReminderResult';
 export * from './settlement';
 export * from './settlementActionInput';
 export * from './settlementListResponse';
