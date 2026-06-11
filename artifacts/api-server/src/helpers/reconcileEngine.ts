@@ -19,10 +19,11 @@ export interface ReconcileOptions {
   merchantId?: number | null;
   createdBy?: number | null;
   triggeredBy?: "manual" | "auto";
+  notes?: string | null;
 }
 
 export async function runReconciliation(opts: ReconcileOptions) {
-  const { dateFrom, dateTo, merchantId = null, createdBy = null, triggeredBy = "manual" } = opts;
+  const { dateFrom, dateTo, merchantId = null, createdBy = null, triggeredBy = "manual", notes = null } = opts;
 
   const fromDate = new Date(dateFrom + "T00:00:00.000Z");
   const toDate = new Date(dateTo + "T23:59:59.999Z");
@@ -34,6 +35,7 @@ export async function runReconciliation(opts: ReconcileOptions) {
     status: "running",
     createdBy: createdBy ?? null,
     triggeredBy,
+    notes,
   }).returning();
 
   try {

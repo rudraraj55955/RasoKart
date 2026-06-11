@@ -58,7 +58,7 @@ router.get("/scheduler-status", async (req, res, next) => {
 // POST /api/reconciliation/run
 router.post("/run", async (req, res, next) => {
   try {
-    const { dateFrom, dateTo, merchantId } = req.body;
+    const { dateFrom, dateTo, merchantId, notes } = req.body;
     const user = (req as any).user;
 
     if (!dateFrom || !dateTo) {
@@ -82,6 +82,7 @@ router.post("/run", async (req, res, next) => {
       merchantId: parsedMerchantId,
       createdBy: user.id,
       triggeredBy: "manual",
+      notes: typeof notes === "string" && notes.trim() ? notes.trim() : null,
     });
 
     res.status(201).json(mapRun(updated));
