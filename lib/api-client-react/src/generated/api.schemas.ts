@@ -807,6 +807,13 @@ export interface LastReconSummary {
   triggeredBy?: string;
 }
 
+export interface SecurityHealthStats {
+  /** Total number of active merchants */
+  totalMerchants: number;
+  /** Number of active merchants with no callback signing secret configured */
+  merchantsWithoutSecret: number;
+}
+
 export interface DashboardStats {
   totalDeposits: number;
   totalWithdrawals: number;

@@ -1,7 +1,7 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes, useGetDashboardSecurityHealth } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ShieldCheck, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from "recharts";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -29,6 +29,7 @@ export default function AdminDashboard() {
   const { data: risk } = useGetDashboardRisk();
   const { data: reconSummary } = useGetDashboardReconSummary();
   const { data: providerVolumes, isLoading: pvLoading } = useGetDashboardProviderVolumes();
+  const { data: securityHealth } = useGetDashboardSecurityHealth();
 
   return (
     <div className="space-y-6">
@@ -142,6 +143,56 @@ export default function AdminDashboard() {
           </Card>
         </div>
       )}
+
+      {securityHealth && (() => {
+        const missing = securityHealth.merchantsWithoutSecret;
+        const total = securityHealth.totalMerchants;
+        const allGood = missing === 0;
+        const pct = total > 0 ? Math.round(((total - missing) / total) * 100) : 100;
+        return (
+          <Link href={`/admin/merchants?callbackSecretSet=false`}>
+            <Card className={`cursor-pointer transition-colors hover:border-border ${allGood ? "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10"}`}>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${allGood ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
+                      {allGood
+                        ? <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        : <ShieldAlert className="w-4 h-4 text-amber-400" />}
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Security Health — Callback Signing Secrets</p>
+                      {allGood ? (
+                        <p className="text-sm font-semibold text-emerald-400 mt-0.5">All {total} merchants have a signing secret configured</p>
+                      ) : (
+                        <p className="text-sm font-semibold text-amber-400 mt-0.5">
+                          {missing} of {total} merchant{total !== 1 ? "s" : ""} {missing !== 1 ? "have" : "has"} no signing secret configured
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="hidden sm:flex flex-col items-end gap-1">
+                      <span className={`text-xs font-mono font-semibold ${allGood ? "text-emerald-400" : "text-amber-400"}`}>{pct}% secured</span>
+                      <div className="w-24 bg-muted/30 rounded-full h-1.5">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${allGood ? "bg-emerald-500" : "bg-amber-500"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                    {!allGood && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                        View <ChevronRight className="w-3 h-3" />
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        );
+      })()}
 
       {reconSummary && reconSummary.runId != null && (() => {
         const hasUnmatched = (reconSummary.totalUnmatched ?? 0) > 0;

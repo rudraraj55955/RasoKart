@@ -233,6 +233,7 @@ export * from './savedFilter';
 export * from './savedFilterFilterData';
 export * from './scheduleRenewalInput';
 export * from './searchByUtrParams';
+export * from './securityHealthStats';
 export * from './securityReminderInput';
 export * from './securityReminderResult';
 export * from './settlement';

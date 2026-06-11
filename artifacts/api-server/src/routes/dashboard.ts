@@ -382,6 +382,26 @@ router.get("/risk", async (req, res, next) => {
   }
 });
 
+// GET /api/dashboard/security-health — platform-wide callback secret coverage (admin only)
+router.get("/security-health", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const [total] = await db.select({ count: count() }).from(merchantsTable).where(eq(merchantsTable.status, "approved"));
+    const [missing] = await db.select({ count: count() }).from(merchantsTable).where(
+      and(eq(merchantsTable.status, "approved"), sql`${merchantsTable.callbackSecret} IS NULL`)
+    );
+
+    res.json({
+      totalMerchants: total.count,
+      merchantsWithoutSecret: missing.count,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/dashboard/recon-summary — latest reconciliation run summary (admin only)
 router.get("/recon-summary", async (req, res, next) => {
   try {

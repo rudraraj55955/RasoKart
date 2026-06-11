@@ -178,6 +178,7 @@ import type {
   SavedFilter,
   ScheduleRenewalInput,
   SearchByUtrParams,
+  SecurityHealthStats,
   SecurityReminderInput,
   SecurityReminderResult,
   Settlement,
@@ -10316,6 +10317,83 @@ export function useGetDashboardReconSummary<TData = Awaited<ReturnType<typeof ge
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetDashboardReconSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetDashboardSecurityHealthUrl = () => {
+
+
+
+
+  return `/api/dashboard/security-health`
+}
+
+/**
+ * @summary Get platform-wide security health summary (admin only)
+ */
+export const getDashboardSecurityHealth = async ( options?: RequestInit): Promise<SecurityHealthStats> => {
+
+  return customFetch<SecurityHealthStats>(getGetDashboardSecurityHealthUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardSecurityHealthQueryKey = () => {
+    return [
+    `/api/dashboard/security-health`
+    ] as const;
+    }
+
+
+export const getGetDashboardSecurityHealthQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardSecurityHealth>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardSecurityHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardSecurityHealthQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardSecurityHealth>>> = ({ signal }) => getDashboardSecurityHealth({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardSecurityHealth>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardSecurityHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardSecurityHealth>>>
+export type GetDashboardSecurityHealthQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get platform-wide security health summary (admin only)
+ */
+
+export function useGetDashboardSecurityHealth<TData = Awaited<ReturnType<typeof getDashboardSecurityHealth>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardSecurityHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardSecurityHealthQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -60,7 +60,12 @@ export default function AdminMerchants() {
   const [status, setStatus] = useState("all");
   const [expiryStatus, setExpiryStatus] = useState<"" | "expiring" | "expired">("");
   const [rejectionReasonFilter, setRejectionReasonFilter] = useState("");
-  const [callbackSecretFilter, setCallbackSecretFilter] = useState<"" | "true" | "false">("");
+  const [callbackSecretFilter, setCallbackSecretFilter] = useState<"" | "true" | "false">(() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("callbackSecretSet");
+    if (v === "true" || v === "false") return v;
+    return "";
+  });
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");

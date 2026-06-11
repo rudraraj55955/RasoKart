@@ -3170,6 +3170,15 @@ export const GetDashboardReconSummaryResponse = zod.object({
 
 
 /**
+ * @summary Get platform-wide security health summary (admin only)
+ */
+export const GetDashboardSecurityHealthResponse = zod.object({
+  "totalMerchants": zod.number().describe('Total number of active merchants'),
+  "merchantsWithoutSecret": zod.number().describe('Number of active merchants with no callback signing secret configured')
+})
+
+
+/**
  * @summary List merchants with their feature settings
  */
 export const ListMerchantFeaturesQueryParams = zod.object({

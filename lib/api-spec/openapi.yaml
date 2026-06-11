@@ -3304,6 +3304,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/LastReconSummary"
 
+  /dashboard/security-health:
+    get:
+      operationId: getDashboardSecurityHealth
+      tags: [dashboard]
+      summary: Get platform-wide security health summary (admin only)
+      responses:
+        "200":
+          description: Security health stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityHealthStats"
+
   /feature-control:
     get:
       operationId: listMerchantFeatures
@@ -5433,6 +5446,17 @@ components:
           type: number
         triggeredBy:
           type: string
+
+    SecurityHealthStats:
+      type: object
+      required: [totalMerchants, merchantsWithoutSecret]
+      properties:
+        totalMerchants:
+          type: integer
+          description: Total number of active merchants
+        merchantsWithoutSecret:
+          type: integer
+          description: Number of active merchants with no callback signing secret configured
 
     DashboardStats:
       type: object
