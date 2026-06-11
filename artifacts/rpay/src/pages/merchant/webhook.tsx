@@ -479,9 +479,15 @@ export default function MerchantWebhook() {
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
   const [eventTypeFilter, setEventTypeFilter] = useState<GetWebhookLogsEventType | null>(null);
   const logsParams = { limit: 20, ...(eventTypeFilter != null ? { eventType: eventTypeFilter } : {}) };
-  const { data: logsData, isLoading: logsLoading } = useGetWebhookLogs(logsParams, {
+  const { data: logsData, isLoading: logsLoading, isFetching: logsRefetching, dataUpdatedAt } = useGetWebhookLogs(logsParams, {
     query: { refetchInterval: 30_000, queryKey: getGetWebhookLogsQueryKey(logsParams) },
   });
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 10_000);
+    return () => clearInterval(id);
+  }, []);
+  const lastUpdated = dataUpdatedAt > 0 ? new Date(dataUpdatedAt) : null;
   const updateMutation = useUpdateWebhookConfig();
   const rotateMutation = useRotateCallbackSecret();
   const testMutation = useSendWebhookTest();
@@ -702,9 +708,23 @@ export default function MerchantWebhook() {
       {/* Recent Deliveries */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-primary" />
-            <CardTitle>Recent Deliveries</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-primary" />
+              <CardTitle>Recent Deliveries</CardTitle>
+            </div>
+            {lastUpdated != null && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground/60 shrink-0">
+                {logsRefetching && !logsLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                {logsRefetching && !logsLoading
+                  ? "Refreshing…"
+                  : `Updated ${formatDistanceToNow(lastUpdated, { addSuffix: true })}`}
+              </span>
+            )}
           </div>
           <CardDescription>Last 20 webhook delivery attempts to your endpoint</CardDescription>
         </CardHeader>
