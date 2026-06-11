@@ -443,6 +443,12 @@ export interface WebhookConfig {
   events: string[];
   /** @nullable */
   secret?: string | null;
+  /**
+     * Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
+     * @minimum 0
+     * @maximum 5
+     */
+  maxRetries: number;
   createdAt?: string;
 }
 
@@ -493,6 +499,12 @@ export interface WebhookConfigInput {
   events: string[];
   /** @nullable */
   secret?: string | null;
+  /**
+     * Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
+     * @minimum 0
+     * @maximum 5
+     */
+  maxRetries?: number;
 }
 
 export interface CallbackSecretStatus {

@@ -4833,7 +4833,7 @@ components:
 
     WebhookConfig:
       type: object
-      required: [id, merchantId, url, isActive, events]
+      required: [id, merchantId, url, isActive, events, maxRetries]
       properties:
         id:
           type: integer
@@ -4849,6 +4849,11 @@ components:
             type: string
         secret:
           type: ["string", "null"]
+        maxRetries:
+          type: integer
+          minimum: 0
+          maximum: 5
+          description: Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
         createdAt:
           type: string
 
@@ -4903,6 +4908,11 @@ components:
             type: string
         secret:
           type: ["string", "null"]
+        maxRetries:
+          type: integer
+          minimum: 0
+          maximum: 5
+          description: Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
 
     CallbackSecretStatus:
       type: object

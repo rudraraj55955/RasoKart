@@ -1,5 +1,5 @@
-import { db, callbackLogsTable, usersTable, notificationsTable } from "@workspace/db";
-import { eq, and, lte, sql } from "drizzle-orm";
+import { db, callbackLogsTable, usersTable, notificationsTable, webhooksTable } from "@workspace/db";
+import { eq, and, lte, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { createNotification } from "./notifications";
 
@@ -47,7 +47,7 @@ async function notifyWebhookFailure(merchantId: number, url: string, attempts: n
   });
 }
 
-const MAX_ATTEMPTS = 4; // 1 initial + 3 retries
+const MAX_ATTEMPTS = 4; // 1 initial + 3 retries (default when no per-webhook config)
 
 function getNextRetryDelay(attempts: number): number {
   // attempts is the number of attempts already made (including the just-failed one)
@@ -60,8 +60,12 @@ function getNextRetryDelay(attempts: number): number {
   }
 }
 
-export async function scheduleCallbackRetry(logId: number, attempts: number): Promise<void> {
-  if (attempts >= MAX_ATTEMPTS) {
+export async function scheduleCallbackRetry(logId: number, attempts: number, overrideMaxRetries?: number): Promise<void> {
+  // overrideMaxRetries = number of retries (not total attempts), so total cap = maxRetries + 1.
+  // Falls back to MAX_ATTEMPTS (total) when no per-webhook config is provided.
+  const maxTotalAttempts = overrideMaxRetries != null ? overrideMaxRetries + 1 : MAX_ATTEMPTS;
+
+  if (attempts >= maxTotalAttempts) {
     await db
       .update(callbackLogsTable)
       .set({ status: "failed", nextRetryAt: null })
@@ -119,6 +123,14 @@ export async function processPendingRetries(): Promise<void> {
 
   logger.info({ count: pending.length }, "Processing pending callback retries");
 
+  // Load per-merchant webhook maxRetries for all unique merchants in this batch.
+  const merchantIds = [...new Set(pending.map(l => l.merchantId))];
+  const webhookRows = await db
+    .select({ merchantId: webhooksTable.merchantId, maxRetries: webhooksTable.maxRetries })
+    .from(webhooksTable)
+    .where(inArray(webhooksTable.merchantId, merchantIds));
+  const webhookMaxRetriesMap = new Map(webhookRows.map(r => [r.merchantId, r.maxRetries]));
+
   for (const log of pending) {
     if (!log.requestBody) {
       await db
@@ -151,7 +163,23 @@ export async function processPendingRetries(): Promise<void> {
         "Callback retry failed",
       );
 
-      if (newAttempts >= MAX_ATTEMPTS) {
+      // Live deliveries respect the per-webhook maxRetries (number of retries allowed).
+      // Test deliveries and logs without a webhook config fall back to MAX_ATTEMPTS (total).
+      let reachedCap: boolean;
+      if (log.isTest) {
+        reachedCap = newAttempts >= MAX_ATTEMPTS;
+      } else {
+        const webhookMaxRetries = webhookMaxRetriesMap.get(log.merchantId);
+        if (webhookMaxRetries != null) {
+          // webhookMaxRetries = number of retries; total cap = maxRetries + 1
+          reachedCap = newAttempts > webhookMaxRetries;
+        } else {
+          // No webhook config (e.g. QR code callback) — use default
+          reachedCap = newAttempts >= MAX_ATTEMPTS;
+        }
+      }
+
+      if (reachedCap) {
         await db
           .update(callbackLogsTable)
           .set({
@@ -164,9 +192,11 @@ export async function processPendingRetries(): Promise<void> {
           })
           .where(eq(callbackLogsTable.id, log.id));
 
-        await notifyWebhookFailure(log.merchantId, log.url, newAttempts, log.qrCodeId ?? null).catch((err) => {
-          logger.error({ err, logId: log.id }, "Failed to send webhook failure notification");
-        });
+        if (!log.isTest) {
+          await notifyWebhookFailure(log.merchantId, log.url, newAttempts, log.qrCodeId ?? null).catch((err) => {
+            logger.error({ err, logId: log.id }, "Failed to send webhook failure notification");
+          });
+        }
       } else {
         const delayMs = getNextRetryDelay(newAttempts);
         const nextRetryAt = new Date(Date.now() + delayMs);

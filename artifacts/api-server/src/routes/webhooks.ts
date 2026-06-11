@@ -494,24 +494,31 @@ router.put("/", async (req, res) => {
     res.status(403).json({ error: "Merchants only" });
     return;
   }
-  const { url, isActive, events, secret } = req.body;
+  const { url, isActive, events, secret, maxRetries } = req.body;
   if (!url || !Array.isArray(events)) {
     res.status(400).json({ error: "url and events required" });
     return;
   }
+
+  const maxRetriesNum = maxRetries != null ? parseInt(String(maxRetries), 10) : 3;
+  if (!isFinite(maxRetriesNum) || maxRetriesNum < 0 || maxRetriesNum > 5) {
+    res.status(400).json({ error: "maxRetries must be an integer between 0 and 5" });
+    return;
+  }
+
   // Upsert
   const existing = await db.select().from(webhooksTable).where(eq(webhooksTable.merchantId, merchantId)).limit(1);
   let webhook;
   if (existing.length > 0) {
     [webhook] = await db
       .update(webhooksTable)
-      .set({ url, isActive: isActive ?? true, events, secret: secret ?? null })
+      .set({ url, isActive: isActive ?? true, events, secret: secret ?? null, maxRetries: maxRetriesNum })
       .where(eq(webhooksTable.merchantId, merchantId))
       .returning();
   } else {
     [webhook] = await db
       .insert(webhooksTable)
-      .values({ merchantId, url, isActive: isActive ?? true, events, secret: secret ?? null })
+      .values({ merchantId, url, isActive: isActive ?? true, events, secret: secret ?? null, maxRetries: maxRetriesNum })
       .returning();
   }
   res.json(webhook);

@@ -372,6 +372,7 @@ export default function MerchantWebhook() {
   const [secret, setSecret] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [events, setEvents] = useState<string[]>([]);
+  const [maxRetries, setMaxRetries] = useState(3);
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [selectedLog, setSelectedLog] = useState<CallbackLog | null>(null);
@@ -384,6 +385,7 @@ export default function MerchantWebhook() {
       setSecret(config.secret || "");
       setIsActive(config.isActive);
       setEvents(config.events || []);
+      setMaxRetries(config.maxRetries ?? 3);
     }
   }, [config]);
 
@@ -393,9 +395,17 @@ export default function MerchantWebhook() {
 
   const handleSave = () => {
     if (!url.trim()) { toast.error("Webhook URL is required"); return; }
-    updateMutation.mutate({ data: { url: url.trim(), isActive, events, secret: secret || null } }, {
-      onSuccess: () => { toast.success("Webhook configuration saved"); qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() }); },
-      onError: () => toast.error("Failed to save configuration"),
+    const hasSecret = !!secret.trim();
+    updateMutation.mutate({ data: { url: url.trim(), isActive, events, secret: secret || null, maxRetries } }, {
+      onSuccess: () => {
+        toast.success("Webhook configuration saved");
+        qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() });
+        if (hasSecret) {
+          setSecretSavedAt(Date.now());
+          setSecretVerifiedDismissed(false);
+        }
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save configuration")),
     });
   };
 
@@ -490,6 +500,23 @@ export default function MerchantWebhook() {
           <div>
             <Label>Signing Secret <span className="text-muted-foreground font-normal">(optional)</span></Label>
             <Input className="mt-1.5 font-mono" type="password" placeholder="Used to verify payload authenticity" value={secret} onChange={e => setSecret(e.target.value)} />
+          </div>
+          <div>
+            <Label>Max retries</Label>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-2">Number of automatic retry attempts when delivery fails (0 = no retries)</p>
+            <Select value={String(maxRetries)} onValueChange={v => setMaxRetries(parseInt(v, 10))}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">0 — no retries</SelectItem>
+                <SelectItem value="1">1 retry</SelectItem>
+                <SelectItem value="2">2 retries</SelectItem>
+                <SelectItem value="3">3 retries (default)</SelectItem>
+                <SelectItem value="4">4 retries</SelectItem>
+                <SelectItem value="5">5 retries</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center justify-between py-3 border-t border-border/50">
             <div>
@@ -605,6 +632,31 @@ export default function MerchantWebhook() {
                 >
                   <div className="w-28 shrink-0">
                     <StatusBadge status={log.status} />
+                    {(log.status === "failed" || log.status === "pending_retry") && (
+                      log.httpStatus != null ? (
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-rose-500/10 border border-rose-500/25 text-rose-400">
+                          {log.httpStatus}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-orange-500/10 border border-orange-500/25 text-orange-400">
+                          no resp
+                        </span>
+                      )
+                    )}
+                    {(log.status === "failed" || log.status === "pending_retry") && (() => {
+                      const retriesDone = (log.attempts ?? 1) - 1;
+                      const cfgMax = config?.maxRetries ?? 3;
+                      const isExhausted = log.status === "failed" && retriesDone >= cfgMax && cfgMax > 0;
+                      return (
+                        <span
+                          className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/10 border border-amber-500/25 text-amber-400"
+                          title={`${log.attempts ?? 1} delivery ${(log.attempts ?? 1) === 1 ? "attempt" : "attempts"}`}
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          {isExhausted ? `${retriesDone}/${cfgMax}×` : `${log.attempts ?? 1}×`}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">

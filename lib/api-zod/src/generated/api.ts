@@ -1430,6 +1430,11 @@ export const SendWebhookTestResponse = zod.object({
 /**
  * @summary Get webhook configuration
  */
+export const getWebhookConfigResponseMaxRetriesMin = 0;
+export const getWebhookConfigResponseMaxRetriesMax = 5;
+
+
+
 export const GetWebhookConfigResponse = zod.object({
   "id": zod.number(),
   "merchantId": zod.number(),
@@ -1437,6 +1442,7 @@ export const GetWebhookConfigResponse = zod.object({
   "isActive": zod.boolean(),
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
+  "maxRetries": zod.number().min(getWebhookConfigResponseMaxRetriesMin).max(getWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
   "createdAt": zod.string().optional()
 })
 
@@ -1444,12 +1450,23 @@ export const GetWebhookConfigResponse = zod.object({
 /**
  * @summary Update webhook configuration
  */
+export const updateWebhookConfigBodyMaxRetriesMin = 0;
+export const updateWebhookConfigBodyMaxRetriesMax = 5;
+
+
+
 export const UpdateWebhookConfigBody = zod.object({
   "url": zod.string(),
   "isActive": zod.boolean().optional(),
   "events": zod.array(zod.string()),
-  "secret": zod.string().nullish()
+  "secret": zod.string().nullish(),
+  "maxRetries": zod.number().min(updateWebhookConfigBodyMaxRetriesMin).max(updateWebhookConfigBodyMaxRetriesMax).optional().describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)')
 })
+
+export const updateWebhookConfigResponseMaxRetriesMin = 0;
+export const updateWebhookConfigResponseMaxRetriesMax = 5;
+
+
 
 export const UpdateWebhookConfigResponse = zod.object({
   "id": zod.number(),
@@ -1458,6 +1475,7 @@ export const UpdateWebhookConfigResponse = zod.object({
   "isActive": zod.boolean(),
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
+  "maxRetries": zod.number().min(updateWebhookConfigResponseMaxRetriesMin).max(updateWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
   "createdAt": zod.string().optional()
 })
 
