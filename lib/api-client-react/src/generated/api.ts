@@ -170,6 +170,7 @@ import type {
   ResendReconciliationReportEmail200,
   RetryCallback200,
   RetryWebhookLog200,
+  RetryWebhookLog429,
   SavedFilter,
   ScheduleRenewalInput,
   SearchByUtrParams,
@@ -4173,7 +4174,7 @@ export const retryWebhookLog = async (id: number, options?: RequestInit): Promis
 
 
 
-export const getRetryWebhookLogMutationOptions = <TError = ErrorType<void>,
+export const getRetryWebhookLogMutationOptions = <TError = ErrorType<void | RetryWebhookLog429>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryWebhookLog>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof retryWebhookLog>>, TError,{id: number}, TContext> => {
 
@@ -4202,12 +4203,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RetryWebhookLogMutationResult = NonNullable<Awaited<ReturnType<typeof retryWebhookLog>>>
 
-    export type RetryWebhookLogMutationError = ErrorType<void>
+    export type RetryWebhookLogMutationError = ErrorType<void | RetryWebhookLog429>
 
     /**
  * @summary Retry a failed webhook delivery
  */
-export const useRetryWebhookLog = <TError = ErrorType<void>,
+export const useRetryWebhookLog = <TError = ErrorType<void | RetryWebhookLog429>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryWebhookLog>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof retryWebhookLog>>,

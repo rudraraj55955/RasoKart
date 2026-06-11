@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, webhooksTable, callbackLogsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { fireCallback } from "../helpers/callbackRetry";
 import crypto from "crypto";
@@ -202,7 +202,34 @@ router.post("/logs/:id/retry", async (req, res) => {
     return;
   }
 
+  const RETRY_COOLDOWN_SECONDS = 30;
   const now = new Date();
+  const cutoff = new Date(now.getTime() - RETRY_COOLDOWN_SECONDS * 1000);
+
+  // Atomically claim the retry slot by updating lastAttemptAt only when not in cooldown.
+  // This prevents concurrent requests from all passing a read-then-check guard.
+  const claimed = await db
+    .update(callbackLogsTable)
+    .set({ lastAttemptAt: now })
+    .where(
+      and(
+        eq(callbackLogsTable.id, id),
+        or(
+          isNull(callbackLogsTable.lastAttemptAt),
+          lt(callbackLogsTable.lastAttemptAt, cutoff)
+        )
+      )
+    )
+    .returning({ id: callbackLogsTable.id });
+
+  if (claimed.length === 0) {
+    const retryAfter = log.lastAttemptAt
+      ? Math.max(1, Math.ceil(RETRY_COOLDOWN_SECONDS - (now.getTime() - new Date(log.lastAttemptAt).getTime()) / 1000))
+      : 1;
+    res.status(429).json({ error: `Please wait ${retryAfter} seconds before retrying again`, retryAfter });
+    return;
+  }
+
   const { ok, httpStatus, responseBody } = await fireCallback(log.url, log.requestBody);
 
   const newAttempts = log.attempts + 1;

@@ -207,11 +207,41 @@ function EventTypeBadge({ eventType, size = "sm" }: { eventType: string | null; 
   return <span className={cls}>{eventType}</span>;
 }
 
+const RETRY_COOLDOWN_SECONDS = 30;
+
+function useCooldownSeconds(lastAttemptAt: string | null | undefined): number {
+  const [remaining, setRemaining] = useState(() => {
+    if (!lastAttemptAt) return 0;
+    const elapsed = (Date.now() - new Date(lastAttemptAt).getTime()) / 1000;
+    return Math.max(0, Math.ceil(RETRY_COOLDOWN_SECONDS - elapsed));
+  });
+
+  useEffect(() => {
+    if (!lastAttemptAt) { setRemaining(0); return; }
+    const elapsed = (Date.now() - new Date(lastAttemptAt).getTime()) / 1000;
+    const initial = Math.max(0, Math.ceil(RETRY_COOLDOWN_SECONDS - elapsed));
+    setRemaining(initial);
+    if (initial <= 0) return;
+    const tick = setInterval(() => {
+      setRemaining(prev => {
+        const next = prev - 1;
+        if (next <= 0) { clearInterval(tick); return 0; }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [lastAttemptAt]);
+
+  return remaining;
+}
+
 function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: CallbackLog | null; onClose: () => void; onRetry?: (id: number) => void; isRetrying?: boolean }) {
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard");
   };
+
+  const cooldownRemaining = useCooldownSeconds(log?.lastAttemptAt);
 
   if (!log) return null;
 
@@ -339,16 +369,24 @@ function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: Callb
 
           {/* Retry action */}
           {canRetry && onRetry && (
-            <div className="pt-2 border-t border-border/40">
+            <div className="pt-2 border-t border-border/40 space-y-2">
+              {cooldownRemaining > 0 && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 text-amber-400">
+                  <Clock className="w-4 h-4 shrink-0" />
+                  <p className="text-xs font-medium">
+                    Please wait <span className="font-mono font-semibold">{cooldownRemaining}s</span> before retrying again
+                  </p>
+                </div>
+              )}
               <Button
                 size="sm"
                 variant="outline"
-                disabled={isRetrying}
+                disabled={isRetrying || cooldownRemaining > 0}
                 onClick={() => onRetry(log.id)}
-                className="w-full border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/50"
+                className="w-full border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/50 disabled:opacity-50"
               >
                 <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${isRetrying ? "animate-spin" : ""}`} />
-                {isRetrying ? "Retrying…" : "Retry now"}
+                {isRetrying ? "Retrying…" : cooldownRemaining > 0 ? `Retry in ${cooldownRemaining}s` : "Retry now"}
               </Button>
             </div>
           )}
@@ -463,7 +501,15 @@ export default function MerchantWebhook() {
           setSelectedLog(prev => (prev?.id === logId ? (data.log as CallbackLog) : prev));
         }
       },
-      onError: () => toast.error("Retry request failed"),
+      onError: (error: any) => {
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+        if (status === 429 && data?.retryAfter != null) {
+          toast.error(`Please wait ${data.retryAfter}s before retrying again`);
+        } else {
+          toast.error("Retry request failed");
+        }
+      },
       onSettled: () => setRetryingId(null),
     });
   };

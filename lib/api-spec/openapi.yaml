@@ -1379,6 +1379,19 @@ paths:
           description: Merchant access only, or log does not belong to this merchant
         "404":
           description: Webhook log not found
+        "429":
+          description: Retry cooldown — last attempt was too recent (within 30 s)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retryAfter:
+                    type: integer
+                    description: Seconds remaining until a retry is allowed
+                required: [error, retryAfter]
 
   /webhooks/test:
     post:

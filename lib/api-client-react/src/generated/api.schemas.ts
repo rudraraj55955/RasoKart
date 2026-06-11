@@ -2373,6 +2373,12 @@ export type RetryWebhookLog200 = {
   log: CallbackLog;
 };
 
+export type RetryWebhookLog429 = {
+  error: string;
+  /** Seconds remaining until a retry is allowed */
+  retryAfter: number;
+};
+
 export type ListCallbackLogsParams = {
 status?: ListCallbackLogsStatus;
 /**
