@@ -958,10 +958,40 @@ const FREQUENCY_LABELS: Record<string, string> = {
 };
 
 function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
-  const { data, isLoading } = useListAuditReportScheduleLogs(scheduleId, { limit: 20 });
+  const { data, isLoading } = useListAuditReportScheduleLogs(scheduleId, { limit: 50 });
   const { data: retentionData } = useGetAuditReportRetentionConfig();
   const retentionDays = retentionData?.retentionDays ?? 90;
   const logs = data?.data ?? [];
+  const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
+
+  const cycles = (() => {
+    const map = new Map<string, typeof logs>();
+    for (const log of logs) {
+      const key = log.deliveryCycleId ?? `orphan-${log.id}`;
+      const bucket = map.get(key) ?? [];
+      bucket.push(log);
+      map.set(key, bucket);
+    }
+    return Array.from(map.entries()).map(([cycleId, attempts]) => {
+      const sortedAttempts = [...attempts].sort(
+        (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
+      );
+      const overallSuccess = attempts.some(a => a.success);
+      const initialAttempt = [...attempts].sort(
+        (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+      )[0]!;
+      return { cycleId, attempts: sortedAttempts, overallSuccess, initialAttempt };
+    });
+  })();
+
+  function toggleCycle(cycleId: string) {
+    setExpandedCycles(prev => {
+      const next = new Set(prev);
+      if (next.has(cycleId)) next.delete(cycleId);
+      else next.add(cycleId);
+      return next;
+    });
+  }
 
   if (isLoading) {
     return (
@@ -990,42 +1020,116 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
 
   return (
     <div className="divide-y divide-border/30">
-      {logs.map((log: any) => (
-        <div key={log.id} className="flex items-start gap-3 px-4 py-2.5">
-          <div className="mt-0.5 shrink-0">
-            {log.success
-              ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              : <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-            }
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium">
-                {format(new Date(log.sentAt), "MMM d, yyyy 'at' HH:mm")}
-              </span>
-              {log.success
-                ? (
-                  <span className="inline-flex items-center rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                    Delivered
+      {cycles.map(({ cycleId, attempts, overallSuccess, initialAttempt }) => {
+        const isExpanded = expandedCycles.has(cycleId);
+        const hasRetries = attempts.length > 1;
+        return (
+          <div key={cycleId}>
+            <button
+              type="button"
+              className="w-full flex items-start gap-3 px-4 py-2.5 text-left hover:bg-muted/10 transition-colors"
+              onClick={() => hasRetries && toggleCycle(cycleId)}
+            >
+              <div className="mt-0.5 shrink-0">
+                {overallSuccess
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  : <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium">
+                    {format(new Date(initialAttempt.sentAt), "MMM d, yyyy 'at' HH:mm")}
                   </span>
-                ) : (
-                  <span className="inline-flex items-center rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
-                    Failed
+                  {overallSuccess
+                    ? (
+                      <span className="inline-flex items-center rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                        Delivered
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
+                        Failed
+                      </span>
+                    )
+                  }
+                  {hasRetries && (
+                    <span className="inline-flex items-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      {attempts.length} attempt{attempts.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {initialAttempt.rowCount.toLocaleString()} row{initialAttempt.rowCount !== 1 ? "s" : ""}
                   </span>
-                )
-              }
-              <span className="text-xs text-muted-foreground">
-                {log.rowCount.toLocaleString()} row{log.rowCount !== 1 ? "s" : ""}
-              </span>
-            </div>
-            {!log.success && log.errorMessage && (
-              <p className="text-xs text-rose-400/80 mt-0.5 truncate" title={log.errorMessage}>
-                {log.errorMessage}
-              </p>
+                  {hasRetries && (
+                    <span className="ml-auto shrink-0 text-muted-foreground">
+                      {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </span>
+                  )}
+                </div>
+                {!overallSuccess && attempts[0]?.errorMessage && !hasRetries && (
+                  <p className="text-xs text-rose-400/80 mt-0.5 truncate" title={attempts[0].errorMessage ?? undefined}>
+                    {attempts[0].errorMessage}
+                  </p>
+                )}
+              </div>
+            </button>
+
+            {hasRetries && isExpanded && (
+              <div className="ml-10 mr-3 mb-2 rounded-md border border-border/30 bg-muted/5 divide-y divide-border/20 overflow-hidden">
+                {attempts.map((log) => {
+                  const attemptLabel = !log.isRetry
+                    ? "Initial send"
+                    : `Retry #${log.retryAttempt}`;
+                  return (
+                    <div key={log.id} className="flex items-start gap-2.5 px-3 py-2">
+                      <div className="mt-0.5 shrink-0">
+                        {log.success
+                          ? <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          : <AlertCircle className="w-3 h-3 text-rose-400" />
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {log.isRetry ? (
+                            <span className="inline-flex items-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">
+                              <RefreshCw className="w-2 h-2" />
+                              {attemptLabel}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded border border-border/40 bg-muted/20 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                              {attemptLabel}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-muted-foreground">
+                            {format(new Date(log.sentAt), "MMM d 'at' HH:mm")}
+                          </span>
+                          {log.success
+                            ? (
+                              <span className="inline-flex items-center rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                                Delivered
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
+                                Failed
+                              </span>
+                            )
+                          }
+                        </div>
+                        {!log.success && log.errorMessage && (
+                          <p className="text-[10px] text-rose-400/80 mt-0.5 truncate" title={log.errorMessage ?? undefined}>
+                            {log.errorMessage}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
-        </div>
-      ))}
+        );
+      })}
       {retentionDays > 0 && (
         <div className="px-4 py-2 flex items-center gap-1.5 text-xs text-muted-foreground/60">
           <Trash2 className="w-3 h-3 shrink-0" />

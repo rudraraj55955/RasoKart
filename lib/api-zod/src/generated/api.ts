@@ -3158,6 +3158,7 @@ export const ListAllAuditReportScheduleLogsResponse = zod.object({
   "success": zod.boolean(),
   "errorMessage": zod.string().nullish(),
   "isRetry": zod.boolean(),
+  "retryAttempt": zod.number().describe('0 = initial send, 1–3 = automatic retry attempts'),
   "deliveryCycleId": zod.string().nullish(),
   "scheduleEmail": zod.string(),
   "scheduleFrequency": zod.string()
@@ -3187,6 +3188,7 @@ export const ListAuditReportScheduleLogsResponse = zod.object({
   "success": zod.boolean(),
   "errorMessage": zod.string().nullish(),
   "isRetry": zod.boolean(),
+  "retryAttempt": zod.number().describe('0 = initial send, 1–3 = automatic retry attempts'),
   "deliveryCycleId": zod.string().nullish()
 }))
 })

@@ -1855,6 +1855,8 @@ export interface AuditReportScheduleLog {
   /** @nullable */
   errorMessage?: string | null;
   isRetry: boolean;
+  /** 0 = initial send, 1–3 = automatic retry attempts */
+  retryAttempt: number;
   /** @nullable */
   deliveryCycleId?: string | null;
 }
@@ -1872,6 +1874,8 @@ export interface AuditReportScheduleLogWithSchedule {
   /** @nullable */
   errorMessage?: string | null;
   isRetry: boolean;
+  /** 0 = initial send, 1–3 = automatic retry attempts */
+  retryAttempt: number;
   /** @nullable */
   deliveryCycleId?: string | null;
   scheduleEmail: string;
