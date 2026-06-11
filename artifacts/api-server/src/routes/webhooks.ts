@@ -173,8 +173,8 @@ router.post("/logs/:id/retry", async (req, res) => {
     return;
   }
 
-  if (log.status !== "failed") {
-    res.status(400).json({ error: "Only failed deliveries can be retried" });
+  if (log.status !== "failed" && log.status !== "pending_retry") {
+    res.status(400).json({ error: "Only failed or pending-retry deliveries can be retried" });
     return;
   }
 

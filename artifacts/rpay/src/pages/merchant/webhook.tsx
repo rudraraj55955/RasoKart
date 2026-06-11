@@ -174,13 +174,15 @@ function formatJsonBody(raw: string | null | undefined): string {
   }
 }
 
-function DeliveryDetailModal({ log, onClose }: { log: CallbackLog | null; onClose: () => void }) {
+function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: CallbackLog | null; onClose: () => void; onRetry?: (id: number) => void; isRetrying?: boolean }) {
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard");
   };
 
   if (!log) return null;
+
+  const canRetry = (log.status === "failed" || log.status === "pending_retry") && !!log.requestBody;
 
   const reqBody = formatJsonBody(log.requestBody);
   const resBody = formatJsonBody(log.responseBody);
@@ -292,6 +294,22 @@ function DeliveryDetailModal({ log, onClose }: { log: CallbackLog | null; onClos
               </div>
             )}
           </div>
+
+          {/* Retry action */}
+          {canRetry && onRetry && (
+            <div className="pt-2 border-t border-border/40">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isRetrying}
+                onClick={() => onRetry(log.id)}
+                className="w-full border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/50"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${isRetrying ? "animate-spin" : ""}`} />
+                {isRetrying ? "Retrying…" : "Retry now"}
+              </Button>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -393,6 +411,9 @@ export default function MerchantWebhook() {
           toast.error("Retry failed — endpoint still unreachable");
         }
         qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() });
+        if (data.log) {
+          setSelectedLog(prev => (prev?.id === logId ? (data.log as CallbackLog) : prev));
+        }
       },
       onError: () => toast.error("Retry request failed"),
       onSettled: () => setRetryingId(null),
@@ -694,7 +715,12 @@ export default function MerchantWebhook() {
         </CardContent>
       </Card>
 
-      <DeliveryDetailModal log={selectedLog} onClose={() => setSelectedLog(null)} />
+      <DeliveryDetailModal
+        log={selectedLog}
+        onClose={() => setSelectedLog(null)}
+        onRetry={handleRetry}
+        isRetrying={retryingId === selectedLog?.id}
+      />
 
       <Dialog open={!!newSecret} onOpenChange={() => setNewSecret(null)}>
         <DialogContent className="max-w-lg">
