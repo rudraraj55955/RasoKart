@@ -58,8 +58,9 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   virtual_account_created:  { label: "VA Created",            color: "bg-primary/10 text-primary border-primary/20" },
   virtual_account_updated:  { label: "VA Updated",            color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   virtual_account_deleted:  { label: "VA Deleted",            color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
-  test_email_sent:          { label: "Test Email Sent",       color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
-  setting_updated:          { label: "Setting Updated",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  test_email_sent:              { label: "Test Email Sent",              color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
+  setting_updated:              { label: "Setting Updated",              color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  security_activity_exported:   { label: "Security Activity Exported",   color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);

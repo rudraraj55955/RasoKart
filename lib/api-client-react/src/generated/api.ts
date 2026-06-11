@@ -9780,6 +9780,83 @@ export function useGetAdminAuditLogStats<TData = Awaited<ReturnType<typeof getAd
 
 
 
+export const getExportMySecurityActivityUrl = () => {
+
+
+
+
+  return `/api/audit-logs/my-activity/export`
+}
+
+/**
+ * @summary Export the merchant's own security activity log as CSV
+ */
+export const exportMySecurityActivity = async ( options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportMySecurityActivityUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportMySecurityActivityQueryKey = () => {
+    return [
+    `/api/audit-logs/my-activity/export`
+    ] as const;
+    }
+
+
+export const getExportMySecurityActivityQueryOptions = <TData = Awaited<ReturnType<typeof exportMySecurityActivity>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportMySecurityActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportMySecurityActivityQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportMySecurityActivity>>> = ({ signal }) => exportMySecurityActivity({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportMySecurityActivity>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportMySecurityActivityQueryResult = NonNullable<Awaited<ReturnType<typeof exportMySecurityActivity>>>
+export type ExportMySecurityActivityQueryError = ErrorType<void>
+
+
+/**
+ * @summary Export the merchant's own security activity log as CSV
+ */
+
+export function useExportMySecurityActivity<TData = Awaited<ReturnType<typeof exportMySecurityActivity>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportMySecurityActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportMySecurityActivityQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getExportAdminAuditLogsCsvUrl = (params?: ExportAdminAuditLogsCsvParams,) => {
   const normalizedParams = new URLSearchParams();
 

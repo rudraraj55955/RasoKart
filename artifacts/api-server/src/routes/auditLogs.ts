@@ -174,6 +174,56 @@ router.get("/export", async (req, res) => {
   res.send(csv);
 });
 
+router.get("/my-activity/export", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "merchant" || !user.merchantId) {
+    res.status(403).json({ error: "Only merchants can access this endpoint" });
+    return;
+  }
+
+  const rows = await db
+    .select()
+    .from(auditLogsTable)
+    .where(eq(auditLogsTable.targetId, user.merchantId))
+    .orderBy(sql`${auditLogsTable.createdAt} DESC`);
+
+  function escapeCsv(val: string | null | undefined): string {
+    if (val == null) return "";
+    const s = String(val);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  }
+
+  const header = ["ID", "Action", "Target Type", "Target ID", "IP Address", "Timestamp"];
+  const csvRows = rows.map(r => [
+    escapeCsv(String(r.id)),
+    escapeCsv(r.action),
+    escapeCsv(r.targetType),
+    escapeCsv(r.targetId != null ? String(r.targetId) : null),
+    escapeCsv(r.ipAddress),
+    escapeCsv(r.createdAt.toISOString()),
+  ].join(","));
+
+  const csv = [header.join(","), ...csvRows].join("\n");
+
+  await db.insert(auditLogsTable).values({
+    adminId: user.id,
+    adminEmail: user.email,
+    action: "security_activity_exported",
+    targetType: "merchant",
+    targetId: user.merchantId,
+    details: JSON.stringify({ rowCount: rows.length, merchantId: user.merchantId }),
+    ipAddress: req.ip ?? null,
+  });
+
+  const filename = `security-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(csv);
+});
+
 router.post("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
   const user = (req as any).user;
