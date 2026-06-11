@@ -6,6 +6,7 @@ import {
   useSendAuditReportNow,
   getListAuditReportSchedulesQueryKey,
   useListAuditReportScheduleLogs,
+  getListAuditReportScheduleLogsQueryKey,
   previewAuditReportEmail,
   type ListAuditReportScheduleLogsParams,
 } from "@workspace/api-client-react";
@@ -1000,13 +1001,30 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [retryingId, setRetryingId] = useState<number | null>(null);
 
   const params: ListAuditReportScheduleLogsParams = { limit: 50 };
   if (statusFilter !== "all") params.status = statusFilter;
   if (dateFrom) params.dateFrom = dateFrom;
   if (dateTo) params.dateTo = dateTo;
 
+  const queryClient = useQueryClient();
+  const retrySend = useSendAuditReportNow();
+
   const { data, isLoading } = useListAuditReportScheduleLogs(scheduleId, params);
+
+  async function handleRetry(logId: number) {
+    setRetryingId(logId);
+    try {
+      await retrySend.mutateAsync({ id: scheduleId });
+      toast.success("Report queued for delivery.");
+      await queryClient.invalidateQueries({ queryKey: getListAuditReportScheduleLogsQueryKey(scheduleId) });
+    } catch {
+      toast.error("Retry failed. Check the mailer configuration.");
+    } finally {
+      setRetryingId(null);
+    }
+  }
   const logs = data?.data ?? [];
   const total = data?.total ?? 0;
   const failureCount = data?.failureCount ?? 0;
@@ -1145,6 +1163,20 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
                   </TooltipProvider>
                 )}
               </div>
+              {!log.success && (
+                <button
+                  onClick={() => handleRetry(log.id)}
+                  disabled={retryingId === log.id}
+                  className="shrink-0 inline-flex items-center gap-1 rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-medium text-violet-400 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Retry this send"
+                >
+                  {retryingId === log.id
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <Send className="w-3 h-3" />
+                  }
+                  {retryingId === log.id ? "Sending…" : "Retry"}
+                </button>
+              )}
             </div>
           ))}
         </div>
