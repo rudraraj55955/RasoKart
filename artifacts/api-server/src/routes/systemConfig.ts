@@ -40,6 +40,17 @@ async function getSignatureFailureAlertConfig() {
   return { threshold, windowHours, rateLimitHours };
 }
 
+export const SYSTEM_CONFIG_AUDIT_SECTIONS: { value: string; label: string }[] = [
+  { value: "reconciliation", label: "Reconciliation Schedule" },
+  { value: "reconciliation_report_recipients", label: "Report Recipients" },
+  { value: "reconciliation_lookback_presets", label: "Lookback Presets" },
+  { value: "qr_cleanup", label: "QR Code Cleanup" },
+  { value: "signature_failure_alert", label: "Signature Failure Alert" },
+  { value: "webhook_retries", label: "Webhook Retries" },
+  { value: "storage_cleanup", label: "Storage Cleanup" },
+  { value: "webhook_secret_schedule", label: "Webhook Secret Schedule" },
+];
+
 const router = Router();
 router.use(requireAuth, requireAdmin);
 

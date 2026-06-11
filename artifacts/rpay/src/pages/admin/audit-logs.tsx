@@ -2437,7 +2437,7 @@ export default function AdminAuditLogs() {
   const [exporting, setExporting] = useState(false);
   const [lastExportCount, setLastExportCount] = useState<number | null>(null);
 
-  const { data: settingKeyOptions = [] } = useQuery<{ value: string; label: string }[]>({
+  const { data: settingKeyOptions = [] } = useQuery<{ value: string; label: string; type: "setting" | "system_config" }[]>({
     queryKey: ["settings-known-keys"],
     queryFn: async () => {
       const res = await fetch("/api/settings/known-keys", {
@@ -2490,7 +2490,7 @@ export default function AdminAuditLogs() {
   const hasDateFilter = dateFrom !== "" || dateTo !== "";
   const hasTargetType = targetType !== "all";
   const hasMerchantId = merchantId != null;
-  const hasSettingKey = action === "setting_updated" && settingKey !== "all";
+  const hasSettingKey = (action === "setting_updated" || action === "system_config_updated") && settingKey !== "all";
 
   function resetFilters() {
     setSearch("");
@@ -2527,6 +2527,7 @@ export default function AdminAuditLogs() {
     ? rawLogs.filter((log: any) => {
         try {
           const parsed = JSON.parse(log.details ?? "{}");
+          if (action === "system_config_updated") return parsed.section === settingKey;
           return parsed.key === settingKey;
         } catch {
           return false;
@@ -2590,7 +2591,7 @@ export default function AdminAuditLogs() {
                   onChange={e => { setSearch(e.target.value); setPage(1); }}
                 />
               </div>
-              <Select value={action} onValueChange={v => { setAction(v); if (v !== "setting_updated") setSettingKey("all"); setPage(1); }}>
+              <Select value={action} onValueChange={v => { setAction(v); if (v !== "setting_updated" && v !== "system_config_updated") setSettingKey("all"); setPage(1); }}>
                 <SelectTrigger className="w-[200px]"><SelectValue placeholder="Action type" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Actions</SelectItem>
@@ -2599,19 +2600,21 @@ export default function AdminAuditLogs() {
                   ))}
                 </SelectContent>
               </Select>
-              {action === "setting_updated" && (
+              {(action === "setting_updated" || action === "system_config_updated") && (
                 <Select value={settingKey} onValueChange={v => { setSettingKey(v); setPage(1); }}>
                   <SelectTrigger className="w-[220px]">
                     <div className="flex items-center gap-1.5">
                       <Settings className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <SelectValue placeholder="All setting keys" />
+                      <SelectValue placeholder={action === "system_config_updated" ? "All sections" : "All setting keys"} />
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All setting keys</SelectItem>
-                    {settingKeyOptions.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
+                    <SelectItem value="all">{action === "system_config_updated" ? "All sections" : "All setting keys"}</SelectItem>
+                    {settingKeyOptions
+                      .filter(opt => action === "system_config_updated" ? opt.type === "system_config" : opt.type === "setting")
+                      .map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               )}
@@ -2736,7 +2739,7 @@ export default function AdminAuditLogs() {
             {hasSettingKey && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-0.5 text-xs font-medium text-amber-400">
                 <Settings className="w-3 h-3" />
-                Key: {settingKeyOptions.find(o => o.value === settingKey)?.label ?? settingKey}
+                {action === "system_config_updated" ? "Section" : "Key"}: {settingKeyOptions.find(o => o.value === settingKey)?.label ?? settingKey}
                 <button
                   onClick={() => { setSettingKey("all"); setPage(1); }}
                   className="ml-0.5 hover:text-amber-300 transition-colors"

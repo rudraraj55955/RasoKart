@@ -4,6 +4,7 @@ import { eq, inArray, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMail, getSmtpConfig } from "../helpers/mailer";
 import { buildEmailHtml, buildUnmatchedAlertHtml, buildSampleCsv, buildRunCsv } from "../helpers/reconcileEmail";
+import { SYSTEM_CONFIG_AUDIT_SECTIONS } from "./systemConfig";
 
 const router = Router();
 router.use(requireAuth);
@@ -17,10 +18,11 @@ type ReconciliationSchedule = (typeof RECONCILIATION_SCHEDULE_VALUES)[number];
 
 const SMTP_KEYS = ["smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from"] as const;
 
-export const KNOWN_SETTING_KEYS: { value: string; label: string }[] = [
-  { value: "finance_report_email", label: "Finance Report Email" },
-  { value: "reconciliation_schedule", label: "Reconciliation Schedule" },
-  { value: "smtp", label: "SMTP Configuration" },
+export const KNOWN_SETTING_KEYS: { value: string; label: string; type: "setting" | "system_config" }[] = [
+  { value: "finance_report_email", label: "Finance Report Email", type: "setting" },
+  { value: "reconciliation_schedule", label: "Reconciliation Schedule", type: "setting" },
+  { value: "smtp", label: "SMTP Configuration", type: "setting" },
+  ...SYSTEM_CONFIG_AUDIT_SECTIONS.map(s => ({ ...s, type: "system_config" as const })),
 ];
 
 // GET /api/settings
