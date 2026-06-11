@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
 import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceHistoryTable, usersTable, auditLogsTable } from "@workspace/db";
-import { eq, and, ilike, count, or, desc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, ilike, count, or, desc, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { runVaCleanup } from "../helpers/vaCleanupScheduler";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
@@ -18,6 +18,13 @@ const deleteVaLimiter = makeRateLimiter({
   limit: 30,
   keyGenerator: (req) => (req as Request & { user?: { merchantId?: number } }).user?.merchantId,
   message: { error: "Too many virtual account deletion requests. Please try again later." },
+});
+
+const bulkDeleteVaLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  keyGenerator: (req) => (req as Request & { user?: { merchantId?: number } }).user?.merchantId,
+  message: { error: "Too many bulk virtual account deletion requests. Please try again later." },
 });
 
 async function logVaAudit(req: any, action: string, targetId: number | null, details: object) {
@@ -431,6 +438,48 @@ router.get("/balance-audit/export/csv", async (req, res) => {
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename="balance-audit-export.csv"`);
   res.send(csv);
+});
+
+// POST /api/virtual-accounts/bulk-delete
+router.post("/bulk-delete", bulkDeleteVaLimiter, async (req, res) => {
+  const user = (req as any).user;
+  const merchantId = user.merchantId as number | undefined;
+  const { ids, status } = req.body as { ids?: number[]; status?: string };
+
+  const allowedStatuses = ["inactive", "suspended"];
+  if (!ids?.length && !status) {
+    res.status(400).json({ error: "Provide ids or status to bulk delete" });
+    return;
+  }
+  if (status && !allowedStatuses.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${allowedStatuses.join(", ")}` });
+    return;
+  }
+
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  if (user.role !== "admin") {
+    if (!merchantId) { res.status(403).json({ error: "Forbidden" }); return; }
+    conditions.push(eq(virtualAccountsTable.merchantId, merchantId));
+  }
+
+  if (ids?.length) {
+    conditions.push(inArray(virtualAccountsTable.id, ids));
+  } else if (status) {
+    conditions.push(eq(virtualAccountsTable.status, status));
+  }
+
+  const deleted = await db.delete(virtualAccountsTable)
+    .where(and(...conditions))
+    .returning({ id: virtualAccountsTable.id });
+
+  await logVaAudit(req, "virtual_accounts_bulk_deleted", null, {
+    deletedCount: deleted.length,
+    ids: ids ?? null,
+    status: status ?? null,
+  });
+
+  res.json({ deleted: deleted.length });
 });
 
 // GET /api/virtual-accounts/:id/balance-history
