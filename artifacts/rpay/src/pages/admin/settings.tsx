@@ -154,6 +154,8 @@ export default function AdminSettings() {
     smtpFrom !== (smtpConfig?.from ?? "") ||
     smtpPass.trim() !== "";
 
+  const TEST_EMAIL_HISTORY_PARAMS = { action: "test_email_sent", limit: 20 } as const;
+
   const { mutate: saveSmtp, isPending: savingSmtp } = useMutation({
     mutationFn: () =>
       apiPut("/settings/smtp", {
@@ -186,6 +188,9 @@ export default function AdminSettings() {
       setSmtpTestResult("error");
       setSmtpTestMessage(err.message);
     },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: getListAdminAuditLogsQueryKey(TEST_EMAIL_HISTORY_PARAMS) });
+    },
   });
 
   const { data, isLoading } = useQuery<SettingsData>({
@@ -215,8 +220,7 @@ export default function AdminSettings() {
   });
 
   const [testHistoryFilter, setTestHistoryFilter] = useState<"all" | "success" | "failed">("all");
-
-  const TEST_EMAIL_HISTORY_PARAMS = { action: "test_email_sent", limit: 20 } as const;
+  const [smtpHistoryFilter, setSmtpHistoryFilter] = useState<"all" | "success" | "failed">("all");
 
   const { data: testEmailHistory, isLoading: historyLoading } = useQuery({
     queryKey: getListAdminAuditLogsQueryKey(TEST_EMAIL_HISTORY_PARAMS),
@@ -584,6 +588,111 @@ export default function AdminSettings() {
                 Fill in host, port, username, and password above, then save before sending a test.
               </p>
             )}
+
+            {/* Test-email send history */}
+            <div className="border-t border-border/50 pt-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-muted-foreground" />
+                  <p className="text-sm font-medium text-foreground">Test email history</p>
+                </div>
+                <div className="flex items-center gap-1">
+                  {(["all", "success", "failed"] as const).map(f => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setSmtpHistoryFilter(f)}
+                      className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                        smtpHistoryFilter === f
+                          ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                          : "text-muted-foreground hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      {f.charAt(0).toUpperCase() + f.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {historyLoading && (
+                <p className="text-xs text-muted-foreground">Loading history…</p>
+              )}
+
+              {!historyLoading && (() => {
+                const allRows: AdminAuditLog[] = testEmailHistory?.data ?? [];
+                const filteredRows = allRows.filter((row: AdminAuditLog) => {
+                  let parsed: { success?: boolean } = {};
+                  try { parsed = JSON.parse(row.details ?? "{}"); } catch {}
+                  if (smtpHistoryFilter === "success") return parsed.success === true;
+                  if (smtpHistoryFilter === "failed") return parsed.success === false;
+                  return true;
+                });
+
+                if (filteredRows.length === 0) {
+                  return (
+                    <p className="text-xs text-muted-foreground italic">
+                      {smtpHistoryFilter === "all"
+                        ? "No test emails have been sent yet."
+                        : `No ${smtpHistoryFilter} entries found.`}
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="space-y-1.5">
+                    {filteredRows.map((row: AdminAuditLog) => {
+                      let details: { recipients?: string[]; success?: boolean; error?: string } = {};
+                      try { details = JSON.parse(row.details ?? "{}"); } catch {}
+                      const success = details.success === true;
+                      const recipients = details.recipients ?? [];
+                      const recipientLabel = recipients.length > 0
+                        ? recipients.join(", ")
+                        : "unknown recipient";
+                      const errorLabel = details.error
+                        ? details.error.replace(/_/g, " ")
+                        : null;
+
+                      return (
+                        <div
+                          key={row.id}
+                          className={`flex items-start gap-2.5 rounded-md border px-3 py-2 text-xs ${
+                            success
+                              ? "border-emerald-500/20 bg-emerald-500/5"
+                              : "border-red-500/20 bg-red-500/5"
+                          }`}
+                        >
+                          {success ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-400" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-400" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-medium truncate ${success ? "text-emerald-400" : "text-red-400"}`}>
+                              {recipientLabel}
+                            </p>
+                            {!success && errorLabel && (
+                              <p className="text-muted-foreground mt-0.5">{errorLabel}</p>
+                            )}
+                          </div>
+                          <time
+                            dateTime={row.createdAt}
+                            className="shrink-0 text-muted-foreground tabular-nums"
+                            title={new Date(row.createdAt).toLocaleString()}
+                          >
+                            {new Date(row.createdAt).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </time>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </CardContent>
       </Card>
