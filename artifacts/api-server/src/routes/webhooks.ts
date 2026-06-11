@@ -297,6 +297,25 @@ router.post("/test", async (req, res) => {
 
   const durationMs = Date.now() - start;
 
+  // Insert a log row so test deliveries appear in Recent Deliveries with an isTest flag.
+  try {
+    const deliveryStatus = delivered ? "success" : "failed";
+    await db.insert(callbackLogsTable).values({
+      merchantId,
+      url: targetUrl,
+      status: deliveryStatus,
+      httpStatus,
+      requestBody: body,
+      responseBody,
+      attempts: 1,
+      lastAttemptAt: new Date(),
+      signatureVerified: signed ? true : null,
+      isTest: true,
+    });
+  } catch (err) {
+    req.log.warn({ err, merchantId }, "Failed to insert test webhook delivery log");
+  }
+
   res.json({ delivered, httpStatus, responseBody, durationMs, targetUrl, signed });
 });
 

@@ -1175,6 +1175,7 @@ export const GetWebhookLogsResponse = zod.object({
   "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
   "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
+  "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -1211,6 +1212,7 @@ export const RetryWebhookLogResponse = zod.object({
   "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
   "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
+  "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
   "createdAt": zod.string()
 })
 })
@@ -1341,6 +1343,7 @@ export const ListCallbackLogsResponse = zod.object({
   "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
   "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
+  "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),

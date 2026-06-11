@@ -4420,6 +4420,9 @@ components:
         signatureVerified:
           type: ["boolean", "null"]
           description: HMAC signature verification result — true if passed, false if rejected, null if no secret is configured
+        isTest:
+          type: boolean
+          description: true if this delivery was triggered by a merchant test event, not a real payment
         createdAt:
           type: string
 

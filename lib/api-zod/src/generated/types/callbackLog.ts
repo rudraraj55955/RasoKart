@@ -38,5 +38,7 @@ export interface CallbackLog {
      * @nullable
      */
   signatureVerified?: boolean | null;
+  /** true if this delivery was triggered by a merchant test event, not a real payment */
+  isTest?: boolean;
   createdAt: string;
 }

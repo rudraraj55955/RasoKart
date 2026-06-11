@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound } from "lucide-react";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
   if (value === true) {
@@ -173,6 +173,12 @@ function DeliveryDetailModal({ log, onClose }: { log: CallbackLog | null; onClos
           <DialogTitle className="flex items-center gap-2">
             <Activity className="w-5 h-5 text-primary" />
             Delivery Details
+            {log.isTest && (
+              <span className="flex items-center gap-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-400 px-2 py-0.5 text-xs font-semibold">
+                <FlaskRound className="w-3 h-3" />
+                Test
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -477,7 +483,15 @@ export default function MerchantWebhook() {
                     <StatusBadge status={log.status} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-mono text-muted-foreground truncate" title={log.url}>{log.url}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-mono text-muted-foreground truncate" title={log.url}>{log.url}</p>
+                      {log.isTest && (
+                        <span className="shrink-0 flex items-center gap-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-400 px-1.5 py-0.5 text-[10px] font-semibold">
+                          <FlaskRound className="w-2.5 h-2.5" />
+                          Test
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3 mt-0.5">
                       <span className="text-xs text-muted-foreground/70">
                         {log.httpStatus != null ? (
