@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,7 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { isRateLimitError } from "@/lib/utils";
-import { AlertCircle } from "lucide-react";
+import { useRateLimit, RateLimitBanner } from "@/components/ui/rate-limit-banner";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -23,7 +22,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function MerchantLogin() {
   const [_, setLocation] = useLocation();
   const { login: setAuthToken } = useAuth();
-  const [rateLimitError, setRateLimitError] = useState<string | null>(null);
+  const { isRateLimited, secondsLeft, trigger } = useRateLimit();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -35,12 +34,7 @@ export default function MerchantLogin() {
 
   const loginMutation = useLogin();
 
-  const clearRateLimitError = () => {
-    if (rateLimitError) setRateLimitError(null);
-  };
-
   const onSubmit = (data: LoginFormValues) => {
-    setRateLimitError(null);
     loginMutation.mutate(
       { data },
       {
@@ -55,7 +49,7 @@ export default function MerchantLogin() {
         },
         onError: (err) => {
           if (isRateLimitError(err)) {
-            setRateLimitError("Too many login attempts. Please wait before trying again.");
+            trigger();
           } else {
             toast.error((err as { message?: string }).message || "Login failed");
           }
@@ -68,12 +62,7 @@ export default function MerchantLogin() {
     <AuthLayout title="Merchant Portal" subtitle="Sign in to your RasoKart dashboard">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {rateLimitError && (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{rateLimitError}</span>
-            </div>
-          )}
+          <RateLimitBanner secondsLeft={secondsLeft} message="Too many login attempts. Please wait before trying again." />
           <FormField
             control={form.control}
             name="email"
@@ -84,7 +73,6 @@ export default function MerchantLogin() {
                   <Input
                     placeholder="you@company.com"
                     {...field}
-                    onChange={(e) => { field.onChange(e); clearRateLimitError(); }}
                   />
                 </FormControl>
                 <FormMessage />
@@ -102,7 +90,6 @@ export default function MerchantLogin() {
                     type="password"
                     placeholder="••••••••"
                     {...field}
-                    onChange={(e) => { field.onChange(e); clearRateLimitError(); }}
                   />
                 </FormControl>
                 <FormMessage />
@@ -112,9 +99,13 @@ export default function MerchantLogin() {
           <Button
             type="submit"
             className="w-full"
-            disabled={loginMutation.isPending || !!rateLimitError}
+            disabled={loginMutation.isPending || isRateLimited}
           >
-            {loginMutation.isPending ? "Authenticating..." : "Sign in"}
+            {loginMutation.isPending
+              ? "Authenticating..."
+              : isRateLimited
+                ? `Try again in ${secondsLeft}s`
+                : "Sign in"}
           </Button>
 
           <div className="text-center mt-4 text-sm text-muted-foreground">
