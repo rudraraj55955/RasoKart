@@ -138,13 +138,33 @@ function WebhookTestPanel({ result, onDismiss, onRetry, isRetrying }: { result: 
           <p className="text-muted-foreground/60 mb-0.5">Duration</p>
           <p className="font-mono font-semibold text-foreground">{result.durationMs}ms</p>
         </div>
-        <div className="rounded bg-black/30 p-2 border border-border/30">
+        <div className={`rounded p-2 border ${result.signed ? "bg-violet-500/10 border-violet-500/30" : "bg-black/30 border-border/30"}`}>
           <p className="text-muted-foreground/60 mb-0.5">Signature</p>
-          <p className={`font-semibold ${result.signed ? "text-emerald-400" : "text-amber-400"}`}>
-            {result.signed ? "Signed" : "Unsigned"}
+          <p className={`font-semibold flex items-center gap-1 ${result.signed ? "text-violet-400" : "text-amber-400"}`}>
+            {result.signed
+              ? <><ShieldCheck className="w-3.5 h-3.5" />Signed</>
+              : <><ShieldOff className="w-3.5 h-3.5" />Unsigned</>}
           </p>
         </div>
       </div>
+
+      {result.signed && (
+        <div className={`rounded-lg border px-3 py-2.5 text-xs flex items-start gap-2 ${result.delivered ? "border-emerald-500/25 bg-emerald-500/5" : "border-amber-500/25 bg-amber-500/5"}`}>
+          <ShieldCheck className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${result.delivered ? "text-emerald-400" : "text-amber-400"}`} />
+          <div className="space-y-0.5">
+            <p className={`font-semibold ${result.delivered ? "text-emerald-300" : "text-amber-300"}`}>
+              {result.delivered
+                ? "Signed: true — endpoint returned 2xx"
+                : "Signed: true — endpoint did not return 2xx"}
+            </p>
+            <p className="text-muted-foreground/70 leading-relaxed">
+              {result.delivered
+                ? "The X-Signature (HMAC-SHA256) header was sent with this request. Your endpoint accepted the signed payload."
+                : "The X-Signature (HMAC-SHA256) header was sent. If your server verifies signatures, check that the secret matches and your HMAC logic is correct."}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div>
         <p className="text-xs text-muted-foreground/60 mb-1">Target URL</p>
@@ -673,42 +693,55 @@ export default function MerchantWebhook() {
           <Save className="w-4 h-4 mr-2" />
           {updateMutation.isPending ? "Saving..." : "Save Configuration"}
         </Button>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Select
-            value={testEventType}
-            onValueChange={(v) => setTestEventType(v as WebhookTestRequestEventType)}
-            disabled={testMutation.isPending || !url.trim()}
-          >
-            <SelectTrigger className="w-[190px] h-9 text-xs font-mono">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EVENTS.map(event => (
-                <SelectItem key={event.id} value={event.id} className="text-xs">
-                  <span className="font-mono">{event.id}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            onClick={handleSendTest}
-            disabled={testMutation.isPending || !url.trim()}
-            className="gap-2 h-9"
-            title={!url.trim() ? "Configure and save a webhook URL first" : undefined}
-          >
-            {testMutation.isPending ? (
-              <>
-                <Zap className="w-4 h-4 animate-pulse" />
-                Sending…
-              </>
-            ) : (
-              <>
-                <FlaskConical className="w-4 h-4" />
-                Send test
-              </>
-            )}
-          </Button>
+        <div className="flex flex-col gap-1.5 w-full sm:w-auto">
+          <div className="flex items-center gap-2">
+            <Select
+              value={testEventType}
+              onValueChange={(v) => setTestEventType(v as WebhookTestRequestEventType)}
+              disabled={testMutation.isPending || !url.trim()}
+            >
+              <SelectTrigger className="w-[190px] h-9 text-xs font-mono">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EVENTS.map(event => (
+                  <SelectItem key={event.id} value={event.id} className="text-xs">
+                    <span className="font-mono">{event.id}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              onClick={handleSendTest}
+              disabled={testMutation.isPending || !url.trim()}
+              className={`gap-2 h-9 ${config?.secret ? "border-violet-500/40 text-violet-300 hover:border-violet-500/60 hover:bg-violet-500/10 hover:text-violet-200" : ""}`}
+              title={!url.trim() ? "Configure and save a webhook URL first" : config?.secret ? "Sends a signed test — X-Signature header included" : undefined}
+            >
+              {testMutation.isPending ? (
+                <>
+                  <Zap className="w-4 h-4 animate-pulse" />
+                  Sending…
+                </>
+              ) : config?.secret ? (
+                <>
+                  <ShieldCheck className="w-4 h-4" />
+                  Send signed test
+                </>
+              ) : (
+                <>
+                  <FlaskConical className="w-4 h-4" />
+                  Send test
+                </>
+              )}
+            </Button>
+          </div>
+          {config?.secret && url.trim() && (
+            <p className="text-[11px] text-violet-400/70 flex items-center gap-1 pl-0.5">
+              <ShieldCheck className="w-3 h-3" />
+              X-Signature header will be included using your saved secret
+            </p>
+          )}
         </div>
       </div>
 
