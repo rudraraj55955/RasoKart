@@ -8,6 +8,7 @@ import { initReconciliationScheduler } from "./helpers/reconScheduler";
 import { initAuditReportScheduler } from "./helpers/auditReportScheduler";
 import { startProviderLimitAlertScheduler, runProviderLimitAlertScan } from "./helpers/providerLimitScheduler";
 import { initQrCleanupScheduler } from "./helpers/qrCleanupScheduler";
+import { initVaCleanupScheduler } from "./helpers/vaCleanupScheduler";
 import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initRateLimitCleanupScheduler } from "./helpers/rateLimitCleanupScheduler";
@@ -59,6 +60,7 @@ async function main() {
   initAuditReportScheduler();
   startProviderLimitAlertScheduler();
   initQrCleanupScheduler();
+  initVaCleanupScheduler();
   initPlanExpiryScheduler();
   initPlanRenewalScheduler();
   initRateLimitCleanupScheduler();

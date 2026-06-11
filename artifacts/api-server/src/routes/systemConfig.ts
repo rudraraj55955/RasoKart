@@ -4,6 +4,7 @@ import { inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
+import { loadVaCleanupRetentionDays } from "../helpers/vaCleanupScheduler";
 import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 import { sql } from "drizzle-orm";
 
@@ -190,6 +191,66 @@ router.put("/qr-cleanup", async (req, res, next) => {
     });
 
     req.log.info({ retentionDays }, "QR cleanup retention config updated");
+
+    res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/va-cleanup
+router.get("/va-cleanup", async (req, res, next) => {
+  try {
+    const retentionDays = await loadVaCleanupRetentionDays();
+    res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/va-cleanup
+router.put("/va-cleanup", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { retentionDays } = req.body;
+
+    if (typeof retentionDays !== "number" || !Number.isInteger(retentionDays)) {
+      res.status(400).json({ error: "retentionDays must be an integer" });
+      return;
+    }
+
+    if (retentionDays < 0 || retentionDays > 365) {
+      res.status(400).json({ error: "retentionDays must be between 0 and 365 (0 = disabled)" });
+      return;
+    }
+
+    await db
+      .insert(systemConfigTable)
+      .values({
+        key: SYSTEM_CONFIG_KEYS.VA_CLEANUP_RETENTION_DAYS,
+        value: String(retentionDays),
+        updatedByEmail: user.email,
+      })
+      .onConflictDoUpdate({
+        target: systemConfigTable.key,
+        set: {
+          value: String(retentionDays),
+          updatedByEmail: user.email,
+          updatedAt: sql`now()`,
+        },
+      });
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "va_cleanup", retentionDays }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ retentionDays }, "VA cleanup retention config updated");
 
     res.json({ retentionDays });
   } catch (err) {

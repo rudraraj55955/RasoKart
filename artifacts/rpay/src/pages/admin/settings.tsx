@@ -189,6 +189,9 @@ export default function AdminSettings() {
   const [storageScheduleHour, setStorageScheduleHour] = useState(3);
   const [storageScheduleInitialized, setStorageScheduleInitialized] = useState(false);
 
+  const [vaRetentionDays, setVaRetentionDays] = useState<number>(30);
+  const [vaRetentionInitialized, setVaRetentionInitialized] = useState(false);
+
   const [retryDelay1, setRetryDelay1] = useState<number>(300);
   const [retryDelay2, setRetryDelay2] = useState<number>(900);
   const [retryDelay3, setRetryDelay3] = useState<number>(3600);
@@ -436,6 +439,29 @@ export default function AdminSettings() {
     onSuccess: () => {
       toast.success("QR cleanup retention saved");
       qc.invalidateQueries({ queryKey: ["/api/system-config/qr-cleanup"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const { data: vaCleanupData, isLoading: vaCleanupLoading } = useQuery<{ retentionDays: number }>({
+    queryKey: ["/api/system-config/va-cleanup"],
+    queryFn: () => apiGet("/system-config/va-cleanup"),
+    onSuccess: (d: { retentionDays: number }) => {
+      if (!vaRetentionInitialized) {
+        setVaRetentionDays(d.retentionDays);
+        setVaRetentionInitialized(true);
+      }
+    },
+  } as any);
+
+  const currentVaRetentionDays = vaCleanupData?.retentionDays ?? 30;
+  const vaRetentionUnchanged = vaRetentionDays === currentVaRetentionDays;
+
+  const { mutate: saveVaRetention, isPending: savingVaRetention } = useMutation({
+    mutationFn: () => apiPut("/system-config/va-cleanup", { retentionDays: vaRetentionDays }),
+    onSuccess: () => {
+      toast.success("VA cleanup retention saved");
+      qc.invalidateQueries({ queryKey: ["/api/system-config/va-cleanup"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -1234,6 +1260,82 @@ export default function AdminSettings() {
                 variant="ghost"
                 onClick={() => setRetentionDays(currentRetentionDays)}
                 disabled={savingRetention}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Virtual Account Auto-Cleanup */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Virtual Account Auto-Cleanup</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            Automatically delete closed virtual accounts after a configurable number of days.
+            The cleanup job runs nightly at 03:00 server time.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!vaCleanupLoading && currentVaRetentionDays === 0 && (
+            <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Auto-cleanup is <strong>disabled</strong>. Closed virtual accounts will never be deleted automatically.</span>
+            </div>
+          )}
+          {!vaCleanupLoading && currentVaRetentionDays > 0 && (
+            <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                Closed virtual accounts are deleted automatically after{" "}
+                <strong>{currentVaRetentionDays} day{currentVaRetentionDays !== 1 ? "s" : ""}</strong>.
+              </span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="va-retention-days" className="text-sm">Retention period (days)</Label>
+            <div className="flex items-center gap-3">
+              <Input
+                id="va-retention-days"
+                type="number"
+                min={0}
+                max={365}
+                value={vaRetentionDays}
+                onChange={e => {
+                  const v = parseInt(e.target.value);
+                  if (!isNaN(v)) setVaRetentionDays(Math.max(0, Math.min(365, v)));
+                }}
+                disabled={vaCleanupLoading}
+                className="w-32"
+              />
+              <span className="text-sm text-muted-foreground">days after closing</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Set to <strong>0</strong> to disable automatic cleanup entirely.
+              Maximum is 365 days.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => saveVaRetention()}
+              disabled={savingVaRetention || vaCleanupLoading || vaRetentionUnchanged}
+            >
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+              {savingVaRetention ? "Saving…" : "Save"}
+            </Button>
+            {!vaRetentionUnchanged && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setVaRetentionDays(currentVaRetentionDays)}
+                disabled={savingVaRetention}
               >
                 Cancel
               </Button>
