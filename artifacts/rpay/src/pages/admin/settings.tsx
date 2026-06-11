@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, Wrench, RefreshCw } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench } from "lucide-react";
+import { TestEmailHistoryPanel } from "@/components/test-email-history-panel";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, type AdminAuditLog } from "@workspace/api-client-react";
+import { getApiErrorMessage } from "@/lib/utils";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useClearTestEmailHistory, useGetSignatureFailureAlertHistory, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
@@ -425,6 +427,56 @@ export default function AdminSettings() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+
+  const { data: storageCleanupConfig, isLoading: storageConfigLoading } = useQuery<{ enabled: boolean; hour: number }>({
+    queryKey: ["/api/system-config/storage-cleanup"],
+    queryFn: () => apiGet("/system-config/storage-cleanup"),
+    onSuccess: (d: { enabled: boolean; hour: number }) => {
+      if (!storageScheduleInitialized) {
+        setStorageScheduleEnabled(d.enabled);
+        setStorageScheduleHour(d.hour);
+        setStorageScheduleInitialized(true);
+      }
+    },
+  } as any);
+
+  const currentStorageEnabled = storageCleanupConfig?.enabled ?? true;
+  const currentStorageHour = storageCleanupConfig?.hour ?? 3;
+  const storageScheduleUnchanged =
+    storageScheduleEnabled === currentStorageEnabled && storageScheduleHour === currentStorageHour;
+
+  const { mutate: saveStorageSchedule, isPending: savingStorageSchedule } = useMutation({
+    mutationFn: () => apiPut("/system-config/storage-cleanup", { enabled: storageScheduleEnabled, hour: storageScheduleHour }),
+    onSuccess: () => {
+      toast.success("Storage cleanup schedule saved");
+      qc.invalidateQueries({ queryKey: ["/api/system-config/storage-cleanup"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const [cleanupResult, setCleanupResult] = useState<{ totalScanned: number; deleted: number; errors: number } | null>(null);
+
+  const CLEANUP_RUNS_PARAMS = { limit: 20 } as const;
+  const { data: cleanupRunsData, refetch: refetchCleanupRuns } = useListStorageCleanupRuns(CLEANUP_RUNS_PARAMS);
+  const cleanupRuns: StorageCleanupRun[] = cleanupRunsData?.data ?? [];
+
+  const { mutate: runCleanup, isPending: runningCleanup } = useRunStorageCleanup({
+    mutation: {
+      onSuccess: (result) => {
+        setCleanupResult(result);
+        void refetchCleanupRuns();
+        qc.invalidateQueries({ queryKey: getListStorageCleanupRunsQueryKey(CLEANUP_RUNS_PARAMS) });
+        if (result.deleted === 0) {
+          toast.success("No orphaned files found — storage is already clean");
+        } else {
+          toast.success(`Deleted ${result.deleted} orphaned file${result.deleted !== 1 ? "s" : ""}`);
+        }
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Cleanup failed")),
+    },
+  });
+
 
   const testEmailTrimmed = testEmailTo.trim();
   const testEmailInvalid = testEmailTrimmed.length > 0 && !EMAIL_REGEX.test(testEmailTrimmed);
@@ -1241,8 +1293,32 @@ export default function AdminSettings() {
               You will not receive emails when settlement statuses change.
             </p>
           )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Signature failure alert emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an email when signature verification failures spike above the configured alert threshold. Use the Signature Failure Alert card above to adjust the threshold, window, and cooldown.
+              </p>
+            </div>
+            <Switch
+              checked={signatureFailureEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { signatureFailureAlertEmails: val } })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!signatureFailureEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive alerts when signature failures cross the alert threshold.
+            </p>
+          )}
         </CardContent>
       </Card>
+
+
     </div>
   );
 }
