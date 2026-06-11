@@ -3102,6 +3102,7 @@ scheduleId?: number;
 page?: number;
 limit?: number;
 status?: ListAllAuditReportScheduleLogsStatus;
+triggerType?: ListAllAuditReportScheduleLogsTriggerType;
 dateFrom?: string;
 dateTo?: string;
 };
@@ -3114,10 +3115,19 @@ export const ListAllAuditReportScheduleLogsStatus = {
   failed: 'failed',
 } as const;
 
+export type ListAllAuditReportScheduleLogsTriggerType = typeof ListAllAuditReportScheduleLogsTriggerType[keyof typeof ListAllAuditReportScheduleLogsTriggerType];
+
+
+export const ListAllAuditReportScheduleLogsTriggerType = {
+  manual: 'manual',
+  scheduled: 'scheduled',
+} as const;
+
 export type ListAuditReportScheduleLogsParams = {
 page?: number;
 limit?: number;
 status?: ListAuditReportScheduleLogsStatus;
+triggerType?: ListAuditReportScheduleLogsTriggerType;
 dateFrom?: string;
 dateTo?: string;
 };
@@ -3128,6 +3138,14 @@ export type ListAuditReportScheduleLogsStatus = typeof ListAuditReportScheduleLo
 export const ListAuditReportScheduleLogsStatus = {
   success: 'success',
   failed: 'failed',
+} as const;
+
+export type ListAuditReportScheduleLogsTriggerType = typeof ListAuditReportScheduleLogsTriggerType[keyof typeof ListAuditReportScheduleLogsTriggerType];
+
+
+export const ListAuditReportScheduleLogsTriggerType = {
+  manual: 'manual',
+  scheduled: 'scheduled',
 } as const;
 
 export type ListMySecurityActivityParams = {

@@ -6,12 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ListAllAuditReportScheduleLogsStatus } from './listAllAuditReportScheduleLogsStatus';
+import type { ListAllAuditReportScheduleLogsTriggerType } from './listAllAuditReportScheduleLogsTriggerType';
 
 export type ListAllAuditReportScheduleLogsParams = {
 scheduleId?: number;
 page?: number;
 limit?: number;
 status?: ListAllAuditReportScheduleLogsStatus;
+triggerType?: ListAllAuditReportScheduleLogsTriggerType;
 dateFrom?: string;
 dateTo?: string;
 };

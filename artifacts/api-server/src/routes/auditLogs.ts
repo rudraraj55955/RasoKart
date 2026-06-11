@@ -366,7 +366,7 @@ router.get("/schedules/logs", async (req, res) => {
   const pageNum = Math.max(1, parseInt(q['page'] ?? "1") || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(q['limit'] ?? "20") || 20));
   const offset = (pageNum - 1) * limitNum;
-  const { scheduleId, status, dateFrom, dateTo } = q;
+  const { scheduleId, status, triggerType, dateFrom, dateTo } = q;
 
   const scheduleIdNum = scheduleId ? parseInt(scheduleId) : null;
 
@@ -402,6 +402,8 @@ router.get("/schedules/logs", async (req, res) => {
   const dataConditions: any[] = [...baseConditions];
   if (status === "success") dataConditions.push(eq(scheduledAuditReportLogsTable.success, true));
   else if (status === "failed") dataConditions.push(eq(scheduledAuditReportLogsTable.success, false));
+  if (triggerType === "manual") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "manual"));
+  else if (triggerType === "scheduled") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "scheduled"));
   const dataWhere = dataConditions.length > 0 ? and(...dataConditions) : undefined;
 
   const [{ filteredTotal }] = await db
@@ -447,7 +449,7 @@ router.get("/schedules/:id/logs", async (req, res) => {
   const pageNum = Math.max(1, parseInt(q['page'] ?? "1") || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(q['limit'] ?? "20") || 20));
   const offset = (pageNum - 1) * limitNum;
-  const { status, dateFrom, dateTo } = q;
+  const { status, triggerType, dateFrom, dateTo } = q;
 
   const [schedule] = await db
     .select({ id: scheduledAuditReportsTable.id })
@@ -482,10 +484,12 @@ router.get("/schedules/:id/logs", async (req, res) => {
     .from(scheduledAuditReportLogsTable)
     .where(and(...dateConditions, eq(scheduledAuditReportLogsTable.success, false)));
 
-  // Data rows: apply status filter on top of date conditions
+  // Data rows: apply status and triggerType filters on top of date conditions
   const dataConditions: any[] = [...dateConditions];
   if (status === "success") dataConditions.push(eq(scheduledAuditReportLogsTable.success, true));
   else if (status === "failed") dataConditions.push(eq(scheduledAuditReportLogsTable.success, false));
+  if (triggerType === "manual") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "manual"));
+  else if (triggerType === "scheduled") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "scheduled"));
   const dataWhere = and(...dataConditions);
 
   const [{ filteredTotal }] = await db

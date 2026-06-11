@@ -3109,6 +3109,7 @@ export const ListAllAuditReportScheduleLogsQueryParams = zod.object({
   "page": zod.coerce.number().default(listAllAuditReportScheduleLogsQueryPageDefault),
   "limit": zod.coerce.number().default(listAllAuditReportScheduleLogsQueryLimitDefault),
   "status": zod.enum(['success', 'failed']).optional(),
+  "triggerType": zod.enum(['manual', 'scheduled']).optional(),
   "dateFrom": zod.coerce.string().optional(),
   "dateTo": zod.coerce.string().optional()
 })
@@ -3148,6 +3149,7 @@ export const ListAuditReportScheduleLogsQueryParams = zod.object({
   "page": zod.coerce.number().default(listAuditReportScheduleLogsQueryPageDefault),
   "limit": zod.coerce.number().default(listAuditReportScheduleLogsQueryLimitDefault),
   "status": zod.enum(['success', 'failed']).optional(),
+  "triggerType": zod.enum(['manual', 'scheduled']).optional(),
   "dateFrom": zod.coerce.string().optional(),
   "dateTo": zod.coerce.string().optional()
 })

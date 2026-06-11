@@ -3240,6 +3240,11 @@ paths:
           schema:
             type: string
             enum: [success, failed]
+        - name: triggerType
+          in: query
+          schema:
+            type: string
+            enum: [manual, scheduled]
         - name: dateFrom
           in: query
           schema: { type: string }
@@ -3277,6 +3282,11 @@ paths:
           schema:
             type: string
             enum: [success, failed]
+        - name: triggerType
+          in: query
+          schema:
+            type: string
+            enum: [manual, scheduled]
         - name: dateFrom
           in: query
           schema: { type: string }

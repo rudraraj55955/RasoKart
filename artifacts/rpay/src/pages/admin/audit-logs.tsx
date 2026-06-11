@@ -1139,6 +1139,7 @@ const PAGE_SIZE = 20;
 
 function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: number; maxRetryAttempts: number }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
+  const [triggerFilter, setTriggerFilter] = useState<"all" | "manual" | "scheduled">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [retryingId, setRetryingId] = useState<number | null>(null);
@@ -1168,7 +1169,7 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
   }, [search, location, navigate, paramKey]);
 
   // Reset to page 1 when filters change
-  const filterKey = `${statusFilter}|${dateFrom}|${dateTo}`;
+  const filterKey = `${statusFilter}|${triggerFilter}|${dateFrom}|${dateTo}`;
   const prevFilterKey = useRef(filterKey);
   if (prevFilterKey.current !== filterKey) {
     prevFilterKey.current = filterKey;
@@ -1177,6 +1178,7 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
 
   const params: ListAuditReportScheduleLogsParams = { limit: PAGE_SIZE, page };
   if (statusFilter !== "all") params.status = statusFilter;
+  if (triggerFilter !== "all") params.triggerType = triggerFilter;
   if (dateFrom) params.dateFrom = dateFrom;
   if (dateTo) params.dateTo = dateTo;
 
@@ -1216,7 +1218,7 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
   const logs = data?.data ?? [];
 
-  const hasFilters = statusFilter !== "all" || dateFrom !== "" || dateTo !== "";
+  const hasFilters = statusFilter !== "all" || triggerFilter !== "all" || dateFrom !== "" || dateTo !== "";
 
   function handleGoTo(e: React.FormEvent) {
     e.preventDefault();
@@ -1250,6 +1252,25 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
             </button>
           ))}
         </div>
+        <div className="flex items-center rounded-md border border-border/40 bg-muted/10 overflow-hidden text-[11px]">
+          {(["all", "manual", "scheduled"] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setTriggerFilter(v)}
+              className={`px-2.5 py-1 transition-colors ${
+                triggerFilter === v
+                  ? v === "manual"
+                    ? "bg-violet-500/20 text-violet-400 font-medium"
+                    : v === "scheduled"
+                    ? "bg-sky-500/20 text-sky-400 font-medium"
+                    : "bg-muted/30 text-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {v === "all" ? "All" : v === "manual" ? "Manual" : "Scheduled"}
+            </button>
+          ))}
+        </div>
         <input
           type="date"
           value={dateFrom}
@@ -1269,7 +1290,7 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
         />
         {hasFilters && (
           <button
-            onClick={() => { setStatusFilter("all"); setDateFrom(""); setDateTo(""); }}
+            onClick={() => { setStatusFilter("all"); setTriggerFilter("all"); setDateFrom(""); setDateTo(""); }}
             className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <X className="w-3 h-3" /> Clear
@@ -1498,13 +1519,14 @@ const DELIVERY_PAGE_SIZE = 20;
 function DeliveryHistoryPanel({ schedules }: { schedules: any[] }) {
   const [scheduleFilter, setScheduleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
+  const [triggerFilter, setTriggerFilter] = useState<"all" | "manual" | "scheduled">("all");
   const [page, setPage] = useState(1);
   const [accLogs, setAccLogs] = useState<any[]>([]);
   const queryClient = useQueryClient();
   const retrySend = useSendAuditReportNow();
   const [retryingId, setRetryingId] = useState<number | null>(null);
 
-  const filterKey = `${scheduleFilter}|${statusFilter}`;
+  const filterKey = `${scheduleFilter}|${statusFilter}|${triggerFilter}`;
   const prevFilterKey = useRef(filterKey);
   if (prevFilterKey.current !== filterKey) {
     prevFilterKey.current = filterKey;
@@ -1515,6 +1537,7 @@ function DeliveryHistoryPanel({ schedules }: { schedules: any[] }) {
   const params: ListAllAuditReportScheduleLogsParams = { limit: DELIVERY_PAGE_SIZE, page };
   if (scheduleFilter !== "all") params.scheduleId = parseInt(scheduleFilter);
   if (statusFilter !== "all") params.status = statusFilter;
+  if (triggerFilter !== "all") params.triggerType = triggerFilter;
 
   const { data, isLoading, isFetching } = useListAllAuditReportScheduleLogs(params);
 
@@ -1584,9 +1607,28 @@ function DeliveryHistoryPanel({ schedules }: { schedules: any[] }) {
             </button>
           ))}
         </div>
-        {(scheduleFilter !== "all" || statusFilter !== "all") && (
+        <div className="flex items-center rounded-md border border-border/40 bg-muted/10 overflow-hidden text-[11px]">
+          {(["all", "manual", "scheduled"] as const).map(v => (
+            <button
+              key={v}
+              onClick={() => setTriggerFilter(v)}
+              className={`px-2.5 py-1 transition-colors ${
+                triggerFilter === v
+                  ? v === "manual"
+                    ? "bg-violet-500/20 text-violet-400 font-medium"
+                    : v === "scheduled"
+                    ? "bg-sky-500/20 text-sky-400 font-medium"
+                    : "bg-muted/30 text-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {v === "all" ? "All" : v === "manual" ? "Manual" : "Scheduled"}
+            </button>
+          ))}
+        </div>
+        {(scheduleFilter !== "all" || statusFilter !== "all" || triggerFilter !== "all") && (
           <button
-            onClick={() => { setScheduleFilter("all"); setStatusFilter("all"); }}
+            onClick={() => { setScheduleFilter("all"); setStatusFilter("all"); setTriggerFilter("all"); }}
             className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <X className="w-3 h-3" /> Clear
