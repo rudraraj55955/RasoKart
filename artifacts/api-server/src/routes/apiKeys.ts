@@ -1,9 +1,10 @@
 import { Router, type Request } from "express";
-import { db, apiKeysTable } from "@workspace/db";
+import { db, apiKeysTable, merchantsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
+import { sendApiKeyGeneratedEmail, sendApiKeyRevokedEmail } from "../helpers/apiKeyEmail";
 
 const apiKeyCreateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -54,12 +55,37 @@ router.post("/", apiKeyCreateLimiter, async (req, res) => {
   }).returning();
 
   res.status(201).json(key);
+
+  // Fire-and-forget security email
+  (async () => {
+    const [merchant] = await db
+      .select({ businessName: merchantsTable.businessName, email: merchantsTable.email })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, user.merchantId!))
+      .limit(1);
+
+    if (!merchant?.email) return;
+
+    const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+      ?? req.socket.remoteAddress
+      ?? "";
+
+    await sendApiKeyGeneratedEmail({
+      to: merchant.email,
+      businessName: merchant.businessName,
+      keyPrefix,
+      generatedAt: key!.createdAt ?? new Date(),
+      ipAddress: ip,
+    });
+  })().catch((err: unknown) => {
+    req.log.warn({ err, merchantId: user.merchantId }, "Failed to send API key generated email");
+  });
 });
 
 // DELETE /api/api-keys/:id
 router.delete("/:id", async (req, res) => {
   const user = (req as any).user;
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params['id'] as string);
   const conditions = [eq(apiKeysTable.id, id)];
   if (user.role !== "admin") conditions.push(eq(apiKeysTable.merchantId, user.merchantId!));
   const [key] = await db.update(apiKeysTable).set({ isActive: false }).where(and(...conditions)).returning();
@@ -68,6 +94,31 @@ router.delete("/:id", async (req, res) => {
     return;
   }
   res.json({ message: "API key revoked" });
+
+  // Fire-and-forget security email
+  (async () => {
+    const [merchant] = await db
+      .select({ businessName: merchantsTable.businessName, email: merchantsTable.email })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, key.merchantId))
+      .limit(1);
+
+    if (!merchant?.email) return;
+
+    const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+      ?? req.socket.remoteAddress
+      ?? "";
+
+    await sendApiKeyRevokedEmail({
+      to: merchant.email,
+      businessName: merchant.businessName,
+      keyPrefix: key.keyPrefix,
+      revokedAt: new Date(),
+      ipAddress: ip,
+    });
+  })().catch((err: unknown) => {
+    req.log.warn({ err, keyId: id }, "Failed to send API key revoked email");
+  });
 });
 
 export default router;
