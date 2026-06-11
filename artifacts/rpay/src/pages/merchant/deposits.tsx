@@ -117,10 +117,24 @@ function buildCsvText(data: any[]): string {
   return rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
 }
 
+const LAST_STATUS_KEY_DEPOSITS = "rasokart_last_status_deposits";
+
+function loadLastStatus(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? "all";
+  } catch {
+    return "all";
+  }
+}
+
 export default function MerchantDeposits() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState(() => loadLastStatus(LAST_STATUS_KEY_DEPOSITS));
+  const setStatusAndPersist = (v: string) => {
+    setStatus(v);
+    try { localStorage.setItem(LAST_STATUS_KEY_DEPOSITS, v); } catch {}
+  };
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -311,7 +325,7 @@ export default function MerchantDeposits() {
 
   const clearFilters = () => {
     setSearch("");
-    setStatus("all");
+    setStatusAndPersist("all");
     setDateFrom("");
     setDateTo("");
     setProvider("all");
@@ -481,7 +495,7 @@ export default function MerchantDeposits() {
                 onChange={e => { setSearch(e.target.value); setPage(1); }}
               />
             </div>
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+            <Select value={status} onValueChange={v => { setStatusAndPersist(v); setPage(1); }}>
               <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>

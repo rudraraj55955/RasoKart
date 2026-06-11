@@ -317,9 +317,23 @@ function BulkConfirmDialog({ count, label, onConfirm, onCancel, isPending }: Bul
   );
 }
 
+const LAST_STATUS_KEY_QR = "rasokart_last_status_qr";
+
+function loadLastStatusQr(): string {
+  try {
+    return localStorage.getItem(LAST_STATUS_KEY_QR) ?? "all";
+  } catch {
+    return "all";
+  }
+}
+
 export default function MerchantQrCodes() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState(() => loadLastStatusQr());
+  const setStatusAndPersist = (v: string) => {
+    setStatus(v);
+    try { localStorage.setItem(LAST_STATUS_KEY_QR, v); } catch {}
+  };
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
@@ -514,7 +528,7 @@ export default function MerchantQrCodes() {
             <button
               key={stat.label}
               type="button"
-              onClick={() => { setStatus(stat.filter); setPage(1); setSelectedIds(new Set()); }}
+              onClick={() => { setStatusAndPersist(stat.filter); setPage(1); setSelectedIds(new Set()); }}
               className={`text-left rounded-xl border bg-card transition-all hover:ring-2 focus-visible:outline-none focus-visible:ring-2 ${isActive ? `ring-2 ${stat.ring}` : "hover:ring-border"}`}
             >
               <div className="px-5 pt-5 pb-4">
@@ -542,7 +556,7 @@ export default function MerchantQrCodes() {
               <Input className="pl-9" placeholder="Search order ID or reference..." value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); setSelectedIds(new Set()); }}>
+            <Select value={status} onValueChange={v => { setStatusAndPersist(v); setPage(1); setSelectedIds(new Set()); }}>
               <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
