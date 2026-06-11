@@ -79,7 +79,7 @@ function PaymentCountCell({ link }: { link: LinkRow }) {
 
 export default function MerchantPaymentLinks() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState(() => localStorage.getItem("rasokart_last_status_payment_links") ?? "all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
@@ -226,7 +226,7 @@ export default function MerchantPaymentLinks() {
               <Input className="pl-9" placeholder="Search title or slug..." value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+            <Select value={status} onValueChange={v => { setStatus(v); localStorage.setItem("rasokart_last_status_payment_links", v); setPage(1); }}>
               <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>

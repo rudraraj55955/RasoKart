@@ -49,7 +49,7 @@ type VaRow = {
 
 export default function MerchantVirtualAccounts() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState(() => localStorage.getItem("rasokart_last_status_va") ?? "all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -294,7 +294,7 @@ export default function MerchantVirtualAccounts() {
               <Input className="pl-9" placeholder="Search account number, holder..." value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+            <Select value={status} onValueChange={v => { setStatus(v); localStorage.setItem("rasokart_last_status_va", v); setPage(1); }}>
               <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
