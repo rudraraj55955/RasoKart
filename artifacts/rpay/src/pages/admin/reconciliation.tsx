@@ -468,7 +468,13 @@ function ScheduleSettingsCard() {
   const [editing, setEditing] = useState(false);
   const [localTimeStr, setLocalTimeStr] = useState("00:00");
   const [lookbackDays, setLookbackDays] = useState(1);
+  const [lookbackPreset, setLookbackPreset] = useState<"1" | "3" | "7" | "30" | "custom">("1");
   const [enabled, setEnabled] = useState(true);
+
+  function syncLookback(days: number) {
+    setLookbackDays(days);
+    setLookbackPreset([1, 3, 7, 30].includes(days) ? (String(days) as "1" | "3" | "7" | "30") : "custom");
+  }
 
   const tz = nextRunData?.serverTimezone ?? null;
 
@@ -480,7 +486,7 @@ function ScheduleSettingsCard() {
       } else {
         setLocalTimeStr(`${padTwo(config.hour)}:${padTwo(config.minute)}`);
       }
-      setLookbackDays(config.lookbackDays);
+      syncLookback(config.lookbackDays);
       setEnabled(config.enabled);
     }
   }, [config, tz]);
@@ -650,16 +656,39 @@ function ScheduleSettingsCard() {
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Lookback Days <span className="text-muted-foreground/50">(1–90)</span></Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={90}
-                  value={lookbackDays}
-                  onChange={e => setLookbackDays(Math.min(90, Math.max(1, parseInt(e.target.value) || 1)))}
-                  className="w-24"
+                <Label className="text-xs text-muted-foreground">Lookback Window</Label>
+                <Select
+                  value={lookbackPreset}
+                  onValueChange={(v) => {
+                    const val = v as "1" | "3" | "7" | "30" | "custom";
+                    setLookbackPreset(val);
+                    if (val !== "custom") setLookbackDays(parseInt(val));
+                  }}
                   disabled={saving}
-                />
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Yesterday (1 day)</SelectItem>
+                    <SelectItem value="3">Last 3 days</SelectItem>
+                    <SelectItem value="7">Last 7 days</SelectItem>
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    <SelectItem value="custom">Custom…</SelectItem>
+                  </SelectContent>
+                </Select>
+                {lookbackPreset === "custom" && (
+                  <Input
+                    type="number"
+                    min={1}
+                    max={90}
+                    value={lookbackDays}
+                    onChange={e => setLookbackDays(Math.min(90, Math.max(1, parseInt(e.target.value) || 1)))}
+                    className="w-24 mt-1.5"
+                    placeholder="1–90"
+                    disabled={saving}
+                  />
+                )}
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -689,7 +718,7 @@ function ScheduleSettingsCard() {
                     } else {
                       setLocalTimeStr(`${padTwo(config.hour)}:${padTwo(config.minute)}`);
                     }
-                    setLookbackDays(config.lookbackDays);
+                    syncLookback(config.lookbackDays);
                     setEnabled(config.enabled);
                   }
                 }}
