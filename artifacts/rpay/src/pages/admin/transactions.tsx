@@ -17,6 +17,7 @@ import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
 import { Search, X, ArrowDownLeft, ArrowUpRight, CheckCircle, XCircle, Hash, RefreshCw, Loader2, Building2, CreditCard, FileText, Info, Plus, Link2, Zap, Pencil, AlertTriangle, Sparkles, Bookmark, BookmarkCheck, Trash2, TrendingUp, CheckCircle2, Clock, ChevronUp, ChevronDown } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -57,6 +58,32 @@ interface SavedFilterItem {
   rawInput: string;
   filterData: SmartFilterShape;
   createdAt: string;
+}
+
+function formatFilterCriteria(f: SmartFilterShape): string[] {
+  const parts: string[] = [];
+  if (f.txType) parts.push(f.txType === "deposit" ? "Deposits" : "Withdrawals");
+  if (f.txStatus) {
+    const labels: Record<string, string> = { pending: "Pending", success: "Successful", failed: "Failed" };
+    parts.push(labels[f.txStatus] ?? f.txStatus);
+  }
+  if (f.amountMin != null && f.amountMax != null) {
+    parts.push(`₹${f.amountMin.toLocaleString("en-IN")} – ₹${f.amountMax.toLocaleString("en-IN")}`);
+  } else if (f.amountMin != null) {
+    parts.push(`≥ ₹${f.amountMin.toLocaleString("en-IN")}`);
+  } else if (f.amountMax != null) {
+    parts.push(`≤ ₹${f.amountMax.toLocaleString("en-IN")}`);
+  }
+  if (f.dateFrom && f.dateTo) {
+    const from = format(new Date(f.dateFrom), "dd MMM yyyy");
+    const to = format(new Date(f.dateTo), "dd MMM yyyy");
+    parts.push(from === to ? from : `${from} – ${to}`);
+  } else if (f.dateFrom) {
+    parts.push(`From ${format(new Date(f.dateFrom), "dd MMM yyyy")}`);
+  } else if (f.dateTo) {
+    parts.push(`Until ${format(new Date(f.dateTo), "dd MMM yyyy")}`);
+  }
+  return parts.length > 0 ? parts : ["No criteria set"];
 }
 
 function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open: boolean; onClose: () => void }) {
@@ -1169,60 +1196,71 @@ export default function AdminTransactions() {
                     {renameError && <p className="text-xs text-rose-400 pl-1">{renameError}</p>}
                   </span>
                 ) : (
-                  <span
-                    key={saved.id}
-                    draggable
-                    onDragStart={() => handleDragStart(saved.id)}
-                    onDragOver={(e) => handleDragOver(e, saved.id)}
-                    onDrop={(e) => handleDrop(e, saved.id)}
-                    onDragEnd={handleDragEnd}
-                    className={`group inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-violet-300 transition-colors cursor-grab active:cursor-grabbing select-none
-                      ${draggingId === saved.id
-                        ? "opacity-40 border-violet-500/30 bg-violet-500/8"
-                        : dragOverId === saved.id
-                          ? "border-violet-400/80 bg-violet-500/20 scale-105"
-                          : "border-violet-500/30 bg-violet-500/8 hover:border-violet-500/60"
-                      }`}
-                  >
-                    <button
-                      onClick={() => applySavedFilter(saved)}
-                      className="flex items-center gap-1 hover:text-violet-100 transition-colors"
-                      title={`Apply: ${saved.rawInput}`}
+                  <Tooltip key={saved.id}>
+                    <TooltipTrigger asChild>
+                      <span
+                        draggable
+                        onDragStart={() => handleDragStart(saved.id)}
+                        onDragOver={(e) => handleDragOver(e, saved.id)}
+                        onDrop={(e) => handleDrop(e, saved.id)}
+                        onDragEnd={handleDragEnd}
+                        className={`group inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-violet-300 transition-colors cursor-grab active:cursor-grabbing select-none
+                          ${draggingId === saved.id
+                            ? "opacity-40 border-violet-500/30 bg-violet-500/8"
+                            : dragOverId === saved.id
+                              ? "border-violet-400/80 bg-violet-500/20 scale-105"
+                              : "border-violet-500/30 bg-violet-500/8 hover:border-violet-500/60"
+                          }`}
+                      >
+                        <button
+                          onClick={() => applySavedFilter(saved)}
+                          className="flex items-center gap-1 hover:text-violet-100 transition-colors"
+                        >
+                          <BookmarkCheck className="w-3 h-3 shrink-0" />
+                          {saved.name}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveFilter(saved.id, "up"); }}
+                          disabled={orderedFilters.indexOf(saved) === 0}
+                          className="rounded-full p-0.5 text-violet-400/50 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed"
+                          aria-label={`Move "${saved.name}" left`}
+                        >
+                          <ChevronUp className="w-2.5 h-2.5" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveFilter(saved.id, "down"); }}
+                          disabled={orderedFilters.indexOf(saved) === orderedFilters.length - 1}
+                          className="rounded-full p-0.5 text-violet-400/50 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed"
+                          aria-label={`Move "${saved.name}" right`}
+                        >
+                          <ChevronDown className="w-2.5 h-2.5" />
+                        </button>
+                        <button
+                          onClick={() => startRename(saved)}
+                          className="ml-0.5 rounded-full p-0.5 text-violet-400/50 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                          aria-label={`Rename saved filter "${saved.name}"`}
+                        >
+                          <Pencil className="w-2.5 h-2.5" />
+                        </button>
+                        <button
+                          onClick={() => deleteSavedFilter(saved.id)}
+                          className="rounded-full p-0.5 text-violet-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                          aria-label={`Delete saved filter "${saved.name}"`}
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      className="bg-zinc-900 border border-zinc-700 text-zinc-100 px-3 py-2 max-w-[220px]"
                     >
-                      <BookmarkCheck className="w-3 h-3 shrink-0" />
-                      {saved.name}
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); moveFilter(saved.id, "up"); }}
-                      disabled={orderedFilters.indexOf(saved) === 0}
-                      className="rounded-full p-0.5 text-violet-400/50 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed"
-                      aria-label={`Move "${saved.name}" left`}
-                    >
-                      <ChevronUp className="w-2.5 h-2.5" />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); moveFilter(saved.id, "down"); }}
-                      disabled={orderedFilters.indexOf(saved) === orderedFilters.length - 1}
-                      className="rounded-full p-0.5 text-violet-400/50 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-20 disabled:cursor-not-allowed"
-                      aria-label={`Move "${saved.name}" right`}
-                    >
-                      <ChevronDown className="w-2.5 h-2.5" />
-                    </button>
-                    <button
-                      onClick={() => startRename(saved)}
-                      className="ml-0.5 rounded-full p-0.5 text-violet-400/50 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                      aria-label={`Rename saved filter "${saved.name}"`}
-                    >
-                      <Pencil className="w-2.5 h-2.5" />
-                    </button>
-                    <button
-                      onClick={() => deleteSavedFilter(saved.id)}
-                      className="rounded-full p-0.5 text-violet-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                      aria-label={`Delete saved filter "${saved.name}"`}
-                    >
-                      <Trash2 className="w-2.5 h-2.5" />
-                    </button>
-                  </span>
+                      <p className="text-[11px] font-semibold text-zinc-400 mb-1 uppercase tracking-wide">Filter preview</p>
+                      {formatFilterCriteria(saved.filterData).map((line) => (
+                        <p key={line} className="text-xs leading-relaxed">{line}</p>
+                      ))}
+                    </TooltipContent>
+                  </Tooltip>
                 )
               ))}
             </div>
