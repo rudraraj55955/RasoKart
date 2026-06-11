@@ -172,6 +172,7 @@ function MerchantSidebar() {
           lockReason: "Webhook access is not included in your current plan. Upgrade to unlock."
         },
         { title: "Callbacks", icon: FileText, href: "/merchant/callbacks", locked: false, lockReason: null },
+        { title: "Security Activity", icon: Shield, href: "/merchant/security", locked: false, lockReason: null },
         { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs", locked: false, lockReason: null },
       ],
     },
