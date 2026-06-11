@@ -25,7 +25,8 @@ const qrCodeBulkDeleteLimiter = makeRateLimiter({
   message: { error: "Too many bulk-delete requests. You may perform up to 5 bulk deletes per 15 minutes. Please try again later." },
 });
 
-const qrCodeSingleDeleteLimiter = rateLimit({
+const qrCodeSingleDeleteLimiter = makeRateLimiter({
+  limiterId: "qr-single-delete",
   windowMs: 15 * 60 * 1000,
   limit: 30,
   standardHeaders: "draft-8",

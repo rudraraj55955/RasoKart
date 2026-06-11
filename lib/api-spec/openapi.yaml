@@ -2424,6 +2424,18 @@ paths:
           schema:
             type: string
             enum: [assigned, upgraded, downgraded, suspended, reinstated, renewed, unassigned]
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter entries on or after this date (YYYY-MM-DD)
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter entries on or before this date (YYYY-MM-DD)
         - name: page
           in: query
           schema:

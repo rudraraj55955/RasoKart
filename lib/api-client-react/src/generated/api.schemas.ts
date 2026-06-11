@@ -2708,17 +2708,17 @@ export const ListMerchantsCallbackSecretSet = {
   false: 'false',
 } as const;
 
-export type GetAdminMerchantCredentialEventsParams = {
-page?: number;
-limit?: number;
-};
-
 export type ListMerchantsSecretOverdue = typeof ListMerchantsSecretOverdue[keyof typeof ListMerchantsSecretOverdue];
 
 
 export const ListMerchantsSecretOverdue = {
   true: 'true',
 } as const;
+
+export type GetAdminMerchantCredentialEventsParams = {
+page?: number;
+limit?: number;
+};
 
 export type ListInvoicesParams = {
 merchantId?: number;
@@ -2995,6 +2995,14 @@ export const ListMerchantConnectionsStatus = {
 export type ListPlanHistoryParams = {
 merchantId?: number;
 action?: ListPlanHistoryAction;
+/**
+ * Filter entries on or after this date (YYYY-MM-DD)
+ */
+fromDate?: string;
+/**
+ * Filter entries on or before this date (YYYY-MM-DD)
+ */
+toDate?: string;
 page?: number;
 limit?: number;
 };

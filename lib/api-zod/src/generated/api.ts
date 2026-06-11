@@ -2334,6 +2334,8 @@ export const GetMyPlanHistoryResponse = zod.array(GetMyPlanHistoryResponseItem)
 export const ListPlanHistoryQueryParams = zod.object({
   "merchantId": zod.coerce.number().optional(),
   "action": zod.enum(['assigned', 'upgraded', 'downgraded', 'suspended', 'reinstated', 'renewed', 'unassigned']).optional(),
+  "fromDate": zod.date().optional().describe('Filter entries on or after this date (YYYY-MM-DD)'),
+  "toDate": zod.date().optional().describe('Filter entries on or before this date (YYYY-MM-DD)'),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })

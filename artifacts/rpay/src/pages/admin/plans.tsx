@@ -93,6 +93,8 @@ export default function AdminPlans() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyMerchantId, setHistoryMerchantId] = useState<string>("");
   const [historyAction, setHistoryAction] = useState<string>("");
+  const [historyFromDate, setHistoryFromDate] = useState<string>("");
+  const [historyToDate, setHistoryToDate] = useState<string>("");
   const [merchantSearch, setMerchantSearch] = useState("");
   const HISTORY_LIMIT = 25;
 
@@ -109,6 +111,8 @@ export default function AdminPlans() {
     limit: HISTORY_LIMIT,
     ...(historyMerchantId ? { merchantId: parseInt(historyMerchantId) } : {}),
     ...(historyAction ? { action: historyAction as "assigned" | "upgraded" | "downgraded" | "suspended" | "reinstated" | "renewed" | "unassigned" } : {}),
+    ...(historyFromDate ? { fromDate: historyFromDate } : {}),
+    ...(historyToDate ? { toDate: historyToDate } : {}),
   });
 
   const filteredPlans = plans?.filter(p =>
@@ -200,10 +204,12 @@ export default function AdminPlans() {
 
   const historyTotalPages = historyData ? Math.ceil(historyData.total / HISTORY_LIMIT) : 1;
 
-  const hasHistoryFilters = !!historyMerchantId || !!historyAction;
+  const hasHistoryFilters = !!historyMerchantId || !!historyAction || !!historyFromDate || !!historyToDate;
   const clearHistoryFilters = () => {
     setHistoryMerchantId("");
     setHistoryAction("");
+    setHistoryFromDate("");
+    setHistoryToDate("");
     setMerchantSearch("");
     setHistoryPage(1);
   };
@@ -360,6 +366,26 @@ export default function AdminPlans() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="date"
+                className="h-9 w-[140px] text-sm"
+                value={historyFromDate}
+                max={historyToDate || undefined}
+                onChange={e => { setHistoryFromDate(e.target.value); setHistoryPage(1); }}
+                placeholder="From"
+              />
+              <span className="text-muted-foreground text-xs">–</span>
+              <Input
+                type="date"
+                className="h-9 w-[140px] text-sm"
+                value={historyToDate}
+                min={historyFromDate || undefined}
+                onChange={e => { setHistoryToDate(e.target.value); setHistoryPage(1); }}
+                placeholder="To"
+              />
             </div>
 
             {hasHistoryFilters && (
