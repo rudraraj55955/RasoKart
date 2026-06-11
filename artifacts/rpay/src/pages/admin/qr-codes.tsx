@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useListQrCodes, useDeleteQrCode, useGetQrCodeStats, useBulkDeleteQrCodes } from "@workspace/api-client-react";
+import { useState, useEffect, useCallback } from "react";
+import { useListQrCodes, useDeleteQrCode, useGetQrCodeStats, useBulkDeleteQrCodes, useGetQrCodeActivity } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +11,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, Trash2, QrCode, X, RefreshCw } from "lucide-react";
+import { Search, Trash2, Download, QrCode, X, RefreshCw, ChevronDown, ChevronRight, Link2, Building2, Zap } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { QRCodeCanvas } from "qrcode.react";
 
 function statusBadge(status: string) {
   if (status === "active") return <Badge className="text-xs bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20">Active</Badge>;
@@ -21,6 +22,22 @@ function statusBadge(status: string) {
   if (status === "used") return <Badge className="text-xs bg-blue-500/15 text-blue-400 border-blue-500/20 hover:bg-blue-500/20">Used</Badge>;
   return <Badge variant="secondary" className="text-xs capitalize">{status}</Badge>;
 }
+
+type AdminQrRow = {
+  id: number;
+  merchantId: number;
+  merchantName?: string | null;
+  type: string;
+  payload: string;
+  amount?: string | null;
+  orderId?: string | null;
+  callbackUrl?: string | null;
+  merchantReference?: string | null;
+  expiresAt?: string | null;
+  status: string;
+  scanCount: number;
+  createdAt: string;
+};
 
 type BulkConfirmDialogProps = {
   count: number;
@@ -52,6 +69,185 @@ function BulkConfirmDialog({ count, label, onConfirm, onCancel, isPending }: Bul
   );
 }
 
+function PaymentActivity({ qrId }: { qrId: number }) {
+  const { data, isLoading } = useGetQrCodeActivity(qrId);
+
+  if (isLoading) {
+    return (
+      <div className="mt-4 border-t border-border/50 pt-4">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Payment Activity</p>
+        <div className="space-y-2">
+          {[1, 2].map(i => (
+            <div key={i} className="h-10 bg-muted/40 rounded-md animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const events = data?.data ?? [];
+
+  return (
+    <div className="mt-4 border-t border-border/50 pt-4">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Payment Activity</p>
+      {events.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">No payments received yet</p>
+      ) : (
+        <div className="space-y-2">
+          {events.map(ev => (
+            <div key={ev.id} className="flex items-start gap-3 rounded-md border border-emerald-500/20 bg-emerald-500/8 px-3 py-2.5">
+              <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-emerald-400">Payment received</span>
+                  {ev.status === "failed" && (
+                    <Badge className="text-xs bg-rose-500/15 text-rose-400 border-rose-500/20 py-0 px-1.5">webhook failed</Badge>
+                  )}
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {format(new Date(ev.receivedAt), "MMM d, yyyy · HH:mm:ss")}
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 mt-1 flex-wrap">
+                  {ev.amount && (
+                    <span className="text-xs text-foreground font-mono">
+                      ₹{parseFloat(ev.amount).toLocaleString("en-IN")}
+                    </span>
+                  )}
+                  {ev.orderId && (
+                    <span className="text-xs text-muted-foreground font-mono">
+                      Order: {ev.orderId}
+                    </span>
+                  )}
+                  {ev.merchantReference && (
+                    <span className="text-xs text-muted-foreground font-mono">
+                      Ref: {ev.merchantReference}
+                    </span>
+                  )}
+                  {ev.transactionId && (
+                    <span className="text-xs text-blue-400 font-mono">
+                      Txn #{ev.transactionId}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleDownload = useCallback(() => {
+    const canvas = document.querySelector(`#admin-qr-inline-${qr.id} canvas`) as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const url = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `qr-${qr.id}-${qr.orderId ?? qr.merchantReference ?? "code"}.png`;
+    a.click();
+    toast.success("QR code downloaded");
+  }, [qr]);
+
+  const handleCopyLink = useCallback(() => {
+    navigator.clipboard.writeText(qr.payload).then(() => {
+      setCopied(true);
+      toast.success("Payment link copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [qr.payload]);
+
+  const isExpired = qr.expiresAt ? new Date(qr.expiresAt) < new Date() : false;
+
+  return (
+    <TableRow className="bg-muted/30 border-t-0">
+      <TableCell colSpan={11} className="py-4 px-6">
+        <div className="flex gap-6 items-start">
+          <div id={`admin-qr-inline-${qr.id}`} className="bg-white p-3 rounded-xl shrink-0">
+            <QRCodeCanvas value={qr.payload} size={120} level="H" includeMargin />
+          </div>
+          <div className="flex-1 min-w-0">
+            {/* Merchant context — prominently shown for admin */}
+            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border/50">
+              <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div>
+                <span className="text-xs text-muted-foreground">Merchant · </span>
+                <span className="text-sm font-semibold">{qr.merchantName ?? "Unknown"}</span>
+                <span className="text-xs text-muted-foreground ml-2">ID #{qr.merchantId}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm mb-3">
+              <div>
+                <span className="text-xs text-muted-foreground block">QR ID</span>
+                <span className="font-mono text-xs">#{qr.id}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Status</span>
+                {statusBadge(qr.status)}
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Scans</span>
+                <span className="font-semibold">{qr.scanCount}</span>
+              </div>
+              {qr.amount && (
+                <div>
+                  <span className="text-xs text-muted-foreground block">Amount</span>
+                  <span className="font-semibold">₹{parseFloat(qr.amount).toLocaleString("en-IN")}</span>
+                </div>
+              )}
+              {qr.orderId && (
+                <div>
+                  <span className="text-xs text-muted-foreground block">Order ID</span>
+                  <span className="font-mono text-xs">{qr.orderId}</span>
+                </div>
+              )}
+              {qr.merchantReference && (
+                <div>
+                  <span className="text-xs text-muted-foreground block">Reference</span>
+                  <span className="font-mono text-xs">{qr.merchantReference}</span>
+                </div>
+              )}
+              {qr.callbackUrl && (
+                <div className="col-span-2">
+                  <span className="text-xs text-muted-foreground block">Callback URL</span>
+                  <span className="font-mono text-xs truncate block">{qr.callbackUrl}</span>
+                </div>
+              )}
+              {qr.expiresAt && (
+                <div>
+                  <span className="text-xs text-muted-foreground block">Expires</span>
+                  <span className={`text-xs ${isExpired ? "text-rose-400" : "text-amber-400"}`}>
+                    {isExpired ? "Expired" : formatDistanceToNow(new Date(qr.expiresAt), { addSuffix: true })}
+                  </span>
+                </div>
+              )}
+              <div>
+                <span className="text-xs text-muted-foreground block">Created</span>
+                <span className="text-xs">{format(new Date(qr.createdAt), "MMM d, yyyy HH:mm")}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={handleDownload} disabled={qr.status === "expired"} className="h-7 text-xs px-3">
+                <Download className="w-3.5 h-3.5 mr-1.5" />Download PNG
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleCopyLink} className="h-7 text-xs px-3">
+                <Link2 className="w-3.5 h-3.5 mr-1.5" />{copied ? "Copied!" : "Copy Link"}
+              </Button>
+            </div>
+
+            <PaymentActivity qrId={qr.id} />
+          </div>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export default function AdminQrCodes() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("all");
@@ -63,6 +259,7 @@ export default function AdminQrCodes() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkConfirm, setBulkConfirm] = useState<{ ids?: number[]; statusFilter?: string; count: number; label: string } | null>(null);
 
@@ -198,6 +395,8 @@ export default function AdminQrCodes() {
   const showDeleteAllExpired = status === "expired" && (stats?.expired ?? 0) > 0;
   const showDeleteAllUsed = status === "used" && (stats?.used ?? 0) > 0;
 
+  const toggleExpand = (id: number) => setExpandedId(prev => prev === id ? null : id);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -331,6 +530,7 @@ export default function AdminQrCodes() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8"></TableHead>
                 <TableHead className="w-8 pl-4">
                   <Checkbox
                     checked={allSelected}
@@ -355,23 +555,33 @@ export default function AdminQrCodes() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 10 }).map((_, j) => (
+                    {Array.from({ length: 11 }).map((_, j) => (
                       <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : !data?.data?.length ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-14">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-14">
                     <QrCode className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No QR codes found</p>
                   </TableCell>
                 </TableRow>
-              ) : data.data.map(qr => {
+              ) : (data.data as AdminQrRow[]).flatMap(qr => {
                 const isExpiredTime = qr.expiresAt ? new Date(qr.expiresAt as string) < new Date() : false;
+                const isExpanded = expandedId === qr.id;
                 const isChecked = selectedIds.has(qr.id);
-                return (
-                  <TableRow key={qr.id} className={isChecked ? "bg-muted/20" : ""}>
+                return [
+                  <TableRow
+                    key={qr.id}
+                    className={`cursor-pointer hover:bg-muted/30 ${isChecked ? "bg-muted/20" : ""}`}
+                    onClick={() => toggleExpand(qr.id)}
+                  >
+                    <TableCell className="pl-3 pr-0">
+                      {isExpanded
+                        ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                        : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                    </TableCell>
                     <TableCell className="pl-4 pr-0" onClick={e => toggleSelect(qr.id, e)}>
                       <Checkbox
                         checked={isChecked}
@@ -399,14 +609,15 @@ export default function AdminQrCodes() {
                     <TableCell className="text-xs text-muted-foreground">
                       {format(new Date(qr.createdAt), "MMM d, yyyy HH:mm")}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500 hover:text-rose-400"
                         onClick={() => handleDelete(qr.id)} title="Delete">
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </TableCell>
-                  </TableRow>
-                );
+                  </TableRow>,
+                  ...(isExpanded ? [<AdminInlineQrRow key={`detail-${qr.id}`} qr={qr} />] : []),
+                ];
               })}
             </TableBody>
           </Table>
