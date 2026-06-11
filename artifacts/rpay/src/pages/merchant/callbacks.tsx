@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListCallbackLogs, useGetCallbackStats, useGetWebhookLogAttempts, useRetryWebhookLog, getListCallbackLogsQueryKey } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth-context";
 import type { CallbackLogAttempt } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -370,11 +371,43 @@ function writeSigWarnDismissal() {
   }
 }
 
+const CALLBACK_FILTER_PREFIX = "rasokart_callback_filters_";
+
+interface CallbackFilterPrefs {
+  status?: string;
+  sig?: string;
+  qr?: string;
+}
+
+function getFilterKey(merchantId: number) {
+  return `${CALLBACK_FILTER_PREFIX}${merchantId}`;
+}
+
+function readFilterPrefs(merchantId: number): CallbackFilterPrefs | null {
+  try {
+    const raw = localStorage.getItem(getFilterKey(merchantId));
+    if (!raw) return null;
+    return JSON.parse(raw) as CallbackFilterPrefs;
+  } catch {
+    return null;
+  }
+}
+
+function writeFilterPrefs(merchantId: number, prefs: CallbackFilterPrefs) {
+  try {
+    localStorage.setItem(getFilterKey(merchantId), JSON.stringify(prefs));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export default function MerchantCallbacks() {
   useEffect(() => { sweepStaleCooldowns(); }, []);
 
   const search = useSearch();
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const merchantId = (user as any)?.merchantId as number | undefined;
 
   const params = new URLSearchParams(search);
   const status = params.get("status") ?? "all";
@@ -404,6 +437,46 @@ export default function MerchantCallbacks() {
   const setStatus = (v: string) => updateParams({ status: v, page: "1" });
   const setSigVerified = (v: string) => updateParams({ sig: v, page: "1" });
   const setPage = (fn: (p: number) => number) => updateParams({ page: String(fn(page)) });
+
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if (merchantId == null) return;
+    const urlHasFilters =
+      params.get("status") != null ||
+      params.get("sig") != null ||
+      params.get("qr") != null;
+    if (urlHasFilters) {
+      restoredRef.current = true;
+      return;
+    }
+    const saved = readFilterPrefs(merchantId);
+    if (!saved) {
+      restoredRef.current = true;
+      return;
+    }
+    restoredRef.current = true;
+    const patch: Record<string, string | undefined> = {};
+    if (saved.status && saved.status !== "all") patch.status = saved.status;
+    if (saved.sig && saved.sig !== "all") patch.sig = saved.sig;
+    if (saved.qr) {
+      patch.qr = saved.qr;
+      setQrCodeIdInput(saved.qr);
+    }
+    if (Object.keys(patch).length > 0) {
+      updateParams({ ...patch, page: "1" });
+    }
+  }, [merchantId]);
+
+  useEffect(() => {
+    if (merchantId == null) return;
+    const prefs: CallbackFilterPrefs = {};
+    if (status !== "all") prefs.status = status;
+    if (sigVerified !== "all") prefs.sig = sigVerified;
+    if (qrCodeId != null) prefs.qr = String(qrCodeId);
+    writeFilterPrefs(merchantId, prefs);
+  }, [merchantId, status, sigVerified, qrCodeId]);
 
   const { data: stats } = useGetCallbackStats();
   const failureCount = stats?.signatureFailures24h ?? 0;
