@@ -738,6 +738,27 @@ export default function AdminVirtualAccounts() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
+              {(() => {
+                const auditBackfilledCount = auditData?.data?.filter(e => e.backfilled).length ?? 0;
+                return auditBackfilledCount > 0 ? (
+                  <div className="px-4 py-2 border-b border-border flex items-center gap-2">
+                    <TooltipProvider>
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-[10px] font-medium text-amber-500 cursor-default select-none">
+                            <span className="text-amber-500 leading-none" aria-hidden>■</span>
+                            estimated rows
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[260px] text-xs">
+                          <p>Amber-highlighted rows were estimated during a balance backfill — values are reconstructed from deposit records and may not be exact.</p>
+                          <p className="mt-1 text-muted-foreground">{auditBackfilledCount} of {auditData?.data?.length ?? 0} rows on this page are estimated.</p>
+                        </TooltipContent>
+                      </UITooltip>
+                    </TooltipProvider>
+                  </div>
+                ) : null;
+              })()}
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1169,9 +1190,9 @@ export default function AdminVirtualAccounts() {
                         <TooltipProvider>
                           <UITooltip>
                             <TooltipTrigger asChild>
-                              <span className="flex items-center gap-1 text-[10px] text-amber-500/80 italic cursor-default select-none">
-                                <Info className="w-3 h-3 shrink-0" />
-                                {backfilledCount} est.
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-[10px] font-medium text-amber-500 cursor-default select-none">
+                                <span className="text-amber-500 leading-none" aria-hidden>■</span>
+                                estimated rows
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="bottom" className="max-w-[240px] text-xs">
