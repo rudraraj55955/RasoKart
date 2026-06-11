@@ -354,11 +354,21 @@ function buildCsvText(data: any[]): string {
 export default function MerchantDeposits() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [dateFrom, setDateFrom] = useState(() => loadLastDateRange().from);
-  const [dateTo, setDateTo] = useState(() => loadLastDateRange().to);
+  const [status, setStatus] = useState(() => {
+    return new URLSearchParams(window.location.search).get("status") ?? "all";
+  });
+  const [dateFrom, setDateFrom] = useState(() => {
+    const urlFrom = new URLSearchParams(window.location.search).get("from");
+    return urlFrom ?? loadLastDateRange().from;
+  });
+  const [dateTo, setDateTo] = useState(() => {
+    const urlTo = new URLSearchParams(window.location.search).get("to");
+    return urlTo ?? loadLastDateRange().to;
+  });
   const [page, setPage] = useState(1);
-  const [provider, setProvider] = useState("all");
+  const [provider, setProvider] = useState(() => {
+    return new URLSearchParams(window.location.search).get("provider") ?? "all";
+  });
   const [exporting, setExporting] = useState(false);
   const [lastExportCount, setLastExportCount] = useState<number | null>(null);
 
@@ -428,15 +438,35 @@ export default function MerchantDeposits() {
 
   useEffect(() => {
     const onPop = () => {
-      const q = new URLSearchParams(window.location.search).get("q") ?? "";
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("q") ?? "";
       setSmartInput(q);
       setSmartFilter(q ? parseSmartQuery(q) : null);
       setSmartError("");
+      setStatus(params.get("status") ?? "all");
+      setDateFrom(params.get("from") ?? "");
+      setDateTo(params.get("to") ?? "");
+      setProvider(params.get("provider") ?? "all");
       setPage(1);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+
+  // ── Sync filter dropdowns to URL ─────────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (status !== "all") params.set("status", status);
+    else params.delete("status");
+    if (dateFrom) params.set("from", dateFrom);
+    else params.delete("from");
+    if (dateTo) params.set("to", dateTo);
+    else params.delete("to");
+    if (provider !== "all") params.set("provider", provider);
+    else params.delete("provider");
+    const search = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (search ? "?" + search : ""));
+  }, [status, dateFrom, dateTo, provider]);
 
   // Effective filter values — smart filter takes precedence over manual dropdowns
   const activeStatus = smartFilter?.txStatus ?? (status !== "all" ? status : undefined);

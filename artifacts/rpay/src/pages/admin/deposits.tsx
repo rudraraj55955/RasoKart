@@ -73,10 +73,18 @@ function exportCsv(data: any[]) {
 
 export default function AdminDeposits() {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [merchantId, setMerchantId] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [status, setStatus] = useState(() => {
+    return new URLSearchParams(window.location.search).get("status") ?? "all";
+  });
+  const [merchantId, setMerchantId] = useState(() => {
+    return new URLSearchParams(window.location.search).get("merchant") ?? "";
+  });
+  const [dateFrom, setDateFrom] = useState(() => {
+    return new URLSearchParams(window.location.search).get("from") ?? "";
+  });
+  const [dateTo, setDateTo] = useState(() => {
+    return new URLSearchParams(window.location.search).get("to") ?? "";
+  });
   const [page, setPage] = useState(1);
 
   const [smartInput, setSmartInput] = useState<string>(() => {
@@ -140,15 +148,35 @@ export default function AdminDeposits() {
 
   useEffect(() => {
     const onPop = () => {
-      const q = new URLSearchParams(window.location.search).get("q") ?? "";
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("q") ?? "";
       setSmartInput(q);
       setSmartFilter(q ? parseSmartQuery<SmartFilter>(q, [STATUS_KEYWORDS]) : null);
       setSmartError("");
+      setStatus(params.get("status") ?? "all");
+      setMerchantId(params.get("merchant") ?? "");
+      setDateFrom(params.get("from") ?? "");
+      setDateTo(params.get("to") ?? "");
       setPage(1);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+
+  // ── Sync filter dropdowns to URL ─────────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (status !== "all") params.set("status", status);
+    else params.delete("status");
+    if (merchantId) params.set("merchant", merchantId);
+    else params.delete("merchant");
+    if (dateFrom) params.set("from", dateFrom);
+    else params.delete("from");
+    if (dateTo) params.set("to", dateTo);
+    else params.delete("to");
+    const search = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (search ? "?" + search : ""));
+  }, [status, merchantId, dateFrom, dateTo]);
 
   const applySmartSearch = () => {
     setSmartError("");
