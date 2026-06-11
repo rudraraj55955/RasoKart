@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogAttempts, WebhookTestRequestEventType, GetWebhookLogsEventType } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 import type { CallbackLog, CallbackLogAttempt } from "@workspace/api-client-react";
@@ -14,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound, ListOrdered, Loader2 } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound, ListOrdered, Loader2, X } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -488,14 +489,22 @@ export default function MerchantWebhook() {
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
   const [eventTypeFilter, setEventTypeFilter] = useState<GetWebhookLogsEventType | null>(null);
   const logsParams = { limit: 20, ...(eventTypeFilter != null ? { eventType: eventTypeFilter } : {}) };
+  const [secretSavedAt, setSecretSavedAt] = useState<number | null>(null);
+  const [secretVerifiedDismissed, setSecretVerifiedDismissed] = useState(false);
+  const logsRefetchInterval = secretSavedAt != null ? 5_000 : 30_000;
   const { data: logsData, isLoading: logsLoading, isFetching: logsRefetching, dataUpdatedAt } = useGetWebhookLogs(logsParams, {
-    query: { refetchInterval: 30_000, queryKey: getGetWebhookLogsQueryKey(logsParams) },
+    query: { refetchInterval: logsRefetchInterval, queryKey: getGetWebhookLogsQueryKey(logsParams) },
   });
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 10_000);
     return () => clearInterval(id);
   }, []);
+  useEffect(() => {
+    if (!secretSavedAt) return;
+    const id = setTimeout(() => setSecretSavedAt(null), 120_000);
+    return () => clearTimeout(id);
+  }, [secretSavedAt]);
   const lastUpdated = dataUpdatedAt > 0 ? new Date(dataUpdatedAt) : null;
   const updateMutation = useUpdateWebhookConfig();
   const rotateMutation = useRotateCallbackSecret();
@@ -527,8 +536,16 @@ export default function MerchantWebhook() {
 
   const handleSave = () => {
     if (!url.trim()) { toast.error("Webhook URL is required"); return; }
+    const hasSecret = !!secret.trim();
     updateMutation.mutate({ data: { url: url.trim(), isActive, events, secret: secret || null } }, {
-      onSuccess: () => { toast.success("Webhook configuration saved"); qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() }); },
+      onSuccess: () => {
+        toast.success("Webhook configuration saved");
+        qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() });
+        if (hasSecret) {
+          setSecretSavedAt(Date.now());
+          setSecretVerifiedDismissed(false);
+        }
+      },
       onError: () => toast.error("Failed to save configuration"),
     });
   };
@@ -613,6 +630,14 @@ export default function MerchantWebhook() {
   };
 
   const logs = logsData?.data ?? [];
+
+  const secretVerified = (() => {
+    if (!secretSavedAt || secretVerifiedDismissed) return false;
+    const withSig = logs.filter(l => l.signatureVerified != null);
+    if (withSig.length === 0) return false;
+    const recentN = withSig.slice(0, 3);
+    return recentN.every(l => l.signatureVerified === true);
+  })();
 
   if (isLoading) return <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-muted/50 rounded-lg animate-pulse" />)}</div>;
 
@@ -712,6 +737,34 @@ export default function MerchantWebhook() {
           onRetry={handleRetryTest}
           isRetrying={testMutation.isPending}
         />
+      )}
+
+      {secretVerified && (
+        <div className="flex items-start gap-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3">
+          <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-emerald-300">
+              Secret verified — recent deliveries are passing signature checks
+            </p>
+            <p className="text-xs text-emerald-400/70 mt-0.5">
+              Your signing secret is working correctly. View the full history on the{" "}
+              <Link
+                href="/merchant/callbacks"
+                className="underline text-emerald-400 hover:text-emerald-300 transition-colors"
+              >
+                callback logs page →
+              </Link>
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setSecretVerifiedDismissed(true)}
+            className="shrink-0 text-emerald-400/60 hover:text-emerald-300 transition-colors mt-0.5"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
 
       {/* Recent Deliveries */}
