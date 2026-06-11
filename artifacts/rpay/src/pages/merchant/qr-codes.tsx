@@ -430,7 +430,7 @@ export default function MerchantQrCodes() {
     if (!confirm("Delete this QR code?")) return;
     deleteMutation.mutate({ id }, {
       onSuccess: () => { toast.success("QR code deleted"); invalidate(); },
-      onError: () => toast.error("Failed to delete"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete")),
     });
   };
 
@@ -457,8 +457,8 @@ export default function MerchantQrCodes() {
         setBulkConfirm(null);
         invalidate();
       },
-      onError: () => {
-        toast.error("Bulk delete failed");
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, "Bulk delete failed"));
         setBulkConfirm(null);
       },
     });

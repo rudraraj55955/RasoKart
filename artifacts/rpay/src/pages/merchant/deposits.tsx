@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay, parseISO, isValid, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ── Smart search types & parsing ──────────────────────────────────────────────
@@ -762,8 +763,8 @@ export default function MerchantDeposits() {
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
         queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       },
-      onError: (err: any) => {
-        toast.error(err?.message ?? "Failed to simulate payment");
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, "Failed to simulate payment"));
       },
     },
   });

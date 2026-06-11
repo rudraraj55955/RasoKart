@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const WEBHOOK_SECRET_TYPES = new Set(["webhook_secret_rotation_reminder", "webhook_secret_rotation_overdue"]);
 
@@ -114,6 +115,7 @@ export default function NotificationsPage() {
         qc.invalidateQueries({ queryKey: ["/api/notifications"] });
         refetch();
       },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to mark notifications as read")),
     });
   }
 
@@ -123,6 +125,7 @@ export default function NotificationsPage() {
         qc.invalidateQueries({ queryKey: ["/api/notifications"] });
         refetch();
       },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to mark notification as read")),
     });
   }
 

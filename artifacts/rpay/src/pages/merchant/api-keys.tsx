@@ -42,7 +42,7 @@ export default function MerchantApiKeys() {
     if (!confirm("Revoke this API key? This cannot be undone.")) return;
     revokeMutation.mutate({ id }, {
       onSuccess: () => { toast.success("API key revoked"); qc.invalidateQueries({ queryKey: getListApiKeysQueryKey() }); },
-      onError: () => toast.error("Failed to revoke"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to revoke")),
     });
   };
 

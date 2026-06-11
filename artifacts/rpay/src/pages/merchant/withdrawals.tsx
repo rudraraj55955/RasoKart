@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useListWithdrawals, useCreateWithdrawal, getListWithdrawalsQueryKey, useGetMyPlanUsage } from "@workspace/api-client-react";
+import { getApiErrorMessage } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -42,7 +43,7 @@ export default function MerchantWithdrawals() {
         setForm({ amount: "", bankAccount: "", bankName: "", ifscCode: "", accountHolder: "" });
         qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() });
       },
-      onError: () => toast.error("Failed to submit withdrawal"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to submit withdrawal")),
     });
   };
 

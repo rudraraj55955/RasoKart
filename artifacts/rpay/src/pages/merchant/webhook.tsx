@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound, ListOrdered, Loader2, X } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
@@ -546,7 +547,7 @@ export default function MerchantWebhook() {
           setSecretVerifiedDismissed(false);
         }
       },
-      onError: () => toast.error("Failed to save configuration"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save configuration")),
     });
   };
 
@@ -565,7 +566,7 @@ export default function MerchantWebhook() {
           toast.error(`Test event failed — HTTP ${data.httpStatus ?? "no response"}`);
         }
       },
-      onError: () => toast.error("Failed to send test event"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to send test event")),
       onSettled: () => qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() }),
     });
   };
@@ -580,7 +581,7 @@ export default function MerchantWebhook() {
           toast.error(`Test event failed — HTTP ${data.httpStatus ?? "no response"}`);
         }
       },
-      onError: () => toast.error("Failed to send test event"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to send test event")),
       onSettled: () => qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() }),
     });
   };
@@ -592,7 +593,7 @@ export default function MerchantWebhook() {
         setNewSecret(data.secret);
         qc.invalidateQueries({ queryKey: getGetCallbackSecretQueryKey() });
       },
-      onError: () => toast.error("Failed to rotate secret"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to rotate secret")),
     });
   };
 
@@ -611,13 +612,12 @@ export default function MerchantWebhook() {
           setSelectedLog(prev => (prev?.id === logId ? (data.log as CallbackLog) : prev));
         }
       },
-      onError: (error: any) => {
-        const status = error?.response?.status;
-        const data = error?.response?.data;
-        if (status === 429 && data?.retryAfter != null) {
-          toast.error(`Please wait ${data.retryAfter}s before retrying again`);
+      onError: (error: unknown) => {
+        const e = error as any;
+        if (e?.response?.status === 429 && e?.response?.data?.retryAfter != null) {
+          toast.error(`Please wait ${e.response.data.retryAfter}s before retrying again`);
         } else {
-          toast.error("Retry request failed");
+          toast.error(getApiErrorMessage(error, "Retry request failed"));
         }
       },
       onSettled: () => setRetryingId(null),

@@ -30,6 +30,7 @@ import { Search, Plus, XCircle, CheckCircle2, Trash2, Eye, Download, Building2, 
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
 import { QRCodeCanvas } from "qrcode.react";
 import { buildUpiId, buildUpiUrl } from "@/lib/upi";
 
@@ -99,10 +100,8 @@ export default function MerchantVirtualAccounts() {
           setForm({ accountNumber: "", ifsc: "", bankName: "", accountHolder: "" });
           invalidate();
         },
-        onError: (err: any) => {
-          const msg = err?.response?.data?.error ?? err?.response?.data?.message ?? null;
-          if (msg) setCreateError(msg);
-          else setCreateError("Failed to create virtual account.");
+        onError: (err: unknown) => {
+          setCreateError(getApiErrorMessage(err, "Failed to create virtual account."));
         },
       }
     );
@@ -112,7 +111,7 @@ export default function MerchantVirtualAccounts() {
     const newStatus = currentStatus === "active" ? "closed" : "active";
     updateMutation.mutate({ id, data: { status: newStatus as any } }, {
       onSuccess: () => { toast.success(newStatus === "active" ? "Account re-activated" : "Account closed"); invalidate(); },
-      onError: () => toast.error("Failed to update account status"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update account status")),
     });
   };
 
@@ -120,7 +119,7 @@ export default function MerchantVirtualAccounts() {
     if (!confirm("Delete this virtual account?")) return;
     deleteMutation.mutate({ id }, {
       onSuccess: () => { toast.success("Virtual account deleted"); invalidate(); },
-      onError: () => toast.error("Failed to delete"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete")),
     });
   };
 
@@ -171,9 +170,8 @@ export default function MerchantVirtualAccounts() {
           invalidate();
           qc.invalidateQueries({ queryKey: [`/api/virtual-accounts/${vaId}/balance-history`] });
         },
-        onError: (err: any) => {
-          const msg = err?.response?.data?.error ?? err?.response?.data?.message ?? null;
-          setEditError(msg ?? "Failed to update.");
+        onError: (err: unknown) => {
+          setEditError(getApiErrorMessage(err, "Failed to update."));
         },
       }
     );

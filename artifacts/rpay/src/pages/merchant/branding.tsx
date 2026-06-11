@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Palette, ImageIcon, Save, Eye, RotateCcw, CheckCircle2, TriangleAlert, Upload, X, Loader2, History, Check } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const PRESET_COLORS = [
   { label: "Indigo", value: "#6366f1" },
@@ -137,7 +138,7 @@ export default function MerchantBranding() {
       toast.success("Logo uploaded");
       qc.invalidateQueries({ queryKey: ["listUploadedObjects"] });
     },
-    onError: () => toast.error("Logo upload failed"),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Logo upload failed")),
   });
 
   const updateBranding = useUpdateMerchantBranding();
@@ -179,7 +180,7 @@ export default function MerchantBranding() {
           setShowHistory(false);
           if (!newSaved) setLogoError(false);
         },
-        onError: () => toast.error("Failed to save branding"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save branding")),
       }
     );
   }
