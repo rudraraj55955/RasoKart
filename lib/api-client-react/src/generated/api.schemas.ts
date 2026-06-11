@@ -2769,6 +2769,11 @@ export const GetWebhookLogsEventType = {
   settlementprocessed: 'settlement.processed',
 } as const;
 
+export type BackfillWebhookEventTypes200 = {
+  /** Number of callback_logs rows that were updated */
+  rowsUpdated: number;
+};
+
 export type RetryWebhookLog200 = {
   success: boolean;
   delivered: boolean;

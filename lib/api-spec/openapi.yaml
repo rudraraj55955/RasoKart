@@ -1422,6 +1422,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/CallbackLogListResponse"
 
+  /webhooks/logs/backfill:
+    post:
+      operationId: backfillWebhookEventTypes
+      tags: [webhooks]
+      summary: Back-fill missing event_type on webhook logs
+      description: |
+        Admin-only one-time maintenance action. Updates all `callback_logs` rows
+        where `event_type` is NULL by extracting the `event` field from the stored
+        `request_body` JSON. Safe to run multiple times — only rows with a NULL
+        event_type are touched.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Number of rows updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rowsUpdated:
+                    type: integer
+                    description: Number of callback_logs rows that were updated
+                required: [rowsUpdated]
+        "403":
+          description: Admin access required
+
   /webhooks/logs/{id}/retry:
     post:
       operationId: retryWebhookLog

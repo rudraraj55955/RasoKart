@@ -1402,6 +1402,19 @@ export const GetWebhookLogsResponse = zod.object({
 
 
 /**
+ * Admin-only one-time maintenance action. Updates all `callback_logs` rows
+where `event_type` is NULL by extracting the `event` field from the stored
+`request_body` JSON. Safe to run multiple times — only rows with a NULL
+event_type are touched.
+
+ * @summary Back-fill missing event_type on webhook logs
+ */
+export const BackfillWebhookEventTypesResponse = zod.object({
+  "rowsUpdated": zod.number().describe('Number of callback_logs rows that were updated')
+})
+
+
+/**
  * Immediately re-attempts delivery for a failed webhook log entry owned by
 the authenticated merchant. Only logs in `failed` status can be retried.
 On success the log is updated in-place and the refreshed entry is returned.

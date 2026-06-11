@@ -47,6 +47,7 @@ import type {
   AuditReportSchedulePatch,
   AuthResponse,
   BackfillVaBalanceHistory200,
+  BackfillWebhookEventTypes200,
   BroadcastNotificationInput,
   BroadcastNotificationResult,
   BulkAssignPlanInput,
@@ -4397,6 +4398,81 @@ export function useGetWebhookLogs<TData = Awaited<ReturnType<typeof getWebhookLo
 
 
 
+
+export const getBackfillWebhookEventTypesUrl = () => {
+
+
+
+
+  return `/api/webhooks/logs/backfill`
+}
+
+/**
+ * Admin-only one-time maintenance action. Updates all `callback_logs` rows
+where `event_type` is NULL by extracting the `event` field from the stored
+`request_body` JSON. Safe to run multiple times — only rows with a NULL
+event_type are touched.
+
+ * @summary Back-fill missing event_type on webhook logs
+ */
+export const backfillWebhookEventTypes = async ( options?: RequestInit): Promise<BackfillWebhookEventTypes200> => {
+
+  return customFetch<BackfillWebhookEventTypes200>(getBackfillWebhookEventTypesUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getBackfillWebhookEventTypesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof backfillWebhookEventTypes>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof backfillWebhookEventTypes>>, TError,void, TContext> => {
+
+const mutationKey = ['backfillWebhookEventTypes'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof backfillWebhookEventTypes>>, void> = () => {
+
+
+          return  backfillWebhookEventTypes(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BackfillWebhookEventTypesMutationResult = NonNullable<Awaited<ReturnType<typeof backfillWebhookEventTypes>>>
+
+    export type BackfillWebhookEventTypesMutationError = ErrorType<void>
+
+    /**
+ * @summary Back-fill missing event_type on webhook logs
+ */
+export const useBackfillWebhookEventTypes = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof backfillWebhookEventTypes>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof backfillWebhookEventTypes>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getBackfillWebhookEventTypesMutationOptions(options));
+    }
 
 export const getRetryWebhookLogUrl = (id: number,) => {
 

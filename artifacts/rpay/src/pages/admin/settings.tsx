@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, Wrench } from "lucide-react";
 import { TestEmailHistoryPanel } from "@/components/test-email-history-panel";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useClearTestEmailHistory, type AdminAuditLog, type StorageCleanupRun } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useClearTestEmailHistory, useBackfillWebhookEventTypes, type AdminAuditLog, type StorageCleanupRun } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
@@ -535,6 +535,19 @@ export default function AdminSettings() {
         }
       },
       onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Cleanup failed")),
+    },
+  });
+
+  const { mutate: runBackfill, isPending: runningBackfill } = useBackfillWebhookEventTypes({
+    mutation: {
+      onSuccess: (result) => {
+        if (result.rowsUpdated === 0) {
+          toast.success("Nothing to back-fill — all webhook logs already have an event type");
+        } else {
+          toast.success(`Back-filled ${result.rowsUpdated} webhook log${result.rowsUpdated !== 1 ? "s" : ""} with event type`);
+        }
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Back-fill failed")),
     },
   });
 
@@ -1840,6 +1853,42 @@ export default function AdminSettings() {
               You will not receive alerts when signature failures cross the alert threshold.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Maintenance / Developer Tools */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Wrench className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Maintenance</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            One-off data repair actions. These are safe to run multiple times — only missing data is updated.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3 gap-4">
+            <div className="space-y-0.5 min-w-0">
+              <p className="text-sm font-medium">Back-fill webhook event types</p>
+              <p className="text-xs text-muted-foreground">
+                Populates the <span className="font-mono">event_type</span> column on historical webhook logs that were recorded before event tracking was added. Only rows with a missing event type are updated.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={runningBackfill}
+              onClick={() => runBackfill()}
+            >
+              {runningBackfill ? (
+                <><RotateCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Running…</>
+              ) : (
+                <><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Run back-fill</>
+              )}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
