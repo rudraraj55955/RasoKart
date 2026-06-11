@@ -9,6 +9,7 @@ export const webhooksTable = pgTable("webhooks", {
   isActive: boolean("is_active").notNull().default(true),
   events: text("events").array().notNull().default([]),
   secret: text("secret"),
+  secretRotatedAt: timestamp("secret_rotated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

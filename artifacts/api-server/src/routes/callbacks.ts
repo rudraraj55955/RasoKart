@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable } from "@workspace/db";
-import { eq, and, count, countDistinct, sql, gte, isNull, like } from "drizzle-orm";
+import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, credentialEventsTable, signatureFailureAlertLogsTable, webhooksTable } from "@workspace/db";
+import { eq, and, count, countDistinct, sql, gte, lte, isNull, like, asc, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
 import { logger } from "../lib/logger";
@@ -219,14 +219,21 @@ router.get("/secret", async (req, res) => {
     return;
   }
 
-  const [merchant] = await db
-    .select({
-      callbackSecret: merchantsTable.callbackSecret,
-      callbackSecretUpdatedAt: merchantsTable.callbackSecretUpdatedAt,
-    })
-    .from(merchantsTable)
-    .where(eq(merchantsTable.id, user.merchantId))
-    .limit(1);
+  const [[merchant], [webhook]] = await Promise.all([
+    db
+      .select({
+        callbackSecret: merchantsTable.callbackSecret,
+        callbackSecretUpdatedAt: merchantsTable.callbackSecretUpdatedAt,
+      })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, user.merchantId))
+      .limit(1),
+    db
+      .select({ secretRotatedAt: webhooksTable.secretRotatedAt })
+      .from(webhooksTable)
+      .where(eq(webhooksTable.merchantId, user.merchantId))
+      .limit(1),
+  ]);
 
   if (!merchant) {
     res.status(404).json({ error: "Merchant not found" });
@@ -234,10 +241,14 @@ router.get("/secret", async (req, res) => {
   }
 
   const secret = merchant.callbackSecret;
+  const lastRotatedAt = webhook?.secretRotatedAt?.toISOString()
+    ?? merchant.callbackSecretUpdatedAt?.toISOString()
+    ?? null;
+
   res.json({
     isSet: !!secret,
     secretPrefix: secret ? secret.slice(0, 8) + "..." : null,
-    lastRotatedAt: merchant.callbackSecretUpdatedAt?.toISOString() ?? null,
+    lastRotatedAt,
   });
 });
 
@@ -253,10 +264,16 @@ router.post("/secret/rotate", async (req, res) => {
   const newSecret = randomBytes(32).toString("hex");
 
   const now = new Date();
-  await db
-    .update(merchantsTable)
-    .set({ callbackSecret: newSecret, callbackSecretUpdatedAt: now, updatedAt: now })
-    .where(eq(merchantsTable.id, user.merchantId));
+  await Promise.all([
+    db
+      .update(merchantsTable)
+      .set({ callbackSecret: newSecret, callbackSecretUpdatedAt: now, updatedAt: now })
+      .where(eq(merchantsTable.id, user.merchantId)),
+    db
+      .update(webhooksTable)
+      .set({ secretRotatedAt: now })
+      .where(eq(webhooksTable.merchantId, user.merchantId)),
+  ]);
 
   req.log.info({ merchantId: user.merchantId }, "Callback secret rotated");
 

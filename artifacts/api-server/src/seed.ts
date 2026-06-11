@@ -440,6 +440,7 @@ export async function seed() {
     isActive: true,
     events: ["payment.success", "payment.failed", "settlement.paid", "settlement.approved"],
     secret: "whsec_demo_m1_rasokart_xK9mP2nQ7rL3wS8",
+    secretRotatedAt: new Date(Date.now() - 45 * 86400000),
   }).onConflictDoUpdate({
     target: webhooksTable.merchantId,
     set: {
