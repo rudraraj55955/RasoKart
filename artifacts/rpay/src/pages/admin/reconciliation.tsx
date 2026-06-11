@@ -589,6 +589,7 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
   const currentMinute = config?.minute ?? 0;
   const currentLookback = config?.lookbackDays ?? 1;
   const currentEnabled = config?.enabled ?? true;
+  const matchingPreset = savedPresets.find((p) => p.days === currentLookback);
 
   const serverTz = tz;
   const localEquivalent = serverTz ? serverTimeToLocalDisplay(currentHour, currentMinute, serverTz) : null;
@@ -683,7 +684,11 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
                         <span className="font-semibold font-mono">{displayTime}</span>
                         <span className="text-muted-foreground">{displayTimeSuffix}</span>
                         {", covering "}
-                        <span className="font-semibold">{lookbackSummaryLabel(currentLookback)}</span>.
+                        <span className="font-semibold">{lookbackSummaryLabel(currentLookback)}</span>
+                        {matchingPreset && (
+                          <span className="text-muted-foreground"> · {matchingPreset.name}</span>
+                        )}
+                        {"."}
                       </>
                     : "The scheduler is paused and will not run until re-enabled."}
                 </p>
