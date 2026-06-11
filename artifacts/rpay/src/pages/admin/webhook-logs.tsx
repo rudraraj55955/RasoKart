@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useListCallbackLogs, useGetWebhookLogAttempts } from "@workspace/api-client-react";
-import type { CallbackLogAttempt } from "@workspace/api-client-react";
+import { Link } from "wouter";
+import { useListCallbackLogs, useGetWebhookLogAttempts, useGetWebhookRetryPolicy } from "@workspace/api-client-react";
+import type { CallbackLogAttempt, WebhookRetryPolicy } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import { Activity, CheckCircle2, ChevronDown, ChevronRight, ListOrdered, Loader2, Search, XCircle } from "lucide-react";
+import { Activity, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Info, ListOrdered, Loader2, RefreshCw, Search, XCircle } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -108,6 +109,52 @@ function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) 
   );
 }
 
+function formatDelaySchedule(policy: WebhookRetryPolicy): string {
+  if (!policy.delays || policy.delays.length === 0) return "No retries";
+  return policy.delays.map(d => d.label).join(" → ");
+}
+
+function RetryPolicyBanner() {
+  const { data, isLoading, isError } = useGetWebhookRetryPolicy();
+  const policy = data as WebhookRetryPolicy | undefined;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border/50 bg-muted/20 text-xs text-muted-foreground">
+        <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+        <span>Loading retry policy…</span>
+      </div>
+    );
+  }
+
+  if (isError || !policy) {
+    return null;
+  }
+
+  const schedule = formatDelaySchedule(policy);
+
+  return (
+    <Link href="/admin/settings">
+      <div className="group flex items-center gap-3 px-4 py-2.5 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/30 transition-colors cursor-pointer">
+        <Info className="w-3.5 h-3.5 text-primary shrink-0" />
+        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-foreground/80">Active retry policy:</span>
+          <span className="text-xs text-muted-foreground">
+            Up to <span className="font-semibold text-foreground/70">{policy.maxAttempts}</span> attempt{policy.maxAttempts !== 1 ? "s" : ""}
+            {policy.delays.length > 0 && (
+              <> · <span className="font-mono">{schedule}</span></>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 text-xs text-primary/60 group-hover:text-primary transition-colors shrink-0">
+          <span>Settings</span>
+          <ExternalLink className="w-3 h-3" />
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 function getHttpBadgeText(code: number | null): { text: string; className: string } {
   if (!code) return { text: "—", className: "text-muted-foreground text-xs" };
   const color = code < 300 ? "text-emerald-400" : code < 500 ? "text-amber-400" : "text-rose-400";
@@ -203,6 +250,8 @@ export default function AdminWebhookLogs() {
         </div>
         <Button variant="outline" size="sm" onClick={() => exportCsv(items)}>Export CSV</Button>
       </div>
+
+      <RetryPolicyBanner />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="border-border/50 bg-card/50">
