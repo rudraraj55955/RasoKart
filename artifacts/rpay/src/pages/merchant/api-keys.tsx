@@ -65,7 +65,7 @@ export default function MerchantApiKeys() {
         <AlertDescription className="text-amber-200/80">Keep your secret key safe. Never expose it in client-side code or public repositories.</AlertDescription>
       </Alert>
 
-      <RateLimitBanner secondsLeft={secondsLeft} />
+      <RateLimitBanner secondsLeft={secondsLeft} message="You've generated too many API keys recently. Please wait a few minutes and try again." />
 
       <Card>
         <CardContent className="p-0">

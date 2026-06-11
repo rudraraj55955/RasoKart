@@ -1286,7 +1286,7 @@ export default function MerchantSettlements() {
               <p className="text-sm text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-md px-3 py-2">{reqError}</p>
             )}
 
-            <RateLimitBanner secondsLeft={secondsLeft} />
+            <RateLimitBanner secondsLeft={secondsLeft} message="You've submitted too many settlement requests recently. Please wait a few minutes and try again." />
 
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" onClick={() => { setRequestOpen(false); clearRateLimit(); }}>Cancel</Button>
