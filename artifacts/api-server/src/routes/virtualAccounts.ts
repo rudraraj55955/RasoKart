@@ -15,6 +15,16 @@ const createVaLimiter = rateLimit({
   message: { error: "Too many virtual account creation requests. Please try again later." },
 });
 
+const deleteVaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  validate: { ip: false },
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number } }).user?.merchantId ?? req.ip),
+  message: { error: "Too many virtual account deletion requests. Please try again later." },
+});
+
 async function logVaAudit(req: any, action: string, targetId: number | null, details: object) {
   await db.insert(auditLogsTable).values({
     adminId: req.user.id,
@@ -677,7 +687,7 @@ router.put("/:id", async (req, res) => {
 });
 
 // DELETE /api/virtual-accounts/:id
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", deleteVaLimiter, async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params['id'] as string);
   const conditions = [eq(virtualAccountsTable.id, id)];
