@@ -192,6 +192,10 @@ export default function AdminSettings() {
   const [testEmailRetentionDays, setTestEmailRetentionDays] = useState<number>(30);
   const [testEmailRetentionInitialized, setTestEmailRetentionInitialized] = useState(false);
 
+  const [storageScheduleEnabled, setStorageScheduleEnabled] = useState<boolean>(true);
+  const [storageScheduleHour, setStorageScheduleHour] = useState<number>(3);
+  const [storageScheduleInitialized, setStorageScheduleInitialized] = useState(false);
+
   const [retryDelay1, setRetryDelay1] = useState<number>(300);
   const [retryDelay2, setRetryDelay2] = useState<number>(900);
   const [retryDelay3, setRetryDelay3] = useState<number>(3600);
