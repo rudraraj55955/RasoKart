@@ -1795,6 +1795,8 @@ export interface AuditReportSchedule {
   failureAcknowledgedByEmail?: string | null;
   /** Total number of send attempts (successful and failed) for this schedule. */
   sendCount: number;
+  /** Number of successful deliveries for this schedule. */
+  successCount: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -2146,6 +2146,34 @@ function ScheduleRow({
               </TooltipProvider>
             )}
           </div>
+          {s.sendCount > 0 && (
+            <div className="mt-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 cursor-default">
+                      <div className="flex h-1.5 w-32 overflow-hidden rounded-full bg-muted/30">
+                        <div
+                          className="h-full bg-emerald-500 transition-all"
+                          style={{ width: `${Math.round((s.successCount / s.sendCount) * 100)}%` }}
+                        />
+                        <div
+                          className="h-full bg-rose-500 transition-all"
+                          style={{ width: `${Math.round(((s.sendCount - s.successCount) / s.sendCount) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {Math.round((s.successCount / s.sendCount) * 100)}%
+                      </span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    {s.successCount} delivered / {s.sendCount - s.successCount} failed
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {s.sendCount > 0 && (
               <>

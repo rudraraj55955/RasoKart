@@ -408,6 +408,11 @@ router.get("/schedules", async (req, res) => {
         SELECT COUNT(*) FROM ${scheduledAuditReportLogsTable}
         WHERE schedule_id = ${scheduledAuditReportsTable.id}
       )`,
+      successCount: sql<number>`(
+        SELECT COUNT(*) FROM ${scheduledAuditReportLogsTable}
+        WHERE schedule_id = ${scheduledAuditReportsTable.id}
+        AND success = true
+      )`,
     })
     .from(scheduledAuditReportsTable)
     .orderBy(scheduledAuditReportsTable.createdAt);
@@ -422,6 +427,7 @@ router.get("/schedules", async (req, res) => {
       ),
       lastErrorMessage: r.lastErrorMessage ?? null,
       sendCount: Number(r.sendCount),
+      successCount: Number(r.successCount),
     })),
   });
 });
@@ -655,7 +661,7 @@ router.post("/schedules", async (req, res) => {
     autoPauseAfterFailures: parsedAutoPause,
   }).returning();
 
-  res.status(201).json({ ...serializeSchedule(schedule), sendCount: 0 });
+  res.status(201).json({ ...serializeSchedule(schedule), sendCount: 0, successCount: 0 });
 });
 
 router.patch("/schedules/bulk-toggle", async (req, res) => {
@@ -716,6 +722,7 @@ router.patch("/schedules/bulk-toggle", async (req, res) => {
         r.failureAcknowledgedAt,
       ),
       sendCount: 0,
+      successCount: 0,
     })),
   });
 });
@@ -787,8 +794,11 @@ router.patch("/schedules/:id", async (req, res) => {
 
   if (!updated) { res.status(404).json({ error: "Schedule not found" }); return; }
 
-  const [{ sendCount }] = await db
-    .select({ sendCount: sql<number>`COUNT(*)` })
+  const [{ sendCount, successCount }] = await db
+    .select({
+      sendCount: sql<number>`COUNT(*)`,
+      successCount: sql<number>`COUNT(*) FILTER (WHERE success = true)`,
+    })
     .from(scheduledAuditReportLogsTable)
     .where(eq(scheduledAuditReportLogsTable.scheduleId, id));
 
@@ -807,6 +817,7 @@ router.patch("/schedules/:id", async (req, res) => {
       updated.failureAcknowledgedAt,
     ),
     sendCount: Number(sendCount),
+    successCount: Number(successCount),
   });
 });
 

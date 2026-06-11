@@ -7499,7 +7499,7 @@ components:
 
     AuditReportSchedule:
       type: object
-      required: [id, frequency, recipientEmail, isActive, maxRetryAttempts, retryBackoffMinutes, consecutiveFailures, autoPauseAfterFailures, lastSendStatus, sendCount, createdAt, updatedAt]
+      required: [id, frequency, recipientEmail, isActive, maxRetryAttempts, retryBackoffMinutes, consecutiveFailures, autoPauseAfterFailures, lastSendStatus, sendCount, successCount, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -7539,6 +7539,9 @@ components:
         sendCount:
           type: integer
           description: Total number of send attempts (successful and failed) for this schedule.
+        successCount:
+          type: integer
+          description: Number of successful deliveries for this schedule.
         createdAt:
           type: string
         updatedAt:
