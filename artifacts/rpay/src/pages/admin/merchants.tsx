@@ -295,10 +295,11 @@ export default function AdminMerchants() {
         setBulkResultTitle(`Bulk Plan Assignment — ${planName}`);
         setBulkResultItems(results ?? []);
         setBulkResultOpen(true);
+        const label = `Bulk assigned plan to ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
         if (failed === 0) {
-          toast.success(`Plan assigned to ${updated} merchant${updated !== 1 ? "s" : ""}`);
+          toast.success(label);
         } else {
-          toast.warning(`${updated} assigned, ${failed} failed`);
+          toast.warning(label);
         }
       },
       onError: () => toast.error("Bulk plan assignment failed"),
@@ -326,16 +327,17 @@ export default function AdminMerchants() {
           setBulkResultTitle("Bulk Approve");
           setBulkResultItems(results ?? []);
           setBulkResultOpen(true);
+          const label = `Bulk approved ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
           if (failed === 0) {
-            toast.success(`${updated} merchant${updated !== 1 ? "s" : ""} approved`);
+            toast.success(label);
           } else {
-            toast.warning(`${updated} approved, ${failed} failed`);
+            toast.warning(label);
           }
         },
         onError: () => toast.error("Bulk approve failed"),
       });
     } else {
-      const verb = bulkStatusAction === "suspend" ? "suspended" : "reinstated";
+      const actionLabel = bulkStatusAction === "suspend" ? "suspended" : "reinstated";
       bulkSuspendMutation.mutate({ data: { merchantIds: ids, action: bulkStatusAction } }, {
         onSuccess: (result) => {
           const { updated, failed, results } = result;
@@ -345,10 +347,11 @@ export default function AdminMerchants() {
           setBulkResultTitle(`Bulk ${bulkStatusAction === "suspend" ? "Suspend" : "Reinstate"}`);
           setBulkResultItems(results ?? []);
           setBulkResultOpen(true);
+          const label = `Bulk ${actionLabel} ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
           if (failed === 0) {
-            toast.success(`${updated} merchant${updated !== 1 ? "s" : ""} ${verb}`);
+            toast.success(label);
           } else {
-            toast.warning(`${updated} ${verb}, ${failed} failed`);
+            toast.warning(label);
           }
         },
         onError: () => toast.error(`Bulk ${bulkStatusAction} failed`),
@@ -363,7 +366,12 @@ export default function AdminMerchants() {
     const ids = [...selected];
     bulkRejectMutation.mutate({ data: { merchantIds: ids, reason: bulkRejectReason.trim() } }, {
       onSuccess: (result) => {
-        toast.success(`${result.updated} merchant${result.updated !== 1 ? "s" : ""} rejected${result.failed > 0 ? `, ${result.failed} failed` : ""}`);
+        const label = `Bulk rejected ${result.updated} merchant${result.updated !== 1 ? "s" : ""} — ${result.failed} failed`;
+        if (result.failed === 0) {
+          toast.success(label);
+        } else {
+          toast.warning(label);
+        }
         setBulkRejectOpen(false);
         setBulkRejectReason("");
         clearSelection();
