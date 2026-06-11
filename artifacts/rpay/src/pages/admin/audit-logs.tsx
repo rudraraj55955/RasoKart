@@ -1772,6 +1772,28 @@ function ScheduleRow({
                 </Tooltip>
               </TooltipProvider>
             )}
+            {s.lastSendStatus === "failed" && onSendNow && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => onSendNow(s.id)}
+                      disabled={sendingId === s.id}
+                      className="inline-flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {sendingId === s.id
+                        ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                        : <Send className="w-2.5 h-2.5" />
+                      }
+                      Retry
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    Re-send this report now — clears the failure badge on success
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             {s.lastSentAt
