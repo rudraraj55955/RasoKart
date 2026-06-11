@@ -275,6 +275,10 @@ function logAndReject(
   url: string,
   message: string,
 ): void {
+  // eventType is null here because these are inbound payment-provider callback
+  // requests (body contains orderId/merchantReference, not an event field).
+  // Signature/timestamp/nonce rejections happen before the business payload is
+  // processed, so there is no event type to extract.
   db.insert(callbackLogsTable)
     .values({
       merchantId,
@@ -284,6 +288,7 @@ function logAndReject(
       lastAttemptAt: new Date(),
       signatureVerified: false,
       responseBody: message,
+      eventType: null,
     })
     .catch((err: unknown) => {
       logger.warn({ err }, "Failed to write callback rejection log");

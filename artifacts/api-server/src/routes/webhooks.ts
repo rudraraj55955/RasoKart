@@ -148,7 +148,7 @@ router.get("/logs", async (req, res) => {
   }
 
   const whereClause = eventType !== null
-    ? sql`${callbackLogsTable.merchantId} = ${merchantId} AND (${callbackLogsTable.requestBody})::json->>'event' = ${eventType}`
+    ? sql`${callbackLogsTable.merchantId} = ${merchantId} AND ${callbackLogsTable.eventType} = ${eventType}`
     : eq(callbackLogsTable.merchantId, merchantId);
 
   const data = await db
@@ -516,6 +516,7 @@ router.post("/test", async (req, res) => {
       lastAttemptAt: new Date(),
       signatureVerified: signed ? true : null,
       isTest: true,
+      eventType,
     }).returning({ id: callbackLogsTable.id });
 
     if (inserted) {

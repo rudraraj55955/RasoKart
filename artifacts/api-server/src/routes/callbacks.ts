@@ -126,6 +126,7 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
           attempts: 1,
           lastAttemptAt: now,
           signatureVerified: capturedSignatureVerified,
+          eventType: "payment.received",
         }).returning({ id: callbackLogsTable.id });
 
         if (inserted) {
@@ -146,6 +147,7 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
           attempts: 1,
           lastAttemptAt: now,
           signatureVerified: capturedSignatureVerified,
+          eventType: "payment.received",
         }).returning({ id: callbackLogsTable.id });
 
         if (inserted) {
@@ -349,6 +351,7 @@ router.get("/", async (req, res) => {
       lastAttemptAt: callbackLogsTable.lastAttemptAt,
       signatureVerified: callbackLogsTable.signatureVerified,
       isTest: callbackLogsTable.isTest,
+      eventType: callbackLogsTable.eventType,
       createdAt: callbackLogsTable.createdAt,
       merchantName: merchantsTable.businessName,
     })

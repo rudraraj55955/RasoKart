@@ -5107,6 +5107,9 @@ components:
         isTest:
           type: boolean
           description: true if this delivery was triggered by a merchant test event, not a real payment
+        eventType:
+          type: ["string", "null"]
+          description: Event type extracted from the payload (e.g. payment.success, payment.received) — null for rows created before this field was added
         createdAt:
           type: string
 

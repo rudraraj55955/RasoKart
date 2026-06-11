@@ -323,7 +323,7 @@ function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: Callb
 
   const reqBody = formatJsonBody(log.requestBody);
   const resBody = formatJsonBody(log.responseBody);
-  const eventType = parseEventType(log.requestBody);
+  const eventType = log.eventType ?? parseEventType(log.requestBody);
 
   return (
     <Dialog open={!!log} onOpenChange={onClose}>
@@ -761,7 +761,7 @@ export default function MerchantWebhook() {
           ) : (
             <div className="divide-y divide-border/50">
               {logs.map(log => {
-                const rowEventType = parseEventType(log.requestBody);
+                const rowEventType = log.eventType ?? parseEventType(log.requestBody);
                 return (
                 <div
                   key={log.id}

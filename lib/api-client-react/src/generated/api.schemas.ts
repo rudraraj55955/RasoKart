@@ -641,6 +641,11 @@ export interface CallbackLog {
   merchantName?: string | null;
   /** true if this delivery was triggered by a merchant test event, not a real payment */
   isTest?: boolean;
+  /**
+     * Event type extracted from the payload (e.g. payment.success, payment.received) — null for rows created before this field was added
+     * @nullable
+     */
+  eventType?: string | null;
   createdAt: string;
 }
 

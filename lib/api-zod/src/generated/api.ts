@@ -1339,6 +1339,7 @@ export const GetWebhookLogsResponse = zod.object({
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
+  "eventType": zod.string().nullish().describe('Event type extracted from the payload (e.g. payment.success, payment.received) — null for rows created before this field was added'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -1377,6 +1378,7 @@ export const RetryWebhookLogResponse = zod.object({
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
+  "eventType": zod.string().nullish().describe('Event type extracted from the payload (e.g. payment.success, payment.received) — null for rows created before this field was added'),
   "createdAt": zod.string()
 })
 })
@@ -1549,6 +1551,7 @@ export const ListCallbackLogsResponse = zod.object({
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
+  "eventType": zod.string().nullish().describe('Event type extracted from the payload (e.g. payment.success, payment.received) — null for rows created before this field was added'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
