@@ -1509,6 +1509,17 @@ paths:
             type: string
             enum: [all, verified, failed, none]
           description: Filter by signature verification outcome. "verified" = passed, "failed" = rejected, "none" = no secret configured
+        - name: rejectionReason
+          in: query
+          schema:
+            type: string
+            enum: [stale_timestamp, replay_detected, bad_signature, missing_header]
+          description: >
+            Filter failed logs by the specific rejection reason stored in responseBody.
+            "stale_timestamp" = X-Timestamp outside ±window,
+            "replay_detected" = duplicate nonce,
+            "bad_signature" = HMAC mismatch,
+            "missing_header" = required header absent.
         - name: page
           in: query
           schema:

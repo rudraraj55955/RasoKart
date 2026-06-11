@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListCallbackLogsRejectionReason } from './listCallbackLogsRejectionReason';
 import type { ListCallbackLogsSignatureVerified } from './listCallbackLogsSignatureVerified';
 import type { ListCallbackLogsStatus } from './listCallbackLogsStatus';
 
@@ -18,6 +19,11 @@ qrCodeId?: number;
  * Filter by signature verification outcome. "verified" = passed, "failed" = rejected, "none" = no secret configured
  */
 signatureVerified?: ListCallbackLogsSignatureVerified;
+/**
+ * Filter failed logs by the specific rejection reason stored in responseBody. "stale_timestamp" = X-Timestamp outside ±window, "replay_detected" = duplicate nonce, "bad_signature" = HMAC mismatch, "missing_header" = required header absent.
+
+ */
+rejectionReason?: ListCallbackLogsRejectionReason;
 page?: number;
 limit?: number;
 };

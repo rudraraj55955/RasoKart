@@ -12,6 +12,45 @@ import { format, formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+type RejectionCategory = "stale_timestamp" | "replay_detected" | "bad_signature" | "missing_header" | null;
+
+function parseRejectionReason(responseBody: string | null | undefined): RejectionCategory {
+  if (!responseBody) return null;
+  if (responseBody.includes("outside the allowed window")) return "stale_timestamp";
+  if (responseBody.toLowerCase().includes("replay detected") || responseBody.includes("already been used")) return "replay_detected";
+  if (responseBody.includes("Invalid X-Signature")) return "bad_signature";
+  if (responseBody.includes("header is required") || responseBody.includes("must be a Unix epoch")) return "missing_header";
+  return null;
+}
+
+const REJECTION_LABELS: Record<NonNullable<RejectionCategory>, { label: string; className: string }> = {
+  stale_timestamp: {
+    label: "Stale timestamp",
+    className: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500/20",
+  },
+  replay_detected: {
+    label: "Replay detected",
+    className: "bg-orange-500/10 text-orange-400 border-orange-500/20 hover:bg-orange-500/20",
+  },
+  bad_signature: {
+    label: "Bad signature",
+    className: "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20",
+  },
+  missing_header: {
+    label: "Missing header",
+    className: "bg-slate-500/10 text-slate-400 border-slate-500/20 hover:bg-slate-500/20",
+  },
+};
+
+function RejectionReasonTag({ responseBody }: { responseBody: string | null | undefined }) {
+  const category = parseRejectionReason(responseBody);
+  if (!category) return null;
+  const { label, className } = REJECTION_LABELS[category];
+  return (
+    <Badge className={`text-xs ${className}`}>{label}</Badge>
+  );
+}
+
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
   if (value === true) {
     return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20 text-xs">✓ Verified</Badge>;
@@ -26,6 +65,7 @@ function CallbackRow({ log }: { log: any }) {
   const [open, setOpen] = useState(false);
   const isPendingRetry = log.status === "pending_retry";
   const isFailed = log.status === "failed";
+  const rejectionCategory = parseRejectionReason(log.responseBody);
   const queryClient = useQueryClient();
   const { mutate: retryCallback, isPending: isRetrying } = useRetryCallback({
     mutation: {
@@ -45,9 +85,12 @@ function CallbackRow({ log }: { log: any }) {
         <TableCell>{open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</TableCell>
         <TableCell className="max-w-[200px] truncate text-sm font-mono">{log.url}</TableCell>
         <TableCell>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <StatusBadge status={log.status} />
             {isPendingRetry && <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" style={{ animationDuration: "3s" }} />}
+            {rejectionCategory && (
+              <RejectionReasonTag responseBody={log.responseBody} />
+            )}
           </div>
         </TableCell>
         <TableCell><span className={`font-mono text-sm ${log.httpStatus === 200 ? "text-emerald-500" : "text-rose-500"}`}>{log.httpStatus || "—"}</span></TableCell>
@@ -82,6 +125,13 @@ function CallbackRow({ log }: { log: any }) {
         <TableRow>
           <TableCell colSpan={9} className="bg-muted/20 pb-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2 pt-2">
+              {rejectionCategory && (
+                <div className="md:col-span-2 flex items-center gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0">Rejection Reason</span>
+                  <RejectionReasonTag responseBody={log.responseBody} />
+                  <span className="text-xs text-muted-foreground font-mono">{log.responseBody}</span>
+                </div>
+              )}
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Request Body</p>
                 <pre className="text-xs bg-background/50 rounded p-3 overflow-x-auto border border-border/50 whitespace-pre-wrap">{log.requestBody ? JSON.stringify(JSON.parse(log.requestBody), null, 2) : "—"}</pre>
@@ -107,13 +157,16 @@ function CallbackRow({ log }: { log: any }) {
 export default function AdminCallbacks() {
   const [status, setStatus] = useState("all");
   const [sigVerified, setSigVerified] = useState("all");
+  const [rejectionReason, setRejectionReason] = useState("all");
   const [page, setPage] = useState(1);
 
   const sigVerifiedParam = sigVerified === "all" ? undefined : (sigVerified as any);
+  const rejectionReasonParam = rejectionReason === "all" ? undefined : (rejectionReason as any);
 
   const { data, isLoading } = useListCallbackLogs({
     status: status as any,
     signatureVerified: sigVerifiedParam,
+    rejectionReason: rejectionReasonParam,
     page,
     limit: 20,
   });
@@ -141,6 +194,16 @@ export default function AdminCallbacks() {
                 <SelectItem value="verified">Sig. Verified</SelectItem>
                 <SelectItem value="failed">Sig. Failed</SelectItem>
                 <SelectItem value="none">No Signature</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={rejectionReason} onValueChange={v => { setRejectionReason(v); setPage(1); }}>
+              <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Rejection Reasons" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Rejection Reasons</SelectItem>
+                <SelectItem value="stale_timestamp">Stale timestamp</SelectItem>
+                <SelectItem value="replay_detected">Replay detected</SelectItem>
+                <SelectItem value="bad_signature">Bad signature</SelectItem>
+                <SelectItem value="missing_header">Missing header</SelectItem>
               </SelectContent>
             </Select>
           </div>

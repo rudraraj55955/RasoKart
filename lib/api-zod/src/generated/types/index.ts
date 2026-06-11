@@ -90,6 +90,7 @@ export * from './listAccountDetailsParams';
 export * from './listAdminAuditLogsParams';
 export * from './listAuditReportScheduleLogsParams';
 export * from './listCallbackLogsParams';
+export * from './listCallbackLogsRejectionReason';
 export * from './listCallbackLogsSignatureVerified';
 export * from './listCallbackLogsStatus';
 export * from './listInvoicesParams';

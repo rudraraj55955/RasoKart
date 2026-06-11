@@ -2277,6 +2277,11 @@ qrCodeId?: number;
  * Filter by signature verification outcome. "verified" = passed, "failed" = rejected, "none" = no secret configured
  */
 signatureVerified?: ListCallbackLogsSignatureVerified;
+/**
+ * Filter failed logs by the specific rejection reason stored in responseBody. "stale_timestamp" = X-Timestamp outside ±window, "replay_detected" = duplicate nonce, "bad_signature" = HMAC mismatch, "missing_header" = required header absent.
+
+ */
+rejectionReason?: ListCallbackLogsRejectionReason;
 page?: number;
 limit?: number;
 };
@@ -2299,6 +2304,16 @@ export const ListCallbackLogsSignatureVerified = {
   verified: 'verified',
   failed: 'failed',
   none: 'none',
+} as const;
+
+export type ListCallbackLogsRejectionReason = typeof ListCallbackLogsRejectionReason[keyof typeof ListCallbackLogsRejectionReason];
+
+
+export const ListCallbackLogsRejectionReason = {
+  stale_timestamp: 'stale_timestamp',
+  replay_detected: 'replay_detected',
+  bad_signature: 'bad_signature',
+  missing_header: 'missing_header',
 } as const;
 
 export type RetryCallback200 = {
