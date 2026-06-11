@@ -1569,26 +1569,37 @@ export default function AdminReconciliation() {
           </DialogHeader>
 
           {selectedRun && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-border/50 pb-4">
-              {[
-                { label: "Period", value: `${selectedRun.dateFrom} → ${selectedRun.dateTo}` },
-                {
-                  label: "Matched",
-                  value: `${selectedRun.totalMatched} items · ${formatCurrency(selectedRun.matchedAmount)}`,
-                  highlight: "text-emerald-400",
-                },
-                {
-                  label: "Unmatched",
-                  value: `${selectedRun.totalUnmatched} items · ${formatCurrency(selectedRun.unmatchedAmount)}`,
-                  highlight: "text-orange-400",
-                },
-                { label: "Status", value: STATUS_META[selectedRun.status]?.label ?? selectedRun.status },
-              ].map(s => (
-                <div key={s.label} className="rounded-md border border-border/50 bg-muted/20 px-3 py-2">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
-                  <p className={`text-sm font-medium mt-0.5 ${s.highlight ?? ""}`}>{s.value}</p>
+            <div className="border-b border-border/50 pb-4 space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Period", value: `${selectedRun.dateFrom} → ${selectedRun.dateTo}` },
+                  {
+                    label: "Matched",
+                    value: `${selectedRun.totalMatched} items · ${formatCurrency(selectedRun.matchedAmount)}`,
+                    highlight: "text-emerald-400",
+                  },
+                  {
+                    label: "Unmatched",
+                    value: `${selectedRun.totalUnmatched} items · ${formatCurrency(selectedRun.unmatchedAmount)}`,
+                    highlight: "text-orange-400",
+                  },
+                  { label: "Status", value: STATUS_META[selectedRun.status]?.label ?? selectedRun.status },
+                ].map(s => (
+                  <div key={s.label} className="rounded-md border border-border/50 bg-muted/20 px-3 py-2">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
+                    <p className={`text-sm font-medium mt-0.5 ${s.highlight ?? ""}`}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+              {selectedRun.notes && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                  <StickyNote className="w-3.5 h-3.5 text-amber-400/70 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Notes</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{selectedRun.notes}</p>
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
 
