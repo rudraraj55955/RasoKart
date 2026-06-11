@@ -30,6 +30,11 @@ export interface AuditReportSchedule {
   retryInProgress: boolean;
   /** The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.). */
   currentRetryAttempt: number;
+  /**
+     * ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.
+     * @nullable
+     */
+  nextRetryAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

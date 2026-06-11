@@ -851,11 +851,9 @@ export const ListMerchantCredentialEventsQueryParams = zod.object({
 })
 
 export const ListMerchantCredentialEventsResponseItem = zod.object({
-  "eventType": zod.enum(['key_generated', 'key_revoked', 'secret_rotated', 'api_key_created', 'api_key_revoked']),
-  "occurredAt": zod.coerce.date(),
-  "keyPrefix": zod.string().nullish(),
-  "description": zod.string().nullish(),
-  "isRevoked": zod.boolean().optional()
+  "eventType": zod.enum(['key_generated', 'key_revoked', 'secret_rotated']),
+  "keyPrefix": zod.string().nullish().describe('Key prefix for key_generated\/key_revoked events; null for secret_rotated'),
+  "occurredAt": zod.string().describe('ISO timestamp of when the event occurred')
 })
 export const ListMerchantCredentialEventsResponse = zod.array(ListMerchantCredentialEventsResponseItem)
 
@@ -2763,6 +2761,15 @@ export const CreateVirtualAccountBody = zod.object({
 
 
 /**
+ * @summary Manually trigger a virtual account cleanup run (admin only)
+ */
+export const RunVaCleanupResponse = zod.object({
+  "closed": zod.number().describe('Number of stale active VAs that were closed'),
+  "deleted": zod.number().describe('Number of closed VAs with zero balance\/collection that were deleted')
+})
+
+
+/**
  * @summary Backfill null balance/totalCollection fields on existing VA history rows (admin only)
  */
 export const BackfillVaBalanceHistoryResponse = zod.object({
@@ -2987,6 +2994,7 @@ export const ListAuditReportSchedulesResponse = zod.object({
   "successCount": zod.number().describe('Number of successful deliveries for this schedule.'),
   "retryInProgress": zod.boolean().describe('True when the last delivery failed and automatic retries are still pending (currentRetryAttempt < maxRetryAttempts).'),
   "currentRetryAttempt": zod.number().describe('The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.).'),
+  "nextRetryAt": zod.string().nullable().describe('ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
@@ -3023,8 +3031,34 @@ export const SendAuditReportNowResponse = zod.object({
   "successCount": zod.number().describe('Number of successful deliveries for this schedule.'),
   "retryInProgress": zod.boolean().describe('True when the last delivery failed and automatic retries are still pending (currentRetryAttempt < maxRetryAttempts).'),
   "currentRetryAttempt": zod.number().describe('The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.).'),
+  "nextRetryAt": zod.string().nullable().describe('ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List send history across all scheduled audit reports
+ */
+export const listAllAuditReportScheduleLogsQueryLimitDefault = 50;
+
+export const ListAllAuditReportScheduleLogsQueryParams = zod.object({
+  "limit": zod.coerce.number().default(listAllAuditReportScheduleLogsQueryLimitDefault)
+})
+
+export const ListAllAuditReportScheduleLogsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "scheduleId": zod.number(),
+  "sentAt": zod.string(),
+  "rowCount": zod.number(),
+  "success": zod.boolean(),
+  "errorMessage": zod.string().nullish(),
+  "isRetry": zod.boolean(),
+  "deliveryCycleId": zod.string().nullish(),
+  "scheduleEmail": zod.string(),
+  "scheduleFrequency": zod.string()
+}))
 })
 
 
@@ -3056,31 +3090,6 @@ export const ListAuditReportScheduleLogsResponse = zod.object({
 
 
 /**
- * @summary List send history across all scheduled audit reports
- */
-export const listAllAuditReportScheduleLogsQueryLimitDefault = 50;
-
-export const ListAllAuditReportScheduleLogsQueryParams = zod.object({
-  "limit": zod.coerce.number().default(listAllAuditReportScheduleLogsQueryLimitDefault)
-})
-
-export const ListAllAuditReportScheduleLogsResponse = zod.object({
-  "data": zod.array(zod.object({
-  "id": zod.number(),
-  "scheduleId": zod.number(),
-  "sentAt": zod.string(),
-  "rowCount": zod.number(),
-  "success": zod.boolean(),
-  "errorMessage": zod.string().nullish(),
-  "isRetry": zod.boolean(),
-  "deliveryCycleId": zod.string().nullish(),
-  "scheduleEmail": zod.string(),
-  "scheduleFrequency": zod.string()
-}))
-})
-
-
-/**
  * @summary Update an audit report schedule
  */
 export const UpdateAuditReportScheduleParams = zod.object({
@@ -3107,6 +3116,7 @@ export const UpdateAuditReportScheduleResponse = zod.object({
   "successCount": zod.number().describe('Number of successful deliveries for this schedule.'),
   "retryInProgress": zod.boolean().describe('True when the last delivery failed and automatic retries are still pending (currentRetryAttempt < maxRetryAttempts).'),
   "currentRetryAttempt": zod.number().describe('The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.).'),
+  "nextRetryAt": zod.string().nullable().describe('ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -3186,7 +3196,8 @@ export const ListAdminAuditLogsQueryParams = zod.object({
   "search": zod.coerce.string().optional(),
   "dateFrom": zod.date().optional().describe('Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)'),
   "dateTo": zod.date().optional().describe('Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)'),
-  "merchantId": zod.coerce.number().optional().describe('Filter logs by merchant ID — matches rows where target_id equals the merchant, as well as bulk-action rows whose details.merchantIds array includes the merchant')
+  "merchantId": zod.coerce.number().optional().describe('Filter logs by merchant ID — matches rows where target_id equals the merchant, as well as bulk-action rows whose details.merchantIds array includes the merchant'),
+  "settingKey": zod.coerce.string().optional().describe('Sub-filter for setting\/config logs. For action=setting_updated, matches details->>\'key\'. For action=system_config_updated, matches details->>\'section\'.')
 })
 
 export const ListAdminAuditLogsResponse = zod.object({

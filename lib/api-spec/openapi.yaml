@@ -858,7 +858,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/CredentialEvent"
+                  $ref: "#/components/schemas/MerchantCredentialEvent"
         "403":
           description: Admin access only
         "404":
@@ -6641,7 +6641,7 @@ components:
 
     AuditReportSchedule:
       type: object
-      required: [id, frequency, recipientEmail, isActive, maxRetryAttempts, retryBackoffMinutes, consecutiveFailures, autoPauseAfterFailures, lastSendStatus, sendCount, successCount, retryInProgress, currentRetryAttempt, createdAt, updatedAt]
+      required: [id, frequency, recipientEmail, isActive, maxRetryAttempts, retryBackoffMinutes, consecutiveFailures, autoPauseAfterFailures, lastSendStatus, sendCount, successCount, retryInProgress, currentRetryAttempt, createdAt, updatedAt, nextRetryAt]
       properties:
         id:
           type: integer
@@ -7577,6 +7577,20 @@ components:
           description: >
             Days to retain expired/used QR codes before auto-deleting them.
             Set to 0 to disable automatic cleanup.
+
+    MerchantCredentialEvent:
+      type: object
+      required: [eventType, occurredAt]
+      properties:
+        eventType:
+          type: string
+          enum: [key_generated, key_revoked, secret_rotated]
+        keyPrefix:
+          type: ["string", "null"]
+          description: Key prefix for key_generated/key_revoked events; null for secret_rotated
+        occurredAt:
+          type: string
+          description: ISO timestamp of when the event occurred
 
     StorageCleanupRun:
       type: object

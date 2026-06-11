@@ -1221,6 +1221,7 @@ function ScheduledReportsPanel() {
   const queryClient = useQueryClient();
   const { data: schedulesData, isLoading } = useListAuditReportSchedules({
     query: {
+      queryKey: getListAuditReportSchedulesQueryKey(),
       refetchInterval: (query) => {
         const rows = (query.state.data as { data?: { retryInProgress?: boolean }[] } | undefined)?.data ?? [];
         return rows.some((s) => s.retryInProgress) ? 30_000 : false;

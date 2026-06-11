@@ -1678,6 +1678,11 @@ export interface AuditReportSchedule {
   retryInProgress: boolean;
   /** The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.). */
   currentRetryAttempt: number;
+  /**
+     * ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.
+     * @nullable
+     */
+  nextRetryAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2338,6 +2343,26 @@ export interface QrCleanupConfig {
   retentionDays: number;
 }
 
+export type MerchantCredentialEventEventType = typeof MerchantCredentialEventEventType[keyof typeof MerchantCredentialEventEventType];
+
+
+export const MerchantCredentialEventEventType = {
+  key_generated: 'key_generated',
+  key_revoked: 'key_revoked',
+  secret_rotated: 'secret_rotated',
+} as const;
+
+export interface MerchantCredentialEvent {
+  eventType: MerchantCredentialEventEventType;
+  /**
+     * Key prefix for key_generated/key_revoked events; null for secret_rotated
+     * @nullable
+     */
+  keyPrefix?: string | null;
+  /** ISO timestamp of when the event occurred */
+  occurredAt: string;
+}
+
 export interface StorageCleanupRun {
   id: number;
   createdAt: string;
@@ -2789,7 +2814,9 @@ export const ListVirtualAccountsStatus = {
 } as const;
 
 export type RunVaCleanup200 = {
+  /** Number of stale active VAs that were closed */
   closed: number;
+  /** Number of closed VAs with zero balance/collection that were deleted */
   deleted: number;
 };
 
@@ -3050,27 +3077,4 @@ export type ClearSignatureFailureAlertHistory200 = {
 export type ListSavedFilters200 = {
   data: SavedFilter[];
 };
-
-export interface WebhookSecretCheckResult {
-  message: string;
-  notificationsSent: number;
-  reminderCount: number;
-  overdueCount: number;
-}
-
-export type RunStorageCleanup200 = {
-  totalScanned: number;
-  deleted: number;
-  errors: number;
-};
-
-export type ClearTestEmailHistory200 = {
-  /** Number of rows deleted */
-  deleted: number;
-};
-
-export interface SignatureFailureAlertHistoryResponse {
-  data: SignatureFailureAlertLogEntry[];
-  total: number;
-}
 

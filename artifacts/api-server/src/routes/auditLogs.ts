@@ -483,7 +483,7 @@ router.post("/schedules", async (req, res) => {
     isActive: true,
   }).returning();
 
-  res.status(201).json({ ...serializeSchedule(schedule), sendCount: 0, successCount: 0, retryInProgress: false, currentRetryAttempt: 0 });
+  res.status(201).json({ ...serializeSchedule(schedule), sendCount: 0, successCount: 0, retryInProgress: false, currentRetryAttempt: 0, nextRetryAt: null });
 });
 
 router.patch("/schedules/bulk-toggle", async (req, res) => {
@@ -543,6 +543,7 @@ router.patch("/schedules/bulk-toggle", async (req, res) => {
       successCount: 0,
       retryInProgress: false,
       currentRetryAttempt: 0,
+      nextRetryAt: null,
     })),
   });
 });
@@ -599,6 +600,7 @@ router.patch("/schedules/:id", async (req, res) => {
     successCount: Number(successCount),
     currentRetryAttempt: 0,
     retryInProgress: false,
+    nextRetryAt: null,
   });
 });
 
