@@ -31,6 +31,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
+import { getApiErrorMessage, isRateLimitError } from "@/lib/utils";
+import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
+import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 
 const ACTION_COLOR: Record<string, string> = {
   assigned: "text-sky-400",
@@ -1666,17 +1669,56 @@ export default function AdminMerchants() {
               {callbackSecretStatus == null ? (
                 <div className="animate-pulse h-5 bg-muted/30 rounded w-32" />
               ) : callbackSecretStatus.isSet ? (
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="flex items-center gap-2">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span className="text-xs text-emerald-400 font-medium">Set</span>
+                    {callbackSecretStatus.secretPrefix && (
+                      <span className="font-mono text-xs text-muted-foreground">{callbackSecretStatus.secretPrefix}</span>
+                    )}
                   </div>
-                  <span className="font-mono text-xs text-muted-foreground">{callbackSecretStatus.secretPrefix}</span>
-                  {callbackSecretStatus.lastRotatedAt && (
-                    <span className="text-xs text-muted-foreground">
-                      Last rotated {formatDistanceToNow(new Date(callbackSecretStatus.lastRotatedAt), { addSuffix: true })}
-                    </span>
-                  )}
+                  {callbackSecretStatus.lastRotatedAt && (() => {
+                    const ageDays = Math.floor((now - new Date(callbackSecretStatus.lastRotatedAt).getTime()) / 86400000);
+                    const isOverdue = ageDays >= SECRET_ROTATION_OVERDUE_DAYS;
+                    const isWarn = ageDays >= SECRET_WARN_DAYS && !isOverdue;
+                    const daysLeft = SECRET_ROTATION_OVERDUE_DAYS - ageDays;
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-muted-foreground">
+                            Last rotated {ageDays === 0 ? "today" : `${ageDays} day${ageDays !== 1 ? "s" : ""} ago`}
+                            <span className="text-muted-foreground/60"> ({format(new Date(callbackSecretStatus.lastRotatedAt), "dd MMM yyyy")})</span>
+                          </span>
+                          {isOverdue ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 inline-block" />
+                              Overdue
+                            </span>
+                          ) : isWarn ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                              Rotation recommended
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                              Fresh
+                            </span>
+                          )}
+                        </div>
+                        {isOverdue && (
+                          <p className="text-[11px] text-rose-400/80">
+                            Secret is {ageDays} days old — {SECRET_ROTATION_OVERDUE_DAYS}-day limit exceeded
+                          </p>
+                        )}
+                        {isWarn && (
+                          <p className="text-[11px] text-amber-400/80">
+                            {daysLeft} day{daysLeft !== 1 ? "s" : ""} until rotation deadline
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
