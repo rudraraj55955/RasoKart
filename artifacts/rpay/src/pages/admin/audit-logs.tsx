@@ -2086,6 +2086,7 @@ function ScheduleRow({
   sendingId,
   acknowledgingId,
   highlighted,
+  initialOpen,
 }: {
   s: any;
   onToggle: (id: number, isActive: boolean) => void;
@@ -2095,15 +2096,16 @@ function ScheduleRow({
   sendingId?: number | null;
   acknowledgingId?: number | null;
   highlighted?: boolean;
+  initialOpen?: boolean;
 }) {
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(initialOpen ?? false);
   const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (highlighted && rowRef.current) {
+    if ((highlighted || initialOpen) && rowRef.current) {
       rowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  }, [highlighted]);
+  }, [highlighted, initialOpen]);
 
   return (
     <div
@@ -2382,8 +2384,14 @@ function ScheduleRow({
 function ScheduledReportsPanel() {
   const queryClient = useQueryClient();
   const { data: schedulesData, isLoading } = useListAuditReportSchedules();
+  const search = useSearch();
+  const openScheduleId = (() => {
+    const raw = new URLSearchParams(search).get("schedule");
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return isNaN(n) ? null : n;
+  })();
   const highlightId = (() => {
-    const raw = new URLSearchParams(window.location.search).get("scheduleId");
+    const raw = new URLSearchParams(search).get("scheduleId");
     const n = raw ? parseInt(raw, 10) : NaN;
     return isNaN(n) ? null : n;
   })();
@@ -2668,7 +2676,8 @@ function ScheduledReportsPanel() {
                 onAcknowledge={handleAcknowledge}
                 sendingId={sendingId}
                 acknowledgingId={acknowledgingId}
-                highlighted={highlightId === s.id}
+                highlighted={highlightId === s.id || openScheduleId === s.id}
+                initialOpen={openScheduleId === s.id}
               />
             ))}
           </div>
