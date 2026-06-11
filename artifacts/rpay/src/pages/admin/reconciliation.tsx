@@ -806,6 +806,7 @@ export default function AdminReconciliation() {
     return !!raw;
   });
   const [highlightedRunId, setHighlightedRunId] = useState<number | null>(null);
+  const [markedRunId, setMarkedRunId] = useState<number | null>(null);
   const deepLinkOpenedRef = useRef(false);
   const highlightRowRef = useRef<HTMLTableRowElement | null>(null);
 
@@ -884,6 +885,7 @@ export default function AdminReconciliation() {
     if (found) {
       setSearchingForRun(false);
       setHighlightedRunId(deepLinkRunId);
+      setMarkedRunId(deepLinkRunId);
       if (!deepLinkOpenedRef.current) {
         deepLinkOpenedRef.current = true;
         setSelectedRunId(deepLinkRunId);
@@ -1122,11 +1124,12 @@ export default function AdminReconciliation() {
                       const meta = STATUS_META[run.status] ?? STATUS_META.complete;
                       const lastEmail = run.lastEmail as { sentAt: string; status: string; recipients: string } | null;
                       const isHighlighted = run.id === highlightedRunId;
+                      const isMarked = !isHighlighted && run.id === markedRunId;
                       return (
                         <tr
                           key={run.id}
                           ref={isHighlighted ? highlightRowRef : null}
-                          className={`group hover:bg-muted/30 transition-colors duration-700${isHighlighted ? " bg-primary/10 ring-1 ring-inset ring-primary/40" : ""}`}
+                          className={`group hover:bg-muted/30 transition-colors duration-700${isHighlighted ? " bg-primary/10 ring-1 ring-inset ring-primary/40" : ""}${isMarked ? " border-l-2 border-l-violet-500/50" : ""}`}
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5 font-medium">
