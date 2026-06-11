@@ -347,6 +347,7 @@ function serializeSchedule(s: typeof scheduledAuditReportsTable.$inferSelect) {
     ...s,
     lastSentAt: s.lastSentAt ? s.lastSentAt.toISOString() : null,
     failureAcknowledgedAt: s.failureAcknowledgedAt ? s.failureAcknowledgedAt.toISOString() : null,
+    autoPausedAt: s.autoPausedAt ? s.autoPausedAt.toISOString() : null,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
   };
@@ -600,10 +601,15 @@ router.post("/schedules", async (req, res) => {
     res.status(400).json({ error: "maxRetryAttempts must be an integer between 0 and 10" });
     return;
   }
-  const { retryBackoffMinutes } = req.body;
+  const { retryBackoffMinutes, autoPauseAfterFailures } = req.body;
   const parsedBackoff = retryBackoffMinutes !== undefined ? parseInt(String(retryBackoffMinutes)) : 60;
   if (isNaN(parsedBackoff) || parsedBackoff < 1 || parsedBackoff > 1440) {
     res.status(400).json({ error: "retryBackoffMinutes must be an integer between 1 and 1440" });
+    return;
+  }
+  const parsedAutoPause = autoPauseAfterFailures !== undefined ? parseInt(String(autoPauseAfterFailures)) : 3;
+  if (isNaN(parsedAutoPause) || parsedAutoPause < 0 || parsedAutoPause > 100) {
+    res.status(400).json({ error: "autoPauseAfterFailures must be an integer between 0 and 100" });
     return;
   }
 
@@ -613,6 +619,7 @@ router.post("/schedules", async (req, res) => {
     isActive: true,
     maxRetryAttempts: parsedMaxRetry,
     retryBackoffMinutes: parsedBackoff,
+    autoPauseAfterFailures: parsedAutoPause,
   }).returning();
 
   res.status(201).json({ ...serializeSchedule(schedule), sendCount: 0 });
@@ -691,6 +698,8 @@ router.patch("/schedules/:id", async (req, res) => {
     recipientEmail: string;
     isActive: boolean;
     maxRetryAttempts: number;
+    retryBackoffMinutes: number;
+    autoPauseAfterFailures: number;
     failureAcknowledgedAt: Date | null;
     failureAcknowledgedByEmail: string | null;
     updatedAt: Date;
@@ -715,14 +724,22 @@ router.patch("/schedules/:id", async (req, res) => {
     }
     updates.maxRetryAttempts = parsed;
   }
-  const { retryBackoffMinutes } = req.body;
+  const { retryBackoffMinutes, autoPauseAfterFailures } = req.body;
   if (retryBackoffMinutes !== undefined) {
     const parsed = parseInt(String(retryBackoffMinutes));
     if (isNaN(parsed) || parsed < 1 || parsed > 1440) {
       res.status(400).json({ error: "retryBackoffMinutes must be an integer between 1 and 1440" });
       return;
     }
-    (updates as any).retryBackoffMinutes = parsed;
+    updates.retryBackoffMinutes = parsed;
+  }
+  if (autoPauseAfterFailures !== undefined) {
+    const parsed = parseInt(String(autoPauseAfterFailures));
+    if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+      res.status(400).json({ error: "autoPauseAfterFailures must be an integer between 0 and 100" });
+      return;
+    }
+    updates.autoPauseAfterFailures = parsed;
   }
   if (acknowledgeFailure === true) {
     updates.failureAcknowledgedAt = new Date();

@@ -1775,6 +1775,15 @@ export interface AuditReportSchedule {
   maxRetryAttempts: number;
   /** Minutes to wait between consecutive retry attempts (1–1440). */
   retryBackoffMinutes: number;
+  /** Number of consecutive complete delivery cycles that have failed (reset to 0 on success). */
+  consecutiveFailures: number;
+  /** Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause). */
+  autoPauseAfterFailures: number;
+  /**
+     * Timestamp when the schedule was automatically paused due to repeated failures.
+     * @nullable
+     */
+  autoPausedAt?: string | null;
   /** @nullable */
   lastSentAt?: string | null;
   lastSendStatus: AuditReportScheduleLastSendStatus;
@@ -1806,6 +1815,8 @@ export interface AuditReportScheduleInput {
   maxRetryAttempts?: number;
   /** Minutes to wait between consecutive retry attempts (1–1440). Defaults to 60. */
   retryBackoffMinutes?: number;
+  /** Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause). Defaults to 3. */
+  autoPauseAfterFailures?: number;
 }
 
 export type AuditReportSchedulePatchFrequency = typeof AuditReportSchedulePatchFrequency[keyof typeof AuditReportSchedulePatchFrequency];
@@ -1825,6 +1836,8 @@ export interface AuditReportSchedulePatch {
   maxRetryAttempts?: number;
   /** Minutes to wait between consecutive retry attempts (1–1440). */
   retryBackoffMinutes?: number;
+  /** Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause). */
+  autoPauseAfterFailures?: number;
   /** When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge. */
   acknowledgeFailure?: boolean;
 }

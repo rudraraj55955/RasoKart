@@ -181,7 +181,7 @@ export async function sendScheduledReport(
   if (sent) {
     await db
       .update(scheduledAuditReportsTable)
-      .set({ lastSentAt: sentAt, updatedAt: new Date() })
+      .set({ lastSentAt: sentAt, consecutiveFailures: 0, updatedAt: new Date() })
       .where(eq(scheduledAuditReportsTable.id, schedule.id));
     logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length, isRetry, retryAttempt }, "Scheduled audit report sent");
   } else {
@@ -190,6 +190,31 @@ export async function sendScheduledReport(
     // Notify admins only after all retry attempts are exhausted
     const allRetriesExhausted = retryAttempt >= schedule.maxRetryAttempts;
     if (allRetriesExhausted) {
+      // Increment consecutive failure count and check auto-pause threshold
+      const newConsecutiveFailures = schedule.consecutiveFailures + 1;
+      const shouldAutoPause =
+        schedule.autoPauseAfterFailures > 0 &&
+        newConsecutiveFailures >= schedule.autoPauseAfterFailures;
+      const now = new Date();
+
+      await db
+        .update(scheduledAuditReportsTable)
+        .set({
+          consecutiveFailures: newConsecutiveFailures,
+          ...(shouldAutoPause
+            ? { isActive: false, autoPausedAt: now }
+            : {}),
+          updatedAt: now,
+        })
+        .where(eq(scheduledAuditReportsTable.id, schedule.id));
+
+      if (shouldAutoPause) {
+        logger.warn(
+          { scheduleId: schedule.id, consecutiveFailures: newConsecutiveFailures, autoPauseAfterFailures: schedule.autoPauseAfterFailures },
+          "Schedule auto-paused after reaching consecutive failure threshold",
+        );
+      }
+
       try {
         const admins = await db
           .select({ id: usersTable.id })
@@ -202,21 +227,29 @@ export async function sendScheduledReport(
           const attemptSummary = schedule.maxRetryAttempts > 0
             ? ` after ${schedule.maxRetryAttempts} retry attempt${schedule.maxRetryAttempts !== 1 ? "s" : ""}`
             : "";
+          const autoPauseNote = shouldAutoPause
+            ? ` This schedule has been automatically paused after ${newConsecutiveFailures} consecutive failure${newConsecutiveFailures !== 1 ? "s" : ""}. Re-enable it from the Audit Logs page once the issue is resolved.`
+            : ` (${newConsecutiveFailures} consecutive failure${newConsecutiveFailures !== 1 ? "s" : ""} so far — schedule will be auto-paused after ${schedule.autoPauseAfterFailures})`;
+          const title = shouldAutoPause
+            ? "Scheduled Report Auto-Paused After Repeated Failures"
+            : "Scheduled Report Delivery Failed";
           await createBulkNotifications(admins.map(a => ({
             userId: a.id,
             type: "report_delivery_failure" as const,
-            title: "Scheduled Report Delivery Failed",
-            body: `The ${schedule.frequency} audit report scheduled for ${schedule.recipientEmail} could not be delivered${attemptSummary}. Please check the recipient email address and SMTP configuration. View the schedule in Audit Logs.`,
+            title,
+            body: `The ${schedule.frequency} audit report scheduled for ${schedule.recipientEmail} could not be delivered${attemptSummary}.${autoPauseNote} Please check the recipient email address and SMTP configuration. View the schedule in Audit Logs.`,
             metadata: {
               scheduleId: schedule.id,
               recipientEmail: schedule.recipientEmail,
               frequency: schedule.frequency,
               error: errorMessage,
               scheduleLink,
+              consecutiveFailures: newConsecutiveFailures,
+              autoPaused: shouldAutoPause,
             },
           })));
 
-          logger.info({ scheduleId: schedule.id, adminCount: admins.length, retryAttempt }, "Admin notifications sent for scheduled audit report delivery failure");
+          logger.info({ scheduleId: schedule.id, adminCount: admins.length, retryAttempt, autoPaused: shouldAutoPause }, "Admin notifications sent for scheduled audit report delivery failure");
         }
       } catch (notifyErr) {
         logger.error({ err: notifyErr, scheduleId: schedule.id }, "Failed to insert admin notifications for scheduled audit report delivery failure");

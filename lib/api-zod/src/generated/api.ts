@@ -3103,6 +3103,9 @@ export const ListAuditReportSchedulesResponse = zod.object({
   "isActive": zod.boolean(),
   "maxRetryAttempts": zod.number().describe('Maximum number of automatic retry attempts after an initial delivery failure (0–10).'),
   "retryBackoffMinutes": zod.number().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
+  "consecutiveFailures": zod.number().describe('Number of consecutive complete delivery cycles that have failed (reset to 0 on success).'),
+  "autoPauseAfterFailures": zod.number().describe('Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause).'),
+  "autoPausedAt": zod.string().nullish().describe('Timestamp when the schedule was automatically paused due to repeated failures.'),
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
@@ -3122,7 +3125,8 @@ export const CreateAuditReportScheduleBody = zod.object({
   "frequency": zod.enum(['daily', 'weekly', 'monthly']),
   "recipientEmail": zod.string(),
   "maxRetryAttempts": zod.number().optional().describe('Maximum number of automatic retry attempts (0–10). Defaults to 3.'),
-  "retryBackoffMinutes": zod.number().optional().describe('Minutes to wait between consecutive retry attempts (1–1440). Defaults to 60.')
+  "retryBackoffMinutes": zod.number().optional().describe('Minutes to wait between consecutive retry attempts (1–1440). Defaults to 60.'),
+  "autoPauseAfterFailures": zod.number().optional().describe('Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause). Defaults to 3.')
 })
 
 
@@ -3142,6 +3146,9 @@ export const BulkToggleAuditReportSchedulesResponse = zod.object({
   "isActive": zod.boolean(),
   "maxRetryAttempts": zod.number().describe('Maximum number of automatic retry attempts after an initial delivery failure (0–10).'),
   "retryBackoffMinutes": zod.number().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
+  "consecutiveFailures": zod.number().describe('Number of consecutive complete delivery cycles that have failed (reset to 0 on success).'),
+  "autoPauseAfterFailures": zod.number().describe('Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause).'),
+  "autoPausedAt": zod.string().nullish().describe('Timestamp when the schedule was automatically paused due to repeated failures.'),
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
@@ -3168,6 +3175,9 @@ export const SendAuditReportNowResponse = zod.object({
   "isActive": zod.boolean(),
   "maxRetryAttempts": zod.number().describe('Maximum number of automatic retry attempts after an initial delivery failure (0–10).'),
   "retryBackoffMinutes": zod.number().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
+  "consecutiveFailures": zod.number().describe('Number of consecutive complete delivery cycles that have failed (reset to 0 on success).'),
+  "autoPauseAfterFailures": zod.number().describe('Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause).'),
+  "autoPausedAt": zod.string().nullish().describe('Timestamp when the schedule was automatically paused due to repeated failures.'),
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
@@ -3267,6 +3277,7 @@ export const UpdateAuditReportScheduleBody = zod.object({
   "isActive": zod.boolean().optional(),
   "maxRetryAttempts": zod.number().optional().describe('Maximum number of automatic retry attempts (0–10).'),
   "retryBackoffMinutes": zod.number().optional().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
+  "autoPauseAfterFailures": zod.number().optional().describe('Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause).'),
   "acknowledgeFailure": zod.boolean().optional().describe('When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge.')
 })
 
@@ -3277,6 +3288,9 @@ export const UpdateAuditReportScheduleResponse = zod.object({
   "isActive": zod.boolean(),
   "maxRetryAttempts": zod.number().describe('Maximum number of automatic retry attempts after an initial delivery failure (0–10).'),
   "retryBackoffMinutes": zod.number().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
+  "consecutiveFailures": zod.number().describe('Number of consecutive complete delivery cycles that have failed (reset to 0 on success).'),
+  "autoPauseAfterFailures": zod.number().describe('Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause).'),
+  "autoPausedAt": zod.string().nullish().describe('Timestamp when the schedule was automatically paused due to repeated failures.'),
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),

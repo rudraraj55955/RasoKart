@@ -17,6 +17,15 @@ export interface AuditReportSchedule {
   maxRetryAttempts: number;
   /** Minutes to wait between consecutive retry attempts (1–1440). */
   retryBackoffMinutes: number;
+  /** Number of consecutive complete delivery cycles that have failed (reset to 0 on success). */
+  consecutiveFailures: number;
+  /** Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause). */
+  autoPauseAfterFailures: number;
+  /**
+     * Timestamp when the schedule was automatically paused due to repeated failures.
+     * @nullable
+     */
+  autoPausedAt?: string | null;
   /** @nullable */
   lastSentAt?: string | null;
   lastSendStatus: AuditReportScheduleLastSendStatus;

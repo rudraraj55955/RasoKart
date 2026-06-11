@@ -15,6 +15,8 @@ export interface AuditReportSchedulePatch {
   maxRetryAttempts?: number;
   /** Minutes to wait between consecutive retry attempts (1–1440). */
   retryBackoffMinutes?: number;
+  /** Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause). */
+  autoPauseAfterFailures?: number;
   /** When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge. */
   acknowledgeFailure?: boolean;
 }

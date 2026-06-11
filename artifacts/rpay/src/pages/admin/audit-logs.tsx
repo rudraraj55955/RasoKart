@@ -1843,6 +1843,8 @@ function ScheduleRow({
           ? "border-amber-500/50 bg-amber-500/10 ring-1 ring-amber-500/30"
           : s.isActive
           ? "border-violet-500/20 bg-violet-500/5"
+          : s.autoPausedAt
+          ? "border-orange-500/30 bg-orange-500/5 opacity-80"
           : "border-border/40 bg-muted/10 opacity-70"
       }`}
     >
@@ -1860,11 +1862,40 @@ function ScheduleRow({
             }`}>
               {FREQUENCY_LABELS[s.frequency] ?? s.frequency}
             </span>
-            {!s.isActive && (
+            {!s.isActive && s.autoPausedAt ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-xs font-medium text-orange-400 cursor-default">
+                      <AlertCircle className="w-2.5 h-2.5" />
+                      Auto-paused
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    Automatically paused after {s.consecutiveFailures ?? 0} consecutive delivery failure{(s.consecutiveFailures ?? 0) !== 1 ? "s" : ""} on {format(new Date(s.autoPausedAt), "MMM d, yyyy 'at' HH:mm")}. Re-enable from the toggle button once the issue is resolved.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : !s.isActive ? (
               <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400">
                 <Ban className="w-2.5 h-2.5" />
                 Paused
               </span>
+            ) : null}
+            {s.isActive && (s.consecutiveFailures ?? 0) > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400 cursor-default">
+                      <AlertCircle className="w-2.5 h-2.5" />
+                      {s.consecutiveFailures} failure{s.consecutiveFailures !== 1 ? "s" : ""}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    {s.consecutiveFailures} consecutive delivery failure{s.consecutiveFailures !== 1 ? "s" : ""} — will auto-pause after {s.autoPauseAfterFailures > 0 ? s.autoPauseAfterFailures : "∞"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
             {s.lastSendStatus === "failed" && (
               <TooltipProvider>

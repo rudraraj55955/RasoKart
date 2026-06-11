@@ -14,4 +14,6 @@ export interface AuditReportScheduleInput {
   maxRetryAttempts?: number;
   /** Minutes to wait between consecutive retry attempts (1–1440). Defaults to 60. */
   retryBackoffMinutes?: number;
+  /** Auto-pause the schedule after this many consecutive delivery failures (0 = never auto-pause). Defaults to 3. */
+  autoPauseAfterFailures?: number;
 }

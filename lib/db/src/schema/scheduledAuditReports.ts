@@ -12,6 +12,9 @@ export const scheduledAuditReportsTable = pgTable("scheduled_audit_reports", {
   lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
   failureAcknowledgedAt: timestamp("failure_acknowledged_at", { withTimezone: true }),
   failureAcknowledgedByEmail: text("failure_acknowledged_by_email"),
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  autoPauseAfterFailures: integer("auto_pause_after_failures").notNull().default(3),
+  autoPausedAt: timestamp("auto_paused_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
