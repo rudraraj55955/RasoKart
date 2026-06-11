@@ -489,14 +489,28 @@ router.post("/test-email", async (req, res, next) => {
 // GET /api/settings/finance_report_email/logs — last 10 finance report email sends
 router.get("/finance_report_email/logs", async (_req, res, next) => {
   try {
-    const logs = await db
-      .select()
+    const rows = await db
+      .select({
+        id: reconciliationEmailLogsTable.id,
+        runId: reconciliationEmailLogsTable.runId,
+        emailType: reconciliationEmailLogsTable.emailType,
+        recipients: reconciliationEmailLogsTable.recipients,
+        status: reconciliationEmailLogsTable.status,
+        errorMessage: reconciliationEmailLogsTable.errorMessage,
+        sentAt: reconciliationEmailLogsTable.sentAt,
+        runExists: reconciliationRunsTable.id,
+      })
       .from(reconciliationEmailLogsTable)
+      .leftJoin(
+        reconciliationRunsTable,
+        eq(reconciliationEmailLogsTable.runId, reconciliationRunsTable.id),
+      )
       .where(inArray(reconciliationEmailLogsTable.emailType, ["report", "sample_report"]))
       .orderBy(desc(reconciliationEmailLogsTable.sentAt))
       .limit(10);
 
-    res.json({ data: logs });
+    const data = rows.map(r => ({ ...r, runExists: r.runExists != null }));
+    res.json({ data });
   } catch (err) {
     next(err);
   }

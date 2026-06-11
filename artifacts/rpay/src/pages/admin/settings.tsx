@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -237,6 +238,7 @@ export default function AdminSettings() {
   interface FinanceEmailLogEntry {
     id: number;
     runId: number;
+    runExists: boolean;
     emailType: string;
     recipients: string;
     status: string;
@@ -1128,6 +1130,22 @@ export default function AdminSettings() {
                             </span>
                             <span className="text-muted-foreground">·</span>
                             <span className="text-foreground/80">{typeLabel}</span>
+                            {entry.runId > 0 && (
+                              <>
+                                <span className="text-muted-foreground">·</span>
+                                {entry.runExists ? (
+                                  <Link
+                                    to={`/admin/reconciliation?run=${entry.runId}`}
+                                    className="text-violet-400 hover:text-violet-300 hover:underline transition-colors"
+                                    title={`View reconciliation run #${entry.runId}`}
+                                  >
+                                    Run #{entry.runId}
+                                  </Link>
+                                ) : (
+                                  <span className="text-muted-foreground">Run #{entry.runId}</span>
+                                )}
+                              </>
+                            )}
                             <span className="text-muted-foreground">·</span>
                             <span className="text-muted-foreground truncate max-w-[200px]" title={entry.recipients}>
                               {recipientLabel}
