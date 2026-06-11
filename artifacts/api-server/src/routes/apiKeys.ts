@@ -3,17 +3,13 @@ import { db, apiKeysTable, merchantsTable, credentialEventsTable } from "@worksp
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import crypto from "crypto";
-import rateLimit from "express-rate-limit";
 import { sendApiKeyGeneratedEmail, sendApiKeyRevokedEmail } from "../helpers/apiKeyEmail";
-import { safeIpKey } from "../helpers/makeRateLimiter";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
-const apiKeyCreateLimiter = rateLimit({
+const apiKeyCreateLimiter = makeRateLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 10,
-  validate: { ip: false },
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? safeIpKey(req)),
+  keyGenerator: (req) => (req as Request & { user?: { merchantId?: number | null } }).user?.merchantId,
   message: { error: "Too many API key generation requests. Please try again later." },
 });
 

@@ -4,16 +4,12 @@ import { eq, and, count, sql, gte, lte, sum } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createNotification } from "../helpers/notifications";
 import { notifyAdminsOfSettlementStateChange } from "../helpers/adminNotifyEmail";
-import rateLimit from "express-rate-limit";
-import { safeIpKey } from "../helpers/makeRateLimiter";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
-const settlementCreateLimiter = rateLimit({
+const settlementCreateLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 5,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? safeIpKey(req)),
+  keyGenerator: (req) => (req as Request & { user?: { merchantId?: number | null } }).user?.merchantId,
   message: { error: "Too many settlement requests. Please wait before submitting another." },
 });
 

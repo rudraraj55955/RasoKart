@@ -1,21 +1,16 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import rateLimit from "express-rate-limit";
 import { db, usersTable, merchantsTable } from "@workspace/db";
 import { dbRateLimitStore } from "../lib/rateLimitStore";
 import { eq } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
-import { safeIpKey } from "../helpers/makeRateLimiter";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
 const router = Router();
 
-const loginLimiter = rateLimit({
+const loginLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  validate: { ip: false },
-  keyGenerator: (req) => safeIpKey(req),
   store: dbRateLimitStore,
   message: { error: "Too many login attempts. Please try again later." },
 });

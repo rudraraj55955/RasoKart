@@ -1,28 +1,21 @@
 import { Router, type Request } from "express";
-import rateLimit from "express-rate-limit";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceHistoryTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, ilike, count, or, desc, gte, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
-import { safeIpKey } from "../helpers/makeRateLimiter";
 
-const createVaLimiter = rateLimit({
+const createVaLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number } }).user?.merchantId ?? safeIpKey(req)),
+  keyGenerator: (req) => (req as Request & { user?: { merchantId?: number } }).user?.merchantId,
   message: { error: "Too many virtual account creation requests. Please try again later." },
 });
 
-const deleteVaLimiter = rateLimit({
+const deleteVaLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 30,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number } }).user?.merchantId ?? safeIpKey(req)),
+  keyGenerator: (req) => (req as Request & { user?: { merchantId?: number } }).user?.merchantId,
   message: { error: "Too many virtual account deletion requests. Please try again later." },
 });
 

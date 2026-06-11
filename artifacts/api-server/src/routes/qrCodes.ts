@@ -3,26 +3,19 @@ import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transaction
 import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray, type SQL } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
-import rateLimit from "express-rate-limit";
-import { safeIpKey } from "../helpers/makeRateLimiter";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
-const qrCodeCreateLimiter = rateLimit({
+const qrCodeCreateLimiter = makeRateLimiter({
   windowMs: 60 * 1000,
   limit: 20,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? safeIpKey(req)),
+  keyGenerator: (req) => (req as Request & { user?: { merchantId?: number | null } }).user?.merchantId,
   message: { error: "Too many QR code creation requests. Please slow down and try again shortly." },
 });
 
-const qrCodeUpdateLimiter = rateLimit({
+const qrCodeUpdateLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 60,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? safeIpKey(req)),
+  keyGenerator: (req) => (req as Request & { user?: { merchantId?: number | null } }).user?.merchantId,
   message: { error: "Too many QR code update requests. Please slow down and try again in a few minutes." },
 });
 
