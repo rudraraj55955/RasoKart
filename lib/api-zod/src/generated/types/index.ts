@@ -296,6 +296,7 @@ export * from './vaBalanceAuditEntry';
 export * from './vaBalanceAuditListResponse';
 export * from './vaBalanceHistoryEntry';
 export * from './vaBalanceHistoryListResponse';
+export * from './vaCleanupConfig';
 export * from './vaTransaction';
 export * from './vaTransactionListResponse';
 export * from './virtualAccount';

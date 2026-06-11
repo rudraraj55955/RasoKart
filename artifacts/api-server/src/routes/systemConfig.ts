@@ -3,8 +3,8 @@ import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, audi
 import { inArray, desc, count } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
-import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
-import { loadVaCleanupRetentionDays, runVaCleanup } from "../helpers/vaCleanupScheduler";
+import { loadQrCleanupRetentionDays, loadQrCleanupLastRun } from "../helpers/qrCleanupScheduler";
+import { loadVaCleanupRetentionDays, loadVaCleanupLastRun, runVaCleanup } from "../helpers/vaCleanupScheduler";
 import { loadTestEmailRetentionDays, runTestEmailRetentionCleanup } from "../helpers/testEmailRetentionScheduler";
 import { loadAuditReportLogRetentionDays } from "../helpers/auditReportRetentionScheduler";
 import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
@@ -143,8 +143,11 @@ router.put("/reconciliation", async (req, res, next) => {
 // GET /api/system-config/qr-cleanup
 router.get("/qr-cleanup", async (req, res, next) => {
   try {
-    const retentionDays = await loadQrCleanupRetentionDays();
-    res.json({ retentionDays });
+    const [retentionDays, lastRun] = await Promise.all([
+      loadQrCleanupRetentionDays(),
+      loadQrCleanupLastRun(),
+    ]);
+    res.json({ retentionDays, lastRunAt: lastRun.lastRunAt, lastDeleted: lastRun.lastDeleted });
   } catch (err) {
     next(err);
   }
@@ -203,8 +206,11 @@ router.put("/qr-cleanup", async (req, res, next) => {
 // GET /api/system-config/va-cleanup
 router.get("/va-cleanup", async (req, res, next) => {
   try {
-    const retentionDays = await loadVaCleanupRetentionDays();
-    res.json({ retentionDays });
+    const [retentionDays, lastRun] = await Promise.all([
+      loadVaCleanupRetentionDays(),
+      loadVaCleanupLastRun(),
+    ]);
+    res.json({ retentionDays, lastRunAt: lastRun.lastRunAt, lastDeleted: lastRun.lastDeleted });
   } catch (err) {
     next(err);
   }

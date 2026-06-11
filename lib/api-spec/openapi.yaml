@@ -4492,6 +4492,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /system-config/va-cleanup:
+    get:
+      operationId: getVaCleanupConfig
+      tags: [system-config]
+      summary: Get virtual account auto-cleanup retention configuration (admin only)
+      responses:
+        "200":
+          description: Current VA cleanup config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaCleanupConfig"
+    put:
+      operationId: updateVaCleanupConfig
+      tags: [system-config]
+      summary: Update virtual account auto-cleanup retention configuration (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VaCleanupConfig"
+      responses:
+        "200":
+          description: Updated VA cleanup config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaCleanupConfig"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /system-config/test-email-retention:
     get:
       operationId: getTestEmailRetentionConfig
@@ -8093,7 +8129,7 @@ components:
 
     QrCleanupConfig:
       type: object
-      required: [retentionDays]
+      required: [retentionDays, lastRunAt, lastDeleted]
       properties:
         retentionDays:
           type: integer
@@ -8102,6 +8138,36 @@ components:
           description: >
             Days to retain expired/used QR codes before auto-deleting them.
             Set to 0 to disable automatic cleanup.
+        lastRunAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO timestamp of the last cleanup run, or null if never run.
+        lastDeleted:
+          type: integer
+          nullable: true
+          description: Number of QR codes deleted in the last cleanup run, or null if never run.
+
+    VaCleanupConfig:
+      type: object
+      required: [retentionDays, lastRunAt, lastDeleted]
+      properties:
+        retentionDays:
+          type: integer
+          minimum: 0
+          maximum: 365
+          description: >
+            Days to retain closed virtual accounts before auto-deleting them.
+            Set to 0 to disable automatic cleanup.
+        lastRunAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO timestamp of the last cleanup run, or null if never run.
+        lastDeleted:
+          type: integer
+          nullable: true
+          description: Number of virtual accounts deleted in the last cleanup run, or null if never run.
 
     TestEmailRetentionConfig:
       type: object

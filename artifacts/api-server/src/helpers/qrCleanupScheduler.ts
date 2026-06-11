@@ -1,6 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 let cleanupTask: ScheduledTask | null = null;
@@ -80,6 +80,21 @@ export async function runQrCleanup(): Promise<{ expired: number; deleted: number
   await persistQrCleanupStats(deleted);
 
   return { expired, deleted };
+}
+
+export async function loadQrCleanupLastRun(): Promise<{ lastRunAt: string | null; lastDeleted: number | null }> {
+  const rows = await db
+    .select()
+    .from(systemConfigTable)
+    .where(inArray(systemConfigTable.key, [
+      SYSTEM_CONFIG_KEYS.QR_CLEANUP_LAST_RUN_AT,
+      SYSTEM_CONFIG_KEYS.QR_CLEANUP_LAST_RUN_DELETED,
+    ]));
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+  const lastRunAt = map.get(SYSTEM_CONFIG_KEYS.QR_CLEANUP_LAST_RUN_AT) ?? null;
+  const lastDeletedRaw = map.get(SYSTEM_CONFIG_KEYS.QR_CLEANUP_LAST_RUN_DELETED);
+  const lastDeleted = lastDeletedRaw != null ? parseInt(lastDeletedRaw) : null;
+  return { lastRunAt, lastDeleted };
 }
 
 export function initQrCleanupScheduler(): void {

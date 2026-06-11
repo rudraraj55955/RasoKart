@@ -218,6 +218,7 @@ import type {
   UserUpdate,
   VaBalanceAuditListResponse,
   VaBalanceHistoryListResponse,
+  VaCleanupConfig,
   VaTransactionListResponse,
   VirtualAccount,
   VirtualAccountInput,
@@ -14315,6 +14316,154 @@ export const useUpdateQrCleanupConfig = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateQrCleanupConfigMutationOptions(options));
+    }
+
+export const getGetVaCleanupConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/va-cleanup`
+}
+
+/**
+ * @summary Get virtual account auto-cleanup retention configuration (admin only)
+ */
+export const getVaCleanupConfig = async ( options?: RequestInit): Promise<VaCleanupConfig> => {
+
+  return customFetch<VaCleanupConfig>(getGetVaCleanupConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVaCleanupConfigQueryKey = () => {
+    return [
+    `/api/system-config/va-cleanup`
+    ] as const;
+    }
+
+
+export const getGetVaCleanupConfigQueryOptions = <TData = Awaited<ReturnType<typeof getVaCleanupConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVaCleanupConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVaCleanupConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVaCleanupConfig>>> = ({ signal }) => getVaCleanupConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVaCleanupConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVaCleanupConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getVaCleanupConfig>>>
+export type GetVaCleanupConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get virtual account auto-cleanup retention configuration (admin only)
+ */
+
+export function useGetVaCleanupConfig<TData = Awaited<ReturnType<typeof getVaCleanupConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVaCleanupConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVaCleanupConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateVaCleanupConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/va-cleanup`
+}
+
+/**
+ * @summary Update virtual account auto-cleanup retention configuration (admin only)
+ */
+export const updateVaCleanupConfig = async (vaCleanupConfig: VaCleanupConfig, options?: RequestInit): Promise<VaCleanupConfig> => {
+
+  return customFetch<VaCleanupConfig>(getUpdateVaCleanupConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      vaCleanupConfig,)
+  }
+);}
+
+
+
+
+export const getUpdateVaCleanupConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVaCleanupConfig>>, TError,{data: BodyType<VaCleanupConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVaCleanupConfig>>, TError,{data: BodyType<VaCleanupConfig>}, TContext> => {
+
+const mutationKey = ['updateVaCleanupConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVaCleanupConfig>>, {data: BodyType<VaCleanupConfig>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateVaCleanupConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVaCleanupConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateVaCleanupConfig>>>
+    export type UpdateVaCleanupConfigMutationBody = BodyType<VaCleanupConfig>
+    export type UpdateVaCleanupConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update virtual account auto-cleanup retention configuration (admin only)
+ */
+export const useUpdateVaCleanupConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVaCleanupConfig>>, TError,{data: BodyType<VaCleanupConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVaCleanupConfig>>,
+        TError,
+        {data: BodyType<VaCleanupConfig>},
+        TContext
+      > => {
+      return useMutation(getUpdateVaCleanupConfigMutationOptions(options));
     }
 
 export const getGetTestEmailRetentionConfigUrl = () => {

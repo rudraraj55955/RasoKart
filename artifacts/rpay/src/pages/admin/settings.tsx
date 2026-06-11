@@ -437,10 +437,10 @@ export default function AdminSettings() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const { data: qrCleanupData, isLoading: qrCleanupLoading } = useQuery<{ retentionDays: number }>({
+  const { data: qrCleanupData, isLoading: qrCleanupLoading } = useQuery<{ retentionDays: number; lastRunAt: string | null; lastDeleted: number | null }>({
     queryKey: ["/api/system-config/qr-cleanup"],
     queryFn: () => apiGet("/system-config/qr-cleanup"),
-    onSuccess: (d: { retentionDays: number }) => {
+    onSuccess: (d: { retentionDays: number; lastRunAt: string | null; lastDeleted: number | null }) => {
       if (!retentionInitialized) {
         setRetentionDays(d.retentionDays);
         setRetentionInitialized(true);
@@ -460,10 +460,10 @@ export default function AdminSettings() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const { data: vaCleanupData, isLoading: vaCleanupLoading } = useQuery<{ retentionDays: number }>({
+  const { data: vaCleanupData, isLoading: vaCleanupLoading } = useQuery<{ retentionDays: number; lastRunAt: string | null; lastDeleted: number | null }>({
     queryKey: ["/api/system-config/va-cleanup"],
     queryFn: () => apiGet("/system-config/va-cleanup"),
-    onSuccess: (d: { retentionDays: number }) => {
+    onSuccess: (d: { retentionDays: number; lastRunAt: string | null; lastDeleted: number | null }) => {
       if (!vaRetentionInitialized) {
         setVaRetentionDays(d.retentionDays);
         setVaRetentionInitialized(true);
@@ -1437,6 +1437,21 @@ export default function AdminSettings() {
             </div>
           ) : null}
 
+          {!qrCleanupLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/40 rounded-md px-3 py-2">
+              <History className="w-3.5 h-3.5 shrink-0" />
+              {qrCleanupData?.lastRunAt == null ? (
+                <span>Last run: <strong>Never run</strong></span>
+              ) : (
+                <span>
+                  Last run: <strong>{new Date(qrCleanupData.lastRunAt).toLocaleString()}</strong>
+                  {" — "}
+                  <strong>{qrCleanupData.lastDeleted ?? 0}</strong> record{qrCleanupData.lastDeleted !== 1 ? "s" : ""} deleted
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="retention-days" className="text-sm">Retention period (days)</Label>
             <div className="flex items-center gap-3">
@@ -1510,6 +1525,21 @@ export default function AdminSettings() {
                 Closed virtual accounts are deleted automatically after{" "}
                 <strong>{currentVaRetentionDays} day{currentVaRetentionDays !== 1 ? "s" : ""}</strong>.
               </span>
+            </div>
+          )}
+
+          {!vaCleanupLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/40 rounded-md px-3 py-2">
+              <History className="w-3.5 h-3.5 shrink-0" />
+              {vaCleanupData?.lastRunAt == null ? (
+                <span>Last run: <strong>Never run</strong></span>
+              ) : (
+                <span>
+                  Last run: <strong>{new Date(vaCleanupData.lastRunAt).toLocaleString()}</strong>
+                  {" — "}
+                  <strong>{vaCleanupData.lastDeleted ?? 0}</strong> record{vaCleanupData.lastDeleted !== 1 ? "s" : ""} deleted
+                </span>
+              )}
             </div>
           )}
 

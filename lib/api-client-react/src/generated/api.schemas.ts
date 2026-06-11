@@ -2519,6 +2519,24 @@ export interface QrCleanupConfig {
      * @maximum 365
      */
   retentionDays: number;
+  /** ISO timestamp of the last cleanup run, or null if never run. */
+  lastRunAt: string | null;
+  /** Number of QR codes deleted in the last cleanup run, or null if never run. */
+  lastDeleted: number | null;
+}
+
+export interface VaCleanupConfig {
+  /**
+     * Days to retain closed virtual accounts before auto-deleting them. Set to 0 to disable automatic cleanup.
+
+     * @minimum 0
+     * @maximum 365
+     */
+  retentionDays: number;
+  /** ISO timestamp of the last cleanup run, or null if never run. */
+  lastRunAt: string | null;
+  /** Number of virtual accounts deleted in the last cleanup run, or null if never run. */
+  lastDeleted: number | null;
 }
 
 export interface TestEmailRetentionConfig {

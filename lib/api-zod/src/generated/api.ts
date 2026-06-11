@@ -4369,7 +4369,9 @@ export const getQrCleanupConfigResponseRetentionDaysMax = 365;
 
 
 export const GetQrCleanupConfigResponse = zod.object({
-  "retentionDays": zod.number().min(getQrCleanupConfigResponseRetentionDaysMin).max(getQrCleanupConfigResponseRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+  "retentionDays": zod.number().min(getQrCleanupConfigResponseRetentionDaysMin).max(getQrCleanupConfigResponseRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
+  "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
+  "lastDeleted": zod.number().nullable().describe('Number of QR codes deleted in the last cleanup run, or null if never run.')
 })
 
 
@@ -4382,7 +4384,9 @@ export const updateQrCleanupConfigBodyRetentionDaysMax = 365;
 
 
 export const UpdateQrCleanupConfigBody = zod.object({
-  "retentionDays": zod.number().min(updateQrCleanupConfigBodyRetentionDaysMin).max(updateQrCleanupConfigBodyRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+  "retentionDays": zod.number().min(updateQrCleanupConfigBodyRetentionDaysMin).max(updateQrCleanupConfigBodyRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
+  "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
+  "lastDeleted": zod.number().nullable().describe('Number of QR codes deleted in the last cleanup run, or null if never run.')
 })
 
 export const updateQrCleanupConfigResponseRetentionDaysMin = 0;
@@ -4391,7 +4395,50 @@ export const updateQrCleanupConfigResponseRetentionDaysMax = 365;
 
 
 export const UpdateQrCleanupConfigResponse = zod.object({
-  "retentionDays": zod.number().min(updateQrCleanupConfigResponseRetentionDaysMin).max(updateQrCleanupConfigResponseRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+  "retentionDays": zod.number().min(updateQrCleanupConfigResponseRetentionDaysMin).max(updateQrCleanupConfigResponseRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
+  "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
+  "lastDeleted": zod.number().nullable().describe('Number of QR codes deleted in the last cleanup run, or null if never run.')
+})
+
+
+/**
+ * @summary Get virtual account auto-cleanup retention configuration (admin only)
+ */
+export const getVaCleanupConfigResponseRetentionDaysMin = 0;
+export const getVaCleanupConfigResponseRetentionDaysMax = 365;
+
+
+
+export const GetVaCleanupConfigResponse = zod.object({
+  "retentionDays": zod.number().min(getVaCleanupConfigResponseRetentionDaysMin).max(getVaCleanupConfigResponseRetentionDaysMax).describe('Days to retain closed virtual accounts before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
+  "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
+  "lastDeleted": zod.number().nullable().describe('Number of virtual accounts deleted in the last cleanup run, or null if never run.')
+})
+
+
+/**
+ * @summary Update virtual account auto-cleanup retention configuration (admin only)
+ */
+export const updateVaCleanupConfigBodyRetentionDaysMin = 0;
+export const updateVaCleanupConfigBodyRetentionDaysMax = 365;
+
+
+
+export const UpdateVaCleanupConfigBody = zod.object({
+  "retentionDays": zod.number().min(updateVaCleanupConfigBodyRetentionDaysMin).max(updateVaCleanupConfigBodyRetentionDaysMax).describe('Days to retain closed virtual accounts before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
+  "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
+  "lastDeleted": zod.number().nullable().describe('Number of virtual accounts deleted in the last cleanup run, or null if never run.')
+})
+
+export const updateVaCleanupConfigResponseRetentionDaysMin = 0;
+export const updateVaCleanupConfigResponseRetentionDaysMax = 365;
+
+
+
+export const UpdateVaCleanupConfigResponse = zod.object({
+  "retentionDays": zod.number().min(updateVaCleanupConfigResponseRetentionDaysMin).max(updateVaCleanupConfigResponseRetentionDaysMax).describe('Days to retain closed virtual accounts before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
+  "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
+  "lastDeleted": zod.number().nullable().describe('Number of virtual accounts deleted in the last cleanup run, or null if never run.')
 })
 
 

@@ -1,6 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { db, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 const VA_CLEANUP_DEFAULT_DAYS = 30;
@@ -63,7 +63,42 @@ export async function runVaCleanup(): Promise<{ closed: number; deleted: number 
   const deleted = Number((deleteResult as any).rowCount ?? 0);
 
   logger.info({ retentionDays, closed, deleted }, "VA auto-cleanup complete");
+
+  await writeVaCleanupLastRun(deleted);
+
   return { closed, deleted };
+}
+
+async function writeVaCleanupLastRun(deleted: number): Promise<void> {
+  const now = new Date().toISOString();
+  const entries = [
+    { key: SYSTEM_CONFIG_KEYS.VA_CLEANUP_LAST_RUN_AT, value: now },
+    { key: SYSTEM_CONFIG_KEYS.VA_CLEANUP_LAST_DELETED, value: String(deleted) },
+  ];
+  for (const entry of entries) {
+    await db
+      .insert(systemConfigTable)
+      .values({ key: entry.key, value: entry.value })
+      .onConflictDoUpdate({
+        target: systemConfigTable.key,
+        set: { value: entry.value, updatedAt: sql`now()` },
+      });
+  }
+}
+
+export async function loadVaCleanupLastRun(): Promise<{ lastRunAt: string | null; lastDeleted: number | null }> {
+  const rows = await db
+    .select()
+    .from(systemConfigTable)
+    .where(inArray(systemConfigTable.key, [
+      SYSTEM_CONFIG_KEYS.VA_CLEANUP_LAST_RUN_AT,
+      SYSTEM_CONFIG_KEYS.VA_CLEANUP_LAST_DELETED,
+    ]));
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+  const lastRunAt = map.get(SYSTEM_CONFIG_KEYS.VA_CLEANUP_LAST_RUN_AT) ?? null;
+  const lastDeletedRaw = map.get(SYSTEM_CONFIG_KEYS.VA_CLEANUP_LAST_DELETED);
+  const lastDeleted = lastDeletedRaw != null ? parseInt(lastDeletedRaw) : null;
+  return { lastRunAt, lastDeleted };
 }
 
 export function initVaCleanupScheduler(): void {

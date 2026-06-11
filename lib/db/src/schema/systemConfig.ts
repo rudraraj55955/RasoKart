@@ -30,6 +30,8 @@ export const SYSTEM_CONFIG_KEYS = {
   QR_CLEANUP_LAST_RUN_DELETED: "qr_cleanup_last_run_deleted",
   AUDIT_REPORT_CLEANUP_LAST_RUN_AT: "audit_report_cleanup_last_run_at",
   AUDIT_REPORT_CLEANUP_LAST_RUN_DELETED: "audit_report_cleanup_last_run_deleted",
+  VA_CLEANUP_LAST_RUN_AT: "va_cleanup_last_run_at",
+  VA_CLEANUP_LAST_DELETED: "va_cleanup_last_deleted",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {

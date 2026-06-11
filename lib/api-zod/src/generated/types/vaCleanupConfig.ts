@@ -6,9 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface QrCleanupConfig {
+export interface VaCleanupConfig {
   /**
-     * Days to retain expired/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.
+     * Days to retain closed virtual accounts before auto-deleting them. Set to 0 to disable automatic cleanup.
 
      * @minimum 0
      * @maximum 365
@@ -16,6 +16,6 @@ export interface QrCleanupConfig {
   retentionDays: number;
   /** ISO timestamp of the last cleanup run, or null if never run. */
   lastRunAt: Date | null;
-  /** Number of QR codes deleted in the last cleanup run, or null if never run. */
+  /** Number of virtual accounts deleted in the last cleanup run, or null if never run. */
   lastDeleted: number | null;
 }
