@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, ListOrdered, Loader2, QrCode, RefreshCw, ShieldAlert, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Clock, Copy, ListOrdered, Loader2, QrCode, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -32,6 +32,44 @@ function AttemptStatusDot({ httpStatus }: { httpStatus: number | null | undefine
     return <span className="inline-block w-2 h-2 rounded-full bg-rose-400 shrink-0 mt-0.5" />;
   }
   return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/30 shrink-0 mt-0.5" />;
+}
+
+function CopyButton({ text }: { text: string | null | undefined }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
+
+  return (
+    <div className="relative group/copy inline-flex">
+      <button
+        type="button"
+        onClick={handleCopy}
+        disabled={!text}
+        aria-label="Copy response to clipboard"
+        className="p-1 rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        {copied ? (
+          <Check className="w-3 h-3 text-emerald-400" />
+        ) : (
+          <Copy className="w-3 h-3" />
+        )}
+      </button>
+      <span
+        className={`pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-popover border border-border px-2 py-0.5 text-xs shadow-md transition-opacity ${
+          copied ? "opacity-100" : "opacity-0 group-hover/copy:opacity-100"
+        }`}
+      >
+        {copied ? "Copied!" : "Copy response"}
+      </span>
+    </div>
+  );
 }
 
 function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) {
@@ -83,6 +121,7 @@ function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) 
                   </pre>
                 )}
               </div>
+              <CopyButton text={a.responseBody} />
             </div>
           ))}
         </div>
