@@ -885,6 +885,52 @@ export async function seed() {
   `);
   console.log("Delivery cycle ID backfill complete.");
 
+  // ── Credential-event backfill for pre-audit API keys ─────────────────────
+  // API keys created before audit logging was introduced have no entries in
+  // credential_events. Idempotent: NOT EXISTS guards prevent duplicate rows.
+  // Actor is set to (0, 'system/migration') because the original actor is unknown.
+  await db.execute(sql`
+    INSERT INTO credential_events
+      (merchant_id, event_type, actor_id, actor_email, key_prefix, ip_address, created_at)
+    SELECT
+      ak.merchant_id,
+      'api_key_generated',
+      0,
+      'system/migration',
+      ak.key_prefix,
+      NULL,
+      ak.created_at
+    FROM api_keys ak
+    WHERE NOT EXISTS (
+      SELECT 1 FROM credential_events ce
+      WHERE ce.merchant_id = ak.merchant_id
+        AND ce.event_type  = 'api_key_generated'
+        AND ce.key_prefix  = ak.key_prefix
+    )
+  `);
+
+  await db.execute(sql`
+    INSERT INTO credential_events
+      (merchant_id, event_type, actor_id, actor_email, key_prefix, ip_address, created_at)
+    SELECT
+      ak.merchant_id,
+      'api_key_revoked',
+      0,
+      'system/migration',
+      ak.key_prefix,
+      NULL,
+      ak.revoked_at
+    FROM api_keys ak
+    WHERE ak.revoked_at IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM credential_events ce
+        WHERE ce.merchant_id = ak.merchant_id
+          AND ce.event_type  = 'api_key_revoked'
+          AND ce.key_prefix  = ak.key_prefix
+      )
+  `);
+  console.log("Credential events backfill complete.");
+
   console.log("Seed complete.");
 }
 
