@@ -152,6 +152,19 @@ function parseSmartQuery(raw: string): SmartFilter | null {
   return hasContent ? filter : null;
 }
 
+// ── URL search param sync ─────────────────────────────────────────────────────
+
+function pushSmartQuery(q: string): void {
+  const params = new URLSearchParams(window.location.search);
+  if (q) {
+    params.set("q", q);
+  } else {
+    params.delete("q");
+  }
+  const search = params.toString();
+  window.history.pushState(null, "", window.location.pathname + (search ? "?" + search : ""));
+}
+
 // ── Saved filters ─────────────────────────────────────────────────────────────
 
 interface SavedFilter {
@@ -323,8 +336,13 @@ export default function MerchantDeposits() {
   const [lastExportCount, setLastExportCount] = useState<number | null>(null);
 
   // ── Smart search state ───────────────────────────────────────────────────
-  const [smartInput, setSmartInput] = useState("");
-  const [smartFilter, setSmartFilter] = useState<SmartFilter | null>(null);
+  const [smartInput, setSmartInput] = useState<string>(() => {
+    return new URLSearchParams(window.location.search).get("q") ?? "";
+  });
+  const [smartFilter, setSmartFilter] = useState<SmartFilter | null>(() => {
+    const q = new URLSearchParams(window.location.search).get("q") ?? "";
+    return q ? parseSmartQuery(q) : null;
+  });
   const [smartError, setSmartError] = useState("");
   const smartInputRef = useRef<HTMLInputElement>(null);
 
@@ -381,6 +399,18 @@ export default function MerchantDeposits() {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
+  useEffect(() => {
+    const onPop = () => {
+      const q = new URLSearchParams(window.location.search).get("q") ?? "";
+      setSmartInput(q);
+      setSmartFilter(q ? parseSmartQuery(q) : null);
+      setSmartError("");
+      setPage(1);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // Effective filter values — smart filter takes precedence over manual dropdowns
   const activeStatus = smartFilter?.txStatus ?? (status !== "all" ? status : undefined);
   const activeDateFrom = smartFilter?.dateFrom ?? (dateFrom || undefined);
@@ -397,6 +427,7 @@ export default function MerchantDeposits() {
       return;
     }
     setSmartFilter(filter);
+    pushSmartQuery(smartInput);
     if (filter.txStatus) setStatus("all");
     setPage(1);
     setShowSaveInput(false);
@@ -407,6 +438,7 @@ export default function MerchantDeposits() {
     setSmartFilter(null);
     setSmartInput("");
     setSmartError("");
+    pushSmartQuery("");
     setShowSaveInput(false);
     setSaveFilterName("");
     setSaveFilterNameError("");
@@ -417,6 +449,7 @@ export default function MerchantDeposits() {
   const applySavedFilter = (saved: SavedFilter) => {
     setSmartFilter(saved.filter);
     setSmartInput(saved.rawInput);
+    pushSmartQuery(saved.rawInput);
     setSmartError("");
     setShowSaveInput(false);
     setSaveFilterName("");

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useListTransactions } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,19 @@ function storeSavedFilters(filters: SavedFilter[]): void {
   localStorage.setItem(DEPOSITS_SAVED_FILTERS_KEY, JSON.stringify(filters));
 }
 
+// ── URL search param sync ─────────────────────────────────────────────────────
+
+function pushSmartQuery(q: string): void {
+  const params = new URLSearchParams(window.location.search);
+  if (q) {
+    params.set("q", q);
+  } else {
+    params.delete("q");
+  }
+  const search = params.toString();
+  window.history.pushState(null, "", window.location.pathname + (search ? "?" + search : ""));
+}
+
 function exportCsv(data: any[]) {
   if (!data.length) return;
   const rows = [["ID", "Merchant", "Amount", "Currency", "UTR", "Reference", "Status", "Description", "Date"]];
@@ -66,8 +79,13 @@ export default function AdminDeposits() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
 
-  const [smartInput, setSmartInput] = useState("");
-  const [smartFilter, setSmartFilter] = useState<SmartFilter | null>(null);
+  const [smartInput, setSmartInput] = useState<string>(() => {
+    return new URLSearchParams(window.location.search).get("q") ?? "";
+  });
+  const [smartFilter, setSmartFilter] = useState<SmartFilter | null>(() => {
+    const q = new URLSearchParams(window.location.search).get("q") ?? "";
+    return q ? parseSmartQuery<SmartFilter>(q, [STATUS_KEYWORDS]) : null;
+  });
   const [smartError, setSmartError] = useState("");
   const smartInputRef = useRef<HTMLInputElement>(null);
 
@@ -110,6 +128,18 @@ export default function AdminDeposits() {
   );
   const anyFilterActive = hasSmartFilter || !!search || !!merchantId || status !== "all" || !!dateFrom || !!dateTo;
 
+  useEffect(() => {
+    const onPop = () => {
+      const q = new URLSearchParams(window.location.search).get("q") ?? "";
+      setSmartInput(q);
+      setSmartFilter(q ? parseSmartQuery<SmartFilter>(q, [STATUS_KEYWORDS]) : null);
+      setSmartError("");
+      setPage(1);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   const applySmartSearch = () => {
     setSmartError("");
     const filter = parseSmartQuery<SmartFilter>(smartInput, [STATUS_KEYWORDS]);
@@ -118,6 +148,7 @@ export default function AdminDeposits() {
       return;
     }
     setSmartFilter(filter);
+    pushSmartQuery(smartInput);
     if (filter.txStatus) setStatus("all");
     setPage(1);
     setShowSaveInput(false);
@@ -128,6 +159,7 @@ export default function AdminDeposits() {
     setSmartFilter(null);
     setSmartInput("");
     setSmartError("");
+    pushSmartQuery("");
     setShowSaveInput(false);
     setSaveFilterName("");
     setSaveFilterNameError("");
@@ -138,6 +170,7 @@ export default function AdminDeposits() {
   const applySavedFilter = (saved: SavedFilter) => {
     setSmartFilter(saved.filter);
     setSmartInput(saved.rawInput);
+    pushSmartQuery(saved.rawInput);
     setSmartError("");
     setShowSaveInput(false);
     setSaveFilterName("");
