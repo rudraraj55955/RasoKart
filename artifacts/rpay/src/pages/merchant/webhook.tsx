@@ -70,6 +70,15 @@ type TestResult = {
   signed: boolean;
 };
 
+function retryFailureDetail(httpStatus: number | null | undefined, responseBody: string | null | undefined): string {
+  if (httpStatus != null) return `HTTP ${httpStatus}`;
+  if (responseBody) {
+    const truncated = responseBody.length > 80 ? responseBody.slice(0, 80) + "…" : responseBody;
+    return truncated;
+  }
+  return "no response from endpoint";
+}
+
 function WebhookTestPanel({ result, onDismiss, onRetry, isRetrying }: { result: TestResult; onDismiss: () => void; onRetry?: () => void; isRetrying?: boolean }) {
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -562,7 +571,8 @@ export default function MerchantWebhook() {
         if (data.delivered) {
           toast.success("Retry succeeded — webhook delivered");
         } else {
-          toast.error("Retry failed — endpoint still unreachable");
+          const log = data.log as CallbackLog | undefined;
+          toast.error(`Retry failed — ${retryFailureDetail(log?.httpStatus, log?.responseBody)}`);
         }
         qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() });
         if (data.log) {
