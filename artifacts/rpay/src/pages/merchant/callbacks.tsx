@@ -66,6 +66,45 @@ function CallbackRow({ log }: { log: any }) {
 }
 
 const SIG_WARN_THRESHOLD = 5;
+const SIG_WARN_KEY = "rasokart_sig_warn_dismissed_until";
+const SIG_WARN_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface SigWarnDismissal {
+  dismissedUntil: number;
+  snapshotNewestFailedAt: string | null;
+}
+
+function readSigWarnDismissal(): SigWarnDismissal | null {
+  try {
+    const val = localStorage.getItem(SIG_WARN_KEY);
+    if (!val) return null;
+    return JSON.parse(val) as SigWarnDismissal;
+  } catch {
+    return null;
+  }
+}
+
+function isWithinDismissalWindow(dismissal: SigWarnDismissal, newestFailedAt: string | null): boolean {
+  if (Date.now() >= dismissal.dismissedUntil) return false;
+  if (newestFailedAt && dismissal.snapshotNewestFailedAt) {
+    if (new Date(newestFailedAt) > new Date(dismissal.snapshotNewestFailedAt)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function writeSigWarnDismissal(newestFailedAt: string | null) {
+  try {
+    const dismissal: SigWarnDismissal = {
+      dismissedUntil: Date.now() + SIG_WARN_TTL_MS,
+      snapshotNewestFailedAt: newestFailedAt,
+    };
+    localStorage.setItem(SIG_WARN_KEY, JSON.stringify(dismissal));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export default function MerchantCallbacks() {
   const [status, setStatus] = useState("all");
@@ -73,7 +112,10 @@ export default function MerchantCallbacks() {
   const [qrCodeIdInput, setQrCodeIdInput] = useState("");
   const [qrCodeId, setQrCodeId] = useState<number | undefined>(undefined);
   const [page, setPage] = useState(1);
-  const [sigWarnDismissed, setSigWarnDismissed] = useState(false);
+  const [sigWarnDismissed, setSigWarnDismissed] = useState(() => {
+    const d = readSigWarnDismissal();
+    return d != null && Date.now() < d.dismissedUntil;
+  });
 
   const { data: stats } = useGetCallbackStats();
   const failureCount = stats?.signatureFailures24h ?? 0;
@@ -90,10 +132,18 @@ export default function MerchantCallbacks() {
 
   const recentLogs = data?.data ?? [];
   const recentN = recentLogs.slice(0, SIG_WARN_THRESHOLD);
-  const showSigWarning =
-    !sigWarnDismissed &&
+  const allRecentFailed =
     recentN.length >= SIG_WARN_THRESHOLD &&
     recentN.every(l => l.signatureVerified === false);
+  const newestFailedAt = allRecentFailed ? (recentN[0]?.createdAt ?? null) : null;
+
+  const showSigWarning = (() => {
+    if (!allRecentFailed) return false;
+    if (!sigWarnDismissed) return true;
+    const d = readSigWarnDismissal();
+    if (!d) return true;
+    return !isWithinDismissalWindow(d, newestFailedAt);
+  })();
 
   const applyQrFilter = () => {
     const parsed = parseInt(qrCodeIdInput.trim());
@@ -148,7 +198,7 @@ export default function MerchantCallbacks() {
           <button
             type="button"
             aria-label="Dismiss warning"
-            onClick={() => setSigWarnDismissed(true)}
+            onClick={() => { writeSigWarnDismissal(newestFailedAt); setSigWarnDismissed(true); }}
             className="shrink-0 text-amber-400/60 hover:text-amber-300 transition-colors"
           >
             <X className="w-4 h-4" />
