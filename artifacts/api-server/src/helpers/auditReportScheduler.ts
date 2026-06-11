@@ -193,8 +193,6 @@ async function runDueReports(): Promise<void> {
       }
     }
 
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-
     for (const schedule of active) {
       if (sentInThisRun.has(schedule.id)) continue;
 
@@ -205,11 +203,19 @@ async function runDueReports(): Promise<void> {
         .orderBy(desc(scheduledAuditReportLogsTable.sentAt))
         .limit(1);
 
-      if (latestLog && !latestLog.success && latestLog.sentAt >= twoHoursAgo) {
-        logger.info({ scheduleId: schedule.id }, "Retrying recently-failed scheduled audit report");
-        await sendScheduledReport(schedule, true).catch(err => {
-          logger.error({ err, scheduleId: schedule.id }, "Retry of scheduled audit report also failed");
-        });
+      // Only auto-retry once: skip if the latest attempt was already a retry.
+      // Use a frequency-appropriate window: 1 hour for daily, 24 hours for weekly/monthly.
+      if (latestLog && !latestLog.success && !latestLog.isRetry) {
+        const windowMs = schedule.frequency === "daily"
+          ? 1 * 60 * 60 * 1000
+          : 24 * 60 * 60 * 1000;
+        const windowCutoff = new Date(Date.now() - windowMs);
+        if (latestLog.sentAt >= windowCutoff) {
+          logger.info({ scheduleId: schedule.id, frequency: schedule.frequency }, "Retrying recently-failed scheduled audit report");
+          await sendScheduledReport(schedule, true).catch(err => {
+            logger.error({ err, scheduleId: schedule.id }, "Retry of scheduled audit report also failed");
+          });
+        }
       }
     }
   } catch (err) {
