@@ -2256,6 +2256,155 @@ export const useUpdateMerchantBranding = <TError = ErrorType<ErrorResponse>,
       return useMutation(getUpdateMerchantBrandingMutationOptions(options));
     }
 
+export const getGetAdminMerchantCallbackSecretUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/callback-secret`
+}
+
+/**
+ * Returns whether the merchant has a callback signing secret configured, plus a masked prefix. Never returns the raw secret value.
+ * @summary Get callback signing secret status for a merchant (admin only)
+ */
+export const getAdminMerchantCallbackSecret = async (id: number, options?: RequestInit): Promise<CallbackSecretStatus> => {
+
+  return customFetch<CallbackSecretStatus>(getGetAdminMerchantCallbackSecretUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminMerchantCallbackSecretQueryKey = (id: number,) => {
+    return [
+    `/api/merchants/${id}/callback-secret`
+    ] as const;
+    }
+
+
+export const getGetAdminMerchantCallbackSecretQueryOptions = <TData = Awaited<ReturnType<typeof getAdminMerchantCallbackSecret>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantCallbackSecret>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminMerchantCallbackSecretQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminMerchantCallbackSecret>>> = ({ signal }) => getAdminMerchantCallbackSecret(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantCallbackSecret>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminMerchantCallbackSecretQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminMerchantCallbackSecret>>>
+export type GetAdminMerchantCallbackSecretQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get callback signing secret status for a merchant (admin only)
+ */
+
+export function useGetAdminMerchantCallbackSecret<TData = Awaited<ReturnType<typeof getAdminMerchantCallbackSecret>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantCallbackSecret>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminMerchantCallbackSecretQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getResetAdminMerchantCallbackSecretUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/callback-secret`
+}
+
+/**
+ * Clears the merchant's callback signing secret so they can re-generate it. The action is logged in the audit log. Does not return the new secret — the merchant must rotate via their own endpoint.
+ * @summary Force-reset (clear) a merchant's callback signing secret (admin only)
+ */
+export const resetAdminMerchantCallbackSecret = async (id: number, options?: RequestInit): Promise<CallbackSecretStatus> => {
+
+  return customFetch<CallbackSecretStatus>(getResetAdminMerchantCallbackSecretUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getResetAdminMerchantCallbackSecretMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAdminMerchantCallbackSecret>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetAdminMerchantCallbackSecret>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['resetAdminMerchantCallbackSecret'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetAdminMerchantCallbackSecret>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  resetAdminMerchantCallbackSecret(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetAdminMerchantCallbackSecretMutationResult = NonNullable<Awaited<ReturnType<typeof resetAdminMerchantCallbackSecret>>>
+
+    export type ResetAdminMerchantCallbackSecretMutationError = ErrorType<void>
+
+    /**
+ * @summary Force-reset (clear) a merchant's callback signing secret (admin only)
+ */
+export const useResetAdminMerchantCallbackSecret = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAdminMerchantCallbackSecret>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetAdminMerchantCallbackSecret>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getResetAdminMerchantCallbackSecretMutationOptions(options));
+    }
+
 export const getListMerchantInvoicesUrl = (id: number,) => {
 
 

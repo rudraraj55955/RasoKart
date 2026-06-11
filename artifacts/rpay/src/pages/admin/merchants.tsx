@@ -9,6 +9,7 @@ import {
   useReinstateMerchantPlan, useRenewMerchantPlan, useBulkAssignMerchantPlan,
   useBulkApproveMerchants, useBulkSuspendMerchants, useBulkRejectMerchants,
   useUpdateMerchantBranding, useGetMerchantPlanUsageAdmin,
+  useGetAdminMerchantCallbackSecret, useResetAdminMerchantCallbackSecret,
   getListMerchantsQueryKey,
   listMerchants,
 } from "@workspace/api-client-react";
@@ -25,7 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -84,6 +85,7 @@ export default function AdminMerchants() {
   const [showHistory, setShowHistory] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"upgrade" | "downgrade" | "suspend" | "reinstate" | "renew" | null>(null);
   const [renewExpiresAt, setRenewExpiresAt] = useState<string>("");
+  const [confirmSecretReset, setConfirmSecretReset] = useState(false);
 
   // Bulk selection state
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -139,6 +141,11 @@ export default function AdminMerchants() {
     assignPlanMerchant?.id ?? 0,
     { query: { enabled: !!assignPlanMerchant && !!currentMerchantPlan, queryKey: ["getMerchantPlanUsageAdmin", assignPlanMerchant?.id ?? 0] } }
   );
+  const { data: callbackSecretStatus, refetch: refetchCallbackSecret } = useGetAdminMerchantCallbackSecret(
+    assignPlanMerchant?.id ?? 0,
+    { query: { enabled: !!assignPlanMerchant, queryKey: ["getAdminMerchantCallbackSecret", assignPlanMerchant?.id ?? 0] } }
+  );
+  const resetCallbackSecretMutation = useResetAdminMerchantCallbackSecret();
   const updateBrandingMutation = useUpdateMerchantBranding();
   const approveMutation = useApproveMerchant();
   const rejectMutation = useRejectMerchant();
@@ -335,6 +342,7 @@ export default function AdminMerchants() {
     setExpiresAt("");
     setAssignNotes("");
     setShowHistory(false);
+    setConfirmSecretReset(false);
   };
 
   const handleAssignPlan = () => {
@@ -1470,6 +1478,84 @@ export default function AdminMerchants() {
                 <p className="text-xs">No plan currently assigned</p>
               </div>
             )}
+
+            {/* Callback Secret */}
+            <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-muted-foreground shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Callback Signing Secret</p>
+              </div>
+              {callbackSecretStatus == null ? (
+                <div className="animate-pulse h-5 bg-muted/30 rounded w-32" />
+              ) : callbackSecretStatus.isSet ? (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="text-xs text-emerald-400 font-medium">Set</span>
+                  </div>
+                  <span className="font-mono text-xs text-muted-foreground">{callbackSecretStatus.secretPrefix}</span>
+                  {callbackSecretStatus.lastRotatedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      Last rotated {formatDistanceToNow(new Date(callbackSecretStatus.lastRotatedAt), { addSuffix: true })}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <ShieldOff className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground">Not configured</span>
+                </div>
+              )}
+              {callbackSecretStatus?.isSet && !confirmSecretReset && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1 text-rose-400 border-rose-500/30 hover:bg-rose-500/10 gap-1.5"
+                  onClick={() => setConfirmSecretReset(true)}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Reset secret
+                </Button>
+              )}
+              {callbackSecretStatus?.isSet && confirmSecretReset && (
+                <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-rose-400 leading-relaxed">
+                      <span className="font-semibold">This will clear the callback signing secret.</span>{" "}
+                      All future callback requests from this merchant will not require signature verification until they generate a new secret.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setConfirmSecretReset(false)}
+                      disabled={resetCallbackSecretMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-rose-600 hover:bg-rose-700 text-white gap-1.5"
+                      disabled={resetCallbackSecretMutation.isPending}
+                      onClick={() => {
+                        if (!assignPlanMerchant) return;
+                        resetCallbackSecretMutation.mutate({ id: assignPlanMerchant.id }, {
+                          onSuccess: () => {
+                            toast.success("Callback secret cleared — merchant can now regenerate");
+                            setConfirmSecretReset(false);
+                            refetchCallbackSecret();
+                          },
+                          onError: () => toast.error("Failed to reset callback secret"),
+                        });
+                      }}
+                    >
+                      {resetCallbackSecretMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resetting…</> : "Confirm Reset"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Plan Actions (if plan exists) */}
             {currentMerchantPlan && (

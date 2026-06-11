@@ -201,6 +201,44 @@ router.patch("/:id/branding", async (req, res) => {
   res.json(serializeMerchant(merchant));
 });
 
+// GET /api/merchants/:id/callback-secret  (admin only)
+router.get("/:id/callback-secret", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const [merchant] = await db
+    .select({ callbackSecret: merchantsTable.callbackSecret, callbackSecretUpdatedAt: merchantsTable.callbackSecretUpdatedAt })
+    .from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+  const secret = merchant.callbackSecret;
+  res.json({
+    isSet: !!secret,
+    secretPrefix: secret ? secret.slice(0, 8) + "..." : null,
+    lastRotatedAt: merchant.callbackSecretUpdatedAt?.toISOString() ?? null,
+  });
+});
+
+// DELETE /api/merchants/:id/callback-secret  (admin only — force-reset/clear)
+router.delete("/:id/callback-secret", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
+  const [merchant] = await db
+    .update(merchantsTable)
+    .set({ callbackSecret: null, callbackSecretUpdatedAt: null, updatedAt: new Date() })
+    .where(eq(merchantsTable.id, id))
+    .returning();
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "callback_secret_reset",
+    targetType: "merchant",
+    targetId: merchant.id,
+    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email }),
+    ipAddress: req.ip ?? null,
+  });
+  req.log.info({ adminId: admin.id, merchantId: id }, "Admin force-reset callback secret");
+  res.json({ isSet: false, secretPrefix: null, lastRotatedAt: null });
+});
+
 // POST /api/merchants/:id/approve
 router.post("/:id/approve", requireAdmin, async (req, res) => {
   const id = parseInt(req.params['id'] as string);

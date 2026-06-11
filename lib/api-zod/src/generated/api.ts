@@ -674,6 +674,36 @@ export const UpdateMerchantBrandingResponse = zod.object({
 
 
 /**
+ * Returns whether the merchant has a callback signing secret configured, plus a masked prefix. Never returns the raw secret value.
+ * @summary Get callback signing secret status for a merchant (admin only)
+ */
+export const GetAdminMerchantCallbackSecretParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAdminMerchantCallbackSecretResponse = zod.object({
+  "isSet": zod.boolean().describe('Whether a callback signing secret has been configured'),
+  "secretPrefix": zod.string().nullish().describe('First 8 characters of the secret followed by \"...\" — null when no secret is set'),
+  "lastRotatedAt": zod.coerce.date().nullish().describe('ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.')
+})
+
+
+/**
+ * Clears the merchant's callback signing secret so they can re-generate it. The action is logged in the audit log. Does not return the new secret — the merchant must rotate via their own endpoint.
+ * @summary Force-reset (clear) a merchant's callback signing secret (admin only)
+ */
+export const ResetAdminMerchantCallbackSecretParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResetAdminMerchantCallbackSecretResponse = zod.object({
+  "isSet": zod.boolean().describe('Whether a callback signing secret has been configured'),
+  "secretPrefix": zod.string().nullish().describe('First 8 characters of the secret followed by \"...\" — null when no secret is set'),
+  "lastRotatedAt": zod.coerce.date().nullish().describe('ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.')
+})
+
+
+/**
  * @summary List invoices for a specific merchant (admin only)
  */
 export const ListMerchantInvoicesParams = zod.object({
