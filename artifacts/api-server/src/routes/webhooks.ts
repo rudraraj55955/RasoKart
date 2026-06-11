@@ -256,11 +256,14 @@ router.post("/logs/:id/retry", async (req, res) => {
 });
 
 // GET /api/webhooks/logs/:id/attempts — per-attempt retry history for a delivery log
+// Accessible by the owning merchant or any admin.
 router.get("/logs/:id/attempts", async (req, res) => {
   const user = (req as any).user;
+  const isAdmin = user.role === "admin";
   const merchantId = user.role === "merchant" ? user.merchantId! : undefined;
-  if (!merchantId) {
-    res.status(403).json({ error: "Merchants only" });
+
+  if (!isAdmin && !merchantId) {
+    res.status(403).json({ error: "Access denied" });
     return;
   }
 
@@ -281,7 +284,8 @@ router.get("/logs/:id/attempts", async (req, res) => {
     return;
   }
 
-  if (log.merchantId !== merchantId) {
+  // Merchants may only view their own logs; admins may view any log.
+  if (!isAdmin && log.merchantId !== merchantId) {
     res.status(403).json({ error: "Access denied" });
     return;
   }

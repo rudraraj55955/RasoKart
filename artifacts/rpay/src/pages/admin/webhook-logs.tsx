@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useListCallbackLogs } from "@workspace/api-client-react";
+import { useListCallbackLogs, useGetWebhookLogAttempts } from "@workspace/api-client-react";
+import type { CallbackLogAttempt } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Webhook, Search, CheckCircle2, XCircle, Activity, Eye } from "lucide-react";
+import { Webhook, Search, CheckCircle2, XCircle, Activity, Eye, ListOrdered, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -19,6 +20,71 @@ function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }
     return <Badge className="bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20 text-xs">✗ Failed</Badge>;
   }
   return <span className="text-muted-foreground text-xs">— None</span>;
+}
+
+function AttemptStatusDot({ httpStatus }: { httpStatus: number | null | undefined }) {
+  if (httpStatus != null && httpStatus >= 200 && httpStatus < 300) {
+    return <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-0.5" />;
+  }
+  if (httpStatus != null) {
+    return <span className="inline-block w-2 h-2 rounded-full bg-rose-400 shrink-0 mt-0.5" />;
+  }
+  return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/30 shrink-0 mt-0.5" />;
+}
+
+function RetryHistorySection({ logId }: { logId: number }) {
+  const { data, isLoading } = useGetWebhookLogAttempts(logId);
+  const attempts: CallbackLogAttempt[] = data?.data ?? [];
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <ListOrdered className="w-3.5 h-3.5 text-muted-foreground/60" />
+        <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">Retry History</p>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-3 text-muted-foreground/50">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span className="text-xs">Loading…</span>
+        </div>
+      ) : attempts.length === 0 ? (
+        <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records yet — history is recorded for new deliveries going forward.</p>
+      ) : (
+        <div className="space-y-0 rounded-lg border border-border/40 overflow-hidden">
+          {attempts.map((attempt, idx) => (
+            <div
+              key={attempt.id}
+              className={`flex items-start gap-3 px-3 py-2.5 text-xs ${idx < attempts.length - 1 ? "border-b border-border/30" : ""} ${idx % 2 === 0 ? "bg-muted/10" : ""}`}
+            >
+              <AttemptStatusDot httpStatus={attempt.httpStatus} />
+              <div className="shrink-0 w-16">
+                <span className="text-muted-foreground/50">#{attempt.attemptNumber}</span>
+              </div>
+              <div className="flex-1 min-w-0 space-y-0.5">
+                <div className="flex items-center gap-3 flex-wrap">
+                  {attempt.httpStatus != null ? (
+                    <span className={`font-mono font-semibold ${attempt.httpStatus >= 200 && attempt.httpStatus < 300 ? "text-emerald-400" : "text-rose-400"}`}>
+                      HTTP {attempt.httpStatus}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/50 italic">No response</span>
+                  )}
+                  <span className="text-muted-foreground/50 font-mono">
+                    {format(new Date(attempt.firedAt), "MMM d, HH:mm:ss")}
+                  </span>
+                </div>
+                {attempt.responseBody && (
+                  <p className="text-muted-foreground/60 font-mono truncate" title={attempt.responseBody}>
+                    {attempt.responseBody}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function exportCsv(data: any[]) {
@@ -219,7 +285,7 @@ export default function AdminWebhookLogs() {
       )}
 
       <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Webhook className="w-4 h-4" /> Webhook Delivery #{selected?.id}
@@ -253,6 +319,7 @@ export default function AdminWebhookLogs() {
                 <p className="text-xs text-muted-foreground mb-1">Endpoint URL</p>
                 <p className="font-mono text-xs break-all">{selected.url}</p>
               </div>
+              <RetryHistorySection logId={selected.id} />
               {selected.requestBody && (
                 <div className="rounded-lg bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground mb-2">Request Body</p>
