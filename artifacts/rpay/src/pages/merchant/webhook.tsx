@@ -718,10 +718,18 @@ export default function MerchantWebhook() {
   const qc = useQueryClient();
   const { data: config, isLoading } = useGetWebhookConfig();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
+  const WEBHOOK_DATE_RANGE_KEY = "rasokart_webhook_date_range";
   const [eventTypeFilter, setEventTypeFilter] = useState<string | null>(null);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(WEBHOOK_DATE_RANGE_KEY) ?? "{}").from ?? ""; } catch { return ""; }
+  });
+  const [toDate, setToDate] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(WEBHOOK_DATE_RANGE_KEY) ?? "{}").to ?? ""; } catch { return ""; }
+  });
   const hasDateFilter = fromDate !== "" || toDate !== "";
+  const saveWebhookDateRange = (from: string, to: string) => {
+    try { localStorage.setItem(WEBHOOK_DATE_RANGE_KEY, JSON.stringify({ from, to })); } catch { /* ignore */ }
+  };
   const logsParams = {
     limit: 50,
     ...(eventTypeFilter != null ? { eventType: eventTypeFilter } : {}),
@@ -1045,7 +1053,7 @@ onError: () => toast.error("Failed to send test event"),
               <input
                 type="datetime-local"
                 value={fromDate}
-                onChange={e => setFromDate(e.target.value)}
+                onChange={e => { setFromDate(e.target.value); saveWebhookDateRange(e.target.value, toDate); }}
                 className="h-7 rounded border border-border/50 bg-muted/30 px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 [color-scheme:dark]"
               />
             </div>
@@ -1054,13 +1062,13 @@ onError: () => toast.error("Failed to send test event"),
               <input
                 type="datetime-local"
                 value={toDate}
-                onChange={e => setToDate(e.target.value)}
+                onChange={e => { setToDate(e.target.value); saveWebhookDateRange(fromDate, e.target.value); }}
                 className="h-7 rounded border border-border/50 bg-muted/30 px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 [color-scheme:dark]"
               />
             </div>
             {hasDateFilter && (
               <button
-                onClick={() => { setFromDate(""); setToDate(""); }}
+                onClick={() => { setFromDate(""); setToDate(""); try { localStorage.removeItem(WEBHOOK_DATE_RANGE_KEY); } catch { /* ignore */ } }}
                 className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-400 hover:bg-rose-500/20 hover:border-rose-500/50 transition-colors"
               >
                 <X className="w-3 h-3" />
