@@ -88,6 +88,7 @@ function RetryTimeline({ logId, totalAttempts, status, nextRetryAt }: {
   nextRetryAt?: string | null;
 }) {
   const { data, isLoading } = useGetWebhookLogAttempts(logId);
+  const [detailOpen, setDetailOpen] = useState(false);
   const attempts = data?.data ?? [];
 
   if (isLoading) {
@@ -106,94 +107,155 @@ function RetryTimeline({ logId, totalAttempts, status, nextRetryAt }: {
 
   return (
     <TooltipProvider>
-      <div className="flex items-start gap-0 flex-wrap">
-        {sorted.map((attempt: CallbackLogAttempt, idx: number) => {
-          const isSuccess = attempt.httpStatus != null && attempt.httpStatus >= 200 && attempt.httpStatus < 300;
-          const prev = sorted[idx - 1];
-          const delaySeconds = prev
-            ? differenceInSeconds(new Date(attempt.firedAt), new Date(prev.firedAt))
-            : null;
+      <div className="space-y-3">
+        <div className="flex items-start gap-0 flex-wrap">
+          {sorted.map((attempt: CallbackLogAttempt, idx: number) => {
+            const isSuccess = attempt.httpStatus != null && attempt.httpStatus >= 200 && attempt.httpStatus < 300;
+            const prev = sorted[idx - 1];
+            const delaySeconds = prev
+              ? differenceInSeconds(new Date(attempt.firedAt), new Date(prev.firedAt))
+              : null;
 
-          return (
-            <div key={attempt.id} className="flex items-center gap-1.5">
-              {idx > 0 && delaySeconds != null && (
-                <div className="flex items-center gap-1.5 mx-1">
-                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="text-xs text-muted-foreground/60 font-mono cursor-default">
-                        +{formatDelay(delaySeconds)}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs">
-                      {delaySeconds}s after previous attempt
-                    </TooltipContent>
-                  </Tooltip>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
-                </div>
-              )}
+            return (
+              <div key={attempt.id} className="flex items-center gap-1.5">
+                {idx > 0 && delaySeconds != null && (
+                  <div className="flex items-center gap-1.5 mx-1">
+                    <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-xs text-muted-foreground/60 font-mono cursor-default">
+                          +{formatDelay(delaySeconds)}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        {delaySeconds}s after previous attempt
+                      </TooltipContent>
+                    </Tooltip>
+                    <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                  </div>
+                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border cursor-default ${
+                      isSuccess
+                        ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                        : "bg-rose-500/10 border-rose-500/25 text-rose-400"
+                    }`}>
+                      {isSuccess
+                        ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        : <XCircle className="w-3.5 h-3.5 shrink-0" />
+                      }
+                      <span className="text-xs font-semibold">#{attempt.attemptNumber}</span>
+                      {attempt.httpStatus != null && (
+                        <span className="text-xs font-mono opacity-75">{attempt.httpStatus}</span>
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs space-y-1">
+                    <p className="font-semibold">Attempt {attempt.attemptNumber}</p>
+                    <p className="text-muted-foreground">{format(new Date(attempt.firedAt), "MMM d, yyyy HH:mm:ss")}</p>
+                    {attempt.httpStatus != null && (
+                      <p>HTTP {attempt.httpStatus} — {isSuccess ? "Success" : "Failed"}</p>
+                    )}
+                    {attempt.responseBody && (
+                      <p className="font-mono max-w-[240px] truncate opacity-80">{attempt.responseBody}</p>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            );
+          })}
+
+          {isPendingRetry && nextRetryAt && (
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 mx-1">
+                <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-xs text-amber-400/70 font-mono cursor-default">
+                      in {formatDistanceToNow(new Date(nextRetryAt))}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Scheduled for {format(new Date(nextRetryAt), "MMM d, HH:mm:ss")}
+                  </TooltipContent>
+                </Tooltip>
+                <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+              </div>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border cursor-default ${
-                    isSuccess
-                      ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
-                      : "bg-rose-500/10 border-rose-500/25 text-rose-400"
-                  }`}>
-                    {isSuccess
-                      ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                      : <XCircle className="w-3.5 h-3.5 shrink-0" />
-                    }
-                    <span className="text-xs font-semibold">#{attempt.attemptNumber}</span>
-                    {attempt.httpStatus != null && (
-                      <span className="text-xs font-mono opacity-75">{attempt.httpStatus}</span>
-                    )}
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border bg-amber-500/10 border-amber-500/25 text-amber-400 cursor-default">
+                    <Clock className="w-3.5 h-3.5 shrink-0 animate-pulse" style={{ animationDuration: "2s" }} />
+                    <span className="text-xs font-semibold">#{totalAttempts + 1}</span>
+                    <span className="text-xs opacity-75">pending</span>
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs space-y-1">
-                  <p className="font-semibold">Attempt {attempt.attemptNumber}</p>
-                  <p className="text-muted-foreground">{format(new Date(attempt.firedAt), "MMM d, yyyy HH:mm:ss")}</p>
-                  {attempt.httpStatus != null && (
-                    <p>HTTP {attempt.httpStatus} — {isSuccess ? "Success" : "Failed"}</p>
-                  )}
-                  {attempt.responseBody && (
-                    <p className="font-mono max-w-[240px] truncate opacity-80">{attempt.responseBody}</p>
-                  )}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          );
-        })}
-
-        {isPendingRetry && nextRetryAt && (
-          <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1.5 mx-1">
-              <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="text-xs text-amber-400/70 font-mono cursor-default">
-                    in {formatDistanceToNow(new Date(nextRetryAt))}
-                  </span>
-                </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
-                  Scheduled for {format(new Date(nextRetryAt), "MMM d, HH:mm:ss")}
+                  <p className="font-semibold">Next attempt scheduled</p>
+                  <p className="text-muted-foreground">{format(new Date(nextRetryAt), "MMM d, yyyy HH:mm:ss")}</p>
                 </TooltipContent>
               </Tooltip>
-              <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
             </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border bg-amber-500/10 border-amber-500/25 text-amber-400 cursor-default">
-                  <Clock className="w-3.5 h-3.5 shrink-0 animate-pulse" style={{ animationDuration: "2s" }} />
-                  <span className="text-xs font-semibold">#{totalAttempts + 1}</span>
-                  <span className="text-xs opacity-75">pending</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">
-                <p className="font-semibold">Next attempt scheduled</p>
-                <p className="text-muted-foreground">{format(new Date(nextRetryAt), "MMM d, yyyy HH:mm:ss")}</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
+          )}
+        </div>
+
+        {sorted.length > 1 && (
+          <Collapsible open={detailOpen} onOpenChange={setDetailOpen}>
+            <CollapsibleTrigger asChild>
+              <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                {detailOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                Retry attempts detail
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-2 rounded-md border border-border/50 overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border/50 bg-muted/30">
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground w-16">#</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Timestamp</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground w-24">HTTP Status</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Response Snippet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((attempt: CallbackLogAttempt, idx: number) => {
+                      const isSuccess = attempt.httpStatus != null && attempt.httpStatus >= 200 && attempt.httpStatus < 300;
+                      return (
+                        <tr key={attempt.id} className={`border-b border-border/30 last:border-0 ${idx % 2 === 0 ? "" : "bg-muted/10"}`}>
+                          <td className="px-3 py-2 font-mono text-muted-foreground">
+                            {attempt.attemptNumber === 1 ? (
+                              <span className="text-muted-foreground/60">init</span>
+                            ) : (
+                              <span className="text-amber-400/80">retry {attempt.attemptNumber - 1}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">
+                            {format(new Date(attempt.firedAt), "MMM d, HH:mm:ss")}
+                          </td>
+                          <td className="px-3 py-2">
+                            {attempt.httpStatus != null ? (
+                              <span className={`font-mono font-semibold ${isSuccess ? "text-emerald-400" : "text-rose-400"}`}>
+                                {attempt.httpStatus}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/50">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-muted-foreground/70 max-w-[320px] truncate">
+                            {attempt.responseBody
+                              ? attempt.responseBody.slice(0, 120) + (attempt.responseBody.length > 120 ? "…" : "")
+                              : <span className="opacity-40">—</span>
+                            }
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </div>
     </TooltipProvider>
@@ -277,9 +339,9 @@ function CallbackRow({ log }: { log: any }) {
         <TableRow>
           <TableCell colSpan={10} className="bg-muted/20 pb-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2 pt-2">
-              {open && (
+              {open && (log.attempts ?? 0) > 1 && (
                 <div className="md:col-span-2 p-3 rounded-lg bg-background/50 border border-border/50">
-                  <p className="text-xs font-medium text-muted-foreground mb-2.5 uppercase tracking-wider">Attempt Timeline</p>
+                  <p className="text-xs font-medium text-muted-foreground mb-2.5 uppercase tracking-wider">Retry Attempts</p>
                   <RetryTimeline
                     logId={log.id}
                     totalAttempts={log.attempts ?? 0}
