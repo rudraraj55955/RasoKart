@@ -352,6 +352,10 @@ export default function AdminSettings() {
   const [sampleReportResult, setSampleReportResult] = useState<"success" | "error" | null>(null);
   const [sampleReportMessage, setSampleReportMessage] = useState("");
 
+  const [sampleAlertTo, setSampleAlertTo] = useState<string>("");
+  const [sampleAlertResult, setSampleAlertResult] = useState<"success" | "error" | null>(null);
+  const [sampleAlertMessage, setSampleAlertMessage] = useState("");
+
   const { mutate: sendSampleReport, isPending: sendingSample } = useMutation({
     mutationFn: () => {
       const overrideTrimmed = sampleReportTo.trim();
@@ -369,6 +373,24 @@ export default function AdminSettings() {
 
   const sampleReportToTrimmed = sampleReportTo.trim();
   const sampleReportToInvalid = sampleReportToTrimmed.length > 0 && !EMAIL_REGEX.test(sampleReportToTrimmed);
+
+  const { mutate: sendSampleAlert, isPending: sendingAlert } = useMutation({
+    mutationFn: () => {
+      const overrideTrimmed = sampleAlertTo.trim();
+      return apiPost("/settings/reconciliation_alert_email/send-sample", overrideTrimmed ? { to: overrideTrimmed } : {});
+    },
+    onSuccess: (res: { to: string }) => {
+      setSampleAlertResult("success");
+      setSampleAlertMessage(`Test alert sent to ${res.to} — check your inbox`);
+    },
+    onError: (err: Error) => {
+      setSampleAlertResult("error");
+      setSampleAlertMessage(err.message);
+    },
+  });
+
+  const sampleAlertToTrimmed = sampleAlertTo.trim();
+  const sampleAlertToInvalid = sampleAlertToTrimmed.length > 0 && !EMAIL_REGEX.test(sampleAlertToTrimmed);
 
   const [retryingLogId, setRetryingLogId] = useState<number | null>(null);
 
@@ -2089,31 +2111,92 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Reconciliation alert emails</p>
-              <p className="text-xs text-muted-foreground">
-                Receive an email when an auto-reconciliation run finds unmatched items that require review.
-              </p>
+          <div className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Reconciliation alert emails</p>
+                <p className="text-xs text-muted-foreground">
+                  Receive an email when an auto-reconciliation run finds unmatched items that require review.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handlePreviewAlertEmail}
+                  disabled={previewingAlertEmail}
+                  title="Preview the unmatched-items alert email with sample data"
+                >
+                  <Eye className="w-3.5 h-3.5 mr-1.5" />
+                  {previewingAlertEmail ? "Loading…" : "Preview alert email"}
+                </Button>
+                <Switch
+                  checked={alertEnabled}
+                  onCheckedChange={val =>
+                    updatePrefs({ data: { reconciliationAlertEmails: val } })
+                  }
+                  disabled={savingPrefs || me === undefined}
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handlePreviewAlertEmail}
-                disabled={previewingAlertEmail}
-                title="Preview the unmatched-items alert email with sample data"
-              >
-                <Eye className="w-3.5 h-3.5 mr-1.5" />
-                {previewingAlertEmail ? "Loading…" : "Preview alert email"}
-              </Button>
-              <Switch
-                checked={alertEnabled}
-                onCheckedChange={val =>
-                  updatePrefs({ data: { reconciliationAlertEmails: val } })
-                }
-                disabled={savingPrefs || me === undefined}
-              />
+            <div className="space-y-2 pt-1 border-t border-border/30">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="email"
+                  placeholder="Leave blank to send to your account email"
+                  value={sampleAlertTo}
+                  onChange={e => {
+                    setSampleAlertTo(e.target.value);
+                    setSampleAlertResult(null);
+                  }}
+                  disabled={sendingAlert}
+                  className={`max-w-sm ${sampleAlertToInvalid ? "border-red-500/70 focus-visible:ring-red-500/30" : ""}`}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSampleAlertResult(null);
+                    sendSampleAlert();
+                  }}
+                  disabled={sendingAlert || smtpConfigured === false || sampleAlertToInvalid}
+                  title={
+                    smtpConfigured === false
+                      ? "SMTP is not configured — configure it in the Email / SMTP section above"
+                      : sampleAlertToInvalid
+                      ? "Enter a valid email address"
+                      : sampleAlertToTrimmed
+                      ? `Send test alert to ${sampleAlertToTrimmed}`
+                      : "Send test alert to your account email"
+                  }
+                >
+                  <Send className="w-3.5 h-3.5 mr-1.5" />
+                  {sendingAlert ? "Sending…" : "Send test alert"}
+                </Button>
+              </div>
+              {sampleAlertToInvalid && (
+                <p className="text-xs text-red-400 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  Invalid email address
+                </p>
+              )}
+              {!sampleAlertToInvalid && (
+                <p className="text-xs text-muted-foreground">
+                  Optional override address — if blank, the test alert goes to your account email.
+                </p>
+              )}
+              {sampleAlertResult === "success" && (
+                <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>{sampleAlertMessage}</span>
+                </div>
+              )}
+              {sampleAlertResult === "error" && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{sampleAlertMessage}</span>
+                </div>
+              )}
             </div>
           </div>
           {!alertEnabled && (

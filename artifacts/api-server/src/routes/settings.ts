@@ -286,6 +286,117 @@ router.get("/reconciliation_alert_email/preview", async (req, res, next) => {
   }
 });
 
+// POST /api/settings/reconciliation_alert_email/send-sample
+router.post("/reconciliation_alert_email/send-sample", async (req, res, next) => {
+  const user = (req as any).user;
+  try {
+    const overrideTo: string | undefined =
+      typeof req.body?.to === "string" && req.body.to.trim() ? req.body.to.trim() : undefined;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (overrideTo && !emailRegex.test(overrideTo)) {
+      res.status(400).json({ error: "Invalid email address" });
+      return;
+    }
+
+    const recipientRaw: string = overrideTo ?? user.email;
+
+    if (!recipientRaw) {
+      res.status(400).json({ error: "No recipient address — enter one or ensure your account has an email address" });
+      return;
+    }
+
+    const recipients = recipientRaw.split(",").map((e: string) => e.trim()).filter((e: string) => e.length > 0);
+    if (recipients.length === 0) {
+      res.status(400).json({ error: "No valid recipient addresses" });
+      return;
+    }
+
+    const today = new Date();
+    const dateFrom = new Date(today);
+    dateFrom.setDate(today.getDate() - 1);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+    const sampleRun: typeof reconciliationRunsTable.$inferSelect = {
+      id: 7,
+      merchantId: null,
+      dateFrom: fmt(dateFrom),
+      dateTo: fmt(today),
+      runAt: today,
+      totalDeposits: 24,
+      totalMatched: 19,
+      totalUnmatched: 5,
+      totalSettlements: 22,
+      matchedAmount: "312400.00",
+      unmatchedAmount: "47250.00",
+      status: "completed",
+      completedAt: today,
+      createdBy: null,
+      triggeredBy: "auto",
+      notes: null,
+      createdAt: today,
+    };
+
+    const html = buildUnmatchedAlertHtml(sampleRun);
+    const subject = `[RasoKart] ⚠️ Sample Unmatched-Items Alert — ${fmt(dateFrom)} to ${fmt(today)} (test)`;
+
+    const [primaryRecipient, ...ccRecipients] = recipients;
+
+    const sent = await sendMail({
+      to: primaryRecipient,
+      ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
+      subject,
+      html,
+    });
+
+    if (!sent) {
+      try {
+        await db.insert(reconciliationEmailLogsTable).values({
+          runId: 0,
+          emailType: "sample_alert",
+          recipients: recipients.join(", "),
+          status: "failed",
+          errorMessage: "SMTP not configured or send failed",
+        });
+      } catch (logErr) {
+        req.log.error({ err: logErr }, "Failed to write email log for sample_alert send failure");
+      }
+      res.status(502).json({ error: "SMTP is not configured or failed to send — check your SMTP settings" });
+      return;
+    }
+
+    try {
+      await db.insert(reconciliationEmailLogsTable).values({
+        runId: 0,
+        emailType: "sample_alert",
+        recipients: recipients.join(", "),
+        status: "sent",
+        errorMessage: null,
+      });
+    } catch (logErr) {
+      req.log.error({ err: logErr }, "Failed to write email log for sample_alert");
+    }
+
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "sample_alert_email_sent",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ recipients, overrideUsed: Boolean(overrideTo) }),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for sample_alert_email_sent");
+    }
+
+    res.json({ ok: true, to: recipients.join(", ") });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/settings/finance_report_email/send-sample
 router.post("/finance_report_email/send-sample", async (req, res, next) => {
   const user = (req as any).user;
