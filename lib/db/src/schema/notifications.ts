@@ -8,6 +8,7 @@ export const notificationsTable = pgTable("notifications", {
   // settlement_approved | settlement_rejected | settlement_paid
   // plan_expiring | plan_expired | limit_exceeded | system_notice
   // provider_limit_warning | provider_limit_reached | provider_limit_reset
+  // scheduled_report_retry_success
   title: text("title").notNull(),
   body: text("body").notNull(),
   metadata: jsonb("metadata"),

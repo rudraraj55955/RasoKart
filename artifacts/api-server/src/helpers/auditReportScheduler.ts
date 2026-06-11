@@ -1,8 +1,9 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { db, scheduledAuditReportsTable, scheduledAuditReportLogsTable, auditLogsTable } from "@workspace/db";
+import { db, scheduledAuditReportsTable, scheduledAuditReportLogsTable, auditLogsTable, usersTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
+import { createBulkNotifications } from "./notifications";
 
 const MAX_RETRY_ATTEMPTS = 3;
 
@@ -186,6 +187,30 @@ export async function sendScheduledReport(
       .set({ lastSentAt: sentAt, updatedAt: new Date() })
       .where(eq(scheduledAuditReportsTable.id, schedule.id));
     logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length, isRetry, retryAttempt }, "Scheduled audit report sent");
+
+    if (isRetry && retryAttempt > 0) {
+      try {
+        const admins = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+        if (admins.length > 0) {
+          const totalAttempts = retryAttempt + 1;
+          const freqLabel = schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1);
+          await createBulkNotifications(admins.map(admin => ({
+            userId: admin.id,
+            type: "scheduled_report_retry_success" as const,
+            title: "Scheduled Report Delivered After Retry",
+            body: `The ${freqLabel} scheduled report to ${schedule.recipientEmail} was successfully delivered after ${totalAttempts} attempt${totalAttempts !== 1 ? "s" : ""}.`,
+            metadata: { scheduleId: schedule.id, frequency: schedule.frequency, recipientEmail: schedule.recipientEmail, totalAttempts, retryAttempt },
+          })));
+          logger.info({ scheduleId: schedule.id, adminCount: admins.length, retryAttempt }, "Admin notifications sent for scheduled report retry success");
+        }
+      } catch (notifyErr) {
+        logger.error({ err: notifyErr, scheduleId: schedule.id }, "Failed to send admin notifications for scheduled report retry success");
+      }
+    }
   } else {
     logger.warn({ scheduleId: schedule.id, errorMessage, isRetry, retryAttempt }, "Scheduled audit report send failed");
     throw new Error(errorMessage ?? "Send failed");
