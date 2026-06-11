@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from "express";
 import { db, apiKeysTable, merchantsTable, callbackLogsTable, callbackNoncesTable } from "@workspace/db";
 import { eq, lt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { checkAndAlertSignatureFailures } from "../helpers/signatureFailureAlert";
 
 /**
  * How far in the past (or future) an X-Timestamp may be, in seconds.
@@ -279,6 +280,10 @@ function logAndReject(
   // requests (body contains orderId/merchantReference, not an event field).
   // Signature/timestamp/nonce rejections happen before the business payload is
   // processed, so there is no event type to extract.
+  // Insert the failure log first, then — only after it is committed — run the
+  // threshold check. Chaining inside .then() guarantees the new row exists in
+  // the DB before checkAndAlertSignatureFailures() queries callback_logs, so
+  // the threshold count always includes the just-recorded failure.
   db.insert(callbackLogsTable)
     .values({
       merchantId,
@@ -289,6 +294,11 @@ function logAndReject(
       signatureVerified: false,
       responseBody: message,
       eventType: null,
+    })
+    .then(() => {
+      checkAndAlertSignatureFailures().catch((err: unknown) => {
+        logger.warn({ err }, "Signature failure alert check failed");
+      });
     })
     .catch((err: unknown) => {
       logger.warn({ err }, "Failed to write callback rejection log");

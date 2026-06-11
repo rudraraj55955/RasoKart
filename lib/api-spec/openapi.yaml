@@ -162,6 +162,8 @@ paths:
                   type: boolean
                 settlementStateEmails:
                   type: boolean
+                signatureFailureAlertEmails:
+                  type: boolean
       responses:
         "200":
           description: Updated preferences
@@ -4567,6 +4569,8 @@ components:
         planExpiryAlertEmails:
           type: boolean
         settlementStateEmails:
+          type: boolean
+        signatureFailureAlertEmails:
           type: boolean
         createdAt:
           type: string

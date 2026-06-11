@@ -90,6 +90,7 @@ export interface User {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;
+  signatureFailureAlertEmails?: boolean;
   createdAt: string;
 }
 
@@ -2316,6 +2317,7 @@ export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;
+  signatureFailureAlertEmails?: boolean;
 };
 
 export type ListMerchantsParams = {

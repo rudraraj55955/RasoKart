@@ -113,6 +113,7 @@ export default function AdminSettings() {
   const alertEnabled = me?.reconciliationAlertEmails ?? true;
   const planExpiryEnabled = me?.planExpiryAlertEmails ?? true;
   const settlementStateEnabled = me?.settlementStateEmails ?? true;
+  const signatureFailureEnabled = me?.signatureFailureAlertEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -1217,6 +1218,28 @@ export default function AdminSettings() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               You will not receive emails when settlement statuses change.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Signature failure alert emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an email when signature verification failures spike above the alert threshold (default: 10 failures/hour). Alerts are rate-limited to at most one per hour.
+              </p>
+            </div>
+            <Switch
+              checked={signatureFailureEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { signatureFailureAlertEmails: val } })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!signatureFailureEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive alerts when signature failures cross the alert threshold.
             </p>
           )}
         </CardContent>

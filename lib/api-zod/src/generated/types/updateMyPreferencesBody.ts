@@ -10,4 +10,5 @@ export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;
+  signatureFailureAlertEmails?: boolean;
 };

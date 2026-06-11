@@ -20,5 +20,6 @@ export interface User {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;
+  signatureFailureAlertEmails?: boolean;
   createdAt: string;
 }
