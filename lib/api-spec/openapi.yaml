@@ -445,6 +445,36 @@ paths:
                 items:
                   $ref: "#/components/schemas/PlanHistory"
 
+  /merchants/{id}/credential-events:
+    get:
+      operationId: getAdminMerchantCredentialEvents
+      tags: [merchants]
+      summary: Get credential event history for a merchant (admin only)
+      description: Returns all credential events (callback secret rotations, API key generation/revocation) for a specific merchant, ordered oldest to newest.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Credential event history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialEventListResponse"
+        "403":
+          description: Admin access only
+
   /merchants/bulk-reject:
     post:
       operationId: bulkRejectMerchants

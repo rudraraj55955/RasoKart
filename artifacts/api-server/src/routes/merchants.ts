@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, webhooksTable } from "@workspace/db";
-import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull } from "drizzle-orm";
+import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, webhooksTable, credentialEventsTable } from "@workspace/db";
+import { eq, ilike, and, or, count, sql, desc, asc, lt, lte, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 import { sendRejectionEmail } from "../helpers/rejectionEmail";
@@ -389,6 +389,32 @@ router.get("/:id/plan/usage", requireAdmin, async (req, res) => {
   const usage = await getMerchantPlanUsage(id);
   if (!usage) { res.status(404).json({ error: "No plan assigned" }); return; }
   res.json(usage);
+});
+
+// GET /api/merchants/:id/credential-events  (admin only)
+router.get("/:id/credential-events", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid merchant ID" }); return; }
+
+  const { page = "1", limit = "50" } = req.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
+  const offset = (pageNum - 1) * limitNum;
+
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(credentialEventsTable)
+    .where(eq(credentialEventsTable.merchantId, id));
+
+  const rows = await db
+    .select()
+    .from(credentialEventsTable)
+    .where(eq(credentialEventsTable.merchantId, id))
+    .orderBy(asc(credentialEventsTable.createdAt))
+    .limit(limitNum)
+    .offset(offset);
+
+  res.json({ data: rows, total, page: pageNum, limit: limitNum });
 });
 
 // GET /api/merchants/:id/plan/history

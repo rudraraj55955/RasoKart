@@ -469,6 +469,33 @@ export const GetMerchantPlanHistoryResponse = zod.array(GetMerchantPlanHistoryRe
 
 
 /**
+ * Returns all credential events (callback secret rotations, API key generation/revocation) for a specific merchant, ordered oldest to newest.
+ * @summary Get credential event history for a merchant (admin only)
+ */
+export const GetAdminMerchantCredentialEventsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAdminMerchantCredentialEventsQueryParams = zod.object({
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const GetAdminMerchantCredentialEventsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "eventType": zod.enum(['callback_secret_rotated', 'api_key_generated', 'api_key_revoked']),
+  "keyPrefix": zod.string().nullish().describe('Masked key prefix for api_key_generated and api_key_revoked events'),
+  "createdAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Bulk-reject multiple pending merchants (admin only)
  */
 export const BulkRejectMerchantsBody = zod.object({

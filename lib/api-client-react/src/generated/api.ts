@@ -79,6 +79,7 @@ import type {
   ExportMerchantBalanceHistoryParams,
   ExportMySecurityActivityParams,
   ExportVaBalanceAuditCsvParams,
+  GetAdminMerchantCredentialEventsParams,
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
   GetSignatureFailureAlertHistoryParams,
@@ -1506,6 +1507,96 @@ export function useGetMerchantPlanHistory<TData = Awaited<ReturnType<typeof getM
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMerchantPlanHistoryQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAdminMerchantCredentialEventsUrl = (id: number,
+    params?: GetAdminMerchantCredentialEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/merchants/${id}/credential-events?${stringifiedParams}` : `/api/merchants/${id}/credential-events`
+}
+
+/**
+ * Returns all credential events (callback secret rotations, API key generation/revocation) for a specific merchant, ordered oldest to newest.
+ * @summary Get credential event history for a merchant (admin only)
+ */
+export const getAdminMerchantCredentialEvents = async (id: number,
+    params?: GetAdminMerchantCredentialEventsParams, options?: RequestInit): Promise<CredentialEventListResponse> => {
+
+  return customFetch<CredentialEventListResponse>(getGetAdminMerchantCredentialEventsUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminMerchantCredentialEventsQueryKey = (id: number,
+    params?: GetAdminMerchantCredentialEventsParams,) => {
+    return [
+    `/api/merchants/${id}/credential-events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAdminMerchantCredentialEventsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminMerchantCredentialEvents>>, TError = ErrorType<void>>(id: number,
+    params?: GetAdminMerchantCredentialEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantCredentialEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminMerchantCredentialEventsQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminMerchantCredentialEvents>>> = ({ signal }) => getAdminMerchantCredentialEvents(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantCredentialEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminMerchantCredentialEventsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminMerchantCredentialEvents>>>
+export type GetAdminMerchantCredentialEventsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get credential event history for a merchant (admin only)
+ */
+
+export function useGetAdminMerchantCredentialEvents<TData = Awaited<ReturnType<typeof getAdminMerchantCredentialEvents>>, TError = ErrorType<void>>(
+ id: number,
+    params?: GetAdminMerchantCredentialEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantCredentialEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminMerchantCredentialEventsQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

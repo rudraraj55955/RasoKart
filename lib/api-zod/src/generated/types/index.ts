@@ -95,6 +95,7 @@ export * from './exportMerchantBalanceHistoryParams';
 export * from './exportMySecurityActivityParams';
 export * from './exportVaBalanceAuditCsvFieldChanged';
 export * from './exportVaBalanceAuditCsvParams';
+export * from './getAdminMerchantCredentialEventsParams';
 export * from './getQrCodeStatsParams';
 export * from './getReconciliationRunEmailLogs200';
 export * from './getSignatureFailureAlertHistoryParams';

@@ -18,6 +18,7 @@ import {
   getListMerchantsQueryKey,
   listMerchants,
   useListCallbackLogs,
+  useGetAdminMerchantCredentialEvents,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -47,6 +48,12 @@ const ACTION_COLOR: Record<string, string> = {
   reinstated: "text-emerald-400",
   expired: "text-rose-400",
   removed: "text-muted-foreground",
+};
+
+const ADMIN_CRED_EVENT_META: Record<string, { label: string; Icon: React.ElementType; color: string; dotColor: string }> = {
+  callback_secret_rotated: { label: "Callback Secret Rotated", Icon: Webhook,   color: "text-sky-400",     dotColor: "bg-sky-500" },
+  api_key_generated:       { label: "API Key Generated",        Icon: KeyRound,  color: "text-emerald-400", dotColor: "bg-emerald-500" },
+  api_key_revoked:         { label: "API Key Revoked",          Icon: KeyRound,  color: "text-rose-400",    dotColor: "bg-rose-500" },
 };
 
 const PLAN_SUB_STATUS_COLOR: Record<string, string> = {
@@ -105,6 +112,7 @@ export default function AdminMerchants() {
   const [assignScheduledRenewalAt, setAssignScheduledRenewalAt] = useState<string>("");
   const [actionNotes, setActionNotes] = useState<string>("");
   const [showHistory, setShowHistory] = useState(false);
+  const [showCredHistory, setShowCredHistory] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"upgrade" | "downgrade" | "suspend" | "reinstate" | "renew" | "schedule-renewal" | null>(null);
   const [renewExpiresAt, setRenewExpiresAt] = useState<string>("");
   const [actionExpiresAt, setActionExpiresAt] = useState<string>("");
@@ -189,6 +197,11 @@ export default function AdminMerchants() {
   const { data: recentWebhookLogs, isLoading: webhookLogsLoading } = useListCallbackLogs(
     { merchantId: assignPlanMerchant?.id, limit: 10 },
     { query: { enabled: !!assignPlanMerchant, queryKey: ["listCallbackLogs", assignPlanMerchant?.id] } }
+  );
+  const { data: adminCredEventData, isLoading: adminCredEventsLoading } = useGetAdminMerchantCredentialEvents(
+    assignPlanMerchant?.id ?? 0,
+    {},
+    { query: { enabled: !!assignPlanMerchant && showCredHistory, queryKey: ["getAdminMerchantCredentialEvents", assignPlanMerchant?.id] } }
   );
   // Fetch the deep-link merchant by ID so the panel opens regardless of which page they're on
   const { data: deepLinkMerchant } = useGetMerchant(
@@ -462,6 +475,7 @@ export default function AdminMerchants() {
     setAssignNotes("");
     setAssignScheduledRenewalAt("");
     setShowHistory(false);
+    setShowCredHistory(false);
   };
 
   const closeAssignPlan = () => {
@@ -471,6 +485,7 @@ export default function AdminMerchants() {
     setAssignNotes("");
     setAssignScheduledRenewalAt("");
     setShowHistory(false);
+    setShowCredHistory(false);
     setConfirmSecretReset(false);
     setConfirmAction(null);
     setScheduleRenewalDate("");
@@ -2508,6 +2523,74 @@ export default function AdminMerchants() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Credential History toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-muted-foreground"
+              onClick={() => setShowCredHistory(h => !h)}
+            >
+              <KeyRound className="w-4 h-4 mr-2" />
+              {showCredHistory ? "Hide" : "Show"} Credential History
+            </Button>
+
+            {showCredHistory && (
+              <div>
+                {adminCredEventsLoading ? (
+                  <div className="py-6 text-center text-xs text-muted-foreground">Loading…</div>
+                ) : !adminCredEventData?.data?.length ? (
+                  <div className="py-6 flex flex-col items-center gap-2 text-muted-foreground">
+                    <KeyRound className="w-7 h-7 opacity-20" />
+                    <p className="text-xs">No credential events recorded yet</p>
+                  </div>
+                ) : (
+                  <div className="relative px-4 py-3">
+                    <div className="absolute left-[1.875rem] top-3 bottom-3 w-px bg-border/40" />
+                    <ul className="space-y-0">
+                      {adminCredEventData.data.map((event, idx) => {
+                        const isLast = idx === adminCredEventData.data.length - 1;
+                        const eventMeta = ADMIN_CRED_EVENT_META[event.eventType] ?? {
+                          label: event.eventType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+                          color: "text-muted-foreground",
+                          dotColor: "bg-muted-foreground",
+                          Icon: KeyRound,
+                        };
+                        const EventIcon = eventMeta.Icon;
+                        return (
+                          <li key={event.id} className={`flex items-start gap-3 ${isLast ? "pb-0" : "pb-4"}`}>
+                            <div className="relative z-10 flex-shrink-0 w-4 h-4 mt-0.5 flex items-center justify-center">
+                              <span className={`w-2 h-2 rounded-full ring-2 ring-background ${eventMeta.dotColor}`} />
+                            </div>
+                            <div className="flex-1 min-w-0 pt-0.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <EventIcon className={`w-3 h-3 ${eventMeta.color} shrink-0`} />
+                                <span className={`text-xs font-medium ${eventMeta.color}`}>{eventMeta.label}</span>
+                                {event.keyPrefix && (
+                                  <code className="text-[10px] font-mono bg-muted/40 border border-border/40 px-1 py-0.5 rounded text-muted-foreground">
+                                    {event.keyPrefix}…
+                                  </code>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                                {format(new Date(event.createdAt), "dd MMM yyyy, HH:mm")}
+                                {" · "}
+                                {formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}
+                              </p>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {(adminCredEventData.total ?? 0) > (adminCredEventData.data.length ?? 0) && (
+                      <p className="text-[10px] text-muted-foreground/50 text-center mt-3">
+                        Showing {adminCredEventData.data.length} of {adminCredEventData.total} events
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

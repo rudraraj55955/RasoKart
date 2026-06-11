@@ -2670,6 +2670,11 @@ export const ListMerchantsCallbackSecretSet = {
   false: 'false',
 } as const;
 
+export type GetAdminMerchantCredentialEventsParams = {
+page?: number;
+limit?: number;
+};
+
 export type ListInvoicesParams = {
 merchantId?: number;
 status?: string;
