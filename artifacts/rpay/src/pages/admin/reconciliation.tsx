@@ -972,6 +972,7 @@ export default function AdminReconciliation() {
   const [csvExportFilter, setCsvExportFilter] = useState<"all" | "matched" | "unmatched">("all");
   const [isExporting, setIsExporting] = useState(false);
   const [isPreviewingEmail, setIsPreviewingEmail] = useState(false);
+  const [isPreviewingAlertEmail, setIsPreviewingAlertEmail] = useState(false);
   const [emailLogOpen, setEmailLogOpen] = useState(false);
   const [reportEmailsOpen, setReportEmailsOpen] = useState(true);
   const [alertEmailsOpen, setAlertEmailsOpen] = useState(true);
@@ -1567,6 +1568,40 @@ export default function AdminReconciliation() {
                     <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</>
                   ) : (
                     <><Mail className="w-3.5 h-3.5" /> Preview email</>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  disabled={isPreviewingAlertEmail}
+                  onClick={async () => {
+                    if (!selectedRunId) return;
+                    setIsPreviewingAlertEmail(true);
+                    try {
+                      const res = await fetch(`/api/settings/reconciliation_alert_email/preview?runId=${selectedRunId}`, {
+                        headers: { Authorization: `Bearer ${getToken()}` },
+                      });
+                      if (!res.ok) throw new Error("Failed to load alert email preview");
+                      const html = await res.text();
+                      const blob = new Blob([html], { type: "text/html" });
+                      const url = URL.createObjectURL(blob);
+                      const tab = window.open(url, "_blank");
+                      if (tab) {
+                        tab.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+                        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+                      }
+                    } catch (err: any) {
+                      toast.error(err.message ?? "Could not load alert email preview");
+                    } finally {
+                      setIsPreviewingAlertEmail(false);
+                    }
+                  }}
+                >
+                  {isPreviewingAlertEmail ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</>
+                  ) : (
+                    <><Mail className="w-3.5 h-3.5" /> Preview alert email</>
                   )}
                 </Button>
                 {(() => {
