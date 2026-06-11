@@ -69,7 +69,7 @@ export default function AdminLogin() {
           <RateLimitBanner
             retryAfterSeconds={rateLimitSeconds}
             message="Too many login attempts. Please wait before trying again."
-            onDismiss={() => setRateLimitSeconds(null)}
+            onDismiss={() => { setRateLimitSeconds(null); form.reset(); }}
           />
         </div>
       )}
