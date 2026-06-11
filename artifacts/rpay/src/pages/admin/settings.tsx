@@ -228,6 +228,22 @@ export default function AdminSettings() {
     staleTime: 0,
   });
 
+  interface FinanceEmailLogEntry {
+    id: number;
+    runId: number;
+    emailType: string;
+    recipients: string;
+    status: string;
+    errorMessage: string | null;
+    sentAt: string;
+  }
+
+  const { data: financeEmailLogs, isLoading: financeLogsLoading } = useQuery<{ data: FinanceEmailLogEntry[] }>({
+    queryKey: ["/api/settings/finance_report_email/logs"],
+    queryFn: () => apiGet("/settings/finance_report_email/logs"),
+    staleTime: 30_000,
+  });
+
   const [previewingEmail, setPreviewingEmail] = useState(false);
   const [previewingAlertEmail, setPreviewingAlertEmail] = useState(false);
 
@@ -1111,6 +1127,98 @@ export default function AdminSettings() {
                           title={new Date(row.createdAt).toLocaleString()}
                         >
                           {new Date(row.createdAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </time>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Finance Report Email Log */}
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <div className="flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5 text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">Finance Report Email Log</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Last 10 finance report emails sent — real reconciliation runs and sample sends.
+            </p>
+
+            {financeLogsLoading && (
+              <p className="text-xs text-muted-foreground">Loading…</p>
+            )}
+
+            {!financeLogsLoading && (() => {
+              const logs = financeEmailLogs?.data ?? [];
+
+              if (logs.length === 0) {
+                return (
+                  <p className="text-xs text-muted-foreground italic">
+                    No finance report emails have been sent yet.
+                  </p>
+                );
+              }
+
+              return (
+                <div className="space-y-1.5">
+                  {logs.map((entry: FinanceEmailLogEntry) => {
+                    const success = entry.status === "sent";
+                    const typeLabel = entry.emailType
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, c => c.toUpperCase());
+                    const recipientList = entry.recipients
+                      .split(",")
+                      .map((r: string) => r.trim())
+                      .filter(Boolean);
+                    const recipientLabel = recipientList.length > 1
+                      ? `${recipientList[0]} +${recipientList.length - 1} more`
+                      : recipientList[0] ?? entry.recipients;
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className={`flex items-start gap-2.5 rounded-md border px-3 py-2 text-xs ${
+                          success
+                            ? "border-emerald-500/20 bg-emerald-500/5"
+                            : "border-red-500/20 bg-red-500/5"
+                        }`}
+                      >
+                        {success ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-400" />
+                        ) : (
+                          <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-400" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`font-medium ${success ? "text-emerald-400" : "text-red-400"}`}>
+                              {success ? "Sent" : "Failed"}
+                            </span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-foreground/80">{typeLabel}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground truncate max-w-[200px]" title={entry.recipients}>
+                              {recipientLabel}
+                            </span>
+                          </div>
+                          {!success && entry.errorMessage && (
+                            <p className="text-muted-foreground mt-0.5 truncate max-w-xs" title={entry.errorMessage}>
+                              {entry.errorMessage}
+                            </p>
+                          )}
+                        </div>
+                        <time
+                          dateTime={entry.sentAt}
+                          className="shrink-0 text-muted-foreground tabular-nums"
+                          title={new Date(entry.sentAt).toLocaleString()}
+                        >
+                          {new Date(entry.sentAt).toLocaleDateString(undefined, {
                             month: "short",
                             day: "numeric",
                             hour: "2-digit",

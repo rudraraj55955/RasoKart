@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, systemSettingsTable, auditLogsTable, reconciliationRunsTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { db, systemSettingsTable, auditLogsTable, reconciliationRunsTable, reconciliationEmailLogsTable } from "@workspace/db";
+import { eq, inArray, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMail, getSmtpConfig } from "../helpers/mailer";
 import { buildEmailHtml, buildUnmatchedAlertHtml, buildSampleCsv } from "../helpers/reconcileEmail";
@@ -331,8 +331,31 @@ router.post("/finance_report_email/send-sample", async (req, res, next) => {
     });
 
     if (!sent) {
+      try {
+        await db.insert(reconciliationEmailLogsTable).values({
+          runId: 0,
+          emailType: "sample_report",
+          recipients: recipients.join(", "),
+          status: "failed",
+          errorMessage: "SMTP not configured or send failed",
+        });
+      } catch (logErr) {
+        req.log.error({ err: logErr }, "Failed to write email log for sample_report send failure");
+      }
       res.status(502).json({ error: "SMTP is not configured or failed to send — check your SMTP settings" });
       return;
+    }
+
+    try {
+      await db.insert(reconciliationEmailLogsTable).values({
+        runId: 0,
+        emailType: "sample_report",
+        recipients: recipients.join(", "),
+        status: "sent",
+        errorMessage: null,
+      });
+    } catch (logErr) {
+      req.log.error({ err: logErr }, "Failed to write email log for sample_report");
     }
 
     try {
@@ -428,6 +451,22 @@ router.post("/test-email", async (req, res, next) => {
 
     await writeAuditLog({ recipients, success: true });
     res.json({ ok: true, to: email });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/settings/finance_report_email/logs — last 10 finance report email sends
+router.get("/finance_report_email/logs", async (_req, res, next) => {
+  try {
+    const logs = await db
+      .select()
+      .from(reconciliationEmailLogsTable)
+      .where(inArray(reconciliationEmailLogsTable.emailType, ["report", "sample_report"]))
+      .orderBy(desc(reconciliationEmailLogsTable.sentAt))
+      .limit(10);
+
+    res.json({ data: logs });
   } catch (err) {
     next(err);
   }
