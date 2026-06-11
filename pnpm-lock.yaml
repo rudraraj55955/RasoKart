@@ -733,6 +733,9 @@ importers:
 
   scripts:
     dependencies:
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../lib/db
       '@workspace/mailer':
         specifier: workspace:*
         version: link:../lib/mailer
@@ -740,6 +743,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
       tsx:
         specifier: 'catalog:'
         version: 4.21.0

@@ -4799,6 +4799,29 @@ export const DeleteSavedFilterResponse = zod.object({
 
 
 /**
+ * @summary Get GitHub sync configuration
+ */
+export const GetGithubSyncConfigResponse = zod.object({
+  "enabled": zod.boolean().describe('Whether the GitHub sync job is enabled'),
+  "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")')
+})
+
+
+/**
+ * @summary Update GitHub sync configuration
+ */
+export const UpdateGithubSyncConfigBody = zod.object({
+  "enabled": zod.boolean().optional().describe('Whether the GitHub sync job is enabled'),
+  "schedule": zod.string().optional().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")')
+})
+
+export const UpdateGithubSyncConfigResponse = zod.object({
+  "enabled": zod.boolean().describe('Whether the GitHub sync job is enabled'),
+  "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")')
+})
+
+
+/**
  * @summary Get last GitHub sync status
  */
 export const GetGithubSyncStatusResponse = zod.object({

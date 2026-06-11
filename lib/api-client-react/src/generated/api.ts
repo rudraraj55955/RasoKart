@@ -86,6 +86,7 @@ import type {
   GetVirtualAccountBalanceHistoryParams,
   GetWebhookLogAttempts200,
   GetWebhookLogsParams,
+  GithubSyncConfig,
   GithubSyncStatus,
   HealthStatus,
   Invoice,
@@ -210,6 +211,7 @@ import type {
   Transaction,
   TransactionListResponse,
   UpdateAccountDetailVisibility200,
+  UpdateGithubSyncConfigBody,
   UpdateMyPreferencesBody,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -15947,6 +15949,154 @@ export const useDeleteSavedFilter = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteSavedFilterMutationOptions(options));
+    }
+
+export const getGetGithubSyncConfigUrl = () => {
+
+
+
+
+  return `/api/github-sync/config`
+}
+
+/**
+ * @summary Get GitHub sync configuration
+ */
+export const getGithubSyncConfig = async ( options?: RequestInit): Promise<GithubSyncConfig> => {
+
+  return customFetch<GithubSyncConfig>(getGetGithubSyncConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGithubSyncConfigQueryKey = () => {
+    return [
+    `/api/github-sync/config`
+    ] as const;
+    }
+
+
+export const getGetGithubSyncConfigQueryOptions = <TData = Awaited<ReturnType<typeof getGithubSyncConfig>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGithubSyncConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGithubSyncConfig>>> = ({ signal }) => getGithubSyncConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGithubSyncConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getGithubSyncConfig>>>
+export type GetGithubSyncConfigQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get GitHub sync configuration
+ */
+
+export function useGetGithubSyncConfig<TData = Awaited<ReturnType<typeof getGithubSyncConfig>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGithubSyncConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateGithubSyncConfigUrl = () => {
+
+
+
+
+  return `/api/github-sync/config`
+}
+
+/**
+ * @summary Update GitHub sync configuration
+ */
+export const updateGithubSyncConfig = async (updateGithubSyncConfigBody: UpdateGithubSyncConfigBody, options?: RequestInit): Promise<GithubSyncConfig> => {
+
+  return customFetch<GithubSyncConfig>(getUpdateGithubSyncConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateGithubSyncConfigBody,)
+  }
+);}
+
+
+
+
+export const getUpdateGithubSyncConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGithubSyncConfig>>, TError,{data: BodyType<UpdateGithubSyncConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateGithubSyncConfig>>, TError,{data: BodyType<UpdateGithubSyncConfigBody>}, TContext> => {
+
+const mutationKey = ['updateGithubSyncConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateGithubSyncConfig>>, {data: BodyType<UpdateGithubSyncConfigBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateGithubSyncConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateGithubSyncConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateGithubSyncConfig>>>
+    export type UpdateGithubSyncConfigMutationBody = BodyType<UpdateGithubSyncConfigBody>
+    export type UpdateGithubSyncConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update GitHub sync configuration
+ */
+export const useUpdateGithubSyncConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGithubSyncConfig>>, TError,{data: BodyType<UpdateGithubSyncConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateGithubSyncConfig>>,
+        TError,
+        {data: BodyType<UpdateGithubSyncConfigBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateGithubSyncConfigMutationOptions(options));
     }
 
 export const getGetGithubSyncStatusUrl = () => {

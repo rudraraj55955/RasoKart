@@ -5,6 +5,13 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+export interface GithubSyncConfig {
+  /** Whether the GitHub sync job is enabled */
+  enabled: boolean;
+  /** Cron expression for the sync schedule (e.g. "0 2 * * *") */
+  schedule: string;
+}
+
 /**
  * Outcome of the last GitHub sync run, or "never" if the script has not run yet
  */
@@ -3354,5 +3361,12 @@ export type ClearSignatureFailureAlertHistory200 = {
 
 export type ListSavedFilters200 = {
   data: SavedFilter[];
+};
+
+export type UpdateGithubSyncConfigBody = {
+  /** Whether the GitHub sync job is enabled */
+  enabled?: boolean;
+  /** Cron expression for the sync schedule (e.g. "0 2 * * *") */
+  schedule?: string;
 };
 

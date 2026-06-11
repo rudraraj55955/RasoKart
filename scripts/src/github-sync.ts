@@ -1,6 +1,8 @@
 import { execSync } from "child_process";
 import { writeFileSync } from "fs";
 import { sendAdminAlert } from "./mailer.js";
+import { db, systemSettingsTable } from "@workspace/db";
+import { inArray } from "drizzle-orm";
 
 const GITHUB_REPO =
   process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
@@ -18,6 +20,59 @@ function resetRemote() {
     );
   } catch {
   }
+}
+
+/**
+ * Match a single cron field value against the given integer.
+ * Handles: *, n, n-m (range), *\/n (step), comma-lists.
+ */
+function matchCronField(field: string, value: number): boolean {
+  if (field === "*") return true;
+
+  // comma list — match any element
+  if (field.includes(",")) {
+    return field.split(",").some((f) => matchCronField(f.trim(), value));
+  }
+
+  // step: */n or base/n
+  if (field.includes("/")) {
+    const [base, stepStr] = field.split("/");
+    const step = parseInt(stepStr, 10);
+    if (isNaN(step) || step <= 0) return false;
+    if (base === "*" || base === "") return value % step === 0;
+    const start = parseInt(base, 10);
+    if (isNaN(start)) return false;
+    return value >= start && (value - start) % step === 0;
+  }
+
+  // range: n-m
+  if (field.includes("-")) {
+    const [s, e] = field.split("-").map(Number);
+    if (isNaN(s) || isNaN(e)) return false;
+    return value >= s && value <= e;
+  }
+
+  // exact number
+  const num = parseInt(field, 10);
+  return !isNaN(num) && num === value;
+}
+
+/**
+ * Returns true when the given Date's UTC time matches the 5-part cron expression.
+ * Fields: minute hour day-of-month month day-of-week (0=Sun).
+ */
+function cronMatchesNow(expression: string, now: Date = new Date()): boolean {
+  const parts = expression.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+
+  const [minP, hrP, domP, monP, dowP] = parts;
+  return (
+    matchCronField(minP, now.getUTCMinutes()) &&
+    matchCronField(hrP, now.getUTCHours()) &&
+    matchCronField(domP, now.getUTCDate()) &&
+    matchCronField(monP, now.getUTCMonth() + 1) &&
+    matchCronField(dowP, now.getUTCDay())
+  );
 }
 
 function buildFailureHtml(reason: string, detail: string): string {
@@ -88,7 +143,47 @@ function writeStatus(status: "success" | "failure", errorMessage?: string) {
   }
 }
 
+async function readSyncConfig(): Promise<{ enabled: boolean; schedule: string }> {
+  try {
+    const rows = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(inArray(systemSettingsTable.key, ["github_sync_enabled", "github_sync_schedule"]));
+    const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const rawEnabled = map["github_sync_enabled"];
+    const enabled = rawEnabled === null || rawEnabled === undefined ? true : rawEnabled === "true";
+    const schedule = map["github_sync_schedule"] ?? "0 2 * * *";
+    return { enabled, schedule };
+  } catch (err) {
+    console.warn("GITHUB_SYNC: Could not read sync config from DB — assuming enabled, default schedule:", err);
+    return { enabled: true, schedule: "0 2 * * *" };
+  }
+}
+
 async function main() {
+  // GITHUB_SYNC_FORCE=true bypasses schedule and enabled checks (for manual or test runs)
+  const force = process.env["GITHUB_SYNC_FORCE"] === "true";
+
+  const config = await readSyncConfig();
+
+  if (!force && !config.enabled) {
+    console.log("GITHUB_SYNC: Sync is disabled in admin settings — skipping. Set GITHUB_SYNC_FORCE=true to override.");
+    return;
+  }
+
+  if (!force && !cronMatchesNow(config.schedule)) {
+    console.log(
+      `GITHUB_SYNC: Current time does not match schedule "${config.schedule}" — skipping. Set GITHUB_SYNC_FORCE=true to run immediately.`,
+    );
+    return;
+  }
+
+  if (force) {
+    console.log("GITHUB_SYNC: Force flag set — bypassing schedule and enabled checks.");
+  } else {
+    console.log(`GITHUB_SYNC: Schedule "${config.schedule}" matched — proceeding with sync.`);
+  }
+
   const token = process.env["GITHUB_TOKEN"];
 
   if (!token) {

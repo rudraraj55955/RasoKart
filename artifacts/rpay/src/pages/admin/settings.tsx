@@ -6,11 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench, GitBranch } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetCleanupStats, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetCleanupStats, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -216,6 +216,10 @@ export default function AdminSettings() {
   const [retryDelay2, setRetryDelay2] = useState<number>(900);
   const [retryDelay3, setRetryDelay3] = useState<number>(3600);
   const [retryInitialized, setRetryInitialized] = useState(false);
+
+  const [githubSyncEnabled, setGithubSyncEnabled] = useState<boolean>(true);
+  const [githubSyncSchedule, setGithubSyncSchedule] = useState<string>("0 2 * * *");
+  const [githubSyncInitialized, setGithubSyncInitialized] = useState(false);
 
   // SMTP config form state
   const [smtpHost, setSmtpHost] = useState("");
@@ -653,6 +657,36 @@ export default function AdminSettings() {
         void refetchSigFailureHistory();
       },
       onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to clear history")),
+    },
+  });
+
+  const { data: githubSyncConfig, isLoading: githubSyncLoading } = useGetGithubSyncConfig({
+    query: {
+      onSuccess: (d: { enabled: boolean; schedule: string }) => {
+        if (!githubSyncInitialized) {
+          setGithubSyncEnabled(d.enabled);
+          setGithubSyncSchedule(d.schedule);
+          setGithubSyncInitialized(true);
+        }
+      },
+    },
+  } as any);
+
+  const currentGithubSyncEnabled = githubSyncConfig?.enabled ?? true;
+  const currentGithubSyncSchedule = githubSyncConfig?.schedule ?? "0 2 * * *";
+  const githubSyncUnchanged = githubSyncEnabled === currentGithubSyncEnabled && githubSyncSchedule === currentGithubSyncSchedule;
+
+  const { mutate: saveGithubSyncConfig, isPending: savingGithubSyncConfig } = useUpdateGithubSyncConfig({
+    mutation: {
+      onSuccess: (updated: { enabled: boolean; schedule: string }) => {
+        toast.success("GitHub sync settings saved");
+        setGithubSyncInitialized(false);
+        qc.invalidateQueries({ queryKey: getGetGithubSyncConfigQueryKey() });
+        setGithubSyncEnabled(updated.enabled);
+        setGithubSyncSchedule(updated.schedule);
+        setGithubSyncInitialized(true);
+      },
+      onError: (err: Error) => toast.error(err.message),
     },
   });
 
@@ -2045,6 +2079,111 @@ export default function AdminSettings() {
               You will not receive emails when merchant webhooks permanently fail.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* GitHub Sync */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <GitBranch className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">GitHub Sync</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            Control whether the automated GitHub repository sync job is allowed to run, and what
+            cron schedule it follows. The sync script reads these settings each time it is invoked.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!githubSyncLoading && !currentGithubSyncEnabled && (
+            <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>GitHub sync is <strong>disabled</strong> — the sync script will skip automatically.</span>
+            </div>
+          )}
+          {!githubSyncLoading && currentGithubSyncEnabled && (
+            <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>GitHub sync is <strong>enabled</strong> — the sync script will run on schedule.</span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Enable automatic sync</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                When disabled the sync script exits immediately without pushing to GitHub.
+              </p>
+            </div>
+            <Switch
+              checked={githubSyncEnabled}
+              onCheckedChange={val => setGithubSyncEnabled(val)}
+              disabled={githubSyncLoading}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="github-sync-schedule" className="text-sm">Cron schedule</Label>
+            <Input
+              id="github-sync-schedule"
+              type="text"
+              placeholder="0 2 * * *"
+              value={githubSyncSchedule}
+              onChange={e => setGithubSyncSchedule(e.target.value)}
+              disabled={githubSyncLoading || !githubSyncEnabled}
+              className="max-w-xs font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Standard 5-part cron expression. Examples:{" "}
+              <button
+                type="button"
+                className="text-violet-400 hover:underline"
+                onClick={() => setGithubSyncSchedule("0 2 * * *")}
+              >
+                0 2 * * * (daily 02:00)
+              </button>
+              {" · "}
+              <button
+                type="button"
+                className="text-violet-400 hover:underline"
+                onClick={() => setGithubSyncSchedule("0 */6 * * *")}
+              >
+                0 */6 * * * (every 6h)
+              </button>
+              {" · "}
+              <button
+                type="button"
+                className="text-violet-400 hover:underline"
+                onClick={() => setGithubSyncSchedule("0 2 * * 1")}
+              >
+                0 2 * * 1 (weekly Mon)
+              </button>
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => saveGithubSyncConfig({ data: { enabled: githubSyncEnabled, schedule: githubSyncSchedule } })}
+              disabled={savingGithubSyncConfig || githubSyncLoading || githubSyncUnchanged}
+            >
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+              {savingGithubSyncConfig ? "Saving…" : "Save"}
+            </Button>
+            {!githubSyncUnchanged && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setGithubSyncEnabled(currentGithubSyncEnabled);
+                  setGithubSyncSchedule(currentGithubSyncSchedule);
+                }}
+                disabled={savingGithubSyncConfig}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
