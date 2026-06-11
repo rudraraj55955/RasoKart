@@ -243,7 +243,6 @@ router.get("/secret", async (req, res) => {
     db
       .select({
         callbackSecret: merchantsTable.callbackSecret,
-        callbackSecretUpdatedAt: merchantsTable.callbackSecretUpdatedAt,
       })
       .from(merchantsTable)
       .where(eq(merchantsTable.id, user.merchantId))
@@ -261,9 +260,7 @@ router.get("/secret", async (req, res) => {
   }
 
   const secret = merchant.callbackSecret;
-  const lastRotatedAt = webhook?.secretRotatedAt?.toISOString()
-    ?? merchant.callbackSecretUpdatedAt?.toISOString()
-    ?? null;
+  const lastRotatedAt = webhook?.secretRotatedAt?.toISOString() ?? null;
 
   res.json({
     isSet: !!secret,

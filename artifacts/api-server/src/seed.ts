@@ -801,6 +801,18 @@ export async function seed() {
   `);
   console.log("Connection ID backfill complete.");
 
+  // Backfill secret_rotated_at on webhooks rows for merchants who rotated their
+  // callback secret before the secret_rotated_at column was added.
+  await db.execute(sql`
+    UPDATE webhooks
+    SET secret_rotated_at = merchants.callback_secret_updated_at
+    FROM merchants
+    WHERE webhooks.merchant_id = merchants.id
+      AND webhooks.secret_rotated_at IS NULL
+      AND merchants.callback_secret_updated_at IS NOT NULL
+  `);
+  console.log("Webhook secret_rotated_at backfill complete.");
+
   console.log("Seed complete.");
 }
 
