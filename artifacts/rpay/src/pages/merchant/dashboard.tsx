@@ -1,10 +1,11 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink } from "@workspace/api-client-react";
+import { useEffect, useState } from "react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, useGetCallbackSecret, useListApiKeys, type PaymentLink } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert, X } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
 import { Link } from "wouter";
@@ -125,6 +126,17 @@ export default function MerchantDashboard() {
   const { data: apiKeys } = useListApiKeys();
   const [callbackBannerDismissed, setCallbackBannerDismissed] = useState(false);
   const [rotationBannerDismissed, setRotationBannerDismissed] = useState(false);
+  const rotationDismissKey = user?.id && callbackSecret?.lastRotatedAt
+    ? `rasokart_rotation_dismissed_${user.id}_${callbackSecret.lastRotatedAt}`
+    : null;
+  useEffect(() => {
+    if (!rotationDismissKey) return;
+    setRotationBannerDismissed(localStorage.getItem(rotationDismissKey) === "1");
+  }, [rotationDismissKey]);
+  const dismissRotationBanner = () => {
+    if (rotationDismissKey) localStorage.setItem(rotationDismissKey, "1");
+    setRotationBannerDismissed(true);
+  };
   const { data: allPaymentLinks, isLoading: paymentLinksLoading } = useQuery<PaymentLink[]>({
     queryKey: ["payment-links-all-for-dashboard"],
     queryFn: fetchAllPaymentLinks,
@@ -303,7 +315,7 @@ export default function MerchantDashboard() {
                 size="sm"
                 variant="ghost"
                 className="h-8 w-8 p-0 text-amber-400/60 hover:text-amber-400 hover:bg-amber-500/10"
-                onClick={() => setRotationBannerDismissed(true)}
+                onClick={dismissRotationBanner}
                 aria-label="Dismiss rotation reminder"
               >
                 <X className="w-4 h-4" />
