@@ -1500,6 +1500,8 @@ export const SendWebhookTestResponse = zod.object({
 export const getWebhookConfigResponseMaxRetriesMin = 0;
 export const getWebhookConfigResponseMaxRetriesMax = 5;
 
+export const getWebhookConfigResponseFailureAlertThresholdMax = 10;
+
 
 
 export const GetWebhookConfigResponse = zod.object({
@@ -1510,6 +1512,8 @@ export const GetWebhookConfigResponse = zod.object({
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
   "maxRetries": zod.number().min(getWebhookConfigResponseMaxRetriesMin).max(getWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "failureAlertEnabled": zod.boolean().describe('Whether to send an email alert when consecutive failures reach the threshold'),
+  "failureAlertThreshold": zod.number().min(1).max(getWebhookConfigResponseFailureAlertThresholdMax).describe('Number of consecutive delivery failures that triggers an email alert (default 3)'),
   "createdAt": zod.string().optional()
 })
 
@@ -1520,6 +1524,8 @@ export const GetWebhookConfigResponse = zod.object({
 export const updateWebhookConfigBodyMaxRetriesMin = 0;
 export const updateWebhookConfigBodyMaxRetriesMax = 5;
 
+export const updateWebhookConfigBodyFailureAlertThresholdMax = 10;
+
 
 
 export const UpdateWebhookConfigBody = zod.object({
@@ -1527,11 +1533,15 @@ export const UpdateWebhookConfigBody = zod.object({
   "isActive": zod.boolean().optional(),
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
-  "maxRetries": zod.number().min(updateWebhookConfigBodyMaxRetriesMin).max(updateWebhookConfigBodyMaxRetriesMax).optional().describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)')
+  "maxRetries": zod.number().min(updateWebhookConfigBodyMaxRetriesMin).max(updateWebhookConfigBodyMaxRetriesMax).optional().describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "failureAlertEnabled": zod.boolean().optional().describe('Whether to send an email alert when consecutive failures reach the threshold'),
+  "failureAlertThreshold": zod.number().min(1).max(updateWebhookConfigBodyFailureAlertThresholdMax).optional().describe('Number of consecutive delivery failures that triggers an email alert (default 3)')
 })
 
 export const updateWebhookConfigResponseMaxRetriesMin = 0;
 export const updateWebhookConfigResponseMaxRetriesMax = 5;
+
+export const updateWebhookConfigResponseFailureAlertThresholdMax = 10;
 
 
 
@@ -1543,6 +1553,8 @@ export const UpdateWebhookConfigResponse = zod.object({
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
   "maxRetries": zod.number().min(updateWebhookConfigResponseMaxRetriesMin).max(updateWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "failureAlertEnabled": zod.boolean().describe('Whether to send an email alert when consecutive failures reach the threshold'),
+  "failureAlertThreshold": zod.number().min(1).max(updateWebhookConfigResponseFailureAlertThresholdMax).describe('Number of consecutive delivery failures that triggers an email alert (default 3)'),
   "createdAt": zod.string().optional()
 })
 

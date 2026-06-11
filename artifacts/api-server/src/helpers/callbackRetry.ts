@@ -1,8 +1,9 @@
 import { db, callbackLogsTable, usersTable, notificationsTable, webhooksTable } from "@workspace/db";
-import { eq, and, lte, sql, inArray } from "drizzle-orm";
+import { eq, and, lte, sql, inArray, desc, ne } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { createNotification, createBulkNotifications } from "./notifications";
 import { notifyAdminsOfWebhookFailureEmail } from "./adminNotifyEmail";
+import { sendWebhookFailureAlertEmail } from "./webhookFailureAlertEmail";
 
 const WEBHOOK_FAILURE_WINDOW_HOURS = 1;
 
@@ -91,6 +92,94 @@ async function notifyAdminsOfWebhookFailure(merchantId: number, url: string, att
 }
 
 const MAX_ATTEMPTS = 4; // 1 initial + 3 retries (default when no per-webhook config)
+
+const FAILURE_ALERT_WINDOW_HOURS = 6;
+
+/**
+ * After a delivery reaches terminal "failed" state, check whether the last N
+ * non-test callback logs for this merchant are all failures.  If so, and the
+ * merchant has failure alerts enabled, send a single deduplicated email.
+ */
+export async function checkAndSendWebhookFailureAlert(
+  merchantId: number,
+  url: string,
+): Promise<void> {
+  try {
+    const [whConfig] = await db
+      .select({ failureAlertEnabled: webhooksTable.failureAlertEnabled, failureAlertThreshold: webhooksTable.failureAlertThreshold })
+      .from(webhooksTable)
+      .where(eq(webhooksTable.merchantId, merchantId))
+      .limit(1);
+
+    if (!whConfig?.failureAlertEnabled) return;
+
+    const threshold = whConfig.failureAlertThreshold;
+    if (threshold <= 0) return;
+
+    // Fetch the most recent `threshold` non-test terminal logs (success or failed, not pending_retry)
+    const recentLogs = await db
+      .select({ status: callbackLogsTable.status })
+      .from(callbackLogsTable)
+      .where(
+        and(
+          eq(callbackLogsTable.merchantId, merchantId),
+          eq(callbackLogsTable.isTest, false),
+          ne(callbackLogsTable.status, "pending_retry"),
+        ),
+      )
+      .orderBy(desc(callbackLogsTable.createdAt))
+      .limit(threshold);
+
+    if (recentLogs.length < threshold) return;
+
+    const allFailed = recentLogs.every(l => l.status === "failed");
+    if (!allFailed) return;
+
+    // Deduplication: at most one alert per merchant per 6-hour window
+    const [user] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.merchantId, merchantId))
+      .limit(1);
+
+    if (!user) return;
+
+    const now = new Date();
+    const windowSlot = Math.floor(now.getUTCHours() / FAILURE_ALERT_WINDOW_HOURS) * FAILURE_ALERT_WINDOW_HOURS;
+    const hourBucket = `${now.toISOString().slice(0, 11)}${String(windowSlot).padStart(2, "0")}`;
+    const dedupeKey = `webhook_failure_alert_${merchantId}_${hourBucket}`;
+
+    const [existing] = await db
+      .select({ id: notificationsTable.id })
+      .from(notificationsTable)
+      .where(
+        and(
+          eq(notificationsTable.userId, user.id),
+          eq(notificationsTable.type, "webhook_failure"),
+          sql`${notificationsTable.metadata}->>'dedupeKey' = ${dedupeKey}`,
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      logger.info({ merchantId, dedupeKey }, "Webhook failure alert email suppressed (duplicate within window)");
+      return;
+    }
+
+    // Record the dedup notification so future calls within the window are suppressed
+    await createNotification({
+      userId: user.id,
+      type: "webhook_failure",
+      title: "Webhook Failure Alert Sent",
+      body: `Email alert sent: ${threshold} consecutive delivery failures on ${url}.`,
+      metadata: { url, consecutiveFailures: threshold, dedupeKey },
+    });
+
+    await sendWebhookFailureAlertEmail({ merchantId, webhookUrl: url, consecutiveFailures: threshold, threshold });
+  } catch (err) {
+    logger.error({ err, merchantId }, "checkAndSendWebhookFailureAlert failed");
+  }
+}
 
 function getNextRetryDelay(attempts: number): number {
   // attempts is the number of attempts already made (including the just-failed one)
@@ -244,6 +333,9 @@ export async function processPendingRetries(): Promise<void> {
           });
           await notifyAdminsOfWebhookFailureEmail({ merchantId: log.merchantId, url: log.url, attempts: newAttempts, qrCodeId: log.qrCodeId ?? null }).catch((err) => {
             logger.error({ err, logId: log.id }, "Failed to send admin webhook failure email");
+          });
+          await checkAndSendWebhookFailureAlert(log.merchantId, log.url).catch((err) => {
+            logger.error({ err, logId: log.id }, "Failed to check/send webhook failure alert email");
           });
         }
       } else {

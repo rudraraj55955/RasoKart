@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X, BarChart2, Calendar } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X, BarChart2, Calendar, Bell, BellOff } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 import { SIG_VERIFIED_KEY } from "./callbacks";
 
@@ -528,6 +528,8 @@ export default function MerchantWebhook() {
   const [isActive, setIsActive] = useState(true);
   const [events, setEvents] = useState<string[]>([]);
   const [maxRetries, setMaxRetries] = useState(3);
+  const [failureAlertEnabled, setFailureAlertEnabled] = useState(true);
+  const [failureAlertThreshold, setFailureAlertThreshold] = useState(3);
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [selectedLog, setSelectedLog] = useState<CallbackLog | null>(null);
@@ -547,6 +549,8 @@ export default function MerchantWebhook() {
       setIsActive(config.isActive);
       setEvents(config.events || []);
       setMaxRetries(config.maxRetries ?? 3);
+      setFailureAlertEnabled(config.failureAlertEnabled ?? true);
+      setFailureAlertThreshold(config.failureAlertThreshold ?? 3);
     }
   }, [config]);
 
@@ -557,7 +561,7 @@ export default function MerchantWebhook() {
   const handleSave = () => {
     if (!url.trim()) { toast.error("Webhook URL is required"); return; }
     const hasSecret = !!secret.trim();
-    updateMutation.mutate({ data: { url: url.trim(), isActive, events, secret: secret || null, maxRetries } }, {
+    updateMutation.mutate({ data: { url: url.trim(), isActive, events, secret: secret || null, maxRetries, failureAlertEnabled, failureAlertThreshold } }, {
       onSuccess: () => {
         toast.success("Webhook configuration saved");
         qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() });
@@ -685,6 +689,34 @@ onError: () => toast.error("Failed to send test event"),
                 <SelectItem value="5">5 retries</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {failureAlertEnabled ? <Bell className="w-4 h-4 text-amber-400" /> : <BellOff className="w-4 h-4 text-muted-foreground/50" />}
+                <div>
+                  <p className="font-medium text-sm">Failure alert emails</p>
+                  <p className="text-xs text-muted-foreground">Get emailed when consecutive deliveries fail</p>
+                </div>
+              </div>
+              <Switch checked={failureAlertEnabled} onCheckedChange={setFailureAlertEnabled} />
+            </div>
+            {failureAlertEnabled && (
+              <div className="pl-6">
+                <Label className="text-xs">Alert threshold</Label>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-2">Send an alert after this many consecutive failures</p>
+                <Select value={String(failureAlertThreshold)} onValueChange={v => setFailureAlertThreshold(parseInt(v, 10))}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 7, 10].map(n => (
+                      <SelectItem key={n} value={String(n)}>{n} {n === 1 ? "failure" : "failures"}{n === 3 ? " (default)" : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <div className="flex items-center justify-between py-3 border-t border-border/50">
             <div>

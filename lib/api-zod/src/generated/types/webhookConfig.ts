@@ -20,5 +20,13 @@ export interface WebhookConfig {
      * @maximum 5
      */
   maxRetries: number;
+  /** Whether to send an email alert when consecutive failures reach the threshold */
+  failureAlertEnabled: boolean;
+  /**
+     * Number of consecutive delivery failures that triggers an email alert (default 3)
+     * @minimum 1
+     * @maximum 10
+     */
+  failureAlertThreshold: number;
   createdAt?: string;
 }

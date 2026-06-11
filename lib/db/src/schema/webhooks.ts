@@ -11,6 +11,8 @@ export const webhooksTable = pgTable("webhooks", {
   secret: text("secret"),
   secretRotatedAt: timestamp("secret_rotated_at", { withTimezone: true }),
   maxRetries: integer("max_retries").notNull().default(3),
+  failureAlertEnabled: boolean("failure_alert_enabled").notNull().default(true),
+  failureAlertThreshold: integer("failure_alert_threshold").notNull().default(3),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

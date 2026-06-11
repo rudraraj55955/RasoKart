@@ -540,7 +540,7 @@ router.put("/", async (req, res) => {
     res.status(403).json({ error: "Merchants only" });
     return;
   }
-  const { url, isActive, events, secret, maxRetries } = req.body;
+  const { url, isActive, events, secret, maxRetries, failureAlertEnabled, failureAlertThreshold } = req.body;
   if (!url || !Array.isArray(events)) {
     res.status(400).json({ error: "url and events required" });
     return;
@@ -552,19 +552,26 @@ router.put("/", async (req, res) => {
     return;
   }
 
+  const alertEnabled = failureAlertEnabled != null ? Boolean(failureAlertEnabled) : true;
+  const alertThresholdNum = failureAlertThreshold != null ? parseInt(String(failureAlertThreshold), 10) : 3;
+  if (!isFinite(alertThresholdNum) || alertThresholdNum < 1 || alertThresholdNum > 10) {
+    res.status(400).json({ error: "failureAlertThreshold must be an integer between 1 and 10" });
+    return;
+  }
+
   // Upsert
   const existing = await db.select().from(webhooksTable).where(eq(webhooksTable.merchantId, merchantId)).limit(1);
   let webhook;
   if (existing.length > 0) {
     [webhook] = await db
       .update(webhooksTable)
-      .set({ url, isActive: isActive ?? true, events, secret: secret ?? null, maxRetries: maxRetriesNum })
+      .set({ url, isActive: isActive ?? true, events, secret: secret ?? null, maxRetries: maxRetriesNum, failureAlertEnabled: alertEnabled, failureAlertThreshold: alertThresholdNum })
       .where(eq(webhooksTable.merchantId, merchantId))
       .returning();
   } else {
     [webhook] = await db
       .insert(webhooksTable)
-      .values({ merchantId, url, isActive: isActive ?? true, events, secret: secret ?? null, maxRetries: maxRetriesNum })
+      .values({ merchantId, url, isActive: isActive ?? true, events, secret: secret ?? null, maxRetries: maxRetriesNum, failureAlertEnabled: alertEnabled, failureAlertThreshold: alertThresholdNum })
       .returning();
   }
   res.json(webhook);
