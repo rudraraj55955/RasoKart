@@ -1052,6 +1052,21 @@ function ScheduleRow({
                 Paused
               </span>
             )}
+            {s.lastSendStatus === "failed" && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400 cursor-default">
+                      <AlertCircle className="w-2.5 h-2.5" />
+                      Delivery failed
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    {s.lastErrorMessage ?? "Last delivery attempt failed"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             {s.lastSentAt

@@ -2846,6 +2846,8 @@ export const ListAuditReportSchedulesResponse = zod.object({
   "recipientEmail": zod.string(),
   "isActive": zod.boolean(),
   "lastSentAt": zod.string().nullish(),
+  "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
+  "lastErrorMessage": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
@@ -2874,6 +2876,8 @@ export const SendAuditReportNowResponse = zod.object({
   "recipientEmail": zod.string(),
   "isActive": zod.boolean(),
   "lastSentAt": zod.string().nullish(),
+  "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
+  "lastErrorMessage": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -2923,6 +2927,8 @@ export const UpdateAuditReportScheduleResponse = zod.object({
   "recipientEmail": zod.string(),
   "isActive": zod.boolean(),
   "lastSentAt": zod.string().nullish(),
+  "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
+  "lastErrorMessage": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

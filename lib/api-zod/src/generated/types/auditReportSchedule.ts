@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AuditReportScheduleFrequency } from './auditReportScheduleFrequency';
+import type { AuditReportScheduleLastSendStatus } from './auditReportScheduleLastSendStatus';
 
 export interface AuditReportSchedule {
   id: number;
@@ -14,6 +15,9 @@ export interface AuditReportSchedule {
   isActive: boolean;
   /** @nullable */
   lastSentAt?: string | null;
+  lastSendStatus: AuditReportScheduleLastSendStatus;
+  /** @nullable */
+  lastErrorMessage?: string | null;
   createdAt: string;
   updatedAt: string;
 }

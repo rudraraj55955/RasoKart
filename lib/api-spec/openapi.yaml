@@ -6137,7 +6137,7 @@ components:
 
     AuditReportSchedule:
       type: object
-      required: [id, frequency, recipientEmail, isActive, createdAt, updatedAt]
+      required: [id, frequency, recipientEmail, isActive, lastSendStatus, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -6149,6 +6149,11 @@ components:
         isActive:
           type: boolean
         lastSentAt:
+          type: ["string", "null"]
+        lastSendStatus:
+          type: string
+          enum: [ok, failed, none]
+        lastErrorMessage:
           type: ["string", "null"]
         createdAt:
           type: string

@@ -1567,6 +1567,15 @@ export const AuditReportScheduleFrequency = {
   monthly: 'monthly',
 } as const;
 
+export type AuditReportScheduleLastSendStatus = typeof AuditReportScheduleLastSendStatus[keyof typeof AuditReportScheduleLastSendStatus];
+
+
+export const AuditReportScheduleLastSendStatus = {
+  ok: 'ok',
+  failed: 'failed',
+  none: 'none',
+} as const;
+
 export interface AuditReportSchedule {
   id: number;
   frequency: AuditReportScheduleFrequency;
@@ -1574,6 +1583,9 @@ export interface AuditReportSchedule {
   isActive: boolean;
   /** @nullable */
   lastSentAt?: string | null;
+  lastSendStatus: AuditReportScheduleLastSendStatus;
+  /** @nullable */
+  lastErrorMessage?: string | null;
   createdAt: string;
   updatedAt: string;
 }

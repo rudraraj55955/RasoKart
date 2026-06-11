@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, auditLogsTable, scheduledAuditReportsTable, scheduledAuditReportLogsTable } from "@workspace/db";
-import { eq, ilike, and, count, sql, or, gte, lte, desc } from "drizzle-orm";
+import { eq, ilike, and, count, sql, or, gte, lte, desc, getTableColumns } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { sendScheduledReport } from "../helpers/auditReportScheduler";
 
@@ -206,10 +206,41 @@ function serializeSchedule(s: typeof scheduledAuditReportsTable.$inferSelect) {
   };
 }
 
+function deriveLastSendStatus(lastSuccess: boolean | null): "ok" | "failed" | "none" {
+  if (lastSuccess === null) return "none";
+  return lastSuccess ? "ok" : "failed";
+}
+
 router.get("/schedules", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
-  const rows = await db.select().from(scheduledAuditReportsTable).orderBy(scheduledAuditReportsTable.createdAt);
-  res.json({ data: rows.map(serializeSchedule) });
+
+  const scheduleColumns = getTableColumns(scheduledAuditReportsTable);
+  const rows = await db
+    .select({
+      ...scheduleColumns,
+      lastSuccess: sql<boolean | null>`(
+        SELECT success FROM ${scheduledAuditReportLogsTable}
+        WHERE schedule_id = ${scheduledAuditReportsTable.id}
+        ORDER BY sent_at DESC
+        LIMIT 1
+      )`,
+      lastErrorMessage: sql<string | null>`(
+        SELECT error_message FROM ${scheduledAuditReportLogsTable}
+        WHERE schedule_id = ${scheduledAuditReportsTable.id}
+        ORDER BY sent_at DESC
+        LIMIT 1
+      )`,
+    })
+    .from(scheduledAuditReportsTable)
+    .orderBy(scheduledAuditReportsTable.createdAt);
+
+  res.json({
+    data: rows.map(r => ({
+      ...serializeSchedule(r),
+      lastSendStatus: deriveLastSendStatus(r.lastSuccess),
+      lastErrorMessage: r.lastErrorMessage ?? null,
+    })),
+  });
 });
 
 router.get("/schedules/:id/logs", async (req, res) => {

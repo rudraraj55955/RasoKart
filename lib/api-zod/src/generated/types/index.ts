@@ -36,6 +36,7 @@ export * from './auditReportSchedule';
 export * from './auditReportScheduleFrequency';
 export * from './auditReportScheduleInput';
 export * from './auditReportScheduleInputFrequency';
+export * from './auditReportScheduleLastSendStatus';
 export * from './auditReportScheduleListResponse';
 export * from './auditReportScheduleLog';
 export * from './auditReportScheduleLogListResponse';
