@@ -4,6 +4,7 @@ import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull } from "d
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 import { sendRejectionEmail } from "../helpers/rejectionEmail";
+import { sendCallbackSecretResetEmail } from "../helpers/callbackSecretResetEmail";
 import { ObjectStorageService, ObjectNotFoundError, InvalidImageError } from "../lib/objectStorage";
 import { consumeUploadIntent } from "../lib/uploadIntentStore";
 
@@ -237,6 +238,12 @@ router.delete("/:id/callback-secret", requireAdmin, async (req, res) => {
     ipAddress: req.ip ?? null,
   });
   req.log.info({ adminId: admin.id, merchantId: id }, "Admin force-reset callback secret");
+  sendCallbackSecretResetEmail({
+    to: merchant.email,
+    businessName: merchant.businessName,
+    adminEmail: admin.email,
+    resetAt: new Date(),
+  }).catch((err) => req.log.error({ err, merchantId: id }, "Failed to send callback secret reset email"));
   res.json({ isSet: false, secretPrefix: null, lastRotatedAt: null });
 });
 
