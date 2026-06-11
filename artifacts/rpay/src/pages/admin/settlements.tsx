@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   useListSettlements,
   useGetSettlementStats,
@@ -27,8 +27,8 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { ChevronDown, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock, CheckCircle2, DollarSign, RefreshCw, CheckSquare, AlertTriangle, Wallet } from "lucide-react";
-import { format } from "date-fns";
+import { ChevronDown, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock, CheckCircle2, DollarSign, RefreshCw, CheckSquare, AlertTriangle, Wallet, Sparkles, Hash, Bookmark, BookmarkCheck, Trash2 } from "lucide-react";
+import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { toast } from "sonner";
 
 type ActionType = "process" | "approve" | "reject" | "hold" | "mark-paid";
@@ -39,6 +39,135 @@ interface ActionModal {
   merchantName?: string | null;
   amount: number;
   merchantId?: number;
+}
+
+interface SmartFilter {
+  amountMin?: number;
+  amountMax?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  settlementStatus?: "pending" | "processing" | "approved" | "rejected" | "paid" | "hold";
+}
+
+const STATUS_KEYWORDS: Record<string, SmartFilter["settlementStatus"]> = {
+  pending: "pending",
+  processing: "processing",
+  approved: "approved",
+  approve: "approved",
+  rejected: "rejected",
+  reject: "rejected",
+  paid: "paid",
+  hold: "hold",
+  held: "hold",
+};
+
+function parseDateToken(token: string, now: Date): Pick<SmartFilter, "dateFrom" | "dateTo"> | null {
+  if (token === "today") {
+    return { dateFrom: format(startOfDay(now), "yyyy-MM-dd"), dateTo: format(endOfDay(now), "yyyy-MM-dd") };
+  }
+  if (token === "this week") {
+    return {
+      dateFrom: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+      dateTo: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+    };
+  }
+  if (token === "this month") {
+    return { dateFrom: format(startOfMonth(now), "yyyy-MM-dd"), dateTo: format(endOfMonth(now), "yyyy-MM-dd") };
+  }
+  if (token === "last month") {
+    const prev = subMonths(now, 1);
+    return { dateFrom: format(startOfMonth(prev), "yyyy-MM-dd"), dateTo: format(endOfMonth(prev), "yyyy-MM-dd") };
+  }
+  if (token === "last week") {
+    const prevWeekStart = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
+    const prevWeekEnd = endOfWeek(subDays(now, 7), { weekStartsOn: 1 });
+    return { dateFrom: format(prevWeekStart, "yyyy-MM-dd"), dateTo: format(prevWeekEnd, "yyyy-MM-dd") };
+  }
+  return null;
+}
+
+function parseAmountToken(token: string): Pick<SmartFilter, "amountMin" | "amountMax"> | null {
+  const gtMatch = token.match(/^(>=?)(\d+(?:\.\d+)?)$/);
+  if (gtMatch) {
+    const inclusive = gtMatch[1] === ">=";
+    const val = parseFloat(gtMatch[2]!);
+    return { amountMin: inclusive ? val : val + 0.01 };
+  }
+  const ltMatch = token.match(/^(<=?)(\d+(?:\.\d+)?)$/);
+  if (ltMatch) {
+    const inclusive = ltMatch[1] === "<=";
+    const val = parseFloat(ltMatch[2]!);
+    return { amountMax: inclusive ? val : val - 0.01 };
+  }
+  const rangeMatch = token.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+  if (rangeMatch) {
+    const min = parseFloat(rangeMatch[1]!);
+    const max = parseFloat(rangeMatch[2]!);
+    if (min <= max) return { amountMin: min, amountMax: max };
+  }
+  return null;
+}
+
+function parseSmartQuery(raw: string): SmartFilter | null {
+  const q = raw.trim().toLowerCase();
+  if (!q) return null;
+
+  const filter: SmartFilter = {};
+  const now = new Date();
+
+  for (const phrase of ["this week", "this month", "last month", "last week"]) {
+    if (q.includes(phrase)) {
+      const dateResult = parseDateToken(phrase, now);
+      if (dateResult) { Object.assign(filter, dateResult); break; }
+    }
+  }
+
+  let remaining = q;
+  if (filter.dateFrom) {
+    for (const phrase of ["this week", "this month", "last month", "last week"]) {
+      remaining = remaining.replace(phrase, "").trim();
+    }
+  }
+
+  const tokens = remaining.split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    if (token in STATUS_KEYWORDS) { filter.settlementStatus = STATUS_KEYWORDS[token]; continue; }
+    if (!filter.dateFrom) {
+      const dateResult = parseDateToken(token, now);
+      if (dateResult) { Object.assign(filter, dateResult); continue; }
+    }
+    if (filter.amountMin == null && filter.amountMax == null) {
+      const amtResult = parseAmountToken(token);
+      if (amtResult) { Object.assign(filter, amtResult); continue; }
+    }
+  }
+
+  const hasContent =
+    filter.settlementStatus != null || filter.dateFrom != null ||
+    filter.amountMin != null || filter.amountMax != null;
+
+  return hasContent ? filter : null;
+}
+
+interface SavedFilter {
+  id: string;
+  name: string;
+  filter: SmartFilter;
+  rawInput: string;
+}
+
+const SETTLEMENTS_SAVED_FILTERS_KEY = "rasokart_admin_settlements_saved_filters";
+
+function loadSavedFilters(): SavedFilter[] {
+  try {
+    const raw = localStorage.getItem(SETTLEMENTS_SAVED_FILTERS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as SavedFilter[];
+  } catch { return []; }
+}
+
+function storeSavedFilters(filters: SavedFilter[]): void {
+  localStorage.setItem(SETTLEMENTS_SAVED_FILTERS_KEY, JSON.stringify(filters));
 }
 
 export default function AdminSettlements() {
@@ -54,22 +183,36 @@ export default function AdminSettlements() {
   const [refNumber, setRefNumber] = useState("");
   const [actionError, setActionError] = useState("");
 
-  // Bulk selection state
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [selectAllMode, setSelectAllMode] = useState(false);
   const [bulkAction, setBulkAction] = useState<"approve" | "reject" | null>(null);
   const [bulkRemark, setBulkRemark] = useState("");
   const [bulkError, setBulkError] = useState("");
 
+  const [smartInput, setSmartInput] = useState("");
+  const [smartFilter, setSmartFilter] = useState<SmartFilter | null>(null);
+  const [smartError, setSmartError] = useState("");
+  const smartInputRef = useRef<HTMLInputElement>(null);
+
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => loadSavedFilters());
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveFilterName, setSaveFilterName] = useState("");
+  const [saveFilterNameError, setSaveFilterNameError] = useState("");
+  const saveNameInputRef = useRef<HTMLInputElement>(null);
+
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(() => {
     qc.invalidateQueries({ queryKey: getListSettlementsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetSettlementStatsQueryKey() });
   });
 
+  const activeStatus = smartFilter?.settlementStatus ?? (status !== "all" ? status : undefined);
+  const activeDateFrom = smartFilter?.dateFrom ?? (dateFrom || undefined);
+  const activeDateTo = smartFilter?.dateTo ?? (dateTo || undefined);
+
   const { data, isLoading } = useListSettlements({
-    status: status !== "all" ? (status as any) : undefined,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
+    status: activeStatus as any,
+    dateFrom: activeDateFrom,
+    dateTo: activeDateTo,
     page,
     limit: 20,
   });
@@ -133,15 +276,23 @@ export default function AdminSettlements() {
   };
 
   const exportCsv = () => downloadCsvFromUrl("/api/settlements/export/csv", "settlements.csv", {
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
+    dateFrom: activeDateFrom,
+    dateTo: activeDateTo,
     search: search || undefined,
-    status: status !== "all" ? status : undefined,
+    status: activeStatus,
   });
 
-  const filtered = data?.data?.filter(s =>
-    !search || (s.merchantName?.toLowerCase().includes(search.toLowerCase()))
-  );
+  // Apply amount filter client-side (API doesn't support amountMin/amountMax)
+  const amountMin = smartFilter?.amountMin;
+  const amountMax = smartFilter?.amountMax;
+
+  const filtered = data?.data?.filter(s => {
+    const amount = Number(s.requestedAmount ?? s.amount);
+    if (amountMin != null && amount < amountMin) return false;
+    if (amountMax != null && amount > amountMax) return false;
+    if (search && !s.merchantName?.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   const actionLabels: Record<ActionType, string> = {
     "process": "Mark as Processing",
@@ -159,7 +310,6 @@ export default function AdminSettlements() {
     "mark-paid": "text-teal-400",
   };
 
-  // Cross-page selection helpers
   const total = data?.total ?? 0;
   const pageItems = filtered ?? [];
   const allPageIds = pageItems.map(s => s.id);
@@ -171,7 +321,10 @@ export default function AdminSettlements() {
   const clearSelection = () => { setSelected(new Set()); setSelectAllMode(false); };
 
   const handleSearchChange = (v: string) => { setSearch(v); setPage(1); clearSelection(); };
-  const handleStatusChange = (v: string) => { setStatus(v); setPage(1); clearSelection(); };
+  const handleStatusChange = (v: string) => {
+    if (smartFilter) clearSmartFilter();
+    setStatus(v); setPage(1); clearSelection();
+  };
 
   const handleSelectAllPages = async () => {
     const PAGE_SIZE = 100;
@@ -180,9 +333,9 @@ export default function AdminSettlements() {
       const pages = await Promise.all(
         Array.from({ length: totalPages }, (_, i) =>
           listSettlements({
-            status: status !== "all" ? (status as any) : undefined,
-            dateFrom: dateFrom || undefined,
-            dateTo: dateTo || undefined,
+            status: activeStatus as any,
+            dateFrom: activeDateFrom,
+            dateTo: activeDateTo,
             page: i + 1,
             limit: PAGE_SIZE,
           })
@@ -226,7 +379,6 @@ export default function AdminSettlements() {
     setSelectAllMode(false);
   };
 
-  // Bulk approve/reject via sequential individual mutations
   const handleBulkAction = async () => {
     if (!bulkAction || selected.size === 0) return;
     setBulkError("");
@@ -260,6 +412,79 @@ export default function AdminSettlements() {
     setBulkAction(null);
     setBulkRemark("");
     clearSelection();
+  };
+
+  const hasSmartFilter = smartFilter !== null;
+  const isCurrentFilterSaved = hasSmartFilter && savedFilters.some(
+    f => f.rawInput === smartInput && JSON.stringify(f.filter) === JSON.stringify(smartFilter)
+  );
+  const anyFilterActive = hasSmartFilter || !!search || status !== "all" || !!(dateFrom || dateTo);
+
+  const applySmartSearch = () => {
+    setSmartError("");
+    const filter = parseSmartQuery(smartInput);
+    if (!filter) {
+      setSmartError("Try: pending, approved >5000, rejected this month, >1000, today");
+      return;
+    }
+    setSmartFilter(filter);
+    if (filter.settlementStatus) setStatus("all");
+    if (filter.dateFrom || filter.dateTo) { setDateFrom(""); setDateTo(""); }
+    setPage(1);
+    clearSelection();
+    setShowSaveInput(false);
+    setSaveFilterName("");
+  };
+
+  const clearSmartFilter = () => {
+    setSmartFilter(null);
+    setSmartInput("");
+    setSmartError("");
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    setPage(1);
+    smartInputRef.current?.focus();
+  };
+
+  const applySavedFilter = (saved: SavedFilter) => {
+    setSmartFilter(saved.filter);
+    setSmartInput(saved.rawInput);
+    setSmartError("");
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    if (saved.filter.settlementStatus) setStatus("all");
+    if (saved.filter.dateFrom || saved.filter.dateTo) { setDateFrom(""); setDateTo(""); }
+    setPage(1);
+    clearSelection();
+  };
+
+  const confirmSaveFilter = () => {
+    const trimmed = saveFilterName.trim();
+    if (!trimmed) { setSaveFilterNameError("Please enter a name for this filter."); saveNameInputRef.current?.focus(); return; }
+    if (!smartFilter) return;
+    if (savedFilters.some(f => f.name.toLowerCase() === trimmed.toLowerCase())) {
+      setSaveFilterNameError("A filter with this name already exists."); saveNameInputRef.current?.focus(); return;
+    }
+    const newFilter: SavedFilter = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: trimmed, filter: smartFilter, rawInput: smartInput,
+    };
+    const updated = [...savedFilters, newFilter];
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+  };
+
+  const cancelSaveFilter = () => { setShowSaveInput(false); setSaveFilterName(""); setSaveFilterNameError(""); };
+
+  const deleteSavedFilter = (id: string) => {
+    const updated = savedFilters.filter(f => f.id !== id);
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
   };
 
   return (
@@ -337,6 +562,161 @@ export default function AdminSettlements() {
         ))}
       </div>
 
+      {/* Smart Search Bar */}
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Smart Search</p>
+
+          {savedFilters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="text-xs text-muted-foreground font-medium">Saved:</span>
+              {savedFilters.map(saved => (
+                <span
+                  key={saved.id}
+                  className="group inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/8 px-2.5 py-0.5 text-xs font-medium text-violet-300 hover:border-violet-500/60 transition-colors"
+                >
+                  <button
+                    onClick={() => applySavedFilter(saved)}
+                    className="flex items-center gap-1 hover:text-violet-100 transition-colors"
+                    title={`Apply: ${saved.rawInput}`}
+                  >
+                    <BookmarkCheck className="w-3 h-3 shrink-0" />
+                    {saved.name}
+                  </button>
+                  <button
+                    onClick={() => deleteSavedFilter(saved.id)}
+                    className="ml-0.5 rounded-full p-0.5 text-violet-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                    aria-label={`Delete saved filter "${saved.name}"`}
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400" />
+              <Input
+                ref={smartInputRef}
+                className="pl-9"
+                placeholder="Try: pending  ·  approved >5000  ·  rejected this month  ·  >1000  ·  today"
+                value={smartInput}
+                onChange={e => { setSmartInput(e.target.value); setSmartError(""); }}
+                onKeyDown={e => { if (e.key === "Enter") applySmartSearch(); }}
+              />
+            </div>
+            <Button onClick={applySmartSearch} disabled={!smartInput.trim()}>
+              <Search className="w-4 h-4 mr-2" />Apply
+            </Button>
+            {hasSmartFilter && !isCurrentFilterSaved && !showSaveInput && (
+              <Button
+                variant="outline"
+                onClick={() => { setSaveFilterName(""); setSaveFilterNameError(""); setShowSaveInput(true); }}
+                className="border-violet-500/40 text-violet-300 hover:bg-violet-500/10 hover:text-violet-200"
+              >
+                <Bookmark className="w-4 h-4 mr-2" />Save filter
+              </Button>
+            )}
+            {hasSmartFilter && isCurrentFilterSaved && (
+              <Button variant="outline" disabled className="border-violet-500/20 text-violet-400/50 cursor-default">
+                <BookmarkCheck className="w-4 h-4 mr-2" />Saved
+              </Button>
+            )}
+          </div>
+
+          {showSaveInput && (
+            <div className="mt-3 flex items-start gap-2">
+              <div className="flex-1">
+                <Input
+                  ref={saveNameInputRef}
+                  className="h-8 text-sm"
+                  placeholder="Name this filter (e.g. Large pending settlements)"
+                  value={saveFilterName}
+                  onChange={e => { setSaveFilterName(e.target.value); setSaveFilterNameError(""); }}
+                  onKeyDown={e => { if (e.key === "Enter") confirmSaveFilter(); if (e.key === "Escape") cancelSaveFilter(); }}
+                  maxLength={40}
+                />
+                {saveFilterNameError && <p className="mt-1 text-xs text-rose-400">{saveFilterNameError}</p>}
+              </div>
+              <Button size="sm" onClick={confirmSaveFilter} className="h-8 shrink-0">Save</Button>
+              <Button size="sm" variant="ghost" onClick={cancelSaveFilter} className="h-8 shrink-0 px-2"><X className="w-4 h-4" /></Button>
+            </div>
+          )}
+
+          {smartError && <p className="mt-2 text-xs text-amber-400">{smartError}</p>}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Status: <span className="font-mono text-foreground/60">pending</span>, <span className="font-mono text-foreground/60">processing</span>, <span className="font-mono text-foreground/60">approved</span>, <span className="font-mono text-foreground/60">rejected</span>, <span className="font-mono text-foreground/60">paid</span>, <span className="font-mono text-foreground/60">hold</span> — Amount: <span className="font-mono text-foreground/60">{">1000"}</span>, <span className="font-mono text-foreground/60">{"500-5000"}</span> — Date: <span className="font-mono text-foreground/60">today</span>, <span className="font-mono text-foreground/60">this week</span>, <span className="font-mono text-foreground/60">this month</span> — Combine: <span className="font-mono text-foreground/60">approved this month</span>
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Active smart filter chips */}
+      {hasSmartFilter && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground font-medium">Smart filter:</span>
+          {(() => {
+            const sf = smartFilter!;
+            const chips: { label: string; key: string }[] = [];
+            if (sf.settlementStatus) chips.push({ key: "status", label: sf.settlementStatus.charAt(0).toUpperCase() + sf.settlementStatus.slice(1) });
+            if (sf.dateFrom || sf.dateTo) {
+              const d = sf.dateFrom && sf.dateTo
+                ? `${sf.dateFrom} – ${sf.dateTo}`
+                : sf.dateFrom ? `From ${sf.dateFrom}` : `Until ${sf.dateTo}`;
+              chips.push({ key: "date", label: d });
+            }
+            if (sf.amountMin != null && sf.amountMax != null) {
+              chips.push({ key: "amount", label: `₹${sf.amountMin.toLocaleString()} – ₹${sf.amountMax.toLocaleString()}` });
+            } else if (sf.amountMin != null) {
+              chips.push({ key: "amount", label: `≥ ₹${sf.amountMin.toLocaleString()}` });
+            } else if (sf.amountMax != null) {
+              chips.push({ key: "amount", label: `≤ ₹${sf.amountMax.toLocaleString()}` });
+            }
+            return chips.map((chip, i) => (
+              <span key={chip.key} className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                <Sparkles className="w-3 h-3" />
+                {chip.label}
+                {i === chips.length - 1 && (
+                  <button
+                    onClick={clearSmartFilter}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                    aria-label="Remove smart filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            ));
+          })()}
+        </div>
+      )}
+
+      {/* Filter summary bar */}
+      {anyFilterActive && (
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider mr-1">Filter results</span>
+            <div className="flex items-center gap-1.5 text-sm">
+              <Hash className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="font-semibold text-foreground">
+                {isLoading ? <span className="inline-block w-8 h-3.5 bg-muted/60 rounded animate-pulse" /> : (data?.total ?? 0).toLocaleString()}
+              </span>
+              <span className="text-muted-foreground">settlements</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm">
+              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-semibold text-amber-400">
+                {isLoading
+                  ? <span className="inline-block w-16 h-3.5 bg-muted/60 rounded animate-pulse" />
+                  : `₹${(pageItems.reduce((sum, s) => sum + Number(s.requestedAmount ?? s.amount), 0)).toLocaleString()}`}
+              </span>
+              <span className="text-muted-foreground">page total</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bulk action toolbar */}
       {selected.size > 0 && (
         <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5">
@@ -372,7 +752,6 @@ export default function AdminSettlements() {
               </Button>
             </div>
           </div>
-          {/* Select all pages banner */}
           {!selectAllMode && allPageSelected && total > pageItems.length && (
             <div className="text-xs text-center text-primary/70 border-t border-primary/20 pt-2">
               All {pageItems.length} settlements on this page are selected.{" "}
@@ -406,7 +785,7 @@ export default function AdminSettlements() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input className="pl-9" placeholder="Search by merchant name..." value={search} onChange={e => handleSearchChange(e.target.value)} />
               </div>
-              <Select value={status} onValueChange={v => handleStatusChange(v)}>
+              <Select value={smartFilter?.settlementStatus ?? status} onValueChange={v => handleStatusChange(v)}>
                 <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
@@ -421,14 +800,30 @@ export default function AdminSettlements() {
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">From</span>
-                <Input type="date" className="w-40" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); clearSelection(); }} />
+                <Input
+                  type="date"
+                  className="w-40"
+                  value={smartFilter?.dateFrom ?? dateFrom}
+                  onChange={e => {
+                    if (smartFilter) clearSmartFilter();
+                    setDateFrom(e.target.value); setPage(1); clearSelection();
+                  }}
+                />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">To</span>
-                <Input type="date" className="w-40" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); clearSelection(); }} />
+                <Input
+                  type="date"
+                  className="w-40"
+                  value={smartFilter?.dateTo ?? dateTo}
+                  onChange={e => {
+                    if (smartFilter) clearSmartFilter();
+                    setDateTo(e.target.value); setPage(1); clearSelection();
+                  }}
+                />
               </div>
-              {(dateFrom || dateTo) && (
-                <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); clearSelection(); }}>
+              {(dateFrom || dateTo || smartFilter?.dateFrom || smartFilter?.dateTo) && (
+                <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); if (smartFilter) clearSmartFilter(); clearSelection(); }}>
                   <X className="w-3.5 h-3.5 mr-1" /> Clear
                 </Button>
               )}
@@ -459,7 +854,18 @@ export default function AdminSettlements() {
                 <TableRow key={i}>{Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
               )) : pageItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">No settlements found</TableCell>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                    {anyFilterActive ? (
+                      <div className="space-y-2">
+                        <p>No settlements match the current filters</p>
+                        {hasSmartFilter && (
+                          <Button variant="ghost" size="sm" onClick={clearSmartFilter} className="text-violet-400 hover:text-violet-300">
+                            Clear smart filter
+                          </Button>
+                        )}
+                      </div>
+                    ) : "No settlements found"}
+                  </TableCell>
                 </TableRow>
               ) : pageItems.map(s => {
                 const isExpanded = expandedId === s.id;
@@ -628,7 +1034,6 @@ export default function AdminSettlements() {
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
-            {/* Merchant balance panel — only shown for approve action */}
             {actionModal?.type === "approve" && (
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 flex items-center gap-3">
                 <div className="p-1.5 rounded-md bg-emerald-500/10 shrink-0">
@@ -647,7 +1052,6 @@ export default function AdminSettlements() {
               </div>
             )}
 
-            {/* Overdraw warning */}
             {isOverdraw && (
               <div className="flex items-start gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-400">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
