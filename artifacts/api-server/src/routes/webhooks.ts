@@ -474,7 +474,7 @@ router.post("/test", async (req, res) => {
     req.log.warn({ err, merchantId }, "Failed to insert test webhook delivery log");
   }
 
-  res.json({ delivered, httpStatus, responseBody, durationMs, targetUrl, signed, ...(signatureHeader ? { signatureHeader } : {}) });
+  res.json({ delivered, httpStatus, responseBody, durationMs, targetUrl, signed, requestBody: body, ...(signatureHeader ? { signatureHeader } : {}) });
 });
 
 // POST /api/webhooks/backfill (admin only)

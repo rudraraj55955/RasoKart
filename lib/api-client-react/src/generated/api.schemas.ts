@@ -528,6 +528,8 @@ export interface WebhookTestResult {
   signed: boolean;
   /** The exact value of the X-Signature header sent with the test request (only present when signed=true) */
   signatureHeader?: string;
+  /** The exact JSON string that was sent as the request body (useful for reproducing HMAC verification) */
+  requestBody?: string;
 }
 
 export interface WebhookConfigInput {

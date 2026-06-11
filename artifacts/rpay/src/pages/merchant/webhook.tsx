@@ -116,6 +116,7 @@ type TestResult = {
   targetUrl: string;
   signed: boolean;
   signatureHeader?: string;
+  requestBody?: string;
 };
 
 const NODE_SNIPPET = `const crypto = require('crypto');
@@ -260,6 +261,34 @@ function WebhookTestPanel({ result, onDismiss, onRetry, isRetrying }: { result: 
             </button>
           </div>
           <p className="text-xs text-muted-foreground/50 mt-1">Paste this into your HMAC verification code to confirm your algorithm produces the same output.</p>
+        </div>
+      )}
+
+      {result.requestBody && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-muted-foreground/60">Request Body <span className="text-muted-foreground/40 font-normal">(exact JSON sent)</span></p>
+            <button
+              onClick={() => copy(result.requestBody!)}
+              className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+              title="Copy request body"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="relative group">
+            <pre className="text-xs font-mono bg-black/40 border border-border/30 rounded p-2.5 overflow-x-auto whitespace-pre-wrap break-all text-green-300/80 max-h-48 overflow-y-auto leading-relaxed">
+              {(() => { try { return JSON.stringify(JSON.parse(result.requestBody), null, 2); } catch { return result.requestBody; } })()}
+            </pre>
+            <button
+              onClick={() => copy(result.requestBody!)}
+              className="absolute top-2 right-2 text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors bg-black/60 rounded p-1 opacity-0 group-hover:opacity-100"
+              title="Copy request body"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground/50 mt-1">This is the exact body that was signed — use it with your callback secret to reproduce the HMAC hash.</p>
         </div>
       )}
 
