@@ -634,7 +634,7 @@ export default function MerchantWebhook() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {log.status === "failed" && (
+                    {(log.status === "failed" || log.status === "pending_retry") && !!log.requestBody && (
                       <Button
                         variant="outline"
                         size="sm"
