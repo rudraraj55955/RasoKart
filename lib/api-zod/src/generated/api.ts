@@ -1476,7 +1476,8 @@ export const SendWebhookTestResponse = zod.object({
   "responseBody": zod.string().nullable().describe('First 500 characters of the response body, or null if no response body'),
   "durationMs": zod.number().describe('Round-trip time in milliseconds'),
   "targetUrl": zod.string().describe('The URL the test event was sent to'),
-  "signed": zod.boolean().describe('Whether the test payload was signed with the webhook secret')
+  "signed": zod.boolean().describe('Whether the test payload was signed with the webhook secret'),
+  "signatureHeader": zod.string().optional().describe('The exact value of the X-Signature header sent with the test request (only present when signed=true)')
 })
 
 

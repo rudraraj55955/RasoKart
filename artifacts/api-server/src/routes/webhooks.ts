@@ -406,9 +406,10 @@ router.post("/test", async (req, res) => {
   };
 
   const signed = !!(webhook.secret);
+  let signatureHeader: string | undefined;
   if (webhook.secret) {
-    const sig = "sha256=" + crypto.createHmac("sha256", webhook.secret).update(body).digest("hex");
-    headers["X-Signature"] = sig;
+    signatureHeader = "sha256=" + crypto.createHmac("sha256", webhook.secret).update(body).digest("hex");
+    headers["X-Signature"] = signatureHeader;
   }
 
   const start = Date.now();
@@ -460,7 +461,7 @@ router.post("/test", async (req, res) => {
     req.log.warn({ err, merchantId }, "Failed to insert test webhook delivery log");
   }
 
-  res.json({ delivered, httpStatus, responseBody, durationMs, targetUrl, signed });
+  res.json({ delivered, httpStatus, responseBody, durationMs, targetUrl, signed, ...(signatureHeader ? { signatureHeader } : {}) });
 });
 
 // POST /api/webhooks/backfill (admin only)

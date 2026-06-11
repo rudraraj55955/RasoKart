@@ -128,6 +128,7 @@ import type {
   MerchantFeaturesInput,
   MerchantFeaturesListResponse,
   MerchantFeaturesRecord,
+  MerchantKeyEvent,
   MerchantListResponse,
   MerchantPlan,
   MerchantPlanWithDetails,

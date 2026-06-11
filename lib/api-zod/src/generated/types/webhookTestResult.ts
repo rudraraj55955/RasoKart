@@ -25,4 +25,6 @@ export interface WebhookTestResult {
   targetUrl: string;
   /** Whether the test payload was signed with the webhook secret */
   signed: boolean;
+  /** The exact value of the X-Signature header sent with the test request (only present when signed=true) */
+  signatureHeader?: string;
 }

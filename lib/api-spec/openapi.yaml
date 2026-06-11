@@ -5233,6 +5233,9 @@ components:
         signed:
           type: boolean
           description: Whether the test payload was signed with the webhook secret
+        signatureHeader:
+          type: string
+          description: The exact value of the X-Signature header sent with the test request (only present when signed=true)
 
     WebhookConfigInput:
       type: object

@@ -71,6 +71,7 @@ type TestResult = {
   durationMs: number;
   targetUrl: string;
   signed: boolean;
+  signatureHeader?: string;
 };
 
 const NODE_SNIPPET = `const crypto = require('crypto');
@@ -187,6 +188,36 @@ function WebhookTestPanel({ result, onDismiss, onRetry, isRetrying }: { result: 
           </p>
         </div>
       </div>
+
+      {result.signed && result.signatureHeader && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-muted-foreground/60">X-Signature <span className="text-muted-foreground/40 font-normal">(sent with request)</span></p>
+            <button
+              onClick={() => copy(result.signatureHeader!)}
+              className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+              title="Copy full X-Signature value"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2 rounded bg-black/40 border border-emerald-500/20 px-2.5 py-1.5">
+            <code className="flex-1 text-xs font-mono text-emerald-300/80 truncate" title={result.signatureHeader}>
+              {result.signatureHeader.length > 48
+                ? result.signatureHeader.slice(0, 48) + "…"
+                : result.signatureHeader}
+            </code>
+            <button
+              onClick={() => copy(result.signatureHeader!)}
+              className="shrink-0 text-muted-foreground/50 hover:text-emerald-400 transition-colors"
+              title="Copy full X-Signature value"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground/50 mt-1">Paste this into your HMAC verification code to confirm your algorithm produces the same output.</p>
+        </div>
+      )}
 
       <div>
         <p className="text-xs text-muted-foreground/60 mb-1">Target URL</p>
