@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Search, Plus, XCircle, CheckCircle2, Trash2, Eye, Download, Building2, TrendingUp, ArrowUpDown, AlertCircle, Pencil, Copy, QrCode, History } from "lucide-react";
+import { Search, Plus, XCircle, CheckCircle2, Trash2, Eye, Download, Building2, TrendingUp, ArrowUpDown, AlertCircle, Pencil, Copy, QrCode, History, X } from "lucide-react";
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -197,6 +197,14 @@ export default function MerchantVirtualAccounts() {
   const totalCollectionSum = data?.data?.reduce((s, v) => s + parseFloat((v as any).totalCollection || "0"), 0) ?? 0;
   const activeCount = data?.data?.filter(v => v.status === "active").length ?? 0;
 
+  const anyFilterActive = !!(search || status !== "all");
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatus("all");
+    setPage(1);
+  };
+
   const txList = historyData?.data ?? [];
   const txTotalIn = txList.filter(t => t.status === "success").reduce((s, t) => s + parseFloat(t.amount), 0);
   const txCount = txList.length;
@@ -284,6 +292,24 @@ export default function MerchantVirtualAccounts() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Filter summary bar */}
+      {anyFilterActive && (
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider mr-1">Filter results</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="ml-auto h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 gap-1.5"
+            >
+              <X className="w-3 h-3" />
+              Clear filters
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <Card>

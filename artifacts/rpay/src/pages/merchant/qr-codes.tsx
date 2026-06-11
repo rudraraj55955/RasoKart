@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, Trash2, Download, QrCode, Eye, AlertTriangle, CheckCircle2, Link2, ChevronDown, ChevronRight, ScanLine, Zap } from "lucide-react";
+import { Search, Plus, Trash2, Download, QrCode, Eye, AlertTriangle, CheckCircle2, Link2, ChevronDown, ChevronRight, ScanLine, Zap, X } from "lucide-react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -470,6 +470,15 @@ export default function MerchantQrCodes() {
   const showDeleteAllUsed = status === "used" && (stats?.used ?? 0) > 0;
   const selectedCount = selectedIds.size;
 
+  const anyFilterActive = !!(search || status !== "all");
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatus("all");
+    setPage(1);
+    setSelectedIds(new Set());
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -532,6 +541,24 @@ export default function MerchantQrCodes() {
           );
         })}
       </div>
+
+      {/* Filter summary bar */}
+      {anyFilterActive && (
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider mr-1">Filter results</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="ml-auto h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 gap-1.5"
+            >
+              <X className="w-3 h-3" />
+              Clear filters
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <Card>
