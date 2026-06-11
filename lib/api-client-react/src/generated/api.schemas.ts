@@ -2314,6 +2314,47 @@ export interface UploadedObjectEntry {
   createdAt: string;
 }
 
+export type MerchantFilterPresetPresetType = typeof MerchantFilterPresetPresetType[keyof typeof MerchantFilterPresetPresetType];
+
+
+export const MerchantFilterPresetPresetType = {
+  combined: 'combined',
+  smart: 'smart',
+  date: 'date',
+} as const;
+
+export type MerchantFilterPresetPayload = { [key: string]: unknown };
+
+export interface MerchantFilterPreset {
+  id: number;
+  merchantId: number;
+  name: string;
+  presetType: MerchantFilterPresetPresetType;
+  payload: MerchantFilterPresetPayload;
+  createdAt: string;
+}
+
+export type CreateMerchantFilterPresetInputPresetType = typeof CreateMerchantFilterPresetInputPresetType[keyof typeof CreateMerchantFilterPresetInputPresetType];
+
+
+export const CreateMerchantFilterPresetInputPresetType = {
+  combined: 'combined',
+  smart: 'smart',
+  date: 'date',
+} as const;
+
+export type CreateMerchantFilterPresetInputPayload = { [key: string]: unknown };
+
+export interface CreateMerchantFilterPresetInput {
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  name: string;
+  presetType: CreateMerchantFilterPresetInputPresetType;
+  payload: CreateMerchantFilterPresetInputPayload;
+}
+
 export interface UploadUrlRequest {
   /**
      * Original file name.
@@ -2923,6 +2964,10 @@ export type ResendReconciliationReportEmail200 = {
 
 export type ListUploadedObjects200 = {
   data: UploadedObjectEntry[];
+};
+
+export type ListMerchantFilterPresets200 = {
+  data: MerchantFilterPreset[];
 };
 
 export type ListSavedFilters200 = {

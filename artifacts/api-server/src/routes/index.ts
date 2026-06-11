@@ -29,6 +29,7 @@ import systemConfigRouter from "./systemConfig";
 import settingsRouter from "./settings";
 import storageRouter from "./storage";
 import savedFiltersRouter from "./savedFilters";
+import merchantFilterPresetsRouter from "./merchantFilterPresets";
 
 const router: IRouter = Router();
 
@@ -62,5 +63,6 @@ router.use("/system-config", systemConfigRouter);
 router.use("/settings", settingsRouter);
 router.use(storageRouter);
 router.use("/saved-filters", savedFiltersRouter);
+router.use("/merchant/filter-presets", merchantFilterPresetsRouter);
 
 export default router;

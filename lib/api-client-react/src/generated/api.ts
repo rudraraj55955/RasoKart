@@ -63,6 +63,7 @@ import type {
   CallbackStatsResponse,
   CallbackWindowInput,
   ChartDataPoint,
+  CreateMerchantFilterPresetInput,
   CreateSavedFilterInput,
   CreateSettlementInput,
   DashboardStats,
@@ -93,6 +94,7 @@ import type {
   ListLedgerEntriesParams,
   ListMerchantConnectionsParams,
   ListMerchantFeaturesParams,
+  ListMerchantFilterPresets200,
   ListMerchantsParams,
   ListMySecurityActivityParams,
   ListNotificationsParams,
@@ -121,6 +123,7 @@ import type {
   MerchantFeaturesInput,
   MerchantFeaturesListResponse,
   MerchantFeaturesRecord,
+  MerchantFilterPreset,
   MerchantListResponse,
   MerchantPlan,
   MerchantPlanWithDetails,
@@ -13950,6 +13953,224 @@ export const useRunStorageCleanup = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRunStorageCleanupMutationOptions(options));
+    }
+
+export const getListMerchantFilterPresetsUrl = () => {
+
+
+
+
+  return `/api/merchant/filter-presets`
+}
+
+/**
+ * @summary List all filter presets for the current merchant
+ */
+export const listMerchantFilterPresets = async ( options?: RequestInit): Promise<ListMerchantFilterPresets200> => {
+
+  return customFetch<ListMerchantFilterPresets200>(getListMerchantFilterPresetsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMerchantFilterPresetsQueryKey = () => {
+    return [
+    `/api/merchant/filter-presets`
+    ] as const;
+    }
+
+
+export const getListMerchantFilterPresetsQueryOptions = <TData = Awaited<ReturnType<typeof listMerchantFilterPresets>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantFilterPresets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMerchantFilterPresetsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMerchantFilterPresets>>> = ({ signal }) => listMerchantFilterPresets({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMerchantFilterPresets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMerchantFilterPresetsQueryResult = NonNullable<Awaited<ReturnType<typeof listMerchantFilterPresets>>>
+export type ListMerchantFilterPresetsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List all filter presets for the current merchant
+ */
+
+export function useListMerchantFilterPresets<TData = Awaited<ReturnType<typeof listMerchantFilterPresets>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantFilterPresets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMerchantFilterPresetsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateMerchantFilterPresetUrl = () => {
+
+
+
+
+  return `/api/merchant/filter-presets`
+}
+
+/**
+ * @summary Create a named filter preset for the current merchant
+ */
+export const createMerchantFilterPreset = async (createMerchantFilterPresetInput: CreateMerchantFilterPresetInput, options?: RequestInit): Promise<MerchantFilterPreset> => {
+
+  return customFetch<MerchantFilterPreset>(getCreateMerchantFilterPresetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createMerchantFilterPresetInput,)
+  }
+);}
+
+
+
+
+export const getCreateMerchantFilterPresetMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMerchantFilterPreset>>, TError,{data: BodyType<CreateMerchantFilterPresetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMerchantFilterPreset>>, TError,{data: BodyType<CreateMerchantFilterPresetInput>}, TContext> => {
+
+const mutationKey = ['createMerchantFilterPreset'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMerchantFilterPreset>>, {data: BodyType<CreateMerchantFilterPresetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMerchantFilterPreset(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMerchantFilterPresetMutationResult = NonNullable<Awaited<ReturnType<typeof createMerchantFilterPreset>>>
+    export type CreateMerchantFilterPresetMutationBody = BodyType<CreateMerchantFilterPresetInput>
+    export type CreateMerchantFilterPresetMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a named filter preset for the current merchant
+ */
+export const useCreateMerchantFilterPreset = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMerchantFilterPreset>>, TError,{data: BodyType<CreateMerchantFilterPresetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMerchantFilterPreset>>,
+        TError,
+        {data: BodyType<CreateMerchantFilterPresetInput>},
+        TContext
+      > => {
+      return useMutation(getCreateMerchantFilterPresetMutationOptions(options));
+    }
+
+export const getDeleteMerchantFilterPresetUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchant/filter-presets/${id}`
+}
+
+/**
+ * @summary Delete a merchant filter preset
+ */
+export const deleteMerchantFilterPreset = async (id: number, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getDeleteMerchantFilterPresetUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteMerchantFilterPresetMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMerchantFilterPreset>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMerchantFilterPreset>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteMerchantFilterPreset'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMerchantFilterPreset>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteMerchantFilterPreset(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMerchantFilterPresetMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMerchantFilterPreset>>>
+
+    export type DeleteMerchantFilterPresetMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a merchant filter preset
+ */
+export const useDeleteMerchantFilterPreset = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMerchantFilterPreset>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMerchantFilterPreset>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteMerchantFilterPresetMutationOptions(options));
     }
 
 export const getListSavedFiltersUrl = () => {

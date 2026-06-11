@@ -4238,6 +4238,47 @@ export const RunStorageCleanupResponse = zod.object({
 
 
 /**
+ * @summary List all filter presets for the current merchant
+ */
+export const ListMerchantFilterPresetsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "name": zod.string(),
+  "presetType": zod.enum(['combined', 'smart', 'date']),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create a named filter preset for the current merchant
+ */
+export const createMerchantFilterPresetBodyNameMax = 40;
+
+
+
+export const CreateMerchantFilterPresetBody = zod.object({
+  "name": zod.string().min(1).max(createMerchantFilterPresetBodyNameMax),
+  "presetType": zod.enum(['combined', 'smart', 'date']),
+  "payload": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Delete a merchant filter preset
+ */
+export const DeleteMerchantFilterPresetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteMerchantFilterPresetResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
  * @summary List saved smart search filter presets for the current admin
  */
 export const ListSavedFiltersResponse = zod.object({

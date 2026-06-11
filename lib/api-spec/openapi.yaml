@@ -61,6 +61,8 @@ tags:
     description: Object storage upload and serving endpoints
   - name: saved-filters
     description: Admin-scoped saved smart search filter presets
+  - name: merchant-filter-presets
+    description: Merchant-scoped filter preset management
 paths:
   /healthz:
     get:
@@ -4412,6 +4414,97 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /merchant/filter-presets:
+    get:
+      operationId: listMerchantFilterPresets
+      tags: [merchant-filter-presets]
+      summary: List all filter presets for the current merchant
+      responses:
+        '200':
+          description: List of merchant filter presets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MerchantFilterPreset'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      operationId: createMerchantFilterPreset
+      tags: [merchant-filter-presets]
+      summary: Create a named filter preset for the current merchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMerchantFilterPresetInput'
+      responses:
+        '201':
+          description: Created merchant filter preset.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MerchantFilterPreset'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /merchant/filter-presets/{id}:
+    delete:
+      operationId: deleteMerchantFilterPreset
+      tags: [merchant-filter-presets]
+      summary: Delete a merchant filter preset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /saved-filters:
     get:
       operationId: listSavedFilters
@@ -7535,6 +7628,41 @@ components:
           type: string
           format: date-time
           description: When the object was first uploaded.
+
+    MerchantFilterPreset:
+      type: object
+      required: [id, merchantId, name, presetType, payload, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        name:
+          type: string
+        presetType:
+          type: string
+          enum: [combined, smart, date]
+        payload:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateMerchantFilterPresetInput:
+      type: object
+      required: [name, presetType, payload]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        presetType:
+          type: string
+          enum: [combined, smart, date]
+        payload:
+          type: object
+          additionalProperties: true
 
     UploadUrlRequest:
       type: object

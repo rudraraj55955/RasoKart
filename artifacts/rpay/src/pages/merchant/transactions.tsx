@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useListTransactions, useSearchByUtr, useGetTransaction, useGetPaymentLink } from "@workspace/api-client-react";
+import { useListTransactions, useSearchByUtr, useGetTransaction, useGetPaymentLink, useListMerchantFilterPresets, useCreateMerchantFilterPreset, useDeleteMerchantFilterPreset } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,6 +153,7 @@ function parseAmountToken(token: string): Pick<SmartFilter, "amountMin" | "amoun
 
 interface SavedFilter {
   id: string;
+  serverId?: number;
   name: string;
   filter: SmartFilter;
   rawInput: string;
@@ -176,6 +177,7 @@ function storeSavedFilters(filters: SavedFilter[]): void {
 
 interface CustomDatePreset {
   id: string;
+  serverId?: number;
   name: string;
   from: string;
   to: string;
@@ -199,6 +201,7 @@ function storeCustomDatePresets(presets: CustomDatePreset[]): void {
 
 interface CombinedPreset {
   id: string;
+  serverId?: number;
   name: string;
   type: string;
   status: string;
@@ -544,20 +547,43 @@ export default function MerchantTransactions() {
     }
   }, [showSaveCombinedPreset]);
 
-  // Sync preset lists in real time when another tab writes to the same localStorage keys
+  // Server-side preset sync
+  const { data: serverPresets, isError: presetsError } = useListMerchantFilterPresets();
+  const createPresetMutation = useCreateMerchantFilterPreset();
+  const deletePresetMutation = useDeleteMerchantFilterPreset();
+
   useEffect(() => {
-    function handleStorage(e: StorageEvent) {
-      if (e.key === SAVED_FILTERS_KEY) {
-        setSavedFilters(loadSavedFilters());
-      } else if (e.key === CUSTOM_DATE_PRESETS_KEY) {
-        setCustomDatePresets(loadCustomDatePresets());
-      } else if (e.key === COMBINED_PRESETS_KEY) {
-        setCombinedPresets(loadCombinedPresets());
+    if (!serverPresets) return;
+    const smart: SavedFilter[] = [];
+    const date: CustomDatePreset[] = [];
+    const combined: CombinedPreset[] = [];
+    for (const p of serverPresets.data) {
+      if (p.presetType === "smart") {
+        const pl = p.payload as { rawInput: string; filter: SmartFilter };
+        smart.push({ id: String(p.id), serverId: p.id, name: p.name, filter: pl.filter, rawInput: pl.rawInput });
+      } else if (p.presetType === "date") {
+        const pl = p.payload as { from: string; to: string };
+        date.push({ id: String(p.id), serverId: p.id, name: p.name, from: pl.from, to: pl.to });
+      } else if (p.presetType === "combined") {
+        const pl = p.payload as { type: string; status: string; provider: string; dateFrom: string; dateTo: string };
+        combined.push({ id: String(p.id), serverId: p.id, name: p.name, ...pl });
       }
     }
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
+    setSavedFilters(smart);
+    storeSavedFilters(smart);
+    setCustomDatePresets(date);
+    storeCustomDatePresets(date);
+    setCombinedPresets(combined);
+    storeCombinedPresets(combined);
+  }, [serverPresets]);
+
+  useEffect(() => {
+    if (presetsError) {
+      setSavedFilters(loadSavedFilters());
+      setCustomDatePresets(loadCustomDatePresets());
+      setCombinedPresets(loadCombinedPresets());
+    }
+  }, [presetsError]);
 
   const amountMin = smartFilter?.amountMin;
   const amountMax = smartFilter?.amountMax;
@@ -673,15 +699,41 @@ export default function MerchantTransactions() {
       saveNameInputRef.current?.focus();
       return;
     }
-    const newFilter: SavedFilter = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: trimmed,
-      filter: smartFilter,
-      rawInput: smartInput,
-    };
-    const updated = [...savedFilters, newFilter];
-    setSavedFilters(updated);
-    storeSavedFilters(updated);
+    const payload = { rawInput: smartInput, filter: smartFilter };
+    const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    createPresetMutation.mutate(
+      { data: { name: trimmed, presetType: "smart", payload } },
+      {
+        onSuccess: (created) => {
+          const newFilter: SavedFilter = {
+            id: String(created.id),
+            serverId: created.id,
+            name: created.name,
+            filter: (created.payload as any).filter,
+            rawInput: (created.payload as any).rawInput,
+          };
+          setSavedFilters(prev => {
+            const updated = [...prev.filter(f => f.id !== localId), newFilter];
+            storeSavedFilters(updated);
+            return updated;
+          });
+        },
+        onError: () => {
+          const newFilter: SavedFilter = { id: localId, name: trimmed, filter: smartFilter!, rawInput: smartInput };
+          setSavedFilters(prev => {
+            const updated = [...prev, newFilter];
+            storeSavedFilters(updated);
+            return updated;
+          });
+        },
+      }
+    );
+    const optimistic: SavedFilter = { id: localId, name: trimmed, filter: smartFilter, rawInput: smartInput };
+    setSavedFilters(prev => {
+      const updated = [...prev, optimistic];
+      storeSavedFilters(updated);
+      return updated;
+    });
     setShowSaveInput(false);
     setSaveFilterName("");
     setSaveFilterNameError("");
@@ -694,9 +746,13 @@ export default function MerchantTransactions() {
   };
 
   const deleteSavedFilter = (id: string) => {
+    const target = savedFilters.find(f => f.id === id);
     const updated = savedFilters.filter(f => f.id !== id);
     setSavedFilters(updated);
     storeSavedFilters(updated);
+    if (target?.serverId) {
+      deletePresetMutation.mutate({ id: target.serverId });
+    }
   };
 
   // Custom date preset handlers
@@ -735,15 +791,36 @@ export default function MerchantTransactions() {
       saveDatePresetNameRef.current?.focus();
       return;
     }
-    const newPreset: CustomDatePreset = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: trimmed,
-      from: dateFrom,
-      to: dateTo,
-    };
-    const updated = [...customDatePresets, newPreset];
-    setCustomDatePresets(updated);
-    storeCustomDatePresets(updated);
+    const payload = { from: dateFrom, to: dateTo };
+    const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    createPresetMutation.mutate(
+      { data: { name: trimmed, presetType: "date", payload } },
+      {
+        onSuccess: (created) => {
+          const pl = created.payload as { from: string; to: string };
+          const newPreset: CustomDatePreset = { id: String(created.id), serverId: created.id, name: created.name, from: pl.from, to: pl.to };
+          setCustomDatePresets(prev => {
+            const updated = [...prev.filter(p => p.id !== localId), newPreset];
+            storeCustomDatePresets(updated);
+            return updated;
+          });
+        },
+        onError: () => {
+          const newPreset: CustomDatePreset = { id: localId, name: trimmed, from: dateFrom, to: dateTo };
+          setCustomDatePresets(prev => {
+            const updated = [...prev, newPreset];
+            storeCustomDatePresets(updated);
+            return updated;
+          });
+        },
+      }
+    );
+    const optimistic: CustomDatePreset = { id: localId, name: trimmed, from: dateFrom, to: dateTo };
+    setCustomDatePresets(prev => {
+      const updated = [...prev, optimistic];
+      storeCustomDatePresets(updated);
+      return updated;
+    });
     setShowSaveDatePreset(false);
     setSaveDatePresetName("");
     setSaveDatePresetNameError("");
@@ -756,9 +833,13 @@ export default function MerchantTransactions() {
   };
 
   const deleteCustomDatePreset = (id: string) => {
+    const target = customDatePresets.find(p => p.id === id);
     const updated = customDatePresets.filter(p => p.id !== id);
     setCustomDatePresets(updated);
     storeCustomDatePresets(updated);
+    if (target?.serverId) {
+      deletePresetMutation.mutate({ id: target.serverId });
+    }
   };
 
   // Combined preset handlers
@@ -798,18 +879,36 @@ export default function MerchantTransactions() {
       saveCombinedPresetNameRef.current?.focus();
       return;
     }
-    const newPreset: CombinedPreset = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: trimmed,
-      type,
-      status,
-      provider,
-      dateFrom,
-      dateTo,
-    };
-    const updated = [...combinedPresets, newPreset];
-    setCombinedPresets(updated);
-    storeCombinedPresets(updated);
+    const payload = { type, status, provider, dateFrom, dateTo };
+    const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    createPresetMutation.mutate(
+      { data: { name: trimmed, presetType: "combined", payload } },
+      {
+        onSuccess: (created) => {
+          const pl = created.payload as { type: string; status: string; provider: string; dateFrom: string; dateTo: string };
+          const newPreset: CombinedPreset = { id: String(created.id), serverId: created.id, name: created.name, ...pl };
+          setCombinedPresets(prev => {
+            const updated = [...prev.filter(p => p.id !== localId), newPreset];
+            storeCombinedPresets(updated);
+            return updated;
+          });
+        },
+        onError: () => {
+          const newPreset: CombinedPreset = { id: localId, name: trimmed, type, status, provider, dateFrom, dateTo };
+          setCombinedPresets(prev => {
+            const updated = [...prev, newPreset];
+            storeCombinedPresets(updated);
+            return updated;
+          });
+        },
+      }
+    );
+    const optimistic: CombinedPreset = { id: localId, name: trimmed, type, status, provider, dateFrom, dateTo };
+    setCombinedPresets(prev => {
+      const updated = [...prev, optimistic];
+      storeCombinedPresets(updated);
+      return updated;
+    });
     setShowSaveCombinedPreset(false);
     setSaveCombinedPresetName("");
     setSaveCombinedPresetNameError("");
@@ -822,9 +921,13 @@ export default function MerchantTransactions() {
   };
 
   const deleteCombinedPreset = (id: string) => {
+    const target = combinedPresets.find(p => p.id === id);
     const updated = combinedPresets.filter(p => p.id !== id);
     setCombinedPresets(updated);
     storeCombinedPresets(updated);
+    if (target?.serverId) {
+      deletePresetMutation.mutate({ id: target.serverId });
+    }
   };
 
   const exportCsv = async () => {
