@@ -4233,6 +4233,38 @@ export const UpdateReconciliationScheduleConfigResponse = zod.object({
 
 
 /**
+ * @summary Get reconciliation report email recipients (admin only)
+ */
+export const GetReconciliationReportRecipientsResponse = zod.object({
+  "recipients": zod.array(zod.string()).describe('List of email addresses that receive reconciliation reports')
+})
+
+
+/**
+ * @summary Add a reconciliation report email recipient (admin only)
+ */
+export const AddReconciliationReportRecipientBody = zod.object({
+  "email": zod.string().describe('Email address to add to the report recipient list')
+})
+
+export const AddReconciliationReportRecipientResponse = zod.object({
+  "recipients": zod.array(zod.string()).describe('List of email addresses that receive reconciliation reports')
+})
+
+
+/**
+ * @summary Remove a reconciliation report email recipient (admin only)
+ */
+export const RemoveReconciliationReportRecipientParams = zod.object({
+  "email": zod.coerce.string()
+})
+
+export const RemoveReconciliationReportRecipientResponse = zod.object({
+  "recipients": zod.array(zod.string()).describe('List of email addresses that receive reconciliation reports')
+})
+
+
+/**
  * @summary Get saved lookback window presets (admin only)
  */
 export const getReconciliationLookbackPresetsResponseNameMax = 50;

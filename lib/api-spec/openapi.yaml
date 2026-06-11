@@ -4362,6 +4362,67 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /system-config/reconciliation/report-recipients:
+    get:
+      operationId: getReconciliationReportRecipients
+      tags: [system-config]
+      summary: Get reconciliation report email recipients (admin only)
+      responses:
+        "200":
+          description: List of configured report recipient email addresses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationReportRecipients"
+    post:
+      operationId: addReconciliationReportRecipient
+      tags: [system-config]
+      summary: Add a reconciliation report email recipient (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReconciliationReportRecipientInput"
+      responses:
+        "200":
+          description: Updated recipient list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationReportRecipients"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /system-config/reconciliation/report-recipients/{email}:
+    delete:
+      operationId: removeReconciliationReportRecipient
+      tags: [system-config]
+      summary: Remove a reconciliation report email recipient (admin only)
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated recipient list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationReportRecipients"
+        "404":
+          description: Recipient not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /system-config/reconciliation/lookback-presets:
     get:
       operationId: getReconciliationLookbackPresets
@@ -8071,6 +8132,24 @@ components:
           minimum: 1
           maximum: 90
           description: Number of days to look back
+
+    ReconciliationReportRecipients:
+      type: object
+      required: [recipients]
+      properties:
+        recipients:
+          type: array
+          items:
+            type: string
+          description: List of email addresses that receive reconciliation reports
+
+    ReconciliationReportRecipientInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          description: Email address to add to the report recipient list
 
     SignatureFailureAlertConfig:
       type: object

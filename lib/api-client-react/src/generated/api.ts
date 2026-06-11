@@ -176,6 +176,8 @@ import type {
   ReconciliationItemListResponse,
   ReconciliationItemResolveInput,
   ReconciliationNextRun,
+  ReconciliationReportRecipientInput,
+  ReconciliationReportRecipients,
   ReconciliationRun,
   ReconciliationRunInput,
   ReconciliationRunListResponse,
@@ -13760,6 +13762,224 @@ export const useUpdateReconciliationScheduleConfig = <TError = ErrorType<ErrorRe
         TContext
       > => {
       return useMutation(getUpdateReconciliationScheduleConfigMutationOptions(options));
+    }
+
+export const getGetReconciliationReportRecipientsUrl = () => {
+
+
+
+
+  return `/api/system-config/reconciliation/report-recipients`
+}
+
+/**
+ * @summary Get reconciliation report email recipients (admin only)
+ */
+export const getReconciliationReportRecipients = async ( options?: RequestInit): Promise<ReconciliationReportRecipients> => {
+
+  return customFetch<ReconciliationReportRecipients>(getGetReconciliationReportRecipientsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReconciliationReportRecipientsQueryKey = () => {
+    return [
+    `/api/system-config/reconciliation/report-recipients`
+    ] as const;
+    }
+
+
+export const getGetReconciliationReportRecipientsQueryOptions = <TData = Awaited<ReturnType<typeof getReconciliationReportRecipients>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationReportRecipients>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReconciliationReportRecipientsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReconciliationReportRecipients>>> = ({ signal }) => getReconciliationReportRecipients({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReconciliationReportRecipients>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReconciliationReportRecipientsQueryResult = NonNullable<Awaited<ReturnType<typeof getReconciliationReportRecipients>>>
+export type GetReconciliationReportRecipientsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get reconciliation report email recipients (admin only)
+ */
+
+export function useGetReconciliationReportRecipients<TData = Awaited<ReturnType<typeof getReconciliationReportRecipients>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationReportRecipients>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReconciliationReportRecipientsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAddReconciliationReportRecipientUrl = () => {
+
+
+
+
+  return `/api/system-config/reconciliation/report-recipients`
+}
+
+/**
+ * @summary Add a reconciliation report email recipient (admin only)
+ */
+export const addReconciliationReportRecipient = async (reconciliationReportRecipientInput: ReconciliationReportRecipientInput, options?: RequestInit): Promise<ReconciliationReportRecipients> => {
+
+  return customFetch<ReconciliationReportRecipients>(getAddReconciliationReportRecipientUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reconciliationReportRecipientInput,)
+  }
+);}
+
+
+
+
+export const getAddReconciliationReportRecipientMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addReconciliationReportRecipient>>, TError,{data: BodyType<ReconciliationReportRecipientInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addReconciliationReportRecipient>>, TError,{data: BodyType<ReconciliationReportRecipientInput>}, TContext> => {
+
+const mutationKey = ['addReconciliationReportRecipient'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addReconciliationReportRecipient>>, {data: BodyType<ReconciliationReportRecipientInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  addReconciliationReportRecipient(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddReconciliationReportRecipientMutationResult = NonNullable<Awaited<ReturnType<typeof addReconciliationReportRecipient>>>
+    export type AddReconciliationReportRecipientMutationBody = BodyType<ReconciliationReportRecipientInput>
+    export type AddReconciliationReportRecipientMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add a reconciliation report email recipient (admin only)
+ */
+export const useAddReconciliationReportRecipient = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addReconciliationReportRecipient>>, TError,{data: BodyType<ReconciliationReportRecipientInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addReconciliationReportRecipient>>,
+        TError,
+        {data: BodyType<ReconciliationReportRecipientInput>},
+        TContext
+      > => {
+      return useMutation(getAddReconciliationReportRecipientMutationOptions(options));
+    }
+
+export const getRemoveReconciliationReportRecipientUrl = (email: string,) => {
+
+
+
+
+  return `/api/system-config/reconciliation/report-recipients/${email}`
+}
+
+/**
+ * @summary Remove a reconciliation report email recipient (admin only)
+ */
+export const removeReconciliationReportRecipient = async (email: string, options?: RequestInit): Promise<ReconciliationReportRecipients> => {
+
+  return customFetch<ReconciliationReportRecipients>(getRemoveReconciliationReportRecipientUrl(email),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getRemoveReconciliationReportRecipientMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeReconciliationReportRecipient>>, TError,{email: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeReconciliationReportRecipient>>, TError,{email: string}, TContext> => {
+
+const mutationKey = ['removeReconciliationReportRecipient'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeReconciliationReportRecipient>>, {email: string}> = (props) => {
+          const {email} = props ?? {};
+
+          return  removeReconciliationReportRecipient(email,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveReconciliationReportRecipientMutationResult = NonNullable<Awaited<ReturnType<typeof removeReconciliationReportRecipient>>>
+
+    export type RemoveReconciliationReportRecipientMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Remove a reconciliation report email recipient (admin only)
+ */
+export const useRemoveReconciliationReportRecipient = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeReconciliationReportRecipient>>, TError,{email: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeReconciliationReportRecipient>>,
+        TError,
+        {email: string},
+        TContext
+      > => {
+      return useMutation(getRemoveReconciliationReportRecipientMutationOptions(options));
     }
 
 export const getGetReconciliationLookbackPresetsUrl = () => {

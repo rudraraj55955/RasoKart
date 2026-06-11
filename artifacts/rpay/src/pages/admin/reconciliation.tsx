@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetReconciliationScheduleConfig, useUpdateReconciliationScheduleConfig, useGetReconciliationNextRun, useGetReconciliationLookbackPresets, useAddReconciliationLookbackPreset, useDeleteReconciliationLookbackPreset } from "@workspace/api-client-react";
+import { useGetReconciliationScheduleConfig, useUpdateReconciliationScheduleConfig, useGetReconciliationNextRun, useGetReconciliationLookbackPresets, useAddReconciliationLookbackPreset, useDeleteReconciliationLookbackPreset, useGetReconciliationReportRecipients, useAddReconciliationReportRecipient, useRemoveReconciliationReportRecipient } from "@workspace/api-client-react";
 import type { ReconciliationRun } from "@workspace/api-client-react";
 
 async function apiPost(path: string, body: object) {
@@ -937,6 +937,161 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
   );
 }
 
+function ReportRecipientsCard() {
+  const qc = useQueryClient();
+  const [newEmail, setNewEmail] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const { data, isLoading } = useGetReconciliationReportRecipients();
+  const recipients: string[] = data?.recipients ?? [];
+
+  const { mutate: addRecipient, isPending: isAdding } = useAddReconciliationReportRecipient({
+    mutation: {
+      onSuccess: (updated) => {
+        toast.success("Recipient added");
+        setNewEmail("");
+        setAdding(false);
+        qc.invalidateQueries({ queryKey: ["/api/system-config/reconciliation/report-recipients"] });
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to add recipient")),
+    },
+  });
+
+  const { mutate: removeRecipient, isPending: isRemoving } = useRemoveReconciliationReportRecipient({
+    mutation: {
+      onSuccess: () => {
+        toast.success("Recipient removed");
+        qc.invalidateQueries({ queryKey: ["/api/system-config/reconciliation/report-recipients"] });
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to remove recipient")),
+    },
+  });
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const isValidEmail = emailRegex.test(newEmail.trim());
+
+  function handleAdd() {
+    const email = newEmail.trim();
+    if (!email || !isValidEmail) return;
+    addRecipient({ data: { email } });
+  }
+
+  function handleRemove(email: string) {
+    removeRecipient({ email: encodeURIComponent(email) });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Mail className="w-4 h-4 text-primary" />
+          Report Recipients
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          These addresses receive the reconciliation report email after each run. The first address is the primary recipient; others are CC'd.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Recipient list */}
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Loading…
+          </div>
+        ) : recipients.length === 0 ? (
+          <div className="rounded-md border border-border/50 bg-muted/10 px-3 py-4 text-center text-sm text-muted-foreground/60">
+            No recipients configured. Add an address below to receive reports.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {recipients.map((email, idx) => (
+              <div
+                key={email}
+                className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-muted/10 px-3 py-2"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Mail className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+                  <span className="text-sm font-mono truncate">{email}</span>
+                  {idx === 0 && (
+                    <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-violet-500/10 text-violet-400 border-violet-500/30 shrink-0">
+                      Primary
+                    </Badge>
+                  )}
+                  {idx > 0 && (
+                    <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-muted text-muted-foreground border-border/50 shrink-0">
+                      CC
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 shrink-0"
+                  disabled={isRemoving}
+                  onClick={() => handleRemove(email)}
+                  aria-label={`Remove ${email}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add form */}
+        {adding ? (
+          <div className="flex items-center gap-2 pt-1">
+            <Input
+              type="email"
+              placeholder="email@example.com"
+              value={newEmail}
+              onChange={e => setNewEmail(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && isValidEmail) handleAdd(); if (e.key === "Escape") { setAdding(false); setNewEmail(""); } }}
+              className="h-8 text-sm flex-1"
+              autoFocus
+              disabled={isAdding}
+            />
+            <Button
+              size="sm"
+              className="h-8 gap-1.5"
+              disabled={!isValidEmail || isAdding}
+              onClick={handleAdd}
+            >
+              {isAdding ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Adding…</> : "Add"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => { setAdding(false); setNewEmail(""); }}
+              disabled={isAdding}
+            >
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-8"
+            onClick={() => setAdding(true)}
+            disabled={recipients.length >= 20}
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Add Recipient
+          </Button>
+        )}
+
+        {recipients.length > 0 && (
+          <p className="text-[11px] text-muted-foreground/50">
+            {recipients.length} recipient{recipients.length !== 1 ? "s" : ""} · changes take effect on the next run
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AdminReconciliation() {
   const qc = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
@@ -1304,6 +1459,9 @@ export default function AdminReconciliation() {
 
       {/* Schedule Settings */}
       <ScheduleSettingsCard onScheduledRunFired={handleScheduledRunFired} />
+
+      {/* Report Recipients */}
+      <ReportRecipientsCard />
 
       {/* Run History */}
       <Card>

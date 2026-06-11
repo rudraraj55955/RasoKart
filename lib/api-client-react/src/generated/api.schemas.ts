@@ -2428,6 +2428,16 @@ export interface LookbackPreset {
   days: number;
 }
 
+export interface ReconciliationReportRecipients {
+  /** List of email addresses that receive reconciliation reports */
+  recipients: string[];
+}
+
+export interface ReconciliationReportRecipientInput {
+  /** Email address to add to the report recipient list */
+  email: string;
+}
+
 export interface SignatureFailureAlertConfig {
   /**
      * Number of signature verification failures within the window that must be exceeded before an alert email is sent.

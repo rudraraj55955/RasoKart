@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { db, systemConfigTable, systemSettingsTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable } from "@workspace/db";
+import { inArray, eq } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
@@ -210,6 +210,126 @@ async function saveLookbackPresets(
       },
     });
 }
+
+// Helper: load report recipients from system_settings
+const FINANCE_REPORT_EMAIL_KEY = "finance_report_email";
+
+async function loadReportRecipients(): Promise<string[]> {
+  const rows = await db
+    .select()
+    .from(systemSettingsTable)
+    .where(eq(systemSettingsTable.key, FINANCE_REPORT_EMAIL_KEY));
+  const raw = rows[0]?.value ?? null;
+  if (!raw) return [];
+  return raw.split(",").map(e => e.trim()).filter(e => e.length > 0);
+}
+
+async function saveReportRecipients(recipients: string[], updatedById: number): Promise<void> {
+  const value = recipients.join(", ") || null;
+  await db
+    .insert(systemSettingsTable)
+    .values({ key: FINANCE_REPORT_EMAIL_KEY, value, updatedBy: updatedById, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: systemSettingsTable.key,
+      set: { value, updatedBy: updatedById, updatedAt: new Date() },
+    });
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// GET /api/system-config/reconciliation/report-recipients
+router.get("/reconciliation/report-recipients", async (req, res, next) => {
+  try {
+    const recipients = await loadReportRecipients();
+    res.json({ recipients });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/system-config/reconciliation/report-recipients
+router.post("/reconciliation/report-recipients", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { email } = req.body;
+
+    if (typeof email !== "string" || !email.trim()) {
+      res.status(400).json({ error: "email must be a non-empty string" });
+      return;
+    }
+
+    const normalized = email.trim().toLowerCase();
+
+    if (!EMAIL_REGEX.test(normalized)) {
+      res.status(400).json({ error: "Invalid email address" });
+      return;
+    }
+
+    const existing = await loadReportRecipients();
+
+    if (existing.some(e => e.toLowerCase() === normalized)) {
+      res.status(400).json({ error: "This email address is already in the recipient list" });
+      return;
+    }
+
+    if (existing.length >= 20) {
+      res.status(400).json({ error: "Maximum of 20 recipients allowed" });
+      return;
+    }
+
+    const updated = [...existing, normalized];
+    await saveReportRecipients(updated, user.id);
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "reconciliation_report_recipients", action: "add", email: normalized }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ email: normalized }, "Reconciliation report recipient added");
+    res.json({ recipients: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/system-config/reconciliation/report-recipients/:email
+router.delete("/reconciliation/report-recipients/:email", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const email = decodeURIComponent(req.params['email'] as string).trim().toLowerCase();
+
+    const existing = await loadReportRecipients();
+    const idx = existing.findIndex(e => e.toLowerCase() === email);
+
+    if (idx === -1) {
+      res.status(404).json({ error: "Recipient not found" });
+      return;
+    }
+
+    const updated = existing.filter((_, i) => i !== idx);
+    await saveReportRecipients(updated, user.id);
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "reconciliation_report_recipients", action: "remove", email }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ email }, "Reconciliation report recipient removed");
+    res.json({ recipients: updated });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/system-config/reconciliation/lookback-presets
 router.get("/reconciliation/lookback-presets", async (req, res, next) => {
