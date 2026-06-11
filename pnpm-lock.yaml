@@ -663,10 +663,6 @@ importers:
         version: 5.100.9(react@19.1.0)
 
   lib/api-spec:
-    dependencies:
-      jiti:
-        specifier: ^2.7.0
-        version: 2.7.0
     devDependencies:
       orval:
         specifier: ^8.9.1

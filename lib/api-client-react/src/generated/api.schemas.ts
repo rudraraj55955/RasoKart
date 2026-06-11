@@ -569,36 +569,6 @@ export interface CallbackSecretStatus {
 
 export type MerchantListCredentialEventEventType = typeof MerchantListCredentialEventEventType[keyof typeof MerchantListCredentialEventEventType];
 
-export type SecurityEventEventType = typeof SecurityEventEventType[keyof typeof SecurityEventEventType];
-
-
-export const SecurityEventEventType = {
-  merchant_login: 'merchant_login',
-  api_key_generated: 'api_key_generated',
-  api_key_revoked: 'api_key_revoked',
-  callback_secret_rotated: 'callback_secret_rotated',
-} as const;
-
-export interface SecurityEvent {
-  id: number;
-  eventType: SecurityEventEventType;
-  actorEmail: string;
-  /** @nullable */
-  keyPrefix?: string | null;
-  /** @nullable */
-  ipAddress?: string | null;
-  occurredAt: string;
-}
-
-export interface SecurityEventListResponse {
-  data: SecurityEvent[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
-export type CredentialEventEventType = typeof CredentialEventEventType[keyof typeof CredentialEventEventType];
-
 
 export const MerchantListCredentialEventEventType = {
   key_generated: 'key_generated',
@@ -625,6 +595,34 @@ export interface MerchantListCredentialEvent {
      * @nullable
      */
   actorEmail?: string | null;
+}
+
+export type SecurityEventEventType = typeof SecurityEventEventType[keyof typeof SecurityEventEventType];
+
+
+export const SecurityEventEventType = {
+  merchant_login: 'merchant_login',
+  api_key_generated: 'api_key_generated',
+  api_key_revoked: 'api_key_revoked',
+  callback_secret_rotated: 'callback_secret_rotated',
+} as const;
+
+export interface SecurityEvent {
+  id: number;
+  eventType: SecurityEventEventType;
+  actorEmail: string;
+  /** @nullable */
+  keyPrefix?: string | null;
+  /** @nullable */
+  ipAddress?: string | null;
+  occurredAt: string;
+}
+
+export interface SecurityEventListResponse {
+  data: SecurityEvent[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export type MerchantCredentialEventEventType = typeof MerchantCredentialEventEventType[keyof typeof MerchantCredentialEventEventType];

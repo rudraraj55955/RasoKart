@@ -7,8 +7,5 @@
   },
   "devDependencies": {
     "orval": "^8.9.1"
-  },
-  "dependencies": {
-    "jiti": "^2.7.0"
   }
 }
