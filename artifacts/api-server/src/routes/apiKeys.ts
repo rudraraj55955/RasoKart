@@ -3,9 +3,10 @@ import { db, apiKeysTable, credentialEventsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import crypto from "crypto";
-import rateLimit from "express-rate-limit";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
-const apiKeyCreateLimiter = rateLimit({
+const apiKeyCreateLimiter = makeRateLimiter({
+  limiterId: "api-key-create",
   windowMs: 60 * 60 * 1000,
   limit: 10,
   standardHeaders: "draft-8",

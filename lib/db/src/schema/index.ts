@@ -39,3 +39,4 @@ export * from "./storageCleanupRuns";
 export * from "./credentialEvents";
 export * from "./signatureFailureAlertLogs";
 export * from "./settlementEvents";
+export * from "./rateLimitHits";

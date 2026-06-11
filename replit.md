@@ -67,7 +67,7 @@ RasoKart is a premium dark-themed payment gateway SaaS platform — admins onboa
 
 ## Gotchas
 
-- **Rate limiter**: Login is rate-limited in-memory; restart API server to clear during development
+- **Rate limiter**: All limiters use a PostgreSQL-backed store (`rate_limit_hits` table) so counters survive restarts. Set `RATE_LIMIT_STORE=memory` to fall back to in-memory (dev/test only). Use `makeRateLimiter` from `src/helpers/makeRateLimiter.ts` for any new limiters.
 - **Seed guards**: QR/VA/API key seed uses merchant-scoped count, not global. Re-seeding is safe
 - **`/api/plans/me`** (not `/merchant/current`) is the merchant plan endpoint
 - **Reconciliation routes** require both `requireAuth` AND `requireAdmin` — admin-only

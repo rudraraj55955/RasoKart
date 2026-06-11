@@ -4,9 +4,10 @@ import { eq, and, count, sql, gte, lte, sum, asc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createNotification } from "../helpers/notifications";
 import { notifyAdminsOfSettlementStateChange } from "../helpers/adminNotifyEmail";
-import rateLimit from "express-rate-limit";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
-const settlementCreateLimiter = rateLimit({
+const settlementCreateLimiter = makeRateLimiter({
+  limiterId: "settlement-create",
   windowMs: 15 * 60 * 1000,
   limit: 5,
   standardHeaders: "draft-8",

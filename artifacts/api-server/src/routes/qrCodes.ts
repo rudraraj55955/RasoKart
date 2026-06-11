@@ -3,9 +3,10 @@ import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transaction
 import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray, type SQL } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
-import rateLimit from "express-rate-limit";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
-const qrCodeCreateLimiter = rateLimit({
+const qrCodeCreateLimiter = makeRateLimiter({
+  limiterId: "qr-create",
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: "draft-8",
@@ -14,7 +15,8 @@ const qrCodeCreateLimiter = rateLimit({
   message: { error: "Too many QR code creation requests. You may create up to 10 QR codes per 15 minutes. Please try again later." },
 });
 
-const qrCodeBulkDeleteLimiter = rateLimit({
+const qrCodeBulkDeleteLimiter = makeRateLimiter({
+  limiterId: "qr-bulk-delete",
   windowMs: 15 * 60 * 1000,
   limit: 5,
   standardHeaders: "draft-8",

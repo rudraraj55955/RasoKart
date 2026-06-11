@@ -1,11 +1,12 @@
 import { Router, type Request } from "express";
-import rateLimit from "express-rate-limit";
 import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceHistoryTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, ilike, count, or, desc, gte, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
-const createVaLimiter = rateLimit({
+const createVaLimiter = makeRateLimiter({
+  limiterId: "va-create",
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: "draft-8",

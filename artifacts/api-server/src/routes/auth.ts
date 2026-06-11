@@ -1,13 +1,14 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import rateLimit from "express-rate-limit";
 import { db, usersTable, merchantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
 const router = Router();
 
-const loginLimiter = rateLimit({
+const loginLimiter = makeRateLimiter({
+  limiterId: "login",
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: "draft-8",

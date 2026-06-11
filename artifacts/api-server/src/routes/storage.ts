@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
-import rateLimit from "express-rate-limit";
 import { and, desc, eq, sql } from "drizzle-orm";
 import {
   RequestUploadUrlBody,
@@ -10,11 +9,13 @@ import { db, uploadedObjectsTable, merchantsTable, providersTable, auditLogsTabl
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { recordUploadIntent } from "../lib/uploadIntentStore";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
-const uploadUrlLimiter = rateLimit({
+const uploadUrlLimiter = makeRateLimiter({
+  limiterId: "upload-url",
   windowMs: 60 * 1000,
   limit: 10,
   standardHeaders: "draft-8",
