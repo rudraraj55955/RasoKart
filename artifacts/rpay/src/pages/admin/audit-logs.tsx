@@ -1045,6 +1045,24 @@ function ScheduleRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium truncate">{s.recipientEmail}</span>
+            {s.lastSendStatus === "ok" && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                <CheckCircle2 className="w-2.5 h-2.5" />
+                Healthy
+              </span>
+            )}
+            {s.lastSendStatus === "failed" && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400">
+                <AlertCircle className="w-2.5 h-2.5" />
+                Failing
+              </span>
+            )}
+            {s.lastSendStatus === "none" && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-muted/30 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                <Clock className="w-2.5 h-2.5" />
+                Never sent
+              </span>
+            )}
             <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
               s.isActive
                 ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
