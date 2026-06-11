@@ -42,6 +42,7 @@ import {
   ChevronRight,
   Check,
   RefreshCw,
+  Link2,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay, parseISO, isValid, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -1216,15 +1217,32 @@ export default function MerchantDeposits() {
                 </button>
               </span>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearAllFilters}
-              className="ml-auto h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 gap-1.5"
-            >
-              <X className="w-3 h-3" />
-              Clear filters
-            </Button>
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href).then(() => {
+                    toast.success("Link copied");
+                  }).catch(() => {
+                    toast.error("Could not copy link");
+                  });
+                }}
+                className="h-7 px-2.5 text-xs text-violet-400 hover:text-violet-200 hover:bg-violet-500/10 gap-1.5"
+              >
+                <Link2 className="w-3 h-3" />
+                Copy link
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAllFilters}
+                className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 gap-1.5"
+              >
+                <X className="w-3 h-3" />
+                Clear filters
+              </Button>
+            </div>
           </div>
           {/* Row 2: aggregate stats */}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
