@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
@@ -1079,13 +1079,20 @@ function ScheduleRow({
                   <TooltipTrigger asChild>
                     <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400 cursor-default">
                       <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                      Auto-retrying (attempt {s.currentRetryAttempt + 1})
+                      Auto-retrying ({s.currentRetryAttempt + 1} of {s.maxRetryAttempts ?? 2})
+                      {s.nextRetryAt && (
+                        <span className="text-amber-400/70">
+                          {" · next in "}
+                          {formatDistanceToNow(new Date(s.nextRetryAt), { addSuffix: false })}
+                        </span>
+                      )}
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-xs">
                     {s.lastErrorMessage
                       ? `Last attempt failed: ${s.lastErrorMessage}. Automatic retry pending.`
                       : `Delivery failed. Automatic retry pending.`}
+                    {s.nextRetryAt && ` Next retry at ${format(new Date(s.nextRetryAt), "HH:mm")}.`}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

@@ -389,10 +389,14 @@ router.get("/schedules", async (req, res) => {
       const currentRetryAttempt = r.lastRetryAttempt != null ? Number(r.lastRetryAttempt) : 0;
       const nextAttempt = currentRetryAttempt + 1;
       let retryInProgress = false;
+      let nextRetryAt: string | null = null;
       if (r.lastSuccess === false && r.lastSentAtFromLog && nextAttempt <= MAX_RETRY_ATTEMPTS) {
         const lastFailedAt = new Date(r.lastSentAtFromLog).getTime();
         const delayMs = getRetryDelayMs(currentRetryAttempt);
         retryInProgress = Date.now() < lastFailedAt + delayMs;
+        if (retryInProgress) {
+          nextRetryAt = new Date(lastFailedAt + delayMs).toISOString();
+        }
       }
       return {
         ...serializeSchedule(r),
@@ -402,6 +406,7 @@ router.get("/schedules", async (req, res) => {
         successCount: Number(r.successCount),
         currentRetryAttempt,
         retryInProgress,
+        nextRetryAt,
       };
     }),
   });

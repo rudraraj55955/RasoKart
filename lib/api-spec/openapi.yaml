@@ -6540,6 +6540,9 @@ components:
         currentRetryAttempt:
           type: integer
           description: The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.).
+        nextRetryAt:
+          type: ["string", "null"]
+          description: ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.
         createdAt:
           type: string
         updatedAt:
