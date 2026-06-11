@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, ChevronLeft, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck, StickyNote, BookmarkPlus, Trash2 } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, ChevronLeft, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck, StickyNote, BookmarkPlus, Trash2, Pencil, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
@@ -948,6 +948,8 @@ export default function AdminReconciliation() {
   const [historyPage, setHistoryPage] = useState(1);
   const [emailFailureBannerDismissed, setEmailFailureBannerDismissed] = useState(false);
   const [runNotes, setRunNotes] = useState("");
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState("");
   const HISTORY_PAGE_SIZE = 15;
 
   const schedulerQuery = useQuery({
@@ -1002,6 +1004,18 @@ export default function AdminReconciliation() {
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resend alert email")),
+  });
+
+  const updateNotesMutation = useMutation({
+    mutationFn: (notes: string | null) =>
+      apiPatch(`/reconciliation/runs/${selectedRunId}/notes`, { notes }),
+    onSuccess: () => {
+      toast.success("Notes updated");
+      setEditingNotes(false);
+      qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "items"] });
+      qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs"] });
+    },
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update notes")),
   });
 
   const runs = data?.data ?? [];
@@ -1437,6 +1451,8 @@ export default function AdminReconciliation() {
             setExportFilter("all");
             setCsvExportFilter("all");
             setEmailLogOpen(false);
+            setEditingNotes(false);
+            setNotesValue("");
           }
         }}
       >
@@ -1599,6 +1615,83 @@ export default function AdminReconciliation() {
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">{selectedRun.notes}</p>
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Run Notes — inline edit */}
+          {selectedRun && (
+            <div className="rounded-md border border-border/50 bg-muted/10 px-3 py-2.5">
+              <div className="flex items-center gap-2 mb-1">
+                <StickyNote className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+                <span className="text-xs font-medium text-muted-foreground">Notes</span>
+                {!editingNotes && (
+                  <button
+                    className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-primary transition-colors"
+                    onClick={() => {
+                      setNotesValue(selectedRun.notes ?? "");
+                      setEditingNotes(true);
+                    }}
+                    title="Edit notes"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    Edit
+                  </button>
+                )}
+              </div>
+              {editingNotes ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={notesValue}
+                    onChange={e => setNotesValue(e.target.value)}
+                    placeholder="Add a note for this run…"
+                    rows={3}
+                    className="resize-none text-sm"
+                    disabled={updateNotesMutation.isPending}
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="h-7 gap-1.5 text-xs"
+                      disabled={updateNotesMutation.isPending}
+                      onClick={() => updateNotesMutation.mutate(notesValue.trim() || null)}
+                    >
+                      {updateNotesMutation.isPending ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</>
+                      ) : (
+                        <><CheckCircle2 className="w-3 h-3" /> Save</>
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1 text-xs text-muted-foreground"
+                      disabled={updateNotesMutation.isPending}
+                      onClick={() => {
+                        setEditingNotes(false);
+                        setNotesValue("");
+                      }}
+                    >
+                      <X className="w-3 h-3" /> Cancel
+                    </Button>
+                    {selectedRun.notes && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-1 text-xs text-red-400/70 hover:text-red-400 hover:bg-red-500/10 ml-auto"
+                        disabled={updateNotesMutation.isPending}
+                        onClick={() => updateNotesMutation.mutate(null)}
+                      >
+                        <Trash2 className="w-3 h-3" /> Clear
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : selectedRun.notes ? (
+                <p className="text-sm text-foreground/80 whitespace-pre-wrap">{selectedRun.notes}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground/40 italic">No notes — click Edit to add one</p>
               )}
             </div>
           )}
