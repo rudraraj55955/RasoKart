@@ -1190,13 +1190,17 @@ function ScheduleRow({
   onToggle,
   onDelete,
   onSendNow,
+  onAcknowledge,
   sendingId,
+  acknowledgingId,
 }: {
   s: any;
   onToggle: (id: number, isActive: boolean) => void;
   onDelete: (id: number) => void;
   onSendNow?: (id: number) => void;
+  onAcknowledge?: (id: number) => void;
   sendingId?: number | null;
+  acknowledgingId?: number | null;
 }) {
   const [historyOpen, setHistoryOpen] = useState(false);
 
@@ -1237,6 +1241,28 @@ function ScheduleRow({
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-xs">
                     {s.lastErrorMessage ?? "Last delivery attempt failed"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {s.lastSendStatus === "failed" && onAcknowledge && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => onAcknowledge(s.id)}
+                      disabled={acknowledgingId === s.id}
+                      className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {acknowledgingId === s.id
+                        ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                        : <CheckCircle2 className="w-2.5 h-2.5" />
+                      }
+                      Dismiss
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    Acknowledge this failure — the badge won't re-appear unless a new failure occurs
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1335,6 +1361,7 @@ function ScheduledReportsPanel() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [sendingId, setSendingId] = useState<number | null>(null);
+  const [acknowledgingId, setAcknowledgingId] = useState<number | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
@@ -1382,6 +1409,19 @@ function ScheduledReportsPanel() {
       toast.error("Failed to send report. Check mailer configuration.");
     } finally {
       setSendingId(null);
+    }
+  }
+
+  async function handleAcknowledge(id: number) {
+    setAcknowledgingId(id);
+    try {
+      await updateSchedule.mutateAsync({ id, data: { acknowledgeFailure: true } });
+      invalidate();
+      toast.success("Delivery failure acknowledged");
+    } catch {
+      toast.error("Failed to acknowledge — please try again");
+    } finally {
+      setAcknowledgingId(null);
     }
   }
 
@@ -1439,7 +1479,9 @@ function ScheduledReportsPanel() {
                 onToggle={handleToggleActive}
                 onDelete={(id) => setConfirmDeleteId(id)}
                 onSendNow={handleSendNow}
+                onAcknowledge={handleAcknowledge}
                 sendingId={sendingId}
+                acknowledgingId={acknowledgingId}
               />
             ))}
           </div>

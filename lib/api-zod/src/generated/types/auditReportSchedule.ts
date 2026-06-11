@@ -18,6 +18,8 @@ export interface AuditReportSchedule {
   lastSendStatus: AuditReportScheduleLastSendStatus;
   /** @nullable */
   lastErrorMessage?: string | null;
+  /** @nullable */
+  failureAcknowledgedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

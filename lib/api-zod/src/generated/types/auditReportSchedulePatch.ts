@@ -11,4 +11,6 @@ export interface AuditReportSchedulePatch {
   frequency?: AuditReportSchedulePatchFrequency;
   recipientEmail?: string;
   isActive?: boolean;
+  /** When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge. */
+  acknowledgeFailure?: boolean;
 }

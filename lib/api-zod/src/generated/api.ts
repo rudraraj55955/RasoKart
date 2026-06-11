@@ -2955,6 +2955,7 @@ export const ListAuditReportSchedulesResponse = zod.object({
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
+  "failureAcknowledgedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
@@ -2985,6 +2986,7 @@ export const SendAuditReportNowResponse = zod.object({
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
+  "failureAcknowledgedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -3031,7 +3033,8 @@ export const UpdateAuditReportScheduleParams = zod.object({
 export const UpdateAuditReportScheduleBody = zod.object({
   "frequency": zod.enum(['daily', 'weekly', 'monthly']).optional(),
   "recipientEmail": zod.string().optional(),
-  "isActive": zod.boolean().optional()
+  "isActive": zod.boolean().optional(),
+  "acknowledgeFailure": zod.boolean().optional().describe('When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge.')
 })
 
 export const UpdateAuditReportScheduleResponse = zod.object({
@@ -3042,6 +3045,7 @@ export const UpdateAuditReportScheduleResponse = zod.object({
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
+  "failureAcknowledgedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -4413,6 +4417,7 @@ export const RenameSavedFilterResponse = zod.object({
   "name": zod.string(),
   "rawInput": zod.string(),
   "filterData": zod.record(zod.string(), zod.unknown()).describe('SmartFilter JSON object'),
+  "sortOrder": zod.number().nullish(),
   "createdAt": zod.coerce.date()
 })
 

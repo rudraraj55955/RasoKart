@@ -6802,6 +6802,8 @@ components:
           enum: [ok, failed, none]
         lastErrorMessage:
           type: ["string", "null"]
+        failureAcknowledgedAt:
+          type: ["string", "null"]
         createdAt:
           type: string
         updatedAt:
@@ -6827,6 +6829,9 @@ components:
           type: string
         isActive:
           type: boolean
+        acknowledgeFailure:
+          type: boolean
+          description: When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge.
 
     AuditReportEmailPreview:
       type: object

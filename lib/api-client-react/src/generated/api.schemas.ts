@@ -1661,6 +1661,8 @@ export interface AuditReportSchedule {
   lastSendStatus: AuditReportScheduleLastSendStatus;
   /** @nullable */
   lastErrorMessage?: string | null;
+  /** @nullable */
+  failureAcknowledgedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1692,6 +1694,8 @@ export interface AuditReportSchedulePatch {
   frequency?: AuditReportSchedulePatchFrequency;
   recipientEmail?: string;
   isActive?: boolean;
+  /** When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge. */
+  acknowledgeFailure?: boolean;
 }
 
 export interface AuditReportEmailPreview {

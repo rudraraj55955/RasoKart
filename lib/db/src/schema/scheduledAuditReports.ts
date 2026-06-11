@@ -8,6 +8,7 @@ export const scheduledAuditReportsTable = pgTable("scheduled_audit_reports", {
   recipientEmail: text("recipient_email").notNull(),
   isActive: boolean("is_active").notNull().default(true),
   lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+  failureAcknowledgedAt: timestamp("failure_acknowledged_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -253,14 +253,22 @@ function serializeSchedule(s: typeof scheduledAuditReportsTable.$inferSelect) {
   return {
     ...s,
     lastSentAt: s.lastSentAt ? s.lastSentAt.toISOString() : null,
+    failureAcknowledgedAt: s.failureAcknowledgedAt ? s.failureAcknowledgedAt.toISOString() : null,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
   };
 }
 
-function deriveLastSendStatus(lastSuccess: boolean | null): "ok" | "failed" | "none" {
+function deriveLastSendStatus(
+  lastSuccess: boolean | null,
+  lastLogSentAt: Date | null,
+  failureAcknowledgedAt: Date | null,
+): "ok" | "failed" | "none" {
   if (lastSuccess === null) return "none";
-  return lastSuccess ? "ok" : "failed";
+  if (lastSuccess) return "ok";
+  // Last send failed — check if it was acknowledged after the failure
+  if (failureAcknowledgedAt && lastLogSentAt && failureAcknowledgedAt >= lastLogSentAt) return "ok";
+  return "failed";
 }
 
 router.get("/schedules/preview", async (req, res) => {
@@ -290,6 +298,12 @@ router.get("/schedules", async (req, res) => {
         ORDER BY sent_at DESC
         LIMIT 1
       )`,
+      lastLogSentAt: sql<Date | null>`(
+        SELECT sent_at FROM ${scheduledAuditReportLogsTable}
+        WHERE schedule_id = ${scheduledAuditReportsTable.id}
+        ORDER BY sent_at DESC
+        LIMIT 1
+      )`,
       lastErrorMessage: sql<string | null>`(
         SELECT error_message FROM ${scheduledAuditReportLogsTable}
         WHERE schedule_id = ${scheduledAuditReportsTable.id}
@@ -303,7 +317,11 @@ router.get("/schedules", async (req, res) => {
   res.json({
     data: rows.map(r => ({
       ...serializeSchedule(r),
-      lastSendStatus: deriveLastSendStatus(r.lastSuccess),
+      lastSendStatus: deriveLastSendStatus(
+        r.lastSuccess,
+        r.lastLogSentAt ? new Date(r.lastLogSentAt) : null,
+        r.failureAcknowledgedAt,
+      ),
       lastErrorMessage: r.lastErrorMessage ?? null,
     })),
   });
@@ -401,8 +419,14 @@ router.patch("/schedules/:id", async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { frequency, recipientEmail, isActive } = req.body;
-  const updates: Partial<{ frequency: string; recipientEmail: string; isActive: boolean; updatedAt: Date }> = {
+  const { frequency, recipientEmail, isActive, acknowledgeFailure } = req.body;
+  const updates: Partial<{
+    frequency: string;
+    recipientEmail: string;
+    isActive: boolean;
+    failureAcknowledgedAt: Date | null;
+    updatedAt: Date;
+  }> = {
     updatedAt: new Date(),
   };
 
@@ -415,6 +439,7 @@ router.patch("/schedules/:id", async (req, res) => {
   }
   if (recipientEmail !== undefined) updates.recipientEmail = (recipientEmail as string).trim();
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
+  if (acknowledgeFailure === true) updates.failureAcknowledgedAt = new Date();
 
   const [updated] = await db
     .update(scheduledAuditReportsTable)
