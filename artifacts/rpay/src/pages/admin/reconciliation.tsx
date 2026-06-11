@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, ChevronLeft, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck, StickyNote, BookmarkPlus, Trash2, Pencil, X } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, ChevronLeft, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck, StickyNote, BookmarkPlus, Trash2, Pencil, X, History } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
@@ -1144,6 +1144,7 @@ export default function AdminReconciliation() {
   const [runNotes, setRunNotes] = useState("");
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState("");
+  const [notesHistoryOpen, setNotesHistoryOpen] = useState(false);
   const HISTORY_PAGE_SIZE = 15;
 
   const schedulerQuery = useQuery({
@@ -1167,6 +1168,12 @@ export default function AdminReconciliation() {
   const emailLogsQuery = useQuery({
     queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"],
     queryFn: () => apiGet(`/reconciliation/runs/${selectedRunId}/email-logs`),
+    enabled: !!selectedRunId,
+  });
+
+  const notesAuditQuery = useQuery({
+    queryKey: ["/api/reconciliation/runs", selectedRunId, "audit-log"],
+    queryFn: () => apiGet(`/reconciliation/runs/${selectedRunId}/audit-log`),
     enabled: !!selectedRunId,
   });
 
@@ -1208,6 +1215,7 @@ export default function AdminReconciliation() {
       setEditingNotes(false);
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "items"] });
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs"] });
+      qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "audit-log"] });
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update notes")),
   });
@@ -1693,6 +1701,7 @@ export default function AdminReconciliation() {
             setEmailLogOpen(false);
             setEditingNotes(false);
             setNotesValue("");
+            setNotesHistoryOpen(false);
             const params = new URLSearchParams(window.location.search);
             if (params.has("runId")) {
               params.delete("runId");
@@ -1975,6 +1984,70 @@ export default function AdminReconciliation() {
               )}
             </div>
           )}
+
+          {/* Notes History */}
+          {selectedRun && (() => {
+            const auditEntries: Array<{ id: number; adminEmail: string; details: string | null; createdAt: string }> = notesAuditQuery.data?.data ?? [];
+            return (
+              <div className="border border-border/50 rounded-md">
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/20 transition-colors rounded-md"
+                  onClick={() => setNotesHistoryOpen(v => !v)}
+                >
+                  <History className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+                  <span className="font-medium text-xs text-muted-foreground">Notes History</span>
+                  {auditEntries.length > 0 && (
+                    <Badge variant="secondary" className="h-4 px-1.5 text-[10px] ml-0.5">{auditEntries.length}</Badge>
+                  )}
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground ml-auto transition-transform ${notesHistoryOpen ? "rotate-180" : ""}`} />
+                </button>
+                {notesHistoryOpen && (
+                  <div className="border-t border-border/50 px-3 py-2.5 space-y-2">
+                    {notesAuditQuery.isLoading ? (
+                      <p className="text-xs text-muted-foreground/60">Loading…</p>
+                    ) : auditEntries.length === 0 ? (
+                      <p className="text-xs text-muted-foreground/40 italic">No edits recorded yet.</p>
+                    ) : (
+                      auditEntries.map(entry => {
+                        let parsed: { previousNotes?: string | null; newNotes?: string | null } = {};
+                        try { parsed = JSON.parse(entry.details ?? "{}"); } catch {}
+                        return (
+                          <div key={entry.id} className="rounded-md border border-border/40 bg-muted/10 px-3 py-2 text-xs space-y-1.5">
+                            <div className="flex items-center gap-2 text-muted-foreground/60">
+                              <User className="w-3 h-3 shrink-0" />
+                              <span className="font-medium text-muted-foreground/80">{entry.adminEmail}</span>
+                              <span className="ml-auto whitespace-nowrap">
+                                {new Date(entry.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2">
+                              <div className="bg-red-500/5 border border-red-500/20 rounded px-2 py-1.5 min-w-0">
+                                <p className="text-[10px] uppercase tracking-wider text-red-400/60 mb-0.5">Before</p>
+                                {parsed.previousNotes ? (
+                                  <p className="text-muted-foreground/70 whitespace-pre-wrap break-words">{parsed.previousNotes}</p>
+                                ) : (
+                                  <p className="text-muted-foreground/30 italic">empty</p>
+                                )}
+                              </div>
+                              <ArrowRightLeft className="w-3 h-3 text-muted-foreground/30 mt-3 shrink-0" />
+                              <div className="bg-emerald-500/5 border border-emerald-500/20 rounded px-2 py-1.5 min-w-0">
+                                <p className="text-[10px] uppercase tracking-wider text-emerald-400/60 mb-0.5">After</p>
+                                {parsed.newNotes ? (
+                                  <p className="text-muted-foreground/70 whitespace-pre-wrap break-words">{parsed.newNotes}</p>
+                                ) : (
+                                  <p className="text-muted-foreground/30 italic">cleared</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Email Delivery Log */}
           {(() => {

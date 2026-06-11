@@ -430,6 +430,31 @@ router.get("/runs/:id/email-logs", async (req, res, next) => {
   }
 });
 
+// GET /api/reconciliation/runs/:id/audit-log
+router.get("/runs/:id/audit-log", async (req, res, next) => {
+  try {
+    const runId = parseInt(req.params['id'] as string);
+
+    const [run] = await db.select().from(reconciliationRunsTable).where(eq(reconciliationRunsTable.id, runId)).limit(1);
+    if (!run) { res.status(404).json({ error: "Run not found" }); return; }
+
+    const entries = await db
+      .select()
+      .from(auditLogsTable)
+      .where(
+        and(
+          eq(auditLogsTable.action, "reconciliation_run_notes_updated"),
+          eq(auditLogsTable.targetId, runId)
+        )
+      )
+      .orderBy(desc(auditLogsTable.createdAt));
+
+    res.json({ data: entries });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/reconciliation/runs/:id/export.csv
 // Streams the CSV in 500-row cursor-based batches so large runs never exhaust memory.
 router.get("/runs/:id/export.csv", async (req, res, next) => {
