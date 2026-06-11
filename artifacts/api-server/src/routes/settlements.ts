@@ -11,6 +11,7 @@ const settlementCreateLimiter = rateLimit({
   limit: 5,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  validate: { ip: false },
   keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
   message: { error: "Too many settlement requests. Please wait before submitting another." },
 });

@@ -19,6 +19,7 @@ const uploadUrlLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  validate: { ip: false },
   keyGenerator: (req: Request) => String((req as Request & { user?: { id: number } }).user?.id ?? req.ip),
   message: { error: "Too many upload URL requests. Please try again later." },
 });

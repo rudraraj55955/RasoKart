@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 const apiKeyCreateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 10,
+  validate: { ip: false },
   standardHeaders: "draft-8",
   legacyHeaders: false,
   keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),

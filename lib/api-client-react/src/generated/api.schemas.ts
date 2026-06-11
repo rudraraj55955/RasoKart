@@ -575,6 +575,18 @@ export interface QrCodeActivityResponse {
   data: QrCodeActivity[];
 }
 
+export interface CallbackLogAttempt {
+  id: number;
+  callbackLogId: number;
+  attemptNumber: number;
+  /** ISO timestamp when this attempt was fired */
+  firedAt: string;
+  /** @nullable */
+  httpStatus?: number | null;
+  /** @nullable */
+  responseBody?: string | null;
+}
+
 export type CallbackLogStatus = typeof CallbackLogStatus[keyof typeof CallbackLogStatus];
 
 
@@ -2338,6 +2350,10 @@ export type GetWebhookLogsParams = {
  * @maximum 50
  */
 limit?: number;
+};
+
+export type GetWebhookLogAttempts200 = {
+  data: CallbackLogAttempt[];
 };
 
 export type RetryWebhookLog200 = {

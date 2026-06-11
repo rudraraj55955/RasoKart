@@ -1331,6 +1331,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/CallbackLogListResponse"
 
+  /callbacks/{id}/attempts:
+    get:
+      operationId: getWebhookLogAttempts
+      tags: [callbacks]
+      summary: Get per-attempt delivery history for a callback log entry
+      description: Returns all individual delivery attempts for the given callback log ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of delivery attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CallbackLogAttempt"
+        "403":
+          description: Access denied
+        "404":
+          description: Callback log not found
+
   /webhooks/logs/{id}/retry:
     post:
       operationId: retryWebhookLog
@@ -4919,6 +4949,24 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/QrCodeActivity"
+
+    CallbackLogAttempt:
+      type: object
+      required: [id, callbackLogId, attemptNumber, firedAt]
+      properties:
+        id:
+          type: integer
+        callbackLogId:
+          type: integer
+        attemptNumber:
+          type: integer
+        firedAt:
+          type: string
+          description: ISO timestamp when this attempt was fired
+        httpStatus:
+          type: ["integer", "null"]
+        responseBody:
+          type: ["string", "null"]
 
     CallbackLog:
       type: object

@@ -10,6 +10,7 @@ const qrCodeCreateLimiter = rateLimit({
   limit: 20,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  validate: { ip: false },
   keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
   message: { error: "Too many QR code creation requests. Please slow down and try again shortly." },
 });

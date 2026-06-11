@@ -12,6 +12,7 @@ const loginLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  validate: { ip: false },
   message: { error: "Too many login attempts. Please try again later." },
 });
 

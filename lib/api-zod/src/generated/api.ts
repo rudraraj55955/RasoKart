@@ -1347,6 +1347,26 @@ export const GetWebhookLogsResponse = zod.object({
 
 
 /**
+ * Returns all individual delivery attempts for the given callback log ID.
+ * @summary Get per-attempt delivery history for a callback log entry
+ */
+export const GetWebhookLogAttemptsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetWebhookLogAttemptsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "callbackLogId": zod.number(),
+  "attemptNumber": zod.number(),
+  "firedAt": zod.string().describe('ISO timestamp when this attempt was fired'),
+  "httpStatus": zod.number().nullish(),
+  "responseBody": zod.string().nullish()
+}))
+})
+
+
+/**
  * Immediately re-attempts delivery for a failed webhook log entry owned by
 the authenticated merchant. Only logs in `failed` status can be retried.
 On success the log is updated in-place and the refreshed entry is returned.

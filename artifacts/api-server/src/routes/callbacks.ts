@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, credentialEventsTable, signatureFailureAlertLogsTable, webhooksTable } from "@workspace/db";
+import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, webhooksTable, callbackLogAttemptsTable } from "@workspace/db";
 import { eq, and, count, countDistinct, sql, gte, lte, isNull, like, asc, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
@@ -323,6 +323,40 @@ const REJECTION_REASON_PATTERNS: Record<string, string> = {
   bad_signature: "%Invalid X-Signature%",
   missing_header: "%header is required%",
 };
+
+// GET /api/callbacks/:id/attempts — per-attempt delivery history
+router.get("/:id/attempts", async (req, res) => {
+  const user = (req as any).user;
+  const id = parseInt(req.params['id'] as string);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid callback log ID" });
+    return;
+  }
+
+  const [log] = await db
+    .select({ id: callbackLogsTable.id, merchantId: callbackLogsTable.merchantId })
+    .from(callbackLogsTable)
+    .where(eq(callbackLogsTable.id, id))
+    .limit(1);
+
+  if (!log) {
+    res.status(404).json({ error: "Callback log not found" });
+    return;
+  }
+
+  if (user.role !== "admin" && log.merchantId !== user.merchantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const attempts = await db
+    .select()
+    .from(callbackLogAttemptsTable)
+    .where(eq(callbackLogAttemptsTable.callbackLogId, id))
+    .orderBy(asc(callbackLogAttemptsTable.attemptNumber));
+
+  res.json({ data: attempts });
+});
 
 // GET /api/callbacks
 router.get("/", async (req, res) => {
