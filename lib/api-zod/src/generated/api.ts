@@ -3160,7 +3160,8 @@ export const ListMySecurityActivityQueryParams = zod.object({
   "limit": zod.coerce.number().optional(),
   "action": zod.coerce.string().optional().describe('Filter by action type (e.g. plan_assigned, merchant_suspended)'),
   "dateFrom": zod.date().optional().describe('Filter events on or after this date (ISO 8601, e.g. 2025-01-01)'),
-  "dateTo": zod.date().optional().describe('Filter events on or before this date (ISO 8601, e.g. 2025-12-31)')
+  "dateTo": zod.date().optional().describe('Filter events on or before this date (ISO 8601, e.g. 2025-12-31)'),
+  "since": zod.date().optional().describe('Return only entries created after this ISO 8601 timestamp (exclusive)')
 })
 
 export const ListMySecurityActivityResponse = zod.object({

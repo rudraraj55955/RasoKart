@@ -3309,6 +3309,10 @@ paths:
           in: query
           description: "Filter events on or before this date (ISO 8601, e.g. 2025-12-31)"
           schema: { type: string, format: date }
+        - name: since
+          in: query
+          description: "Return only entries created after this ISO 8601 timestamp (exclusive)"
+          schema: { type: string, format: date-time }
       responses:
         "200":
           description: Merchant security activity log

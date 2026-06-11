@@ -35,7 +35,7 @@ router.get("/my-activity", async (req, res) => {
     return;
   }
 
-  const { page = "1", limit = "20", action, dateFrom, dateTo } = req.query as Record<string, string>;
+  const { page = "1", limit = "20", action, dateFrom, dateTo, since } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -52,7 +52,13 @@ router.get("/my-activity", async (req, res) => {
     to.setUTCHours(23, 59, 59, 999);
     if (!isNaN(to.getTime())) conditions.push(lte(auditLogsTable.createdAt, to));
   }
-  const where = and(...conditions);
+  if (since) {
+    const sinceDate = new Date(since);
+    if (!isNaN(sinceDate.getTime())) {
+      conditions.push(gte(auditLogsTable.createdAt, sinceDate));
+    }
+  }
+  const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
   const [{ total }] = await db.select({ total: count() }).from(auditLogsTable).where(where);
 

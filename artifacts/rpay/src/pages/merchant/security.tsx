@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGetCallbackSecret, useListApiKeys, useGetMe, useListMySecurityActivity, useListCredentialEvents } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -148,6 +148,8 @@ function credentialEventMeta(eventType: string) {
 
 // ── Page component ─────────────────────────────────────────────────────────────
 
+const SECURITY_LAST_SEEN_KEY = "rasokart_security_last_seen";
+
 export default function MerchantSecurity() {
   const [page, setPage] = useState(1);
   const [credPage, setCredPage] = useState(1);
@@ -156,6 +158,10 @@ export default function MerchantSecurity() {
   const [dateTo, setDateTo] = useState("");
   const LIMIT = 20;
   const CRED_LIMIT = 50;
+
+  useEffect(() => {
+    localStorage.setItem(SECURITY_LAST_SEEN_KEY, new Date().toISOString());
+  }, []);
 
   const { data: me, isLoading: meLoading } = useGetMe();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();

@@ -21,4 +21,8 @@ dateFrom?: Date;
  * Filter events on or before this date (ISO 8601, e.g. 2025-12-31)
  */
 dateTo?: Date;
+/**
+ * Return only entries created after this ISO 8601 timestamp (exclusive)
+ */
+since?: Date;
 };
