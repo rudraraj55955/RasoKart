@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, webhooksTable, callbackLogsTable } from "@workspace/db";
+import { db, webhooksTable, callbackLogsTable, auditLogsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { fireCallback } from "../helpers/callbackRetry";
@@ -429,6 +429,45 @@ router.post("/test", async (req, res) => {
   }
 
   res.json({ delivered, httpStatus, responseBody, durationMs, targetUrl, signed });
+});
+
+// POST /api/webhooks/backfill (admin only)
+// Finds webhook records with an empty events array and populates them with the
+// full set of supported event types. Logs the repair action to the audit trail.
+router.post("/backfill", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const allWebhooks = await db
+    .select({ id: webhooksTable.id, events: webhooksTable.events })
+    .from(webhooksTable);
+
+  const targets = allWebhooks.filter((w) => !w.events || w.events.length === 0);
+
+  let rowsUpdated = 0;
+  for (const w of targets) {
+    await db
+      .update(webhooksTable)
+      .set({ events: [...SUPPORTED_TEST_EVENTS] })
+      .where(eq(webhooksTable.id, w.id));
+    rowsUpdated++;
+  }
+
+  await db.insert(auditLogsTable).values({
+    adminId: user.id,
+    adminEmail: user.email,
+    action: "webhook_event_type_backfill",
+    targetType: "webhook",
+    targetId: null,
+    details: JSON.stringify({ rowsUpdated }),
+    ipAddress: req.ip ?? null,
+  });
+
+  req.log.info({ rowsUpdated }, "webhook_event_type_backfill_complete");
+  res.json({ rowsUpdated });
 });
 
 // GET /api/webhooks
