@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Plus } from "lucide-react";
 import { format } from "date-fns";
 
 export default function MerchantSettlements() {
@@ -65,6 +65,7 @@ export default function MerchantSettlements() {
 
   // Sum amounts reserved by any pending/processing settlements (server enforces at most 1 at a time,
   // but we compute from ALL loaded pages for correctness).
+  const inFlightSettlement = (data?.data ?? []).find(s => s.status === "pending" || s.status === "processing");
   const pendingReserved = (data?.data ?? [])
     .filter(s => s.status === "pending" || s.status === "processing")
     .reduce((sum, s) => sum + Number(s.requestedAmount ?? s.amount), 0);
@@ -98,11 +99,38 @@ export default function MerchantSettlements() {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={exportCsv}>Export CSV</Button>
-          <Button size="sm" onClick={() => { setRequestOpen(true); setReqError(""); }}>
+          <Button
+            size="sm"
+            disabled={!!inFlightSettlement}
+            onClick={() => { setRequestOpen(true); setReqError(""); }}
+            title={inFlightSettlement ? "A settlement request is already in progress" : undefined}
+          >
             <Plus className="w-4 h-4 mr-1" /> Request Settlement
           </Button>
         </div>
       </div>
+
+      {/* In-flight settlement warning banner */}
+      {inFlightSettlement && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+          <div className="flex-1 min-w-0">
+            <span className="font-medium text-amber-200">Settlement request in progress — </span>
+            a{" "}
+            <span className="font-medium capitalize">{inFlightSettlement.status}</span> request for{" "}
+            <span className="font-mono font-semibold">
+              ₹{Number(inFlightSettlement.requestedAmount ?? inFlightSettlement.amount).toLocaleString()}
+            </span>{" "}
+            is already in flight. You can submit another request once it is resolved.{" "}
+            <button
+              className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-amber-100 transition-colors font-medium"
+              onClick={() => setExpandedId(inFlightSettlement.id)}
+            >
+              <Clock className="w-3 h-3" /> View request
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Balance summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
