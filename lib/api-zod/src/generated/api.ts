@@ -3962,7 +3962,8 @@ export const CheckWebhookSecretsResponse = zod.object({
 export const RunReconciliationBody = zod.object({
   "dateFrom": zod.string().describe('Start date (YYYY-MM-DD)'),
   "dateTo": zod.string().describe('End date (YYYY-MM-DD)'),
-  "merchantId": zod.number().nullish()
+  "merchantId": zod.number().nullish(),
+  "notes": zod.string().nullish().describe('Optional reason or notes for this manual run (audit trail)')
 })
 
 

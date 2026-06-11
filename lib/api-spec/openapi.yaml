@@ -7756,6 +7756,10 @@ components:
         merchantId:
           type: integer
           nullable: true
+        notes:
+          type: string
+          nullable: true
+          description: Optional reason or notes for this manual run (audit trail)
 
     ReconciliationSchedulerStatus:
       type: object

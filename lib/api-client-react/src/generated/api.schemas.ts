@@ -2234,6 +2234,8 @@ export interface ReconciliationRunInput {
   /** End date (YYYY-MM-DD) */
   dateTo: string;
   merchantId?: number | null;
+  /** Optional reason or notes for this manual run (audit trail) */
+  notes?: string | null;
 }
 
 export interface ReconciliationSchedulerStatus {
