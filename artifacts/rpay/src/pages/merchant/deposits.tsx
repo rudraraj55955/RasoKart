@@ -50,6 +50,31 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 // ── Smart search types & parsing ──────────────────────────────────────────────
 
+function formatFilterCriteria(f: SmartFilter): string[] {
+  const parts: string[] = [];
+  if (f.txStatus) {
+    const labels: Record<string, string> = { pending: "Pending", success: "Successful", failed: "Failed" };
+    parts.push(labels[f.txStatus] ?? f.txStatus);
+  }
+  if (f.amountMin != null && f.amountMax != null) {
+    parts.push(`₹${f.amountMin.toLocaleString("en-IN")} – ₹${f.amountMax.toLocaleString("en-IN")}`);
+  } else if (f.amountMin != null) {
+    parts.push(`≥ ₹${f.amountMin.toLocaleString("en-IN")}`);
+  } else if (f.amountMax != null) {
+    parts.push(`≤ ₹${f.amountMax.toLocaleString("en-IN")}`);
+  }
+  if (f.dateFrom && f.dateTo) {
+    const from = format(new Date(f.dateFrom), "dd MMM yyyy");
+    const to = format(new Date(f.dateTo), "dd MMM yyyy");
+    parts.push(from === to ? from : `${from} – ${to}`);
+  } else if (f.dateFrom) {
+    parts.push(`From ${format(new Date(f.dateFrom), "dd MMM yyyy")}`);
+  } else if (f.dateTo) {
+    parts.push(`Until ${format(new Date(f.dateTo), "dd MMM yyyy")}`);
+  }
+  return parts.length > 0 ? parts : ["No criteria set"];
+}
+
 interface SmartFilter {
   amountMin?: number;
   amountMax?: number;
@@ -942,8 +967,10 @@ export default function MerchantDeposits() {
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className="text-xs text-muted-foreground font-medium">Saved:</span>
               {savedFilters.map((saved, idx) => (
+                <TooltipProvider key={saved.id}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
                 <span
-                  key={saved.id}
                   className="group inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/8 px-2 py-0.5 text-xs font-medium text-violet-300 hover:border-violet-500/60 transition-colors"
                 >
                   <button
@@ -980,6 +1007,18 @@ export default function MerchantDeposits() {
                     <Trash2 className="w-2.5 h-2.5" />
                   </button>
                 </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      className="bg-zinc-900 border border-zinc-700 text-zinc-100 px-3 py-2 max-w-[220px]"
+                    >
+                      <p className="text-[11px] font-semibold text-zinc-400 mb-1 uppercase tracking-wide">Filter preview</p>
+                      {formatFilterCriteria(saved.filter).map((line) => (
+                        <p key={line} className="text-xs leading-relaxed">{line}</p>
+                      ))}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               ))}
             </div>
           )}
