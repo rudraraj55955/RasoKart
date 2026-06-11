@@ -3,6 +3,7 @@ import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHis
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
+import { sendRejectionEmail } from "../helpers/rejectionEmail";
 
 const router = Router();
 
@@ -238,6 +239,7 @@ router.post("/:id/reject", requireAdmin, async (req, res) => {
     details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email, reason }),
     ipAddress: req.ip ?? null,
   });
+  sendRejectionEmail({ to: merchant.email, businessName: merchant.businessName, reason }).catch(() => {});
   res.json(serializeMerchant(merchant));
 });
 
@@ -288,6 +290,8 @@ router.post("/bulk-reject", requireAdmin, async (req, res) => {
   let updated = 0;
   let failed = 0;
 
+  const emailQueue: { to: string; businessName: string; reason: string }[] = [];
+
   for (const merchantId of merchantIds as number[]) {
     try {
       const [merchant] = await db.update(merchantsTable)
@@ -301,10 +305,15 @@ router.post("/bulk-reject", requireAdmin, async (req, res) => {
         details: JSON.stringify({ reason: reason.trim(), bulk: true }),
         ipAddress: (req as any).ip ?? null,
       });
+      emailQueue.push({ to: merchant.email, businessName: merchant.businessName, reason: reason.trim() });
       updated++;
     } catch {
       failed++;
     }
+  }
+
+  for (const mail of emailQueue) {
+    sendRejectionEmail(mail).catch(() => {});
   }
 
   res.json({ updated, failed });
