@@ -254,6 +254,22 @@ function SecurityEventRow({ event }: { event: LocalSecurityEvent }) {
             {event.eventType === "callback_secret_rotated" ? "Callback signing secret rotated" : meta.label}
           </p>
         )}
+        {!isLogin && (event.ipAddress || event.actorEmail) && (
+          <div className="flex items-center gap-2 flex-wrap mt-1">
+            {event.actorEmail && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
+                <span className="text-muted-foreground/40">by</span>
+                <code className="font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded">{event.actorEmail}</code>
+              </span>
+            )}
+            {event.ipAddress && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
+                <span className="text-muted-foreground/40">from</span>
+                <code className="font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded">{event.ipAddress}</code>
+              </span>
+            )}
+          </div>
+        )}
         <p className="text-xs text-muted-foreground/50 mt-1">
           {format(new Date(event.occurredAt), "dd MMM yyyy 'at' HH:mm")}
         </p>

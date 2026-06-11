@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
 import { logger } from "../lib/logger";
 import { fireCallback, scheduleCallbackRetry } from "../helpers/callbackRetry";
+import { maskIp } from "../helpers/apiKeyEmail";
 
 const router = Router();
 
@@ -325,6 +326,7 @@ router.get("/secret/history", async (req, res) => {
       occurredAt: credentialEventsTable.createdAt,
       keyPrefix: credentialEventsTable.keyPrefix,
       ipAddress: credentialEventsTable.ipAddress,
+      actorEmail: credentialEventsTable.actorEmail,
     })
     .from(credentialEventsTable)
     .where(
@@ -341,6 +343,8 @@ router.get("/secret/history", async (req, res) => {
     keyPrefix: r.keyPrefix ?? null,
     description: "Callback signing secret rotated",
     isRevoked: false,
+    ipAddress: r.ipAddress ? maskIp(r.ipAddress) : null,
+    actorEmail: r.actorEmail ?? null,
   }));
 
   res.json({ data: events });
