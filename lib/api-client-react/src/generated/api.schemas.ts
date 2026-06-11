@@ -745,6 +745,35 @@ export interface AdminCallbackStatsResponse {
   alertThreshold: number;
 }
 
+export type SignatureFailureAlertLogEntryAffectedMerchantsItem = {
+  name: string;
+  count: number;
+};
+
+export interface SignatureFailureAlertLogEntry {
+  id: number;
+  sentAt: string;
+  /** Total signature failures in the rolling window at the time the alert was sent */
+  failureCount: number;
+  /** Number of distinct merchants affected at the time the alert was sent */
+  affectedMerchantCount: number;
+  /** Number of admin emails the alert was successfully delivered to */
+  recipientCount: number;
+  /** List of admin email addresses the alert was sent to */
+  recipientEmails: string[];
+  /** Per-merchant breakdown captured at alert dispatch time */
+  affectedMerchants: SignatureFailureAlertLogEntryAffectedMerchantsItem[];
+  /** Rolling window (hours) used to count failures */
+  windowHours: number;
+  /** Failure threshold that triggered this alert */
+  threshold: number;
+}
+
+export interface SignatureFailureAlertHistoryResponse {
+  data: SignatureFailureAlertLogEntry[];
+  total: number;
+}
+
 export type SettlementStatus = typeof SettlementStatus[keyof typeof SettlementStatus];
 
 
@@ -2653,6 +2682,13 @@ export type RetryWebhookLog429 = {
 
 export type GetWebhookLogAttempts200 = {
   data: CallbackLogAttempt[];
+};
+
+export type GetSignatureFailureAlertHistoryParams = {
+/**
+ * Maximum number of records to return (default 20)
+ */
+limit?: number;
 };
 
 export type ListCallbackLogsParams = {

@@ -1,5 +1,5 @@
-import { db, callbackLogsTable, merchantsTable, usersTable } from "@workspace/db";
-import { and, eq, gte, count, sql } from "drizzle-orm";
+import { db, callbackLogsTable, merchantsTable, usersTable, signatureFailureAlertLogsTable } from "@workspace/db";
+import { and, eq, gte, count, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
 
@@ -44,11 +44,35 @@ const RATE_LIMIT_MS = (() => {
  *   function (before the first await), every subsequent call will see it and
  *   return immediately.
  * - `lastAlertSentAt`: rate-limits alerts to at most one per RATE_LIMIT_MS
- *   window. It is set *before* emails are sent so the guard stays closed even
- *   if the mailer fails.
+ *   window. It is seeded from the DB on startup (see seedLastAlertSentAt) so
+ *   restarts do not reset the cooldown.
  */
 let checkInFlight = false;
 let lastAlertSentAt: Date | null = null;
+
+/**
+ * Seed the in-memory rate-limit timestamp from the most recent DB record.
+ * Call once at server startup so restarts don't bypass the cooldown window.
+ */
+export async function seedLastAlertSentAt(): Promise<void> {
+  try {
+    const [latest] = await db
+      .select({ sentAt: signatureFailureAlertLogsTable.sentAt })
+      .from(signatureFailureAlertLogsTable)
+      .orderBy(desc(signatureFailureAlertLogsTable.sentAt))
+      .limit(1);
+
+    if (latest) {
+      lastAlertSentAt = latest.sentAt;
+      logger.info(
+        { lastAlertSentAt },
+        "Seeded signature failure alert rate-limit from DB"
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "Could not seed signature failure alert rate-limit from DB — will start fresh");
+  }
+}
 
 async function getAdminEmails(): Promise<string[]> {
   const admins = await db
@@ -227,6 +251,22 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
       { total, affectedMerchants: affectedMerchants.length, threshold: ALERT_THRESHOLD, windowHours: WINDOW_HOURS, sent, failed },
       "Admin signature failure alert emails dispatched"
     );
+
+    // Persist this alert dispatch to the DB for audit history.
+    // Fire-and-forget: a DB write failure must not retroactively re-open the
+    // rate-limit gate (lastAlertSentAt is already set above).
+    db.insert(signatureFailureAlertLogsTable).values({
+      sentAt: lastAlertSentAt,
+      failureCount: total,
+      affectedMerchantCount: affectedMerchants.length,
+      recipientCount: sent,
+      recipientEmails: JSON.stringify(recipients),
+      affectedMerchants: JSON.stringify(affectedMerchants),
+      windowHours: WINDOW_HOURS,
+      threshold: ALERT_THRESHOLD,
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "Failed to persist signature failure alert log to DB");
+    });
   } catch (err) {
     logger.error({ err }, "Failed to check or send signature failure alert");
   } finally {

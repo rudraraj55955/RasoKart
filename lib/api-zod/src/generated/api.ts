@@ -1538,6 +1538,33 @@ export const GetAdminCallbackStatsResponse = zod.object({
 
 
 /**
+ * Admin-only. Returns the history of signature failure alert emails that have been sent, including failure counts, affected merchants, and recipient counts.
+ * @summary Get signature failure alert dispatch history
+ */
+export const GetSignatureFailureAlertHistoryQueryParams = zod.object({
+  "limit": zod.coerce.number().optional().describe('Maximum number of records to return (default 20)')
+})
+
+export const GetSignatureFailureAlertHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "sentAt": zod.coerce.date(),
+  "failureCount": zod.number().describe('Total signature failures in the rolling window at the time the alert was sent'),
+  "affectedMerchantCount": zod.number().describe('Number of distinct merchants affected at the time the alert was sent'),
+  "recipientCount": zod.number().describe('Number of admin emails the alert was successfully delivered to'),
+  "recipientEmails": zod.array(zod.string()).describe('List of admin email addresses the alert was sent to'),
+  "affectedMerchants": zod.array(zod.object({
+  "name": zod.string(),
+  "count": zod.number()
+})).describe('Per-merchant breakdown captured at alert dispatch time'),
+  "windowHours": zod.number().describe('Rolling window (hours) used to count failures'),
+  "threshold": zod.number().describe('Failure threshold that triggered this alert')
+})),
+  "total": zod.number()
+})
+
+
+/**
  * Called by a payment provider or merchant back-end when a payment is received.
 Authentication is via the merchant's API key supplied in the X-Api-Key header.
 The merchantId is derived from the key — it does not need to be in the body.

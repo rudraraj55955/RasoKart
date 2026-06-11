@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, ListCallbackLogsEventType } from "@workspace/api-client-react";
+import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, ListCallbackLogsEventType, useGetSignatureFailureAlertHistory } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertTriangle, ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, X, Bell, Mail } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -173,6 +173,149 @@ const EVENT_TYPE_OPTIONS: { value: ListCallbackLogsEventType; label: string }[] 
   { value: ListCallbackLogsEventType.paymentfailed, label: "payment.failed" },
   { value: ListCallbackLogsEventType.paymentpending, label: "payment.pending" },
 ];
+
+function AlertHistoryPanel() {
+  const { data, isLoading } = useGetSignatureFailureAlertHistory({ limit: 20 });
+  const [expanded, setExpanded] = useState(false);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Bell className="w-4 h-4 text-muted-foreground" />
+            Alert Dispatch History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-10 bg-muted/50 rounded animate-pulse" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const entries = data?.data ?? [];
+  const total = data?.total ?? 0;
+
+  if (total === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Bell className="w-4 h-4 text-muted-foreground" />
+            Alert Dispatch History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No signature failure alerts have been sent yet.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Bell className="w-4 h-4 text-muted-foreground" />
+            Alert Dispatch History
+            <Badge variant="secondary" className="text-xs font-mono">{total}</Badge>
+          </CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y divide-border">
+          {entries.map((entry, idx) => (
+            <Collapsible key={entry.id} open={expanded === (entry.id as any)} onOpenChange={open => setExpanded(open ? (entry.id as any) : false)}>
+              <CollapsibleTrigger asChild>
+                <button className={`w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors flex items-start gap-3 ${idx === 0 ? "rounded-t-none" : ""}`}>
+                  <div className="mt-0.5 shrink-0">
+                    <ShieldAlert className="w-4 h-4 text-rose-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-rose-400">
+                        {entry.failureCount} failure{entry.failureCount !== 1 ? "s" : ""}
+                      </span>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {entry.affectedMerchantCount} merchant{entry.affectedMerchantCount !== 1 ? "s" : ""}
+                      </span>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Mail className="w-3 h-3" />
+                        {entry.recipientCount} sent
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {format(new Date(entry.sentAt), "MMM d, yyyy 'at' HH:mm")}
+                      {" · "}
+                      <span className="text-muted-foreground/60">{formatDistanceToNow(new Date(entry.sentAt), { addSuffix: true })}</span>
+                    </p>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 mt-0.5 transition-transform ${(expanded as any) === entry.id ? "rotate-180" : ""}`} />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-4 pb-4 space-y-3 bg-muted/20 border-t border-border/50">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3">
+                    <div className="rounded-md bg-background/60 border border-border/50 px-3 py-2">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Failures</p>
+                      <p className="text-lg font-bold text-rose-400 font-mono">{entry.failureCount}</p>
+                    </div>
+                    <div className="rounded-md bg-background/60 border border-border/50 px-3 py-2">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Threshold</p>
+                      <p className="text-lg font-bold font-mono">{entry.threshold}</p>
+                    </div>
+                    <div className="rounded-md bg-background/60 border border-border/50 px-3 py-2">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Window</p>
+                      <p className="text-lg font-bold font-mono">{entry.windowHours}h</p>
+                    </div>
+                    <div className="rounded-md bg-background/60 border border-border/50 px-3 py-2">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Emails Sent</p>
+                      <p className="text-lg font-bold font-mono">{entry.recipientCount}</p>
+                    </div>
+                  </div>
+
+                  {entry.affectedMerchants.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Affected Merchants</p>
+                      <div className="space-y-1">
+                        {entry.affectedMerchants.map((m, i) => (
+                          <div key={i} className="flex items-center justify-between text-sm px-2 py-1 rounded bg-background/40 border border-border/30">
+                            <span className="truncate text-foreground/80">{m.name}</span>
+                            <span className="font-mono text-xs text-rose-400 shrink-0 ml-2">{m.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {entry.recipientEmails.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Recipients</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {entry.recipientEmails.map((email, i) => (
+                          <span key={i} className="text-xs bg-background/60 border border-border/40 rounded px-2 py-0.5 font-mono text-muted-foreground">{email}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function AdminCallbacks() {
   const [status, setStatus] = useState("all");
@@ -387,6 +530,8 @@ export default function AdminCallbacks() {
           </div>
         </div>
       )}
+
+      <AlertHistoryPanel />
     </div>
   );
 }

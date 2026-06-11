@@ -1580,6 +1580,28 @@ paths:
         "403":
           description: Admin access only
 
+  /callbacks/admin/alert-history:
+    get:
+      operationId: getSignatureFailureAlertHistory
+      tags: [callbacks]
+      summary: Get signature failure alert dispatch history
+      description: Admin-only. Returns the history of signature failure alert emails that have been sent, including failure counts, affected merchants, and recipient counts.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          description: Maximum number of records to return (default 20)
+      responses:
+        "200":
+          description: Signature failure alert history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignatureFailureAlertHistoryResponse"
+        "403":
+          description: Admin access only
+
   /callbacks:
     post:
       operationId: receivePaymentCallback
@@ -5754,6 +5776,58 @@ components:
         alertThreshold:
           type: integer
           description: The configured signature failure alert threshold
+
+    SignatureFailureAlertLogEntry:
+      type: object
+      required: [id, sentAt, failureCount, affectedMerchantCount, recipientCount, recipientEmails, affectedMerchants, windowHours, threshold]
+      properties:
+        id:
+          type: integer
+        sentAt:
+          type: string
+          format: date-time
+        failureCount:
+          type: integer
+          description: Total signature failures in the rolling window at the time the alert was sent
+        affectedMerchantCount:
+          type: integer
+          description: Number of distinct merchants affected at the time the alert was sent
+        recipientCount:
+          type: integer
+          description: Number of admin emails the alert was successfully delivered to
+        recipientEmails:
+          type: array
+          items:
+            type: string
+          description: List of admin email addresses the alert was sent to
+        affectedMerchants:
+          type: array
+          items:
+            type: object
+            required: [name, count]
+            properties:
+              name:
+                type: string
+              count:
+                type: integer
+          description: Per-merchant breakdown captured at alert dispatch time
+        windowHours:
+          type: number
+          description: Rolling window (hours) used to count failures
+        threshold:
+          type: integer
+          description: Failure threshold that triggered this alert
+
+    SignatureFailureAlertHistoryResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignatureFailureAlertLogEntry"
+        total:
+          type: integer
 
     Settlement:
       type: object

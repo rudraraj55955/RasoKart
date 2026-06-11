@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, credentialEventsTable } from "@workspace/db";
-import { eq, and, count, countDistinct, sql, gte, isNull, like, asc } from "drizzle-orm";
+import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, credentialEventsTable, signatureFailureAlertLogsTable } from "@workspace/db";
+import { eq, and, count, countDistinct, sql, gte, isNull, like, asc, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
 import { logger } from "../lib/logger";
@@ -239,6 +239,37 @@ router.get("/admin/stats", requireAdmin, async (req, res) => {
     thresholdExceeded: signatureFailures24h > ALERT_THRESHOLD,
     alertThreshold: ALERT_THRESHOLD,
   });
+});
+
+// GET /api/callbacks/admin/alert-history — paginated history of signature failure alert dispatches (admin only)
+router.get("/admin/alert-history", requireAdmin, async (req, res) => {
+  const rawLimit = req.query["limit"];
+  const limit = rawLimit ? Math.min(100, Math.max(1, parseInt(rawLimit as string, 10) || 20)) : 20;
+
+  const [rows, [{ total }]] = await Promise.all([
+    db
+      .select()
+      .from(signatureFailureAlertLogsTable)
+      .orderBy(desc(signatureFailureAlertLogsTable.sentAt))
+      .limit(limit),
+    db
+      .select({ total: count() })
+      .from(signatureFailureAlertLogsTable),
+  ]);
+
+  const data = rows.map(row => ({
+    id: row.id,
+    sentAt: row.sentAt,
+    failureCount: row.failureCount,
+    affectedMerchantCount: row.affectedMerchantCount,
+    recipientCount: row.recipientCount,
+    recipientEmails: (() => { try { return JSON.parse(row.recipientEmails) as string[]; } catch { return []; } })(),
+    affectedMerchants: (() => { try { return JSON.parse(row.affectedMerchants) as { name: string; count: number }[]; } catch { return []; } })(),
+    windowHours: row.windowHours,
+    threshold: row.threshold,
+  }));
+
+  res.json({ data, total });
 });
 
 // GET /api/callbacks/secret — returns callback secret status for the authenticated merchant

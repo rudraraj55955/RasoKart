@@ -37,3 +37,4 @@ export * from "./savedFilters";
 export * from "./merchantFilterPresets";
 export * from "./storageCleanupRuns";
 export * from "./credentialEvents";
+export * from "./signatureFailureAlertLogs";

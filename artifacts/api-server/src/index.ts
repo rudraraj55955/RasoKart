@@ -13,6 +13,7 @@ import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initNonceCleanupScheduler, pruneExpiredNonces } from "./helpers/nonceCleanupScheduler";
 import { initWebhookSecretScheduler } from "./helpers/webhookSecretScheduler";
 import { initStorageCleanupSchedulerFromDb } from "./helpers/storageCleanupScheduler";
+import { seedLastAlertSentAt } from "./helpers/signatureFailureAlert";
 
 const rawPort = process.env["PORT"];
 
@@ -72,6 +73,12 @@ async function main() {
   initWebhookSecretScheduler();
   await initStorageCleanupSchedulerFromDb();
   scheduleCallbackRetryWorker();
+
+  // Seed in-memory rate-limit for signature failure alerts from DB so a
+  // server restart doesn't reset the cooldown window.
+  seedLastAlertSentAt().catch((err) => {
+    logger.warn({ err }, "Startup signature failure alert seed failed");
+  });
 
   // Startup sweep: immediately scan all active connections so merchants receive
   // provider_limit_reset (and warning/reached) notifications even when the server

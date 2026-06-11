@@ -77,6 +77,7 @@ import type {
   ExportVaBalanceAuditCsvParams,
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
+  GetSignatureFailureAlertHistoryParams,
   GetVirtualAccountBalanceHistoryParams,
   GetWebhookLogAttempts200,
   GetWebhookLogsParams,
@@ -198,6 +199,7 @@ import type {
   SettlementListResponse,
   SettlementMarkPaidInput,
   SettlementStats,
+  SignatureFailureAlertHistoryResponse,
   SimulatePaymentInput,
   StorageCleanupResult,
   ToggleProductInput,
@@ -4843,6 +4845,91 @@ export function useGetAdminCallbackStats<TData = Awaited<ReturnType<typeof getAd
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAdminCallbackStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetSignatureFailureAlertHistoryUrl = (params?: GetSignatureFailureAlertHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/callbacks/admin/alert-history?${stringifiedParams}` : `/api/callbacks/admin/alert-history`
+}
+
+/**
+ * Admin-only. Returns the history of signature failure alert emails that have been sent, including failure counts, affected merchants, and recipient counts.
+ * @summary Get signature failure alert dispatch history
+ */
+export const getSignatureFailureAlertHistory = async (params?: GetSignatureFailureAlertHistoryParams, options?: RequestInit): Promise<SignatureFailureAlertHistoryResponse> => {
+
+  return customFetch<SignatureFailureAlertHistoryResponse>(getGetSignatureFailureAlertHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSignatureFailureAlertHistoryQueryKey = (params?: GetSignatureFailureAlertHistoryParams,) => {
+    return [
+    `/api/callbacks/admin/alert-history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSignatureFailureAlertHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getSignatureFailureAlertHistory>>, TError = ErrorType<void>>(params?: GetSignatureFailureAlertHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignatureFailureAlertHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSignatureFailureAlertHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSignatureFailureAlertHistory>>> = ({ signal }) => getSignatureFailureAlertHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSignatureFailureAlertHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSignatureFailureAlertHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getSignatureFailureAlertHistory>>>
+export type GetSignatureFailureAlertHistoryQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get signature failure alert dispatch history
+ */
+
+export function useGetSignatureFailureAlertHistory<TData = Awaited<ReturnType<typeof getSignatureFailureAlertHistory>>, TError = ErrorType<void>>(
+ params?: GetSignatureFailureAlertHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignatureFailureAlertHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSignatureFailureAlertHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
