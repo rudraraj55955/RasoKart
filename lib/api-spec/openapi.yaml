@@ -1574,6 +1574,12 @@ paths:
             "replay_detected" = duplicate nonce,
             "bad_signature" = HMAC mismatch,
             "missing_header" = required header absent.
+        - name: eventType
+          in: query
+          schema:
+            type: string
+            enum: [payment.received, payment.success, payment.failed, payment.pending]
+          description: Filter logs by webhook event type
         - name: page
           in: query
           schema:
@@ -4999,6 +5005,9 @@ components:
         lastAttemptAt:
           type: ["string", "null"]
           description: ISO timestamp of the most recent attempt
+        eventType:
+          type: ["string", "null"]
+          description: Webhook event type, e.g. payment.received, payment.success, payment.failed, payment.pending
         signatureVerified:
           type: ["boolean", "null"]
           description: HMAC signature verification result — true if passed, false if rejected, null if no secret is configured

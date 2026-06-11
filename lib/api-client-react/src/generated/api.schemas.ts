@@ -623,6 +623,11 @@ export interface CallbackLog {
      */
   lastAttemptAt?: string | null;
   /**
+     * Webhook event type, e.g. payment.received, payment.success, payment.failed, payment.pending
+     * @nullable
+     */
+  eventType?: string | null;
+  /**
      * HMAC signature verification result — true if passed, false if rejected, null if no secret is configured
      * @nullable
      */
@@ -2377,6 +2382,10 @@ signatureVerified?: ListCallbackLogsSignatureVerified;
 
  */
 rejectionReason?: ListCallbackLogsRejectionReason;
+/**
+ * Filter logs by webhook event type
+ */
+eventType?: ListCallbackLogsEventType;
 page?: number;
 limit?: number;
 };
@@ -2409,6 +2418,16 @@ export const ListCallbackLogsRejectionReason = {
   replay_detected: 'replay_detected',
   bad_signature: 'bad_signature',
   missing_header: 'missing_header',
+} as const;
+
+export type ListCallbackLogsEventType = typeof ListCallbackLogsEventType[keyof typeof ListCallbackLogsEventType];
+
+
+export const ListCallbackLogsEventType = {
+  paymentreceived: 'payment.received',
+  paymentsuccess: 'payment.success',
+  paymentfailed: 'payment.failed',
+  paymentpending: 'payment.pending',
 } as const;
 
 export type RetryCallback200 = {

@@ -34,6 +34,11 @@ export interface CallbackLog {
      */
   lastAttemptAt?: string | null;
   /**
+     * Webhook event type, e.g. payment.received, payment.success, payment.failed, payment.pending
+     * @nullable
+     */
+  eventType?: string | null;
+  /**
      * HMAC signature verification result — true if passed, false if rejected, null if no secret is configured
      * @nullable
      */

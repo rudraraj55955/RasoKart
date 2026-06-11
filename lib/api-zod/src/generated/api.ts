@@ -1335,6 +1335,7 @@ export const GetWebhookLogsResponse = zod.object({
   "attempts": zod.number().optional(),
   "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
   "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
+  "eventType": zod.string().nullish().describe('Webhook event type, e.g. payment.received, payment.success, payment.failed, payment.pending'),
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
@@ -1393,6 +1394,7 @@ export const RetryWebhookLogResponse = zod.object({
   "attempts": zod.number().optional(),
   "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
   "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
+  "eventType": zod.string().nullish().describe('Webhook event type, e.g. payment.received, payment.success, payment.failed, payment.pending'),
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
@@ -1523,6 +1525,7 @@ export const ListCallbackLogsQueryParams = zod.object({
   "qrCodeId": zod.coerce.number().optional().describe('Filter by QR code ID'),
   "signatureVerified": zod.enum(['all', 'verified', 'failed', 'none']).optional().describe('Filter by signature verification outcome. \"verified\" = passed, \"failed\" = rejected, \"none\" = no secret configured'),
   "rejectionReason": zod.enum(['stale_timestamp', 'replay_detected', 'bad_signature', 'missing_header']).optional().describe('Filter failed logs by the specific rejection reason stored in responseBody. \"stale_timestamp\" = X-Timestamp outside ±window, \"replay_detected\" = duplicate nonce, \"bad_signature\" = HMAC mismatch, \"missing_header\" = required header absent.\n'),
+  "eventType": zod.enum(['payment.received', 'payment.success', 'payment.failed', 'payment.pending']).optional().describe('Filter logs by webhook event type'),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })
@@ -1541,6 +1544,7 @@ export const ListCallbackLogsResponse = zod.object({
   "attempts": zod.number().optional(),
   "nextRetryAt": zod.string().nullish().describe('ISO timestamp of the next scheduled retry attempt'),
   "lastAttemptAt": zod.string().nullish().describe('ISO timestamp of the most recent attempt'),
+  "eventType": zod.string().nullish().describe('Webhook event type, e.g. payment.received, payment.success, payment.failed, payment.pending'),
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),

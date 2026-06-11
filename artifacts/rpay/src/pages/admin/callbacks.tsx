@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats } from "@workspace/api-client-react";
+import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, ListCallbackLogsEventType } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { EventTypeBadge, EVENT_TYPE_COLORS } from "@/components/ui/event-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -100,6 +101,7 @@ function CallbackRow({ log }: { log: any }) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <StatusBadge status={log.status} />
             {isPendingRetry && <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" style={{ animationDuration: "3s" }} />}
+            <EventTypeBadge eventType={log.eventType} />
             {rejectionCategory && (
               <RejectionReasonTag responseBody={log.responseBody} />
             )}
@@ -166,19 +168,29 @@ function CallbackRow({ log }: { log: any }) {
   );
 }
 
+const EVENT_TYPE_OPTIONS: { value: ListCallbackLogsEventType; label: string }[] = [
+  { value: ListCallbackLogsEventType.paymentreceived, label: "payment.received" },
+  { value: ListCallbackLogsEventType.paymentsuccess, label: "payment.success" },
+  { value: ListCallbackLogsEventType.paymentfailed, label: "payment.failed" },
+  { value: ListCallbackLogsEventType.paymentpending, label: "payment.pending" },
+];
+
 export default function AdminCallbacks() {
   const [status, setStatus] = useState("all");
   const [sigVerified, setSigVerified] = useState("all");
   const [rejectionReason, setRejectionReason] = useState("all");
+  const [eventTypeFilter, setEventTypeFilter] = useState("all");
   const [page, setPage] = useState(1);
 
   const sigVerifiedParam = sigVerified === "all" ? undefined : (sigVerified as any);
   const rejectionReasonParam = rejectionReason === "all" ? undefined : (rejectionReason as any);
+  const eventTypeParam = eventTypeFilter === "all" ? undefined : (eventTypeFilter as ListCallbackLogsEventType);
 
   const { data, isLoading } = useListCallbackLogs({
     status: status as any,
     signatureVerified: sigVerifiedParam,
     rejectionReason: rejectionReasonParam,
+    eventType: eventTypeParam,
     page,
     limit: 20,
   });
@@ -219,35 +231,72 @@ export default function AdminCallbacks() {
 
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
-              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="success">Success</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="pending_retry">Pending Retry</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sigVerified} onValueChange={v => { setSigVerified(v); setPage(1); }}>
-              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Signatures</SelectItem>
-                <SelectItem value="verified">Sig. Verified</SelectItem>
-                <SelectItem value="failed">Sig. Failed</SelectItem>
-                <SelectItem value="none">No Signature</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={rejectionReason} onValueChange={v => { setRejectionReason(v); setPage(1); }}>
-              <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Rejection Reasons" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Rejection Reasons</SelectItem>
-                <SelectItem value="stale_timestamp">Stale timestamp</SelectItem>
-                <SelectItem value="replay_detected">Replay detected</SelectItem>
-                <SelectItem value="bad_signature">Bad signature</SelectItem>
-                <SelectItem value="missing_header">Missing header</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+              <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="success">Success</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="pending_retry">Pending Retry</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sigVerified} onValueChange={v => { setSigVerified(v); setPage(1); }}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Signatures</SelectItem>
+                  <SelectItem value="verified">Sig. Verified</SelectItem>
+                  <SelectItem value="failed">Sig. Failed</SelectItem>
+                  <SelectItem value="none">No Signature</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={rejectionReason} onValueChange={v => { setRejectionReason(v); setPage(1); }}>
+                <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Rejection Reasons" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Rejection Reasons</SelectItem>
+                  <SelectItem value="stale_timestamp">Stale timestamp</SelectItem>
+                  <SelectItem value="replay_detected">Replay detected</SelectItem>
+                  <SelectItem value="bad_signature">Bad signature</SelectItem>
+                  <SelectItem value="missing_header">Missing header</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-start sm:items-center">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-sm text-muted-foreground font-medium">Event type:</span>
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                <button
+                  onClick={() => { setEventTypeFilter("all"); setPage(1); }}
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors border ${
+                    eventTypeFilter === "all"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/70 hover:text-foreground"
+                  }`}
+                >
+                  All
+                </button>
+                {EVENT_TYPE_OPTIONS.map(opt => {
+                  const colors = EVENT_TYPE_COLORS[opt.label] ?? { bg: "bg-muted/40", text: "text-muted-foreground", border: "border-border" };
+                  const isActive = eventTypeFilter === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setEventTypeFilter(isActive ? "all" : opt.value); setPage(1); }}
+                      className={`px-2.5 py-1 rounded text-xs font-mono font-semibold transition-colors border ${
+                        isActive
+                          ? `${colors.bg} ${colors.text} ${colors.border} ring-1 ring-inset ${colors.border}`
+                          : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/70 hover:text-foreground"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">

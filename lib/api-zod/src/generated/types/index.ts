@@ -96,6 +96,7 @@ export * from './ledgerListResponse';
 export * from './listAccountDetailsParams';
 export * from './listAdminAuditLogsParams';
 export * from './listAuditReportScheduleLogsParams';
+export * from './listCallbackLogsEventType';
 export * from './listCallbackLogsParams';
 export * from './listCallbackLogsRejectionReason';
 export * from './listCallbackLogsSignatureVerified';

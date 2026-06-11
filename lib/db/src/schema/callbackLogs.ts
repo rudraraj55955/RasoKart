@@ -15,6 +15,7 @@ export const callbackLogsTable = pgTable("callback_logs", {
   attempts: integer("attempts").notNull().default(1),
   nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
   lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  eventType: text("event_type"), // e.g. payment.received, payment.success, payment.failed, payment.pending
   signatureVerified: boolean("signature_verified"), // true = HMAC passed, false = HMAC failed, null = no secret configured
   isTest: boolean("is_test").notNull().default(false),
   eventType: text("event_type"),

@@ -361,7 +361,7 @@ router.get("/:id/attempts", async (req, res) => {
 // GET /api/callbacks
 router.get("/", async (req, res) => {
   const user = (req as any).user;
-  const { status, qrCodeId, signatureVerified, rejectionReason, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { status, qrCodeId, signatureVerified, rejectionReason, eventType, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -376,6 +376,7 @@ router.get("/", async (req, res) => {
   if (rejectionReason && REJECTION_REASON_PATTERNS[rejectionReason]) {
     conditions.push(like(callbackLogsTable.responseBody, REJECTION_REASON_PATTERNS[rejectionReason]));
   }
+  if (eventType) conditions.push(eq(callbackLogsTable.eventType, eventType));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [{ total }] = await db.select({ total: count() }).from(callbackLogsTable).where(where);
@@ -393,6 +394,7 @@ router.get("/", async (req, res) => {
       attempts: callbackLogsTable.attempts,
       nextRetryAt: callbackLogsTable.nextRetryAt,
       lastAttemptAt: callbackLogsTable.lastAttemptAt,
+      eventType: callbackLogsTable.eventType,
       signatureVerified: callbackLogsTable.signatureVerified,
       isTest: callbackLogsTable.isTest,
       createdAt: callbackLogsTable.createdAt,
