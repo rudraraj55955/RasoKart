@@ -2575,6 +2575,19 @@ export const ExportVirtualAccountBalanceHistoryParams = zod.object({
 
 
 /**
+ * @summary Export balance audit log as CSV (admin only)
+ */
+export const ExportVaBalanceAuditCsvQueryParams = zod.object({
+  "merchantId": zod.coerce.number().optional(),
+  "merchantName": zod.coerce.string().optional(),
+  "changedBy": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "fieldChanged": zod.enum(['balance', 'totalCollection']).optional()
+})
+
+
+/**
  * @summary List balance change history across all virtual accounts (admin-only)
  */
 export const ListVaBalanceAuditQueryParams = zod.object({
@@ -2771,6 +2784,31 @@ export const SendAuditReportNowResponse = zod.object({
   "lastSentAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List send history for a scheduled audit report
+ */
+export const ListAuditReportScheduleLogsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const listAuditReportScheduleLogsQueryLimitDefault = 20;
+
+export const ListAuditReportScheduleLogsQueryParams = zod.object({
+  "limit": zod.coerce.number().default(listAuditReportScheduleLogsQueryLimitDefault)
+})
+
+export const ListAuditReportScheduleLogsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "scheduleId": zod.number(),
+  "sentAt": zod.string(),
+  "rowCount": zod.number(),
+  "success": zod.boolean(),
+  "errorMessage": zod.string().nullish()
+}))
 })
 
 

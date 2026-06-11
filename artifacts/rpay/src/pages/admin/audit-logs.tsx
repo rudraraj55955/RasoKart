@@ -5,6 +5,7 @@ import {
   useUpdateAuditReportSchedule, useDeleteAuditReportSchedule,
   useSendAuditReportNow,
   getListAuditReportSchedulesQueryKey,
+  useListAuditReportScheduleLogs,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import {
   CheckCircle2, XCircle, UserPlus, UserCog,
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
   Users, Loader2, QrCode, Landmark,
-  Clock, Mail, Plus, Ban, Send,
+  Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
@@ -852,6 +853,189 @@ const FREQUENCY_LABELS: Record<string, string> = {
   monthly: "Monthly",
 };
 
+function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
+  const { data, isLoading } = useListAuditReportScheduleLogs(scheduleId, { limit: 20 });
+  const logs = data?.data ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-1.5 px-2 py-2">
+        {[1, 2, 3].map(i => <div key={i} className="h-8 bg-muted/20 rounded animate-pulse" />)}
+      </div>
+    );
+  }
+
+  if (logs.length === 0) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-3 text-muted-foreground">
+        <History className="w-4 h-4 opacity-40" />
+        <span className="text-xs">No sends recorded yet — history will appear here after the first delivery.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-border/30">
+      {logs.map((log: any) => (
+        <div key={log.id} className="flex items-start gap-3 px-4 py-2.5">
+          <div className="mt-0.5 shrink-0">
+            {log.success
+              ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              : <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium">
+                {format(new Date(log.sentAt), "MMM d, yyyy 'at' HH:mm")}
+              </span>
+              {log.success
+                ? (
+                  <span className="inline-flex items-center rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                    Delivered
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
+                    Failed
+                  </span>
+                )
+              }
+              <span className="text-xs text-muted-foreground">
+                {log.rowCount.toLocaleString()} row{log.rowCount !== 1 ? "s" : ""}
+              </span>
+            </div>
+            {!log.success && log.errorMessage && (
+              <p className="text-xs text-rose-400/80 mt-0.5 truncate" title={log.errorMessage}>
+                {log.errorMessage}
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScheduleRow({
+  s,
+  onToggle,
+  onDelete,
+  onSendNow,
+  sendingId,
+}: {
+  s: any;
+  onToggle: (id: number, isActive: boolean) => void;
+  onDelete: (id: number) => void;
+  onSendNow?: (id: number) => void;
+  sendingId?: number | null;
+}) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  return (
+    <div className={`rounded-lg border transition-colors ${
+      s.isActive
+        ? "border-violet-500/20 bg-violet-500/5"
+        : "border-border/40 bg-muted/10 opacity-70"
+    }`}>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="flex items-center justify-center w-8 h-8 rounded-md bg-violet-500/10 border border-violet-500/20 shrink-0">
+          <Mail className="w-4 h-4 text-violet-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium truncate">{s.recipientEmail}</span>
+            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
+              s.isActive
+                ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
+                : "bg-muted/30 text-muted-foreground border-border/50"
+            }`}>
+              {FREQUENCY_LABELS[s.frequency] ?? s.frequency}
+            </span>
+            {!s.isActive && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400">
+                <Ban className="w-2.5 h-2.5" />
+                Paused
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {s.lastSentAt
+              ? `Last sent: ${format(new Date(s.lastSentAt), "MMM d, yyyy 'at' HH:mm")}`
+              : "Not yet sent"}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setHistoryOpen(v => !v)}
+            className={`text-xs h-7 px-2 gap-1 ${
+              historyOpen ? "text-violet-400" : "text-muted-foreground hover:text-violet-400"
+            }`}
+            title="View send history"
+          >
+            <History className="w-3 h-3" />
+            {historyOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </Button>
+          {onSendNow && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onSendNow(s.id)}
+                    disabled={sendingId === s.id}
+                    className="text-xs h-7 px-2 text-muted-foreground hover:text-violet-400"
+                    title="Send now"
+                  >
+                    {sendingId === s.id
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <Send className="w-3 h-3" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Send now</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onToggle(s.id, s.isActive)}
+            className={`text-xs h-7 px-2 ${
+              s.isActive
+                ? "text-muted-foreground hover:text-amber-400"
+                : "text-muted-foreground hover:text-emerald-400"
+            }`}
+            title={s.isActive ? "Pause schedule" : "Resume schedule"}
+          >
+            {s.isActive ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(s.id)}
+            className="text-xs h-7 px-2 text-muted-foreground hover:text-rose-400"
+            title="Delete schedule"
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      </div>
+      {historyOpen && (
+        <div className="border-t border-border/30">
+          <div className="px-2 py-1.5 bg-muted/10">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2">
+              Send History (last 20)
+            </span>
+          </div>
+          <ScheduleHistoryPanel scheduleId={s.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScheduledReportsPanel() {
   const queryClient = useQueryClient();
   const { data: schedulesData, isLoading } = useListAuditReportSchedules();
@@ -934,7 +1118,7 @@ function ScheduledReportsPanel() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Automatically email audit log CSV reports on a recurring schedule. Reports are sent to the configured address.
+          Automatically email audit log CSV reports on a recurring schedule. Click the history icon on any schedule to see past deliveries and failures.
         </p>
       </CardHeader>
       <CardContent className="pt-0">
@@ -951,84 +1135,14 @@ function ScheduledReportsPanel() {
         ) : (
           <div className="space-y-2">
             {schedules.map((s: any) => (
-              <div
+              <ScheduleRow
                 key={s.id}
-                className={`flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${
-                  s.isActive
-                    ? "border-violet-500/20 bg-violet-500/5"
-                    : "border-border/40 bg-muted/10 opacity-60"
-                }`}
-              >
-                <div className="flex items-center justify-center w-8 h-8 rounded-md bg-violet-500/10 border border-violet-500/20 shrink-0">
-                  <Mail className="w-4 h-4 text-violet-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium truncate">{s.recipientEmail}</span>
-                    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
-                      s.isActive
-                        ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
-                        : "bg-muted/30 text-muted-foreground border-border/50"
-                    }`}>
-                      {FREQUENCY_LABELS[s.frequency] ?? s.frequency}
-                    </span>
-                    {!s.isActive && (
-                      <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400">
-                        <Ban className="w-2.5 h-2.5" />
-                        Paused
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {s.lastSentAt
-                      ? `Last sent: ${format(new Date(s.lastSentAt), "MMM d, yyyy 'at' HH:mm")}`
-                      : "Not yet sent"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleSendNow(s.id)}
-                          disabled={sendingId === s.id}
-                          className="text-xs h-7 px-2 text-muted-foreground hover:text-violet-400"
-                          title="Send now"
-                        >
-                          {sendingId === s.id
-                            ? <Loader2 className="w-3 h-3 animate-spin" />
-                            : <Send className="w-3 h-3" />}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">Send now</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleToggleActive(s.id, s.isActive)}
-                    className={`text-xs h-7 px-2 ${
-                      s.isActive
-                        ? "text-muted-foreground hover:text-amber-400"
-                        : "text-muted-foreground hover:text-emerald-400"
-                    }`}
-                    title={s.isActive ? "Pause schedule" : "Resume schedule"}
-                  >
-                    {s.isActive ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setConfirmDeleteId(s.id)}
-                    className="text-xs h-7 px-2 text-muted-foreground hover:text-rose-400"
-                    title="Delete schedule"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
+                s={s}
+                onToggle={handleToggleActive}
+                onDelete={(id) => setConfirmDeleteId(id)}
+                onSendNow={handleSendNow}
+                sendingId={sendingId}
+              />
             ))}
           </div>
         )}

@@ -2835,6 +2835,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /audit-logs/schedules/{id}/logs:
+    get:
+      operationId: listAuditReportScheduleLogs
+      tags: [dashboard]
+      summary: List send history for a scheduled audit report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: List of send-log entries for the schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReportScheduleLogListResponse"
+        "403":
+          description: Forbidden
+        "404":
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /audit-logs/schedules/{id}:
     patch:
       operationId: updateAuditReportSchedule
@@ -5909,6 +5938,32 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AuditReportSchedule"
+
+    AuditReportScheduleLog:
+      type: object
+      required: [id, scheduleId, sentAt, rowCount, success]
+      properties:
+        id:
+          type: integer
+        scheduleId:
+          type: integer
+        sentAt:
+          type: string
+        rowCount:
+          type: integer
+        success:
+          type: boolean
+        errorMessage:
+          type: ["string", "null"]
+
+    AuditReportScheduleLogListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditReportScheduleLog"
 
     AdminAuditLog:
       type: object

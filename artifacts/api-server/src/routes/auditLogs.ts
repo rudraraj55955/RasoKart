@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, auditLogsTable, scheduledAuditReportsTable } from "@workspace/db";
-import { eq, ilike, and, count, sql, or, gte, lte } from "drizzle-orm";
+import { db, auditLogsTable, scheduledAuditReportsTable, scheduledAuditReportLogsTable } from "@workspace/db";
+import { eq, ilike, and, count, sql, or, gte, lte, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { sendScheduledReport } from "../helpers/auditReportScheduler";
 
@@ -210,6 +210,35 @@ router.get("/schedules", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
   const rows = await db.select().from(scheduledAuditReportsTable).orderBy(scheduledAuditReportsTable.createdAt);
   res.json({ data: rows.map(serializeSchedule) });
+});
+
+router.get("/schedules/:id/logs", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const id = parseInt(req.params['id'] as string);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const limitNum = Math.min(100, Math.max(1, parseInt((req.query as Record<string, string>)['limit'] ?? "20") || 20));
+
+  const [schedule] = await db
+    .select({ id: scheduledAuditReportsTable.id })
+    .from(scheduledAuditReportsTable)
+    .where(eq(scheduledAuditReportsTable.id, id));
+
+  if (!schedule) { res.status(404).json({ error: "Schedule not found" }); return; }
+
+  const logs = await db
+    .select()
+    .from(scheduledAuditReportLogsTable)
+    .where(eq(scheduledAuditReportLogsTable.scheduleId, id))
+    .orderBy(desc(scheduledAuditReportLogsTable.sentAt))
+    .limit(limitNum);
+
+  res.json({
+    data: logs.map(l => ({
+      ...l,
+      sentAt: l.sentAt.toISOString(),
+    })),
+  });
 });
 
 router.post("/schedules", async (req, res) => {

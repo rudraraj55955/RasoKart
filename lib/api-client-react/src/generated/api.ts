@@ -40,6 +40,7 @@ import type {
   AuditReportSchedule,
   AuditReportScheduleInput,
   AuditReportScheduleListResponse,
+  AuditReportScheduleLogListResponse,
   AuditReportSchedulePatch,
   AuthResponse,
   BackfillVaBalanceHistory200,
@@ -66,6 +67,7 @@ import type {
   ExpiryCheckResult,
   ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
+  ExportVaBalanceAuditCsvParams,
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
   GetVirtualAccountBalanceHistoryParams,
@@ -80,6 +82,7 @@ import type {
   LedgerListResponse,
   ListAccountDetailsParams,
   ListAdminAuditLogsParams,
+  ListAuditReportScheduleLogsParams,
   ListCallbackLogsParams,
   ListInvoicesParams,
   ListLedgerEntriesParams,
@@ -8133,6 +8136,90 @@ export function useExportVirtualAccountBalanceHistory<TData = Awaited<ReturnType
 
 
 
+export const getExportVaBalanceAuditCsvUrl = (params?: ExportVaBalanceAuditCsvParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/virtual-accounts/balance-audit/export/csv?${stringifiedParams}` : `/api/virtual-accounts/balance-audit/export/csv`
+}
+
+/**
+ * @summary Export balance audit log as CSV (admin only)
+ */
+export const exportVaBalanceAuditCsv = async (params?: ExportVaBalanceAuditCsvParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportVaBalanceAuditCsvUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportVaBalanceAuditCsvQueryKey = (params?: ExportVaBalanceAuditCsvParams,) => {
+    return [
+    `/api/virtual-accounts/balance-audit/export/csv`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportVaBalanceAuditCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportVaBalanceAuditCsv>>, TError = ErrorType<unknown>>(params?: ExportVaBalanceAuditCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportVaBalanceAuditCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportVaBalanceAuditCsvQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportVaBalanceAuditCsv>>> = ({ signal }) => exportVaBalanceAuditCsv(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportVaBalanceAuditCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportVaBalanceAuditCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportVaBalanceAuditCsv>>>
+export type ExportVaBalanceAuditCsvQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export balance audit log as CSV (admin only)
+ */
+
+export function useExportVaBalanceAuditCsv<TData = Awaited<ReturnType<typeof exportVaBalanceAuditCsv>>, TError = ErrorType<unknown>>(
+ params?: ExportVaBalanceAuditCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportVaBalanceAuditCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportVaBalanceAuditCsvQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getListVaBalanceAuditUrl = (params?: ListVaBalanceAuditParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -8819,6 +8906,95 @@ export const useSendAuditReportNow = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getSendAuditReportNowMutationOptions(options));
     }
+
+export const getListAuditReportScheduleLogsUrl = (id: number,
+    params?: ListAuditReportScheduleLogsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/audit-logs/schedules/${id}/logs?${stringifiedParams}` : `/api/audit-logs/schedules/${id}/logs`
+}
+
+/**
+ * @summary List send history for a scheduled audit report
+ */
+export const listAuditReportScheduleLogs = async (id: number,
+    params?: ListAuditReportScheduleLogsParams, options?: RequestInit): Promise<AuditReportScheduleLogListResponse> => {
+
+  return customFetch<AuditReportScheduleLogListResponse>(getListAuditReportScheduleLogsUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAuditReportScheduleLogsQueryKey = (id: number,
+    params?: ListAuditReportScheduleLogsParams,) => {
+    return [
+    `/api/audit-logs/schedules/${id}/logs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAuditReportScheduleLogsQueryOptions = <TData = Awaited<ReturnType<typeof listAuditReportScheduleLogs>>, TError = ErrorType<void | ErrorResponse>>(id: number,
+    params?: ListAuditReportScheduleLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAuditReportScheduleLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAuditReportScheduleLogsQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAuditReportScheduleLogs>>> = ({ signal }) => listAuditReportScheduleLogs(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAuditReportScheduleLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAuditReportScheduleLogsQueryResult = NonNullable<Awaited<ReturnType<typeof listAuditReportScheduleLogs>>>
+export type ListAuditReportScheduleLogsQueryError = ErrorType<void | ErrorResponse>
+
+
+/**
+ * @summary List send history for a scheduled audit report
+ */
+
+export function useListAuditReportScheduleLogs<TData = Awaited<ReturnType<typeof listAuditReportScheduleLogs>>, TError = ErrorType<void | ErrorResponse>>(
+ id: number,
+    params?: ListAuditReportScheduleLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAuditReportScheduleLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAuditReportScheduleLogsQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getUpdateAuditReportScheduleUrl = (id: number,) => {
 

@@ -29,3 +29,4 @@ export * from "./qrPaymentEvents";
 export * from "./systemConfig";
 export * from "./systemSettings";
 export * from "./scheduledAuditReports";
+export * from "./scheduledAuditReportLogs";

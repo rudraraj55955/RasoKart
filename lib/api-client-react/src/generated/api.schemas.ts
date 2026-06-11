@@ -1549,6 +1549,20 @@ export interface AuditReportScheduleListResponse {
   data: AuditReportSchedule[];
 }
 
+export interface AuditReportScheduleLog {
+  id: number;
+  scheduleId: number;
+  sentAt: string;
+  rowCount: number;
+  success: boolean;
+  /** @nullable */
+  errorMessage?: string | null;
+}
+
+export interface AuditReportScheduleLogListResponse {
+  data: AuditReportScheduleLog[];
+}
+
 export interface AdminAuditLog {
   id: number;
   adminId: number;
@@ -2403,6 +2417,23 @@ export type ExportMerchantBalanceHistoryParams = {
 merchantId: number;
 };
 
+export type ExportVaBalanceAuditCsvParams = {
+merchantId?: number;
+merchantName?: string;
+changedBy?: string;
+dateFrom?: string;
+dateTo?: string;
+fieldChanged?: ExportVaBalanceAuditCsvFieldChanged;
+};
+
+export type ExportVaBalanceAuditCsvFieldChanged = typeof ExportVaBalanceAuditCsvFieldChanged[keyof typeof ExportVaBalanceAuditCsvFieldChanged];
+
+
+export const ExportVaBalanceAuditCsvFieldChanged = {
+  balance: 'balance',
+  totalCollection: 'totalCollection',
+} as const;
+
 export type ListVaBalanceAuditParams = {
 merchantId?: number;
 merchantName?: string;
@@ -2424,6 +2455,10 @@ export const ListVaBalanceAuditFieldChanged = {
 
 export type GetVirtualAccountBalanceHistoryParams = {
 page?: number;
+limit?: number;
+};
+
+export type ListAuditReportScheduleLogsParams = {
 limit?: number;
 };
 

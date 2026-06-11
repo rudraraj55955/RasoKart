@@ -1,5 +1,5 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { db, scheduledAuditReportsTable, auditLogsTable } from "@workspace/db";
+import { db, scheduledAuditReportsTable, scheduledAuditReportLogsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
@@ -114,38 +114,62 @@ function isDue(frequency: string, lastSentAt: Date | null): boolean {
 
 export async function sendScheduledReport(schedule: typeof scheduledAuditReportsTable.$inferSelect): Promise<boolean> {
   const { dateFrom, dateTo } = getDateRange(schedule.frequency);
+  const sentAt = new Date();
 
-  const rows = await db
-    .select()
-    .from(auditLogsTable)
-    .where(
-      and(
-        sql`${auditLogsTable.createdAt} >= ${dateFrom}`,
-        sql`${auditLogsTable.createdAt} <= ${dateTo}`,
+  let rows: typeof auditLogsTable.$inferSelect[] = [];
+  let sent = false;
+  let errorMessage: string | null = null;
+
+  try {
+    rows = await db
+      .select()
+      .from(auditLogsTable)
+      .where(
+        and(
+          sql`${auditLogsTable.createdAt} >= ${dateFrom}`,
+          sql`${auditLogsTable.createdAt} <= ${dateTo}`,
+        )
       )
-    )
-    .orderBy(sql`${auditLogsTable.createdAt} DESC`);
+      .orderBy(sql`${auditLogsTable.createdAt} DESC`);
 
-  const csv = buildAuditCsv(rows);
-  const html = buildEmailHtml(schedule.frequency, dateFrom, dateTo, rows.length);
+    const csv = buildAuditCsv(rows);
+    const html = buildEmailHtml(schedule.frequency, dateFrom, dateTo, rows.length);
 
-  const periodStr = `${dateFrom.toISOString().slice(0, 10)}-to-${dateTo.toISOString().slice(0, 10)}`;
-  const filename = `audit-logs-${schedule.frequency}-${periodStr}.csv`;
-  const subject = `[RasoKart] Audit Log Report — ${schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1)} (${dateFrom.toISOString().slice(0, 10)} to ${dateTo.toISOString().slice(0, 10)})`;
+    const periodStr = `${dateFrom.toISOString().slice(0, 10)}-to-${dateTo.toISOString().slice(0, 10)}`;
+    const filename = `audit-logs-${schedule.frequency}-${periodStr}.csv`;
+    const subject = `[RasoKart] Audit Log Report — ${schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1)} (${dateFrom.toISOString().slice(0, 10)} to ${dateTo.toISOString().slice(0, 10)})`;
 
-  const sent = await sendMail({
-    to: schedule.recipientEmail,
-    subject,
-    html,
-    attachments: [{ filename, content: csv, contentType: "text/csv" }],
+    sent = await sendMail({
+      to: schedule.recipientEmail,
+      subject,
+      html,
+      attachments: [{ filename, content: csv, contentType: "text/csv" }],
+    });
+
+    if (!sent) {
+      errorMessage = "Mail transport returned false — email not delivered";
+    }
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
+  }
+
+  await db.insert(scheduledAuditReportLogsTable).values({
+    scheduleId: schedule.id,
+    sentAt,
+    rowCount: rows.length,
+    success: sent,
+    errorMessage,
   });
 
   if (sent) {
     await db
       .update(scheduledAuditReportsTable)
-      .set({ lastSentAt: new Date(), updatedAt: new Date() })
+      .set({ lastSentAt: sentAt, updatedAt: new Date() })
       .where(eq(scheduledAuditReportsTable.id, schedule.id));
     logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length }, "Scheduled audit report sent");
+  } else {
+    logger.warn({ scheduleId: schedule.id, errorMessage }, "Scheduled audit report send failed");
+    throw new Error(errorMessage ?? "Send failed");
   }
   return sent;
 }
