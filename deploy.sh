@@ -109,7 +109,7 @@ fi
 # Step 6 — Build frontend
 # ─────────────────────────────────────────────
 step "6/7  Build frontend"
-BASE_PATH=/ pnpm --filter @workspace/rpay run build
+PORT=3000 BASE_PATH=/ pnpm --filter @workspace/rpay run build
 [[ -d "$DIST_DIR" ]] || die "Build output not found at $DIST_DIR"
 log "Frontend built → $DIST_DIR ($(du -sh "$DIST_DIR" | cut -f1))"
 

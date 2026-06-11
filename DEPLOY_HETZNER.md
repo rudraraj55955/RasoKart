@@ -96,13 +96,12 @@ psql -U rasokart_user -d rasokart -h localhost -c "SELECT 1;"
 ## 4. Deploy the Application
 
 ```bash
-# Create app user
-useradd -m -s /bin/bash rasokart
-su - rasokart
+# Create app directory
+mkdir -p /var/www/rasokart
+cd /var/www/rasokart
 
 # Clone repository
-git clone https://github.com/rudraraj55955/RPAY.git /home/rasokart/app
-cd /home/rasokart/app
+git clone https://github.com/rudraraj55955/RPAY.git .
 
 # Install dependencies
 pnpm install --frozen-lockfile
@@ -115,17 +114,21 @@ pnpm run typecheck:libs
 
 ## 5. Environment Variables
 
-```bash
-# Create environment file
-cat > /home/rasokart/app/artifacts/api-server/.env.production << 'EOF'
-NODE_ENV=production
-PORT=8080
-DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rasokart
-SESSION_SECRET=GENERATE_64_CHAR_RANDOM_STRING_HERE
-EOF
+All env vars are set inside `ecosystem.config.cjs` (PM2 process config) — **not** in a `.env` file.
+The repo includes a ready-made template at `ecosystem.config.cjs`. Edit it in-place:
 
-# Generate a secure SESSION_SECRET
+```bash
+# Generate a secure SESSION_SECRET first
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+# Edit the template — fill in DATABASE_URL and SESSION_SECRET
+nano /var/www/rasokart/ecosystem.config.cjs
+```
+
+Change these two lines:
+```
+DATABASE_URL: "postgres://rasokart_user:CHANGE_THIS@localhost:5432/rasokart",
+SESSION_SECRET: "REPLACE_WITH_64_CHAR_HEX_FROM_CRYPTO_RANDOM",
 ```
 
 ---
@@ -133,11 +136,13 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ## 6. Run Database Migrations
 
 ```bash
-cd /home/rasokart/app
+cd /var/www/rasokart
 
-# Push schema to production database
-DATABASE_URL=postgres://rasokart_user:CHANGE_THIS_STRONG_PASSWORD@localhost:5432/rasokart \
-  pnpm --filter @workspace/db run push
+# Export DATABASE_URL so drizzle-kit can connect
+export DATABASE_URL="postgres://rasokart_user:YOUR_PASSWORD@localhost:5432/rasokart"
+
+# Push schema (idempotent — safe to re-run)
+pnpm --filter @workspace/db run push
 ```
 
 The API server seed runs automatically on startup — it creates the admin account
@@ -148,43 +153,17 @@ The API server seed runs automatically on startup — it creates the admin accou
 ## 7. Configure PM2 Process Manager
 
 ```bash
-# Create PM2 ecosystem config
-cat > /home/rasokart/app/ecosystem.config.cjs << 'EOF'
-module.exports = {
-  apps: [
-    {
-      name: "rasokart-api",
-      cwd: "/home/rasokart/app/artifacts/api-server",
-      script: "./dist/index.mjs",
-      env: {
-        NODE_ENV: "production",
-        PORT: 8080,
-        DATABASE_URL: "postgres://rasokart_user:CHANGE_THIS@localhost:5432/rasokart",
-        SESSION_SECRET: "YOUR_64_CHAR_SECRET_HERE",
-      },
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: "1G",
-      error_file: "/var/log/rasokart/api-error.log",
-      out_file: "/var/log/rasokart/api-out.log",
-      log_date_format: "YYYY-MM-DD HH:mm:ss",
-    },
-  ],
-};
-EOF
-
 # Create log directory
-mkdir -p /var/log/rasokart && chown rasokart:rasokart /var/log/rasokart
+mkdir -p /var/log/rasokart
 
-# Build API server and start
-cd /home/rasokart/app/artifacts/api-server
-pnpm run build
+# Build API server
+cd /var/www/rasokart
+pnpm --filter @workspace/api-server run build
 
-cd /home/rasokart/app
-pm2 start ecosystem.config.cjs
+# Start with PM2 using the ecosystem config from the repo
+pm2 start /var/www/rasokart/ecosystem.config.cjs
 pm2 save
-pm2 startup   # follow the printed command to enable on boot
+pm2 startup   # follow the printed sudo command to enable on boot
 ```
 
 ---
@@ -192,11 +171,13 @@ pm2 startup   # follow the printed command to enable on boot
 ## 8. Build the Frontend for Static Serving
 
 ```bash
-cd /home/rasokart/app/artifacts/rpay
+cd /var/www/rasokart
 
-# Build Vite frontend (production)
-BASE_PATH=/ pnpm run build
-# Output: /home/rasokart/app/artifacts/rpay/dist/
+# Build Vite frontend (PORT is required by vite.config.ts even during build)
+PORT=3000 BASE_PATH=/ pnpm --filter @workspace/rpay run build
+
+# Output lands in: /var/www/rasokart/artifacts/rpay/dist/public/
+ls artifacts/rpay/dist/public/index.html   # confirm
 ```
 
 ---
@@ -239,7 +220,8 @@ server {
     }
 
     # Frontend — serve static files (React SPA)
-    root /home/rasokart/app/artifacts/rpay/dist;
+    # Vite outputs to dist/public/ (not dist/ directly)
+    root /var/www/rasokart/artifacts/rpay/dist/public;
     index index.html;
 
     location / {
