@@ -25,15 +25,25 @@ function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }
   return <span className="text-muted-foreground text-xs">—</span>;
 }
 
-function CallbackRow({ log }: { log: any }) {
+function CallbackRow({
+  log,
+  otherFailedCount,
+  onShowFailed,
+}: {
+  log: any;
+  otherFailedCount: number;
+  onShowFailed: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [retryAttempted, setRetryAttempted] = useState(false);
   const queryClient = useQueryClient();
 
   const { mutate: retryWebhook, isPending: isRetrying } = useRetryWebhookLog({
     mutation: {
       onSuccess: () => {
         setRetryError(null);
+        setRetryAttempted(true);
         queryClient.invalidateQueries({ queryKey: getListCallbackLogsQueryKey() });
       },
       onError: (err: any) => {
@@ -44,6 +54,7 @@ function CallbackRow({ log }: { log: any }) {
   });
 
   const canRetry = log.status === "failed" || log.status === "pending_retry";
+  const showViewFailures = retryAttempted && log.status === "success" && otherFailedCount > 0;
 
   const tryParse = (s: string | null) => {
     if (!s) return null;
@@ -98,6 +109,20 @@ function CallbackRow({ log }: { log: any }) {
                 {retryError && (
                   <span className="text-xs text-rose-400">{retryError}</span>
                 )}
+              </div>
+            )}
+            {showViewFailures && (
+              <div className="mt-2 px-2">
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    onShowFailed();
+                  }}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline underline-offset-2 transition-colors"
+                >
+                  View remaining failures ({otherFailedCount})
+                </button>
               </div>
             )}
           </TableCell>
@@ -561,7 +586,19 @@ export default function MerchantCallbacks() {
                       : qrCodeId ? `No webhook logs for QR #${qrCodeId}` : "No callback logs yet"}
                   </TableCell>
                 </TableRow>
-              ) : data?.data?.map(log => <CallbackRow key={log.id} log={log} />)}
+              ) : data?.data?.map(log => {
+                const otherFailedCount = (data.data ?? []).filter(
+                  l => l.id !== log.id && (l.status === "failed" || l.status === "pending_retry")
+                ).length;
+                return (
+                  <CallbackRow
+                    key={log.id}
+                    log={log}
+                    otherFailedCount={otherFailedCount}
+                    onShowFailed={() => { setStatus("failed"); setPage(1); }}
+                  />
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
