@@ -293,6 +293,7 @@ export default function MerchantSecurity() {
   const { data: me } = useGetMe();
   const apiKeyGeneratedEnabled = me?.apiKeyGeneratedEmails ?? true;
   const apiKeyRevokedEnabled = me?.apiKeyRevokedEmails ?? true;
+  const signatureFailureAlertEnabled = me?.signatureFailureAlertEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -1147,6 +1148,29 @@ export default function MerchantSecurity() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5 px-1">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
               You will not be notified when an API key is revoked.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-sm font-medium">Signature failure alert emails</p>
+              </div>
+              <p className="text-xs text-muted-foreground pl-5">
+                Receive an email alert when an elevated number of HMAC signature failures are detected on your account.
+              </p>
+            </div>
+            <Switch
+              checked={signatureFailureAlertEnabled}
+              onCheckedChange={val => updatePrefs({ data: { signatureFailureAlertEmails: val } })}
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!signatureFailureAlertEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5 px-1">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              You will not be alerted to elevated callback signature failures on your account.
             </p>
           )}
         </CardContent>

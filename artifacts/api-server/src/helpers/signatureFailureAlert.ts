@@ -51,6 +51,95 @@ async function getAdminEmails(): Promise<string[]> {
   return admins.map((a) => a.email);
 }
 
+interface MerchantRecipient {
+  email: string;
+  merchantId: number;
+  merchantName: string;
+  failureCount: number;
+}
+
+async function getMerchantRecipients(
+  affectedMerchants: { name: string; count: number; merchantId: number }[]
+): Promise<MerchantRecipient[]> {
+  if (affectedMerchants.length === 0) return [];
+  const merchantIds = affectedMerchants.map((m) => m.merchantId);
+  const users = await db
+    .select({ email: usersTable.email, merchantId: usersTable.merchantId })
+    .from(usersTable)
+    .where(
+      and(
+        eq(usersTable.role, "merchant"),
+        eq(usersTable.isActive, true),
+        eq(usersTable.signatureFailureAlertEmails, true),
+        inArray(usersTable.merchantId, merchantIds),
+      )
+    );
+  return users
+    .filter((u) => u.merchantId != null)
+    .map((u) => {
+      const merchant = affectedMerchants.find((m) => m.merchantId === u.merchantId);
+      return {
+        email: u.email,
+        merchantId: u.merchantId as number,
+        merchantName: merchant?.name ?? `Merchant #${u.merchantId}`,
+        failureCount: merchant?.count ?? 0,
+      };
+    });
+}
+
+function buildMerchantAlertHtml(failureCount: number, threshold: number, merchantName: string): string {
+  const merchantLink = `${APP_DOMAIN}/merchant/security`;
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #7f1d1d; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — Signature Failure Alert</h1>
+      <p style="margin: 4px 0 0; color: #fca5a5; font-size: 13px;">Elevated HMAC signature failures detected on your account</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #f87171; font-size: 14px; font-weight: 600;">
+        ⚠️ <strong>${failureCount}</strong> callback signature failure${failureCount === 1 ? "" : "s"} detected on <strong>${merchantName}</strong> in the last 24 hours (threshold: ${threshold}).
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        This may indicate a misconfigured callback secret on your integration, or a potential replay/spoofing attempt. Please review your callback logs and verify your signing secret is correct.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 50%;">Failures (last 24h)</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #f87171; font-weight: 600;">${failureCount}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Alert Threshold</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">${threshold}</td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${merchantLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          View Callback Logs
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${merchantLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This alert was sent by RasoKart. To stop receiving signature failure alerts, update your notification preferences in your Security settings.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 function buildAlertHtml(failureCount: number, threshold: number): string {
   const adminLink = `${APP_DOMAIN}/admin/callbacks`;
   return `
@@ -156,45 +245,69 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
       )
       .groupBy(callbackLogsTable.merchantId, merchantsTable.businessName);
 
-    const affectedMerchants = affectedRows.map((r) => ({
+    const affectedMerchantsWithId = affectedRows.map((r) => ({
+      merchantId: r.merchantId,
       name: r.merchantName ?? `Merchant #${r.merchantId}`,
       count: r.failureCount,
     }));
 
-    const recipients = await getAdminEmails();
+    const affectedMerchants = affectedMerchantsWithId.map(({ name, count }) => ({ name, count }));
 
-    if (recipients.length === 0) {
+    const [adminRecipients, merchantRecipients] = await Promise.all([
+      getAdminEmails(),
+      getMerchantRecipients(affectedMerchantsWithId),
+    ]);
+
+    if (adminRecipients.length === 0 && merchantRecipients.length === 0) {
       logger.info(
         { total, threshold },
-        "No admins opted in to signature failure alert emails — skipping"
+        "No recipients opted in to signature failure alert emails — skipping"
       );
       return;
     }
 
-    const html = buildAlertHtml(total, threshold);
     const subject = `[RasoKart] ⚠️ Signature Failure Alert — ${total} failure${total === 1 ? "" : "s"} in last 24h`;
 
-    const results = await Promise.allSettled(
-      recipients.map((email) => sendMail({ to: email, subject, html }))
+    const adminHtml = buildAlertHtml(total, threshold);
+    const adminResults = await Promise.allSettled(
+      adminRecipients.map((email) => sendMail({ to: email, subject, html: adminHtml }))
     );
+    const adminSent = adminResults.filter((r) => r.status === "fulfilled" && r.value).length;
 
-    const sent = results.filter((r) => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
+    const merchantResults = await Promise.allSettled(
+      merchantRecipients.map((r) =>
+        sendMail({ to: r.email, subject, html: buildMerchantAlertHtml(r.failureCount, threshold, r.merchantName) })
+      )
+    );
+    const merchantSent = merchantResults.filter((r) => r.status === "fulfilled" && r.value).length;
+
+    const totalSent = adminSent + merchantSent;
+    const allRecipientEmails = [
+      ...adminRecipients,
+      ...merchantRecipients.map((r) => r.email),
+    ];
 
     lastAlertSentAt = new Date();
 
     await db.insert(signatureFailureAlertLogsTable).values({
       failureCount: total,
       affectedMerchantCount: affectedMerchants.length,
-      recipientCount: sent,
-      recipientEmails: recipients,
+      recipientCount: totalSent,
+      recipientEmails: allRecipientEmails,
       affectedMerchants,
       windowHours,
       threshold,
     });
 
     logger.info(
-      { total, threshold, totalAdmins: recipients.length, sent, failed },
+      {
+        total,
+        threshold,
+        adminRecipients: adminRecipients.length,
+        adminSent,
+        merchantRecipients: merchantRecipients.length,
+        merchantSent,
+      },
       "Signature failure alert emails dispatched"
     );
   } catch (err) {
