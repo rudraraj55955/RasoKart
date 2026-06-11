@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, ListCallbackLogsEventType } from "@workspace/api-client-react";
+import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, useGetWebhookLogAttempts, ListCallbackLogsEventType, CallbackLogAttempt } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EventTypeBadge, EVENT_TYPE_COLORS } from "@/components/ui/event-type-badge";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, Info, ArrowRight, AlertTriangle } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, Info, ArrowRight, AlertTriangle, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { format, formatDistanceToNow, differenceInSeconds } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -72,6 +72,131 @@ function RetriesExhaustedBadge({ attempts, maxRetries }: { attempts: number; max
       <AlertTriangle className="w-3 h-3" />
       Retries exhausted
     </span>
+  );
+}
+
+function formatDelay(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${Math.round(seconds / 3600)}h`;
+}
+
+function RetryTimeline({ logId, totalAttempts, status, nextRetryAt }: {
+  logId: number;
+  totalAttempts: number;
+  status: string;
+  nextRetryAt?: string | null;
+}) {
+  const { data, isLoading } = useGetWebhookLogAttempts(logId);
+  const attempts = data?.data ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-2">
+        <div className="h-3 w-3 rounded-full bg-muted/50 animate-pulse" />
+        <div className="h-3 w-48 rounded bg-muted/50 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (attempts.length === 0) return null;
+
+  const sorted = [...attempts].sort((a, b) => a.attemptNumber - b.attemptNumber);
+  const isPendingRetry = status === "pending_retry";
+
+  return (
+    <TooltipProvider>
+      <div className="flex items-start gap-0 flex-wrap">
+        {sorted.map((attempt: CallbackLogAttempt, idx: number) => {
+          const isSuccess = attempt.httpStatus != null && attempt.httpStatus >= 200 && attempt.httpStatus < 300;
+          const prev = sorted[idx - 1];
+          const delaySeconds = prev
+            ? differenceInSeconds(new Date(attempt.firedAt), new Date(prev.firedAt))
+            : null;
+
+          return (
+            <div key={attempt.id} className="flex items-center gap-1.5">
+              {idx > 0 && delaySeconds != null && (
+                <div className="flex items-center gap-1.5 mx-1">
+                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-xs text-muted-foreground/60 font-mono cursor-default">
+                        +{formatDelay(delaySeconds)}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">
+                      {delaySeconds}s after previous attempt
+                    </TooltipContent>
+                  </Tooltip>
+                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                </div>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border cursor-default ${
+                    isSuccess
+                      ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                      : "bg-rose-500/10 border-rose-500/25 text-rose-400"
+                  }`}>
+                    {isSuccess
+                      ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      : <XCircle className="w-3.5 h-3.5 shrink-0" />
+                    }
+                    <span className="text-xs font-semibold">#{attempt.attemptNumber}</span>
+                    {attempt.httpStatus != null && (
+                      <span className="text-xs font-mono opacity-75">{attempt.httpStatus}</span>
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs space-y-1">
+                  <p className="font-semibold">Attempt {attempt.attemptNumber}</p>
+                  <p className="text-muted-foreground">{format(new Date(attempt.firedAt), "MMM d, yyyy HH:mm:ss")}</p>
+                  {attempt.httpStatus != null && (
+                    <p>HTTP {attempt.httpStatus} — {isSuccess ? "Success" : "Failed"}</p>
+                  )}
+                  {attempt.responseBody && (
+                    <p className="font-mono max-w-[240px] truncate opacity-80">{attempt.responseBody}</p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          );
+        })}
+
+        {isPendingRetry && nextRetryAt && (
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 mx-1">
+              <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xs text-amber-400/70 font-mono cursor-default">
+                    in {formatDistanceToNow(new Date(nextRetryAt))}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  Scheduled for {format(new Date(nextRetryAt), "MMM d, HH:mm:ss")}
+                </TooltipContent>
+              </Tooltip>
+              <ArrowRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border bg-amber-500/10 border-amber-500/25 text-amber-400 cursor-default">
+                  <Clock className="w-3.5 h-3.5 shrink-0 animate-pulse" style={{ animationDuration: "2s" }} />
+                  <span className="text-xs font-semibold">#{totalAttempts + 1}</span>
+                  <span className="text-xs opacity-75">pending</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                <p className="font-semibold">Next attempt scheduled</p>
+                <p className="text-muted-foreground">{format(new Date(nextRetryAt), "MMM d, yyyy HH:mm:ss")}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -152,6 +277,17 @@ function CallbackRow({ log }: { log: any }) {
         <TableRow>
           <TableCell colSpan={10} className="bg-muted/20 pb-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2 pt-2">
+              {open && (
+                <div className="md:col-span-2 p-3 rounded-lg bg-background/50 border border-border/50">
+                  <p className="text-xs font-medium text-muted-foreground mb-2.5 uppercase tracking-wider">Attempt Timeline</p>
+                  <RetryTimeline
+                    logId={log.id}
+                    totalAttempts={log.attempts ?? 0}
+                    status={log.status}
+                    nextRetryAt={log.nextRetryAt}
+                  />
+                </div>
+              )}
               {rejectionCategory && (
                 <div className="md:col-span-2 flex items-center gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0">Rejection Reason</span>
