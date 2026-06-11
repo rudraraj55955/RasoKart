@@ -205,6 +205,32 @@ async function backfillUpiPayloads(merchantId: number): Promise<void> {
   }
 }
 
+/**
+ * Re-run the connection→transaction backfill scoped to a single merchant.
+ * Mirrors the seed backfill time-window logic: for each provider-tagged
+ * transaction that has no connectionId yet, assign the oldest qualifying
+ * connection (created before the transaction, not yet deactivated at that
+ * time).  Safe to call fire-and-forget after any isActive toggle.
+ */
+async function backfillConnectionIds(merchantId: number): Promise<void> {
+  await db.execute(sql`
+    UPDATE transactions
+    SET connection_id = (
+      SELECT id
+      FROM merchant_connections
+      WHERE merchant_id  = transactions.merchant_id
+        AND provider     = transactions.provider
+        AND created_at  <= transactions.created_at
+        AND (deactivated_at IS NULL OR deactivated_at > transactions.created_at)
+      ORDER BY created_at ASC
+      LIMIT 1
+    )
+    WHERE connection_id IS NULL
+      AND provider      IS NOT NULL
+      AND merchant_id   = ${merchantId}
+  `);
+}
+
 // POST /api/connections  (upsert by provider)
 // Admin can supply merchantId in body; merchant uses their own
 router.post("/", async (req, res) => {
@@ -275,6 +301,15 @@ router.put("/:id", async (req, res) => {
     .returning();
 
   if (!result) { res.status(404).json({ error: "Connection not found" }); return; }
+
+  // When isActive is toggled, re-map historical transactions to the correct
+  // connection.  Fire-and-forget: the response is already sent; errors are
+  // logged but do not affect the caller.
+  if (isActive !== undefined) {
+    backfillConnectionIds(result.merchantId).catch((err) => {
+      logger.warn({ err, merchantId: result.merchantId }, "Connection backfill failed after isActive toggle");
+    });
+  }
 
   // Backfill upiPayload on payment links that were created before this connection existed
   backfillUpiPayloads(result.merchantId).catch(() => {});
