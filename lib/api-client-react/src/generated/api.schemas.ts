@@ -2706,6 +2706,15 @@ page?: number;
 limit?: number;
 };
 
+export type GetLedgerBackfillLastRun200 = {
+  lastRunAt: string | null;
+  rowsUpdated: number | null;
+};
+
+export type RunLedgerBackfill200 = {
+  rowsUpdated: number;
+};
+
 export type ListProvidersAdminParams = {
 category?: string;
 status?: string;

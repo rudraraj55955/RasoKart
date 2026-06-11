@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, Wrench, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, type AdminAuditLog } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, type AdminAuditLog } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
@@ -86,6 +86,94 @@ interface SmtpConfig {
   user: string | null;
   from: string | null;
   passConfigured: boolean;
+}
+
+function MaintenanceCard() {
+  const qc = useQueryClient();
+  const { data: lastRun, isLoading: lastRunLoading } = useGetLedgerBackfillLastRun();
+
+  const { mutate: runBackfill, isPending: running } = useRunLedgerBackfill({
+    mutation: {
+      onSuccess: (result) => {
+        if (result.rowsUpdated === 0) {
+          toast.info("Back-fill complete — no new rows needed.");
+        } else {
+          toast.success(`Back-fill complete — ${result.rowsUpdated} ledger entr${result.rowsUpdated === 1 ? "y" : "ies"} created.`);
+        }
+        qc.invalidateQueries({ queryKey: getGetLedgerBackfillLastRunQueryKey() });
+      },
+      onError: (err: Error) => toast.error(`Back-fill failed: ${err.message}`),
+    },
+  });
+
+  const hasRun = lastRun?.lastRunAt != null;
+  const formattedDate = hasRun
+    ? new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(lastRun!.lastRunAt!))
+    : null;
+
+  return (
+    <Card className="border-border/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Wrench className="w-4 h-4 text-muted-foreground" />
+          <CardTitle className="text-base">Maintenance</CardTitle>
+        </div>
+        <CardDescription className="text-sm">
+          One-time data operations to repair or back-fill historical records.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">Ledger deposit back-fill</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Creates ledger entries for any successful deposits that predate the ledger feature.
+              Safe to run multiple times — already-covered deposits are skipped.
+            </p>
+          </div>
+
+          {!lastRunLoading && (
+            <div className={`flex items-center gap-2 text-xs rounded-md px-3 py-2 border ${
+              hasRun
+                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                : "text-muted-foreground bg-muted/30 border-border/40"
+            }`}>
+              {hasRun ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Last run: <strong>{formattedDate}</strong>
+                    {" — "}
+                    {lastRun!.rowsUpdated === 0
+                      ? "no rows needed"
+                      : `${lastRun!.rowsUpdated} row${lastRun!.rowsUpdated === 1 ? "" : "s"} created`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <History className="w-3.5 h-3.5 shrink-0" />
+                  <span>Never run</span>
+                </>
+              )}
+            </div>
+          )}
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => runBackfill()}
+            disabled={running}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${running ? "animate-spin" : ""}`} />
+            {running ? "Running…" : "Run back-fill"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function AdminSettings() {
@@ -1060,6 +1148,9 @@ export default function AdminSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Maintenance */}
+      <MaintenanceCard />
 
       {/* My Notification Preferences */}
       <Card className="border-border/50">

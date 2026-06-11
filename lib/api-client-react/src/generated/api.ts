@@ -72,6 +72,7 @@ import type {
   ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
   ExportVaBalanceAuditCsvParams,
+  GetLedgerBackfillLastRun200,
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
   GetVirtualAccountBalanceHistoryParams,
@@ -170,6 +171,7 @@ import type {
   ResendReconciliationReportEmail200,
   RetryCallback200,
   RetryWebhookLog200,
+  RunLedgerBackfill200,
   SavedFilter,
   ScheduleRenewalInput,
   SearchByUtrParams,
@@ -11141,6 +11143,153 @@ export function useListLedgerEntries<TData = Awaited<ReturnType<typeof listLedge
 
 
 
+
+export const getGetLedgerBackfillLastRunUrl = () => {
+
+
+
+
+  return `/api/ledger/backfill/last-run`
+}
+
+/**
+ * @summary Get the last ledger backfill run metadata (admin only)
+ */
+export const getLedgerBackfillLastRun = async ( options?: RequestInit): Promise<GetLedgerBackfillLastRun200> => {
+
+  return customFetch<GetLedgerBackfillLastRun200>(getGetLedgerBackfillLastRunUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLedgerBackfillLastRunQueryKey = () => {
+    return [
+    `/api/ledger/backfill/last-run`
+    ] as const;
+    }
+
+
+export const getGetLedgerBackfillLastRunQueryOptions = <TData = Awaited<ReturnType<typeof getLedgerBackfillLastRun>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLedgerBackfillLastRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLedgerBackfillLastRunQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLedgerBackfillLastRun>>> = ({ signal }) => getLedgerBackfillLastRun({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLedgerBackfillLastRun>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLedgerBackfillLastRunQueryResult = NonNullable<Awaited<ReturnType<typeof getLedgerBackfillLastRun>>>
+export type GetLedgerBackfillLastRunQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the last ledger backfill run metadata (admin only)
+ */
+
+export function useGetLedgerBackfillLastRun<TData = Awaited<ReturnType<typeof getLedgerBackfillLastRun>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLedgerBackfillLastRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLedgerBackfillLastRunQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRunLedgerBackfillUrl = () => {
+
+
+
+
+  return `/api/ledger/backfill`
+}
+
+/**
+ * @summary Backfill ledger entries for success deposits with no existing ledger record (admin only)
+ */
+export const runLedgerBackfill = async ( options?: RequestInit): Promise<RunLedgerBackfill200> => {
+
+  return customFetch<RunLedgerBackfill200>(getRunLedgerBackfillUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunLedgerBackfillMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runLedgerBackfill>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runLedgerBackfill>>, TError,void, TContext> => {
+
+const mutationKey = ['runLedgerBackfill'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runLedgerBackfill>>, void> = () => {
+
+
+          return  runLedgerBackfill(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunLedgerBackfillMutationResult = NonNullable<Awaited<ReturnType<typeof runLedgerBackfill>>>
+
+    export type RunLedgerBackfillMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Backfill ledger entries for success deposits with no existing ledger record (admin only)
+ */
+export const useRunLedgerBackfill = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runLedgerBackfill>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runLedgerBackfill>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunLedgerBackfillMutationOptions(options));
+    }
 
 export const getCreateLedgerAdjustmentUrl = () => {
 

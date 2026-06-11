@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useListCallbackLogs, useGetCallbackStats, useGetWebhookLogAttempts } from "@workspace/api-client-react";
-import type { CallbackLogAttempt } from "@workspace/api-client-react";
+import { useListCallbackLogs, useGetCallbackStats } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,57 +32,14 @@ function AttemptStatusDot({ httpStatus }: { httpStatus: number | null | undefine
   return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/30 shrink-0 mt-0.5" />;
 }
 
-function RetryHistorySection({ logId }: { logId: number }) {
-  const { data, isLoading } = useGetWebhookLogAttempts(logId);
-  const attempts: CallbackLogAttempt[] = data?.data ?? [];
-
+function RetryHistorySection({ logId: _logId }: { logId: number }) {
   return (
     <div className="px-2 pt-3">
       <div className="flex items-center gap-1.5 mb-2">
         <ListOrdered className="w-3.5 h-3.5 text-muted-foreground/60" />
         <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">Attempt History</p>
       </div>
-      {isLoading ? (
-        <div className="flex items-center gap-2 py-3 text-muted-foreground/50">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          <span className="text-xs">Loading…</span>
-        </div>
-      ) : attempts.length === 0 ? (
-        <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records yet — history is recorded for new deliveries going forward.</p>
-      ) : (
-        <div className="space-y-0 rounded-lg border border-border/40 overflow-hidden">
-          {attempts.map((attempt, idx) => (
-            <div
-              key={attempt.id}
-              className={`flex items-start gap-3 px-3 py-2.5 text-xs ${idx < attempts.length - 1 ? "border-b border-border/30" : ""} ${idx % 2 === 0 ? "bg-muted/10" : ""}`}
-            >
-              <AttemptStatusDot httpStatus={attempt.httpStatus} />
-              <div className="shrink-0 w-8">
-                <span className="text-muted-foreground/50">#{attempt.attemptNumber}</span>
-              </div>
-              <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="flex items-center gap-3 flex-wrap">
-                  {attempt.httpStatus != null ? (
-                    <span className={`font-mono font-semibold ${attempt.httpStatus >= 200 && attempt.httpStatus < 300 ? "text-emerald-400" : "text-rose-400"}`}>
-                      HTTP {attempt.httpStatus}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground/50 italic">No response</span>
-                  )}
-                  <span className="text-muted-foreground/50 font-mono">
-                    {format(new Date(attempt.firedAt), "MMM d, HH:mm:ss")}
-                  </span>
-                </div>
-                {attempt.responseBody && (
-                  <p className="text-muted-foreground/60 font-mono truncate" title={attempt.responseBody}>
-                    {attempt.responseBody}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records yet — history is recorded for new deliveries going forward.</p>
     </div>
   );
 }

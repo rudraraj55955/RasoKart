@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, ledgerEntriesTable, merchantsTable, auditLogsTable } from "@workspace/db";
-import { eq, and, count, gte, lte, sql, desc, asc, min, max } from "drizzle-orm";
+import { db, ledgerEntriesTable, merchantsTable, auditLogsTable, transactionsTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
+import { eq, and, count, gte, lte, sql, desc, asc, notExists, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -85,6 +85,136 @@ router.get("/", async (req, res, next) => {
       openingBalance,
       closingBalance,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/ledger/backfill/last-run — return last backfill run metadata (admin only)
+router.get("/backfill/last-run", requireAdmin, async (req, res, next) => {
+  try {
+    const rows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(
+        inArray(systemConfigTable.key, [
+          SYSTEM_CONFIG_KEYS.LEDGER_BACKFILL_LAST_RUN_AT,
+          SYSTEM_CONFIG_KEYS.LEDGER_BACKFILL_ROWS_UPDATED,
+        ])
+      );
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+    const lastRunAt = map.get(SYSTEM_CONFIG_KEYS.LEDGER_BACKFILL_LAST_RUN_AT) ?? null;
+    const rowsUpdatedRaw = map.get(SYSTEM_CONFIG_KEYS.LEDGER_BACKFILL_ROWS_UPDATED);
+    const rowsUpdated = rowsUpdatedRaw != null ? parseInt(rowsUpdatedRaw) : null;
+    res.json({ lastRunAt, rowsUpdated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/ledger/backfill — backfill ledger entries for success deposits with no ledger record (admin only)
+router.post("/backfill", requireAdmin, async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+
+    // Find all success deposits that don't yet have a ledger entry referencing them
+    const depositsToBackfill = await db
+      .select({
+        id: transactionsTable.id,
+        merchantId: transactionsTable.merchantId,
+        amount: transactionsTable.amount,
+        description: transactionsTable.description,
+        utr: transactionsTable.utr,
+        createdAt: transactionsTable.createdAt,
+      })
+      .from(transactionsTable)
+      .where(
+        and(
+          eq(transactionsTable.type, "deposit"),
+          eq(transactionsTable.status, "success"),
+          notExists(
+            db
+              .select({ id: ledgerEntriesTable.id })
+              .from(ledgerEntriesTable)
+              .where(
+                and(
+                  eq(ledgerEntriesTable.referenceType, "transaction"),
+                  eq(ledgerEntriesTable.referenceId, transactionsTable.id)
+                )
+              )
+          )
+        )
+      )
+      .orderBy(asc(transactionsTable.merchantId), asc(transactionsTable.createdAt));
+
+    if (depositsToBackfill.length === 0) {
+      const now = new Date().toISOString();
+      await Promise.all([
+        db.insert(systemConfigTable)
+          .values({ key: SYSTEM_CONFIG_KEYS.LEDGER_BACKFILL_LAST_RUN_AT, value: now, updatedByEmail: user.email })
+          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: now, updatedByEmail: user.email, updatedAt: sql`now()` } }),
+        db.insert(systemConfigTable)
+          .values({ key: SYSTEM_CONFIG_KEYS.LEDGER_BACKFILL_ROWS_UPDATED, value: "0", updatedByEmail: user.email })
+          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: "0", updatedByEmail: user.email, updatedAt: sql`now()` } }),
+      ]);
+      res.json({ rowsUpdated: 0 });
+      return;
+    }
+
+    // Group deposits by merchantId and process each merchant's missing deposits in chronological order
+    const byMerchant = new Map<number, typeof depositsToBackfill>();
+    for (const dep of depositsToBackfill) {
+      const list = byMerchant.get(dep.merchantId) ?? [];
+      list.push(dep);
+      byMerchant.set(dep.merchantId, list);
+    }
+
+    let totalRowsInserted = 0;
+
+    for (const [merchantId, deposits] of byMerchant) {
+      // For each deposit, create a ledger entry with balanceBefore/After set to 0
+      // (we cannot reliably reconstruct historical running balances from incomplete data)
+      for (const dep of deposits) {
+        const amount = Number(dep.amount);
+        await db.insert(ledgerEntriesTable).values({
+          merchantId,
+          type: "deposit",
+          amount: amount.toFixed(2),
+          balanceBefore: "0.00",
+          balanceAfter: amount.toFixed(2),
+          referenceType: "transaction",
+          referenceId: dep.id,
+          description: dep.description ?? `Deposit (UTR: ${dep.utr})`,
+          createdBy: null,
+          createdAt: dep.createdAt,
+        });
+        totalRowsInserted++;
+      }
+    }
+
+    const now = new Date().toISOString();
+    await Promise.all([
+      db.insert(systemConfigTable)
+        .values({ key: SYSTEM_CONFIG_KEYS.LEDGER_BACKFILL_LAST_RUN_AT, value: now, updatedByEmail: user.email })
+        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: now, updatedByEmail: user.email, updatedAt: sql`now()` } }),
+      db.insert(systemConfigTable)
+        .values({ key: SYSTEM_CONFIG_KEYS.LEDGER_BACKFILL_ROWS_UPDATED, value: String(totalRowsInserted), updatedByEmail: user.email })
+        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: String(totalRowsInserted), updatedByEmail: user.email, updatedAt: sql`now()` } }),
+    ]);
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "ledger_backfill_run",
+      targetType: "system",
+      targetId: null,
+      details: JSON.stringify({ rowsUpdated: totalRowsInserted }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ rowsUpdated: totalRowsInserted }, "ledger_backfill_complete");
+
+    res.json({ rowsUpdated: totalRowsInserted });
   } catch (err) {
     next(err);
   }

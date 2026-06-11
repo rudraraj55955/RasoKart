@@ -3523,6 +3523,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/LedgerListResponse"
 
+  /ledger/backfill/last-run:
+    get:
+      operationId: getLedgerBackfillLastRun
+      tags: [ledger]
+      summary: Get the last ledger backfill run metadata (admin only)
+      responses:
+        "200":
+          description: Last backfill run info
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lastRunAt, rowsUpdated]
+                properties:
+                  lastRunAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  rowsUpdated:
+                    type: integer
+                    nullable: true
+
+  /ledger/backfill:
+    post:
+      operationId: runLedgerBackfill
+      tags: [ledger]
+      summary: Backfill ledger entries for success deposits with no existing ledger record (admin only)
+      responses:
+        "200":
+          description: Backfill result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rowsUpdated]
+                properties:
+                  rowsUpdated:
+                    type: integer
+
   /ledger/adjustment:
     post:
       operationId: createLedgerAdjustment

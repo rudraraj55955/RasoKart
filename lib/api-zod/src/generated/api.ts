@@ -3466,6 +3466,23 @@ export const ListLedgerEntriesResponse = zod.object({
 
 
 /**
+ * @summary Get the last ledger backfill run metadata (admin only)
+ */
+export const GetLedgerBackfillLastRunResponse = zod.object({
+  "lastRunAt": zod.coerce.date().nullable(),
+  "rowsUpdated": zod.number().nullable()
+})
+
+
+/**
+ * @summary Backfill ledger entries for success deposits with no existing ledger record (admin only)
+ */
+export const RunLedgerBackfillResponse = zod.object({
+  "rowsUpdated": zod.number()
+})
+
+
+/**
  * @summary Create a manual balance adjustment (admin only)
  */
 export const CreateLedgerAdjustmentBody = zod.object({
