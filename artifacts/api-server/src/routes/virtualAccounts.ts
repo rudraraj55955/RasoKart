@@ -412,6 +412,68 @@ router.get("/balance-audit", async (req, res) => {
   res.json({ data, total: Number(total), page: pageNum, limit: limitNum });
 });
 
+// GET /api/virtual-accounts/balance-audit/export/csv (admin only)
+router.get("/balance-audit/export/csv", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { merchantId, merchantName, changedBy, dateFrom, dateTo, fieldChanged } = req.query as Record<string, string>;
+
+  const conditions = [];
+  if (merchantId) conditions.push(eq(virtualAccountsTable.merchantId, parseInt(merchantId)));
+  if (merchantName) conditions.push(ilike(merchantsTable.businessName, `%${merchantName}%`));
+  if (changedBy) conditions.push(ilike(vaBalanceHistoryTable.changedByName, `%${changedBy}%`));
+  if (dateFrom) conditions.push(gte(vaBalanceHistoryTable.createdAt, new Date(dateFrom)));
+  if (dateTo) {
+    const end = new Date(dateTo);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(vaBalanceHistoryTable.createdAt, end));
+  }
+  if (fieldChanged === "balance") {
+    conditions.push(sql`${vaBalanceHistoryTable.oldBalance} IS DISTINCT FROM ${vaBalanceHistoryTable.newBalance}`);
+  } else if (fieldChanged === "totalCollection") {
+    conditions.push(sql`${vaBalanceHistoryTable.oldTotalCollection} IS DISTINCT FROM ${vaBalanceHistoryTable.newTotalCollection}`);
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const rows = await db
+    .select({
+      accountNumber: virtualAccountsTable.accountNumber,
+      merchantName: merchantsTable.businessName,
+      changedByName: vaBalanceHistoryTable.changedByName,
+      changedByRole: vaBalanceHistoryTable.changedByRole,
+      oldBalance: vaBalanceHistoryTable.oldBalance,
+      newBalance: vaBalanceHistoryTable.newBalance,
+      oldTotalCollection: vaBalanceHistoryTable.oldTotalCollection,
+      newTotalCollection: vaBalanceHistoryTable.newTotalCollection,
+      createdAt: vaBalanceHistoryTable.createdAt,
+    })
+    .from(vaBalanceHistoryTable)
+    .innerJoin(virtualAccountsTable, eq(vaBalanceHistoryTable.virtualAccountId, virtualAccountsTable.id))
+    .leftJoin(merchantsTable, eq(virtualAccountsTable.merchantId, merchantsTable.id))
+    .where(where)
+    .orderBy(desc(vaBalanceHistoryTable.createdAt));
+
+  const header = ["Account Number", "Merchant", "Changed By", "Role", "Old Balance", "New Balance", "Old Collection", "New Collection", "Timestamp"];
+  const csvRows = rows.map(r => [
+    r.accountNumber,
+    r.merchantName ?? "",
+    r.changedByName ?? "",
+    r.changedByRole ?? "",
+    r.oldBalance ?? "",
+    r.newBalance ?? "",
+    r.oldTotalCollection ?? "",
+    r.newTotalCollection ?? "",
+    r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
+
+  const csv = [header.join(","), ...csvRows].join("\n");
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="balance-audit-export.csv"`);
+  res.send(csv);
+});
+
 // GET /api/virtual-accounts/:id/balance-history
 router.get("/:id/balance-history", async (req, res) => {
   const user = (req as any).user;

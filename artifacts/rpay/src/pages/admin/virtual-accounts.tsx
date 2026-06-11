@@ -231,6 +231,21 @@ export default function AdminVirtualAccounts() {
     );
   };
 
+  const exportAuditCsv = async () => {
+    const { downloadCsvFromUrl } = await import("@/components/ui/export-csv-button");
+    await downloadCsvFromUrl(
+      "/api/virtual-accounts/balance-audit/export/csv",
+      `balance-audit-${format(new Date(), "yyyy-MM-dd")}.csv`,
+      {
+        merchantName: auditMerchantName || undefined,
+        changedBy: auditChangedBy || undefined,
+        dateFrom: auditDateFrom || undefined,
+        dateTo: auditDateTo || undefined,
+        fieldChanged: auditFieldChanged || undefined,
+      }
+    );
+  };
+
   const exportMerchantBalanceHistoryCsv = async () => {
     if (!selectedVa) return;
     const mid = (selectedVa as any).merchantId;
@@ -269,6 +284,7 @@ export default function AdminVirtualAccounts() {
             <RefreshCw className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`} /> Refresh
           </Button>
           {pageTab === "accounts" && <ExportCsvButton onExport={exportCsv} />}
+          {pageTab === "audit" && <ExportCsvButton onExport={exportAuditCsv} />}
         </div>
       </div>
 

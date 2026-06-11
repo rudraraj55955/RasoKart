@@ -2553,6 +2553,45 @@ paths:
               schema:
                 type: string
 
+  /virtual-accounts/balance-audit/export/csv:
+    get:
+      operationId: exportVaBalanceAuditCsv
+      tags: [virtual-accounts]
+      summary: Export balance audit log as CSV (admin only)
+      parameters:
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: merchantName
+          in: query
+          schema:
+            type: string
+        - name: changedBy
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: fieldChanged
+          in: query
+          schema:
+            type: string
+            enum: [balance, totalCollection]
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+
   /virtual-accounts/balance-audit:
     get:
       operationId: listVaBalanceAudit
