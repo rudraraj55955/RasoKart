@@ -114,6 +114,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         planExpiryAlertEmails: usersTable.planExpiryAlertEmails,
         settlementStateEmails: usersTable.settlementStateEmails,
         signatureFailureAlertEmails: usersTable.signatureFailureAlertEmails,
+        webhookFailureEmails: usersTable.webhookFailureEmails,
       })
       .from(usersTable)
       .where(eq(usersTable.id, user.id))
@@ -130,6 +131,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       planExpiryAlertEmails: row?.planExpiryAlertEmails ?? true,
       settlementStateEmails: row?.settlementStateEmails ?? true,
       signatureFailureAlertEmails: row?.signatureFailureAlertEmails ?? true,
+      webhookFailureEmails: row?.webhookFailureEmails ?? true,
       createdAt: user.createdAt,
     });
   } catch (err) {
@@ -141,7 +143,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails } = req.body;
 
     const patch: Record<string, boolean> = {};
 
@@ -177,6 +179,14 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       patch["signatureFailureAlertEmails"] = signatureFailureAlertEmails;
     }
 
+    if (webhookFailureEmails !== undefined) {
+      if (typeof webhookFailureEmails !== "boolean") {
+        res.status(400).json({ error: "webhookFailureEmails must be a boolean" });
+        return;
+      }
+      patch["webhookFailureEmails"] = webhookFailureEmails;
+    }
+
     if (Object.keys(patch).length === 0) {
       res.status(400).json({ error: "No valid preference fields provided" });
       return;
@@ -200,6 +210,7 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       planExpiryAlertEmails: updated.planExpiryAlertEmails,
       settlementStateEmails: updated.settlementStateEmails,
       signatureFailureAlertEmails: updated.signatureFailureAlertEmails,
+      webhookFailureEmails: updated.webhookFailureEmails,
       createdAt: updated.createdAt,
     });
   } catch (err) {

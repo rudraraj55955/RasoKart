@@ -10,7 +10,7 @@ function formatAmount(val: string | number | null | undefined): string {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails"): Promise<string[]> {
+async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails"): Promise<string[]> {
   const admins = await db
     .select({ email: usersTable.email })
     .from(usersTable)
@@ -218,6 +218,113 @@ function buildSettlementStateHtml(opts: {
   </div>
 </body>
 </html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Webhook permanent failure emails
+// ---------------------------------------------------------------------------
+
+function buildWebhookFailureHtml(opts: {
+  merchantId: number;
+  url: string;
+  attempts: number;
+  qrCodeId: number | null;
+}): string {
+  const { merchantId, url, attempts, qrCodeId } = opts;
+  const merchantLink = `${APP_DOMAIN}/admin/merchants/${merchantId}`;
+  const qrLabel = qrCodeId != null ? ` (QR Code #${qrCodeId})` : "";
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #7f1d1d; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — Webhook Permanently Failed</h1>
+      <p style="margin: 4px 0 0; color: #fca5a5; font-size: 13px;">All retry attempts exhausted — merchant action required</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #f87171; font-size: 14px; font-weight: 600;">
+        🔴 Merchant #${merchantId} webhook permanently failed after ${attempts} attempt${attempts !== 1 ? "s" : ""}${qrLabel}.
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        All retry attempts have been exhausted. Consider reaching out to the merchant to investigate their webhook endpoint.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Merchant ID</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">#${merchantId}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Failed URL</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; word-break: break-all; color: #93c5fd;">${url}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Total Attempts</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #f87171; font-weight: 600;">${attempts}</td>
+        </tr>
+        ${qrCodeId != null ? `
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">QR Code</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">#${qrCodeId}</td>
+        </tr>` : ""}
+      </table>
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${merchantLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          View Merchant in Admin Portal
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${merchantLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This alert was sent by RasoKart. To stop receiving webhook failure emails, update your notification preferences in Admin Settings.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function notifyAdminsOfWebhookFailureEmail(opts: {
+  merchantId: number;
+  url: string;
+  attempts: number;
+  qrCodeId: number | null;
+}): Promise<void> {
+  try {
+    const recipients = await getAdminEmails("webhookFailureEmails");
+
+    if (recipients.length === 0) {
+      logger.info({ merchantId: opts.merchantId }, "No admins opted in to webhook failure emails — skipping");
+      return;
+    }
+
+    const html = buildWebhookFailureHtml(opts);
+    const subject = `[RasoKart] 🔴 Webhook Permanently Failed — Merchant #${opts.merchantId}`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+
+    logger.info(
+      { merchantId: opts.merchantId, totalAdmins: recipients.length, sent, failed },
+      "Admin webhook failure emails dispatched"
+    );
+  } catch (err) {
+    logger.error({ err, merchantId: opts.merchantId }, "Failed to send admin webhook failure emails");
+  }
 }
 
 export async function notifyAdminsOfSettlementStateChange(opts: {

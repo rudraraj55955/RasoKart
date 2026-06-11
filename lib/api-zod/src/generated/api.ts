@@ -38,6 +38,7 @@ export const LoginResponse = zod.object({
   "planExpiryAlertEmails": zod.boolean().optional(),
   "settlementStateEmails": zod.boolean().optional(),
   "signatureFailureAlertEmails": zod.boolean().optional(),
+  "webhookFailureEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 })
@@ -71,6 +72,7 @@ export const GetMeResponse = zod.object({
   "planExpiryAlertEmails": zod.boolean().optional(),
   "settlementStateEmails": zod.boolean().optional(),
   "signatureFailureAlertEmails": zod.boolean().optional(),
+  "webhookFailureEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 
@@ -82,7 +84,8 @@ export const UpdateMyPreferencesBody = zod.object({
   "reconciliationAlertEmails": zod.boolean().optional(),
   "planExpiryAlertEmails": zod.boolean().optional(),
   "settlementStateEmails": zod.boolean().optional(),
-  "signatureFailureAlertEmails": zod.boolean().optional()
+  "signatureFailureAlertEmails": zod.boolean().optional(),
+  "webhookFailureEmails": zod.boolean().optional()
 })
 
 export const UpdateMyPreferencesResponse = zod.object({
@@ -97,6 +100,7 @@ export const UpdateMyPreferencesResponse = zod.object({
   "planExpiryAlertEmails": zod.boolean().optional(),
   "settlementStateEmails": zod.boolean().optional(),
   "signatureFailureAlertEmails": zod.boolean().optional(),
+  "webhookFailureEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 
@@ -1938,6 +1942,7 @@ export const ListUsersResponse = zod.object({
   "planExpiryAlertEmails": zod.boolean().optional(),
   "settlementStateEmails": zod.boolean().optional(),
   "signatureFailureAlertEmails": zod.boolean().optional(),
+  "webhookFailureEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -1983,6 +1988,7 @@ export const UpdateUserResponse = zod.object({
   "planExpiryAlertEmails": zod.boolean().optional(),
   "settlementStateEmails": zod.boolean().optional(),
   "signatureFailureAlertEmails": zod.boolean().optional(),
+  "webhookFailureEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 

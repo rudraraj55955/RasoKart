@@ -14,6 +14,7 @@ export const usersTable = pgTable("users", {
   planExpiryAlertEmails: boolean("plan_expiry_alert_emails").notNull().default(true),
   settlementStateEmails: boolean("settlement_state_emails").notNull().default(true),
   signatureFailureAlertEmails: boolean("signature_failure_alert_emails").notNull().default(true),
+  webhookFailureEmails: boolean("webhook_failure_emails").notNull().default(true),
   passwordUpdatedAt: timestamp("password_updated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

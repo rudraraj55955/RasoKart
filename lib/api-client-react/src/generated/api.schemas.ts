@@ -85,6 +85,7 @@ export interface User {
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;
   signatureFailureAlertEmails?: boolean;
+  webhookFailureEmails?: boolean;
   createdAt: string;
 }
 
@@ -2494,6 +2495,7 @@ export type UpdateMyPreferencesBody = {
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;
   signatureFailureAlertEmails?: boolean;
+  webhookFailureEmails?: boolean;
 };
 
 export type ListMerchantsParams = {

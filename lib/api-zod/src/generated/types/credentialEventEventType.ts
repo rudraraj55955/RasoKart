@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type MerchantKeyEventEventType = typeof MerchantKeyEventEventType[keyof typeof MerchantKeyEventEventType];
+export type CredentialEventEventType = typeof CredentialEventEventType[keyof typeof CredentialEventEventType];
 
 
-export const MerchantKeyEventEventType = {
+export const CredentialEventEventType = {
   key_generated: 'key_generated',
   key_revoked: 'key_revoked',
   secret_rotated: 'secret_rotated',

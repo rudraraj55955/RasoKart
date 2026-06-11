@@ -11,4 +11,5 @@ export type UpdateMyPreferencesBody = {
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;
   signatureFailureAlertEmails?: boolean;
+  webhookFailureEmails?: boolean;
 };

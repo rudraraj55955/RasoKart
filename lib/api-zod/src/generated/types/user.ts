@@ -21,5 +21,6 @@ export interface User {
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;
   signatureFailureAlertEmails?: boolean;
+  webhookFailureEmails?: boolean;
   createdAt: string;
 }

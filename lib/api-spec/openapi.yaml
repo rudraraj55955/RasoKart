@@ -164,6 +164,8 @@ paths:
                   type: boolean
                 signatureFailureAlertEmails:
                   type: boolean
+                webhookFailureEmails:
+                  type: boolean
       responses:
         "200":
           description: Updated preferences
@@ -4770,6 +4772,8 @@ components:
         settlementStateEmails:
           type: boolean
         signatureFailureAlertEmails:
+          type: boolean
+        webhookFailureEmails:
           type: boolean
         createdAt:
           type: string

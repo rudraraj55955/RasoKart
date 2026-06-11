@@ -2,6 +2,7 @@ import { db, callbackLogsTable, usersTable, notificationsTable, webhooksTable } 
 import { eq, and, lte, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { createNotification, createBulkNotifications } from "./notifications";
+import { notifyAdminsOfWebhookFailureEmail } from "./adminNotifyEmail";
 
 const WEBHOOK_FAILURE_WINDOW_HOURS = 1;
 
@@ -240,6 +241,9 @@ export async function processPendingRetries(): Promise<void> {
           });
           await notifyAdminsOfWebhookFailure(log.merchantId, log.url, newAttempts, log.qrCodeId ?? null).catch((err) => {
             logger.error({ err, logId: log.id }, "Failed to send admin webhook failure notification");
+          });
+          await notifyAdminsOfWebhookFailureEmail({ merchantId: log.merchantId, url: log.url, attempts: newAttempts, qrCodeId: log.qrCodeId ?? null }).catch((err) => {
+            logger.error({ err, logId: log.id }, "Failed to send admin webhook failure email");
           });
         }
       } else {
