@@ -168,6 +168,24 @@ function clearStoredCooldown(logId: number) {
   }
 }
 
+function sweepStaleCooldowns() {
+  try {
+    const now = Date.now();
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const key = sessionStorage.key(i);
+      if (!key?.startsWith(COOLDOWN_STORAGE_PREFIX)) continue;
+      const raw = sessionStorage.getItem(key);
+      if (!raw) { sessionStorage.removeItem(key); continue; }
+      const until = parseInt(raw, 10);
+      if (!Number.isFinite(until) || until <= now) {
+        sessionStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 function CallbackRow({ log, activeQrFilter, onFilterByQr }: { log: any; activeQrFilter: number | undefined; onFilterByQr: (id: number) => void }) {
   const [open, setOpen] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -353,6 +371,8 @@ function writeSigWarnDismissal() {
 }
 
 export default function MerchantCallbacks() {
+  useEffect(() => { sweepStaleCooldowns(); }, []);
+
   const search = useSearch();
   const [, setLocation] = useLocation();
 
