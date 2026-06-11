@@ -15,6 +15,7 @@ const OVERDUE_DAYS = 90;
  * Safe to call repeatedly — deduplication keys prevent spam.
  */
 export async function checkWebhookSecretRotation(): Promise<{
+  merchantsScanned: number;
   reminderCount: number;
   overdueCount: number;
   notificationsSent: number;
@@ -45,7 +46,7 @@ export async function checkWebhookSecretRotation(): Promise<{
     );
 
   if (stale.length === 0) {
-    return { reminderCount: 0, overdueCount: 0, notificationsSent: 0, emailsSent: 0 };
+    return { merchantsScanned: 0, reminderCount: 0, overdueCount: 0, notificationsSent: 0, emailsSent: 0 };
   }
 
   const todayStr  = now.toISOString().slice(0, 10);           // YYYY-MM-DD
@@ -142,6 +143,7 @@ export async function checkWebhookSecretRotation(): Promise<{
   }
 
   return {
+    merchantsScanned: stale.length,
     reminderCount,
     overdueCount,
     notificationsSent: toInsert.length,
