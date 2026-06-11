@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertTriangle, ChevronDown, ChevronRight, QrCode, ShieldAlert, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, QrCode, ShieldAlert, X } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -79,6 +80,12 @@ const SIG_WARN_THRESHOLD = 5;
 const SIG_WARN_KEY = "rasokart_sig_warn_dismissed_until";
 const SIG_WARN_TTL_MS = 24 * 60 * 60 * 1000;
 
+const SNOOZE_OPTIONS = [
+  { label: "1 hour", ttlMs: 1 * 60 * 60 * 1000 },
+  { label: "4 hours", ttlMs: 4 * 60 * 60 * 1000 },
+  { label: "24 hours", ttlMs: SIG_WARN_TTL_MS },
+] as const;
+
 interface SigWarnDismissal {
   dismissedUntil: number;
   dismissedAt: number;
@@ -103,11 +110,11 @@ function isSigWarnStillDismissed(dismissal: SigWarnDismissal, recentLogs: any[])
   return true;
 }
 
-function writeSigWarnDismissal() {
+function writeSigWarnDismissal(ttlMs: number = SIG_WARN_TTL_MS) {
   try {
     const now = Date.now();
     const dismissal: SigWarnDismissal = {
-      dismissedUntil: now + SIG_WARN_TTL_MS,
+      dismissedUntil: now + ttlMs,
       dismissedAt: now,
     };
     localStorage.setItem(SIG_WARN_KEY, JSON.stringify(dismissal));
@@ -134,6 +141,7 @@ export default function MerchantCallbacks() {
     const d = readSigWarnDismissal();
     return d != null && Date.now() < d.dismissedUntil;
   });
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -241,14 +249,38 @@ export default function MerchantCallbacks() {
               </Link>
             </p>
           </div>
-          <button
-            type="button"
-            aria-label="Dismiss warning"
-            onClick={() => { writeSigWarnDismissal(); setSigWarnDismissed(true); }}
-            className="shrink-0 text-amber-400/60 hover:text-amber-300 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Popover open={snoozeOpen} onOpenChange={setSnoozeOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label="Snooze warning"
+                className="shrink-0 text-amber-400/60 hover:text-amber-300 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="w-44 p-1.5 bg-zinc-900 border-amber-500/30"
+            >
+              <p className="text-xs text-muted-foreground px-2 py-1 font-medium">Snooze for…</p>
+              {SNOOZE_OPTIONS.map(opt => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={() => {
+                    writeSigWarnDismissal(opt.ttlMs);
+                    setSigWarnDismissed(true);
+                    setSnoozeOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-amber-200 hover:bg-amber-500/10 transition-colors"
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-400/70 shrink-0" />
+                  {opt.label}
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
         </div>
       )}
 
