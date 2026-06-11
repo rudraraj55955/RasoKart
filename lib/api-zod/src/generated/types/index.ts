@@ -93,6 +93,8 @@ export * from './expiryCheckResult';
 export * from './exportAdminAuditLogsCsvParams';
 export * from './exportMerchantBalanceHistoryParams';
 export * from './exportMySecurityActivityParams';
+export * from './exportPlanHistoryAction';
+export * from './exportPlanHistoryParams';
 export * from './exportVaBalanceAuditCsvFieldChanged';
 export * from './exportVaBalanceAuditCsvParams';
 export * from './getAdminMerchantCredentialEventsParams';

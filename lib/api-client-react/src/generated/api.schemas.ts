@@ -2992,6 +2992,24 @@ export const ListMerchantConnectionsStatus = {
   inactive: 'inactive',
 } as const;
 
+export type ExportPlanHistoryParams = {
+merchantId?: number;
+action?: ExportPlanHistoryAction;
+};
+
+export type ExportPlanHistoryAction = typeof ExportPlanHistoryAction[keyof typeof ExportPlanHistoryAction];
+
+
+export const ExportPlanHistoryAction = {
+  assigned: 'assigned',
+  upgraded: 'upgraded',
+  downgraded: 'downgraded',
+  suspended: 'suspended',
+  reinstated: 'reinstated',
+  renewed: 'renewed',
+  unassigned: 'unassigned',
+} as const;
+
 export type ListPlanHistoryParams = {
 merchantId?: number;
 action?: ListPlanHistoryAction;

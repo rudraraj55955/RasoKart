@@ -2409,6 +2409,29 @@ paths:
                 items:
                   $ref: "#/components/schemas/PlanHistory"
 
+  /plans/history/export:
+    get:
+      operationId: exportPlanHistory
+      tags: [plans]
+      summary: Export plan history as CSV (admin only)
+      parameters:
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [assigned, upgraded, downgraded, suspended, reinstated, renewed, unassigned]
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+
   /plans/history:
     get:
       operationId: listPlanHistory

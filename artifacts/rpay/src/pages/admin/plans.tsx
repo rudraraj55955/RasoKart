@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pencil, Trash2, PlusCircle, Search, Infinity, KeyRound, Webhook, Percent, CheckCircle2, XCircle, Network, ChevronLeft, ChevronRight, History, X } from "lucide-react";
+import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import type { Plan } from "@workspace/api-client-react";
@@ -222,6 +223,15 @@ export default function AdminPlans() {
     setHistoryPage(1);
   };
 
+  const handleExportHistory = () => downloadCsvFromUrl(
+    "/api/plans/history/export",
+    "plan-history.csv",
+    {
+      ...(historyMerchantId ? { merchantId: historyMerchantId } : {}),
+      ...(historyAction ? { action: historyAction } : {}),
+    },
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -394,9 +404,12 @@ export default function AdminPlans() {
               </Button>
             )}
 
-            {historyData && (
-              <p className="ml-auto text-xs text-muted-foreground">{historyData.total} result{historyData.total !== 1 ? "s" : ""}</p>
-            )}
+            <div className="ml-auto flex items-center gap-3">
+              {historyData && (
+                <p className="text-xs text-muted-foreground">{historyData.total} result{historyData.total !== 1 ? "s" : ""}</p>
+              )}
+              <ExportCsvButton onExport={handleExportHistory} />
+            </div>
           </div>
 
           <Card>

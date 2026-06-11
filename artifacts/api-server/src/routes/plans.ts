@@ -93,6 +93,50 @@ router.get("/", async (_req, res) => {
   res.json(rows.map(serializePlan));
 });
 
+// GET /api/plans/history/export — admin: export plan history as CSV
+router.get("/history/export", requireAdmin, async (req, res) => {
+  const { merchantId, action } = req.query as Record<string, string>;
+
+  const conditions: SQL[] = [];
+  if (merchantId) conditions.push(eq(planHistoryTable.merchantId, parseInt(merchantId)));
+  if (action) conditions.push(eq(planHistoryTable.action, action));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const rows = await db
+    .select({
+      h: planHistoryTable,
+      toPlan: { id: plansTable.id, name: plansTable.name },
+      merchant: { id: merchantsTable.id, businessName: merchantsTable.businessName },
+    })
+    .from(planHistoryTable)
+    .leftJoin(plansTable, eq(planHistoryTable.toPlanId, plansTable.id))
+    .leftJoin(merchantsTable, eq(planHistoryTable.merchantId, merchantsTable.id))
+    .where(where)
+    .orderBy(desc(planHistoryTable.createdAt));
+
+  const escape = (v: string | null | undefined) => {
+    if (v == null) return "";
+    const s = String(v);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const header = "Date,Merchant,Action,Plan,Assigned By,Expires,Notes\n";
+  const lines = rows.map(r => [
+    escape(r.h.createdAt.toISOString()),
+    escape(r.merchant?.businessName),
+    escape(r.h.action),
+    escape(r.toPlan?.name),
+    escape(r.h.adminEmail),
+    escape(r.h.expiresAt ? new Date(r.h.expiresAt).toISOString() : null),
+    escape(r.h.notes),
+  ].join(",")).join("\n");
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=\"plan-history.csv\"");
+  res.send(header + lines);
+});
+
 // GET /api/plans/history — admin: plan history across all merchants
 router.get("/history", requireAdmin, async (req, res) => {
   const { merchantId, action, fromDate, toDate, page = "1", limit = "25" } = req.query as Record<string, string>;

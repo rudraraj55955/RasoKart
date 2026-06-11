@@ -2329,6 +2329,15 @@ export const GetMyPlanHistoryResponse = zod.array(GetMyPlanHistoryResponseItem)
 
 
 /**
+ * @summary Export plan history as CSV (admin only)
+ */
+export const ExportPlanHistoryQueryParams = zod.object({
+  "merchantId": zod.coerce.number().optional(),
+  "action": zod.enum(['assigned', 'upgraded', 'downgraded', 'suspended', 'reinstated', 'renewed', 'unassigned']).optional()
+})
+
+
+/**
  * @summary List all plan history (admin only)
  */
 export const ListPlanHistoryQueryParams = zod.object({

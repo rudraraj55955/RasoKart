@@ -78,6 +78,7 @@ import type {
   ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
   ExportMySecurityActivityParams,
+  ExportPlanHistoryParams,
   ExportVaBalanceAuditCsvParams,
   GetAdminMerchantCredentialEventsParams,
   GetQrCodeStatsParams,
@@ -7295,6 +7296,90 @@ export function useGetMyPlanHistory<TData = Awaited<ReturnType<typeof getMyPlanH
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMyPlanHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportPlanHistoryUrl = (params?: ExportPlanHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/plans/history/export?${stringifiedParams}` : `/api/plans/history/export`
+}
+
+/**
+ * @summary Export plan history as CSV (admin only)
+ */
+export const exportPlanHistory = async (params?: ExportPlanHistoryParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportPlanHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportPlanHistoryQueryKey = (params?: ExportPlanHistoryParams,) => {
+    return [
+    `/api/plans/history/export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportPlanHistoryQueryOptions = <TData = Awaited<ReturnType<typeof exportPlanHistory>>, TError = ErrorType<unknown>>(params?: ExportPlanHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportPlanHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportPlanHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportPlanHistory>>> = ({ signal }) => exportPlanHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportPlanHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportPlanHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof exportPlanHistory>>>
+export type ExportPlanHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export plan history as CSV (admin only)
+ */
+
+export function useExportPlanHistory<TData = Awaited<ReturnType<typeof exportPlanHistory>>, TError = ErrorType<unknown>>(
+ params?: ExportPlanHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportPlanHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportPlanHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
