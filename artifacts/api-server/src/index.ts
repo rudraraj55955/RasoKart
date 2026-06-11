@@ -7,7 +7,7 @@ import { processPendingRetries } from "./helpers/callbackRetry";
 import { initReconciliationScheduler } from "./helpers/reconScheduler";
 import { initAuditReportScheduler } from "./helpers/auditReportScheduler";
 import { startProviderLimitAlertScheduler, runProviderLimitAlertScan } from "./helpers/providerLimitScheduler";
-import { initQrCleanupScheduler } from "./helpers/qrCleanupScheduler";
+import { initQrCleanupScheduler, runQrCleanup } from "./helpers/qrCleanupScheduler";
 import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initNonceCleanupScheduler, pruneExpiredNonces } from "./helpers/nonceCleanupScheduler";
@@ -62,6 +62,11 @@ async function main() {
   initAuditReportScheduler();
   startProviderLimitAlertScheduler();
   initQrCleanupScheduler();
+  // Startup sweep: prune any expired QR codes that accumulated while the server
+  // was down, before the first scheduled run (nightly at 02:00) fires.
+  runQrCleanup().catch((err) => {
+    logger.warn({ err }, "Startup QR cleanup sweep failed");
+  });
   initPlanExpiryScheduler();
   initPlanRenewalScheduler();
   initNonceCleanupScheduler();
