@@ -1,8 +1,18 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transactionsTable, qrPaymentEventsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
+import rateLimit from "express-rate-limit";
+
+const qrCodeCreateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
+  message: { error: "Too many QR code creation requests. Please slow down and try again shortly." },
+});
 
 async function logQrAudit(req: any, action: string, targetId: number | null, details: object) {
   await db.insert(auditLogsTable).values({
@@ -299,7 +309,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // POST /api/qr-codes
-router.post("/", async (req, res) => {
+router.post("/", qrCodeCreateLimiter, async (req, res) => {
   const user = (req as any).user;
   const merchantId = user.merchantId!;
   const { type, label, amount, orderId, expiresAt, callbackUrl, merchantReference } = req.body;

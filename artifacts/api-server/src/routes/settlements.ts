@@ -1,9 +1,19 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db, settlementsTable, merchantsTable, ledgerEntriesTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, sql, gte, lte, sum } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createNotification } from "../helpers/notifications";
 import { notifyAdminsOfSettlementStateChange } from "../helpers/adminNotifyEmail";
+import rateLimit from "express-rate-limit";
+
+const settlementCreateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
+  message: { error: "Too many settlement requests. Please wait before submitting another." },
+});
 
 async function getUserIdForMerchant(merchantId: number): Promise<number | null> {
   const [u] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.merchantId, merchantId)).limit(1);
@@ -149,7 +159,7 @@ router.get("/export/csv", requireAdmin, async (req, res) => {
 });
 
 // POST /api/settlements  (merchant creates settlement request)
-router.post("/", async (req, res) => {
+router.post("/", settlementCreateLimiter, async (req, res) => {
   const user = (req as any).user;
   if (!user.merchantId) {
     res.status(403).json({ error: "Not a merchant" });

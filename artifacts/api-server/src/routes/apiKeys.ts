@@ -1,8 +1,18 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db, apiKeysTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import crypto from "crypto";
+import rateLimit from "express-rate-limit";
+
+const apiKeyCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
+  message: { error: "Too many API key generation requests. Please try again later." },
+});
 
 const router = Router();
 router.use(requireAuth);
@@ -24,7 +34,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/api-keys
-router.post("/", async (req, res) => {
+router.post("/", apiKeyCreateLimiter, async (req, res) => {
   const user = (req as any).user;
   if (user.role !== "merchant") {
     res.status(403).json({ error: "Only merchants can generate API keys" });
