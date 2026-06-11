@@ -446,7 +446,15 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
                 <Building2 className="w-3.5 h-3.5" /> Merchant
               </p>
               <div className="space-y-0 rounded-lg border divide-y divide-border bg-card/40">
-                <DetailRow label="Business Name" value={tx.merchantName ?? "—"} />
+                <div className="flex items-start justify-between gap-4 px-4 py-3">
+                  <span className="text-sm text-muted-foreground shrink-0">Business Name</span>
+                  <Link
+                    href={`/admin/merchants?open=${tx.merchantId}`}
+                    className="text-sm font-medium text-right hover:text-primary hover:underline underline-offset-2 transition-colors"
+                  >
+                    {tx.merchantName ?? "—"}
+                  </Link>
+                </div>
                 <DetailRow label="Merchant ID" value={`#${tx.merchantId}`} mono />
               </div>
             </div>

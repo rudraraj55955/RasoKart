@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { Link } from "wouter";
 import {
   useListVirtualAccounts,
   useUpdateVirtualAccount,
@@ -971,7 +972,12 @@ export default function AdminVirtualAccounts() {
             <SheetTitle>Virtual Account Detail</SheetTitle>
             {selectedVa && (
               <div className="text-sm text-muted-foreground space-y-0.5">
-                <p className="font-medium text-foreground">{selectedVa.merchantName ?? "Unknown Merchant"}</p>
+                <Link
+                  href={`/admin/merchants?open=${selectedVa.merchantId}`}
+                  className="font-medium text-foreground hover:text-primary hover:underline underline-offset-2 transition-colors"
+                >
+                  {selectedVa.merchantName ?? "Unknown Merchant"}
+                </Link>
                 <p>{selectedVa.accountHolder} · {selectedVa.accountNumber} · {selectedVa.bankName}</p>
               </div>
             )}
