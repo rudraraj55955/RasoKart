@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, Copy, Trash2, Eye, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/utils";
 import { format } from "date-fns";
 
 export default function MerchantApiKeys() {
@@ -25,7 +26,7 @@ export default function MerchantApiKeys() {
         setNewKey({ apiKey: key.apiKey, secretKey: key.secretKey });
         qc.invalidateQueries({ queryKey: getListApiKeysQueryKey() });
       },
-      onError: () => toast.error("Failed to generate API key"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to generate API key")),
     });
   };
 

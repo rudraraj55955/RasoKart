@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, ChevronDown, ChevronRight, Clock, Plus, CalendarRange, X } from "lucide-react";
+import { getApiErrorMessage } from "@/lib/utils";
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 const DATE_PRESETS = [
@@ -202,9 +203,8 @@ export default function MerchantSettlements() {
         setReqNote("");
         setReqError("");
       },
-      onError: (err: any) => {
-        const msg = err?.response?.data?.error ?? err?.message ?? "Failed to submit request";
-        setReqError(msg);
+      onError: (err: unknown) => {
+        setReqError(getApiErrorMessage(err, "Failed to submit request"));
       },
     },
   });

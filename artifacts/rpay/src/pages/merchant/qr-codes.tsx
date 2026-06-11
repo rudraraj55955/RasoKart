@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Search, Plus, Trash2, Download, QrCode, Eye, AlertTriangle, CheckCircle2, Link2, ChevronDown, ChevronRight, ScanLine, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
 
@@ -411,9 +412,8 @@ export default function MerchantQrCodes() {
           setForm({ amount: "", orderId: "", expiresAt: "", callbackUrl: "", merchantReference: "" });
           invalidate();
         },
-        onError: (err: any) => {
-          const msg = err?.response?.data?.error ?? "Failed to create QR code";
-          toast.error(msg);
+        onError: (err: unknown) => {
+          toast.error(getApiErrorMessage(err, "Failed to create QR code"));
         },
       }
     );
