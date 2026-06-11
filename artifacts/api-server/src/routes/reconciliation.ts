@@ -361,19 +361,20 @@ router.post("/runs/:id/resend-alert", async (req, res, next) => {
   try {
     const runId = parseInt(req.params['id'] as string);
     const user = (req as any).user;
+    const force = req.body?.force === true;
 
     const [run] = await db.select().from(reconciliationRunsTable).where(eq(reconciliationRunsTable.id, runId)).limit(1);
     if (!run) { res.status(404).json({ error: "Run not found" }); return; }
 
-    await notifyAdminsOfUnmatchedItems(runId);
+    await notifyAdminsOfUnmatchedItems(runId, { force });
 
     await db.insert(auditLogsTable).values({
       adminId: user.id,
       adminEmail: user.email,
-      action: "reconciliation_unmatched_alert_resent",
+      action: force ? "reconciliation_unmatched_alert_force_resent" : "reconciliation_unmatched_alert_resent",
       targetType: "reconciliation_run",
       targetId: runId,
-      details: JSON.stringify({ runId }),
+      details: JSON.stringify({ runId, force }),
       ipAddress: (req as any).ip ?? null,
     });
 

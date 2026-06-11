@@ -1150,6 +1150,7 @@ export default function AdminReconciliation() {
   const [alertEmailsOpen, setAlertEmailsOpen] = useState(true);
   const [historyPage, setHistoryPage] = useState(1);
   const [emailFailureBannerDismissed, setEmailFailureBannerDismissed] = useState(false);
+  const [forceResendConfirmOpen, setForceResendConfirmOpen] = useState(false);
   const [runNotes, setRunNotes] = useState("");
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState("");
@@ -1214,6 +1215,15 @@ export default function AdminReconciliation() {
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resend alert email")),
+  });
+
+  const forceResendAlertMutation = useMutation({
+    mutationFn: () => apiPost(`/reconciliation/runs/${selectedRunId}/resend-alert`, { force: true }),
+    onSuccess: () => {
+      toast.success("Alert email force-sent");
+      qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
+    },
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to force-send alert email")),
   });
 
   const updateNotesMutation = useMutation({
@@ -1715,6 +1725,7 @@ export default function AdminReconciliation() {
             setEmailLogOpen(false);
             setEditingNotes(false);
             setNotesValue("");
+            setForceResendConfirmOpen(false);
             setNotesHistoryOpen(false);
             const params = new URLSearchParams(window.location.search);
             if (params.has("run") || params.has("runId")) {
@@ -2233,33 +2244,59 @@ export default function AdminReconciliation() {
                               )}
                               {(() => {
                                 const lastAlert = alertLogs[0];
-                                const showResend = !lastAlert || lastAlert.status === "failed";
-                                if (!showResend) return null;
+                                const showRegularResend = !lastAlert || lastAlert.status === "failed";
+                                const hasUnmatched = (selectedRun?.totalUnmatched ?? 0) > 0;
                                 return (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="w-full">
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="w-full h-7 text-xs gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300 disabled:pointer-events-none"
-                                          onClick={() => resendAlertMutation.mutate()}
-                                          disabled={resendAlertMutation.isPending || (selectedRun?.totalUnmatched ?? 0) === 0}
-                                        >
-                                          {resendAlertMutation.isPending
-                                            ? <Loader2 className="w-3 h-3 animate-spin" />
-                                            : <AlertTriangle className="w-3 h-3" />
-                                          }
-                                          {resendAlertMutation.isPending ? "Sending…" : "Re-send Alert Email"}
-                                        </Button>
-                                      </span>
-                                    </TooltipTrigger>
-                                    {(selectedRun?.totalUnmatched ?? 0) === 0 && (
-                                      <TooltipContent side="bottom">
-                                        No unmatched items — nothing to alert about
-                                      </TooltipContent>
+                                  <div className="flex gap-1.5">
+                                    {showRegularResend && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="flex-1">
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="w-full h-7 text-xs gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300 disabled:pointer-events-none"
+                                              onClick={() => resendAlertMutation.mutate()}
+                                              disabled={resendAlertMutation.isPending || !hasUnmatched}
+                                            >
+                                              {resendAlertMutation.isPending
+                                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                                : <AlertTriangle className="w-3 h-3" />
+                                              }
+                                              {resendAlertMutation.isPending ? "Sending…" : "Re-send Alert Email"}
+                                            </Button>
+                                          </span>
+                                        </TooltipTrigger>
+                                        {!hasUnmatched && (
+                                          <TooltipContent side="bottom">
+                                            No unmatched items — nothing to alert about
+                                          </TooltipContent>
+                                        )}
+                                      </Tooltip>
                                     )}
-                                  </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className={showRegularResend ? "" : "flex-1 w-full"}>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className={`h-7 text-xs gap-1.5 text-orange-400/70 hover:bg-orange-500/10 hover:text-orange-300 disabled:pointer-events-none ${showRegularResend ? "px-2" : "w-full"}`}
+                                            onClick={() => setForceResendConfirmOpen(true)}
+                                            disabled={resendAlertMutation.isPending || forceResendAlertMutation.isPending}
+                                          >
+                                            {forceResendAlertMutation.isPending
+                                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                                              : <RefreshCw className="w-3 h-3" />
+                                            }
+                                            {!showRegularResend && (forceResendAlertMutation.isPending ? "Sending…" : "Force resend")}
+                                          </Button>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="bottom">
+                                        Force resend — sends even if a prior alert succeeded
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
                                 );
                               })()}
                             </div>
@@ -2400,6 +2437,49 @@ export default function AdminReconciliation() {
           onResolved={handleResolved}
         />
       )}
+
+      {/* Force Resend Alert Email Confirmation */}
+      <Dialog open={forceResendConfirmOpen} onOpenChange={setForceResendConfirmOpen}>
+        <DialogContent className="max-w-sm gap-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="w-4 h-4 text-orange-400" />
+              Force Resend Alert Email
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will send a new unmatched-items alert email to all admin recipients even though a prior alert already succeeded. A new entry will appear in the alert log.
+          </p>
+          <p className="text-xs text-muted-foreground/60">Run #{selectedRunId}</p>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setForceResendConfirmOpen(false)}
+              disabled={forceResendAlertMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs gap-1.5 bg-orange-500/20 text-orange-300 border border-orange-500/30 hover:bg-orange-500/30"
+              variant="outline"
+              onClick={() => {
+                setForceResendConfirmOpen(false);
+                forceResendAlertMutation.mutate();
+              }}
+              disabled={forceResendAlertMutation.isPending}
+            >
+              {forceResendAlertMutation.isPending
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <RefreshCw className="w-3 h-3" />
+              }
+              {forceResendAlertMutation.isPending ? "Sending…" : "Yes, force resend"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -222,7 +222,8 @@ export function buildUnmatchedAlertHtml(run: typeof reconciliationRunsTable.$inf
 </html>`;
 }
 
-export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void> {
+export async function notifyAdminsOfUnmatchedItems(runId: number, opts?: { force?: boolean }): Promise<void> {
+  const force = opts?.force ?? false;
   try {
     const [run] = await db
       .select()
@@ -235,7 +236,7 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
       return;
     }
 
-    if ((run.totalUnmatched ?? 0) === 0) {
+    if (!force && (run.totalUnmatched ?? 0) === 0) {
       logger.info({ runId }, "No unmatched items — skipping admin unmatched-items alert email");
       return;
     }
