@@ -102,6 +102,7 @@ import type {
   ListMerchantCredentialEventsParams,
   ListMerchantFeaturesParams,
   ListMerchantsParams,
+  ListMySecurityActivityParams,
   ListNotificationsParams,
   ListPaymentLinksParams,
   ListPlanHistoryParams,
@@ -10109,6 +10110,90 @@ export function useGetAdminAuditLogStats<TData = Awaited<ReturnType<typeof getAd
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAdminAuditLogStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListMySecurityActivityUrl = (params?: ListMySecurityActivityParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/audit-logs/my-activity?${stringifiedParams}` : `/api/audit-logs/my-activity`
+}
+
+/**
+ * @summary List the merchant's own security activity (admin actions taken on their account)
+ */
+export const listMySecurityActivity = async (params?: ListMySecurityActivityParams, options?: RequestInit): Promise<AdminAuditLogListResponse> => {
+
+  return customFetch<AdminAuditLogListResponse>(getListMySecurityActivityUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMySecurityActivityQueryKey = (params?: ListMySecurityActivityParams,) => {
+    return [
+    `/api/audit-logs/my-activity`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMySecurityActivityQueryOptions = <TData = Awaited<ReturnType<typeof listMySecurityActivity>>, TError = ErrorType<void>>(params?: ListMySecurityActivityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMySecurityActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMySecurityActivityQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMySecurityActivity>>> = ({ signal }) => listMySecurityActivity(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMySecurityActivity>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMySecurityActivityQueryResult = NonNullable<Awaited<ReturnType<typeof listMySecurityActivity>>>
+export type ListMySecurityActivityQueryError = ErrorType<void>
+
+
+/**
+ * @summary List the merchant's own security activity (admin actions taken on their account)
+ */
+
+export function useListMySecurityActivity<TData = Awaited<ReturnType<typeof listMySecurityActivity>>, TError = ErrorType<void>>(
+ params?: ListMySecurityActivityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMySecurityActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMySecurityActivityQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

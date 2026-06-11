@@ -3208,6 +3208,34 @@ export const GetAdminAuditLogStatsResponse = zod.object({
 
 
 /**
+ * @summary List the merchant's own security activity (admin actions taken on their account)
+ */
+export const ListMySecurityActivityQueryParams = zod.object({
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional(),
+  "dateFrom": zod.date().optional().describe('Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)'),
+  "dateTo": zod.date().optional().describe('Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)')
+})
+
+export const ListMySecurityActivityResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "adminId": zod.number(),
+  "adminEmail": zod.string(),
+  "action": zod.string(),
+  "targetType": zod.string(),
+  "targetId": zod.number().nullish(),
+  "details": zod.string().nullish(),
+  "ipAddress": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Export audit logs as CSV
  */
 export const ExportAdminAuditLogsCsvQueryParams = zod.object({

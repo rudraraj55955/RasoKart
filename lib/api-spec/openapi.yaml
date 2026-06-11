@@ -3251,6 +3251,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/AdminAuditLogStatsResponse"
 
+  /audit-logs/my-activity:
+    get:
+      operationId: listMySecurityActivity
+      tags: [dashboard]
+      summary: List the merchant's own security activity (admin actions taken on their account)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: dateFrom
+          in: query
+          description: "Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)"
+          schema: { type: string, format: date }
+        - name: dateTo
+          in: query
+          description: "Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)"
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Merchant security activity list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuditLogListResponse"
+        "403":
+          description: Forbidden
+
   /audit-logs/my-activity/export:
     get:
       operationId: exportMySecurityActivity

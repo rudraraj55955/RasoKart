@@ -123,6 +123,7 @@ export * from './listMerchantsCallbackSecretSet';
 export * from './listMerchantsExpiryStatus';
 export * from './listMerchantsParams';
 export * from './listMerchantsStatus';
+export * from './listMySecurityActivityParams';
 export * from './listNotificationsIsRead';
 export * from './listNotificationsParams';
 export * from './listPaymentLinksParams';

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useListCallbackLogs, useListApiKeyHistory, useGetCallbackSecretHistory, useGetMe, useUpdateMyPreferences, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useListCallbackLogs, useListApiKeyHistory, useGetCallbackSecretHistory, useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useListMySecurityActivity } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,9 @@ import {
   AlertTriangle,
   Bell,
   Mail,
+  ClipboardList,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, parseISO, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
 import { toast } from "sonner";
@@ -439,6 +442,50 @@ export default function MerchantSecurity() {
     }
   }
 
+  // Admin activity log state
+  const [activityPage, setActivityPage] = useState(1);
+  const [activityDateFrom, setActivityDateFrom] = useState("");
+  const [activityDateTo, setActivityDateTo] = useState("");
+  const [exportingActivity, setExportingActivity] = useState(false);
+
+  const ACTIVITY_PAGE_SIZE = 20;
+
+  const { data: activityData, isLoading: activityLoading } = useListMySecurityActivity({
+    page: activityPage,
+    limit: ACTIVITY_PAGE_SIZE,
+    dateFrom: activityDateFrom || undefined,
+    dateTo: activityDateTo || undefined,
+  });
+
+  const activityRows = activityData?.data ?? [];
+  const activityTotal = activityData?.total ?? 0;
+  const activityTotalPages = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
+
+  function handleExportActivityCsv() {
+    setExportingActivity(true);
+    const token = localStorage.getItem("rasokart_token");
+    fetch("/api/audit-logs/my-activity/export", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Export failed");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `admin-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("Activity log exported");
+      })
+      .catch(() => toast.error("Export failed"))
+      .finally(() => setExportingActivity(false));
+  }
+
+  function formatAction(action: string): string {
+    return action.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }
+
   // Credential event history
   const { data: secretHistory, isLoading: loadingSecret } = useGetCallbackSecretHistory();
   const { data: apiKeyHistory, isLoading: loadingApiKeys } = useListApiKeyHistory();
@@ -759,6 +806,153 @@ export default function MerchantSecurity() {
           </div>
         </div>
       )}
+
+      {/* Admin Activity Log */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-violet-400" />
+              Admin Activity Log
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportActivityCsv}
+                      disabled={exportingActivity || activityTotal === 0}
+                      className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
+                    >
+                      {exportingActivity
+                        ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        : <FileDown className="w-3.5 h-3.5 mr-1.5" />}
+                      {exportingActivity ? "Exporting…" : "Export CSV"}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    Download all admin actions on your account as CSV
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Actions taken on your account by RasoKart administrators
+          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            <span className="text-xs text-muted-foreground font-medium">Date range:</span>
+            <Input
+              type="date"
+              className="w-[150px] h-8 text-xs [color-scheme:dark]"
+              value={activityDateFrom}
+              onChange={e => { setActivityDateFrom(e.target.value); setActivityPage(1); }}
+              title="From date"
+            />
+            <span className="text-muted-foreground text-sm">to</span>
+            <Input
+              type="date"
+              className="w-[150px] h-8 text-xs [color-scheme:dark]"
+              value={activityDateTo}
+              onChange={e => { setActivityDateTo(e.target.value); setActivityPage(1); }}
+              title="To date"
+            />
+            {(activityDateFrom || activityDateTo) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-muted-foreground hover:text-foreground gap-1"
+                onClick={() => { setActivityDateFrom(""); setActivityDateTo(""); setActivityPage(1); }}
+              >
+                <X className="w-3 h-3" />
+                Clear
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16">ID</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>IP Address</TableHead>
+                <TableHead>Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {activityLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    {Array.from({ length: 5 }).map((_, j) => (
+                      <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : !activityRows.length ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-12">
+                    <div className="flex flex-col items-center gap-2">
+                      <ClipboardList className="w-8 h-8 text-muted-foreground/30" />
+                      <p>{(activityDateFrom || activityDateTo) ? "No activity in this date range" : "No admin activity recorded yet"}</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                activityRows.map(row => (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">#{row.id}</TableCell>
+                    <TableCell>
+                      <span className="font-mono text-xs text-violet-400">{formatAction(row.action)}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+                        {row.targetType}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {row.ipAddress ?? <span className="text-muted-foreground/40">—</span>}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {format(new Date(row.createdAt), "MMM d, yyyy HH:mm")}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+        {activityTotalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-border/50">
+            <p className="text-xs text-muted-foreground">
+              {((activityPage - 1) * ACTIVITY_PAGE_SIZE) + 1}–{Math.min(activityPage * ACTIVITY_PAGE_SIZE, activityTotal)} of {activityTotal.toLocaleString()} events
+            </p>
+            <div className="flex gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => setActivityPage(p => Math.max(1, p - 1))}
+                disabled={activityPage === 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => setActivityPage(p => Math.min(activityTotalPages, p + 1))}
+                disabled={activityPage === activityTotalPages}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Credential event history */}
       <Card>
