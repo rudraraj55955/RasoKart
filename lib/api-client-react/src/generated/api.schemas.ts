@@ -2045,6 +2045,7 @@ export interface ReconciliationRun {
   /** "manual" or "auto" (scheduled) */
   triggeredBy?: string;
   notes?: string | null;
+  completedAt?: string | null;
   createdAt: string;
 }
 

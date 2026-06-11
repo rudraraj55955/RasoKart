@@ -76,6 +76,16 @@ function formatCurrency(v: number | string) {
   return `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatRunDuration(start: Date, end: Date): string {
+  const ms = end.getTime() - start.getTime();
+  if (ms < 0) return "—";
+  const totalSecs = ms / 1000;
+  if (totalSecs < 60) return `${totalSecs.toFixed(1)}s`;
+  const mins = Math.floor(totalSecs / 60);
+  const secs = Math.round(totalSecs % 60);
+  return `${mins}m ${secs}s`;
+}
+
 function padTwo(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -996,6 +1006,7 @@ export default function AdminReconciliation() {
                       <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Matched Amt</th>
                       <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Unmatched Amt</th>
                       <th className="text-center px-4 py-2.5 text-xs text-muted-foreground font-medium">Status</th>
+                      <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Duration</th>
                       <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Last Emailed</th>
                       <th className="px-4 py-2.5"></th>
                     </tr>
@@ -1041,6 +1052,11 @@ export default function AdminReconciliation() {
                               {meta.icon}
                               {meta.label}
                             </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
+                            {run.completedAt
+                              ? formatRunDuration(new Date(run.createdAt), new Date(run.completedAt))
+                              : <span className="text-muted-foreground/40">—</span>}
                           </td>
                           <td className="px-4 py-3">
                             {lastEmail ? (

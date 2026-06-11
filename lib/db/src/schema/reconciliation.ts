@@ -13,6 +13,7 @@ export const reconciliationRunsTable = pgTable("reconciliation_runs", {
   matchedAmount: numeric("matched_amount", { precision: 18, scale: 2 }).notNull().default("0"),
   unmatchedAmount: numeric("unmatched_amount", { precision: 18, scale: 2 }).notNull().default("0"),
   status: text("status").notNull().default("running"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   createdBy: integer("created_by"),
   triggeredBy: text("triggered_by").notNull().default("manual"),
   notes: text("notes"),

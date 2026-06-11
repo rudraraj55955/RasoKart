@@ -174,6 +174,7 @@ export async function runReconciliation(opts: ReconcileOptions) {
     const [updated] = await db.update(reconciliationRunsTable)
       .set({
         status: "complete",
+        completedAt: new Date(),
         totalDeposits: deposits.length,
         totalSettlements: settlements.length,
         totalMatched: matched.length,
@@ -192,7 +193,7 @@ export async function runReconciliation(opts: ReconcileOptions) {
     return updated;
   } catch (err) {
     await db.update(reconciliationRunsTable)
-      .set({ status: "failed", notes: err instanceof Error ? err.message : "Unknown error" })
+      .set({ status: "failed", completedAt: new Date(), notes: err instanceof Error ? err.message : "Unknown error" })
       .where(eq(reconciliationRunsTable.id, run.id));
     throw err;
   }

@@ -6764,6 +6764,9 @@ components:
         notes:
           type: string
           nullable: true
+        completedAt:
+          type: string
+          nullable: true
         createdAt: { type: string }
 
     ReconciliationRunListResponse:

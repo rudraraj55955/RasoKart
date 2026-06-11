@@ -3712,6 +3712,7 @@ export const ListReconciliationRunsResponse = zod.object({
   "createdByEmail": zod.string().nullish().describe('Email of the admin who triggered the run (manual runs only)'),
   "triggeredBy": zod.string().optional().describe('\"manual\" or \"auto\" (scheduled)'),
   "notes": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -3756,6 +3757,7 @@ export const ListReconciliationRunItemsResponse = zod.object({
   "createdByEmail": zod.string().nullish().describe('Email of the admin who triggered the run (manual runs only)'),
   "triggeredBy": zod.string().optional().describe('\"manual\" or \"auto\" (scheduled)'),
   "notes": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
   "createdAt": zod.string()
 }),
   "data": zod.array(zod.object({

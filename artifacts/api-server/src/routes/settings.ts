@@ -151,6 +151,7 @@ router.get("/finance_report_email/preview", (_req, res) => {
     matchedAmount: "245820.00",
     unmatchedAmount: "18500.00",
     status: "completed",
+    completedAt: today,
     createdBy: null,
     triggeredBy: "auto",
     notes: null,
