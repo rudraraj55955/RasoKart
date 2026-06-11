@@ -15,7 +15,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search, GripVertical, Megaphone } from "lucide-react";
-import { getApiErrorMessage } from "@/lib/utils";
+import { getApiErrorMessage, isRateLimitError } from "@/lib/utils";
+import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   live:         { label: "Live",        color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
@@ -60,6 +61,7 @@ async function apiPost(path: string, body: object) {
 
 export default function AdminProviders() {
   const qc = useQueryClient();
+  const providerRateLimit = useRateLimit();
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -170,12 +172,12 @@ export default function AdminProviders() {
     if (dialog === "create") {
       createMut.mutate({ data: payload }, {
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Provider created"); setDialog(null); },
-        onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to create provider")),
+        onError: (e: unknown) => { if (isRateLimitError(e)) providerRateLimit.trigger(); toast.error(getApiErrorMessage(e, "Failed to create provider")); },
       });
     } else if (editing) {
       updateMut.mutate({ id: editing.id, data: payload }, {
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Provider updated"); setDialog(null); },
-        onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update provider")),
+        onError: (e: unknown) => { if (isRateLimitError(e)) providerRateLimit.trigger(); toast.error(getApiErrorMessage(e, "Failed to update provider")); },
       });
     }
   }
@@ -475,9 +477,10 @@ export default function AdminProviders() {
               <Input type="number" value={form.sortOrder} onChange={e => setForm(f => ({ ...f, sortOrder: e.target.value }))} />
             </div>
           </div>
+          <RateLimitBanner secondsLeft={providerRateLimit.secondsLeft} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending}>
+            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending || providerRateLimit.isRateLimited}>
               {createMut.isPending || updateMut.isPending ? "Saving…" : dialog === "create" ? "Add Provider" : "Save Changes"}
             </Button>
           </DialogFooter>

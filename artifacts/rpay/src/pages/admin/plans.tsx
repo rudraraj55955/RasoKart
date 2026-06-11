@@ -17,7 +17,8 @@ import { Pencil, Trash2, PlusCircle, Search, Infinity, KeyRound, Webhook, Percen
 import { toast } from "sonner";
 import { format } from "date-fns";
 import type { Plan } from "@workspace/api-client-react";
-import { getApiErrorMessage } from "@/lib/utils";
+import { getApiErrorMessage, isRateLimitError } from "@/lib/utils";
+import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
 
 interface PricingObj { qr: { monthly: number; perTx: number }; va: { monthly: number; perTx: number } }
 const DEFAULT_PRICING: PricingObj = { qr: { monthly: 0, perTx: 0 }, va: { monthly: 0, perTx: 0 } };
@@ -78,6 +79,7 @@ const ACTION_COLOR: Record<string, string> = {
 
 export default function AdminPlans() {
   const qc = useQueryClient();
+  const planRateLimit = useRateLimit();
   const { data: plans, isLoading } = useListPlans();
   const createMutation = useCreatePlan();
   const updateMutation = useUpdatePlan();
@@ -176,12 +178,12 @@ export default function AdminPlans() {
     if (editPlan) {
       updateMutation.mutate({ id: editPlan.id, data: payload }, {
         onSuccess: () => { toast.success("Plan updated"); setDialogOpen(false); qc.invalidateQueries({ queryKey: getListPlansQueryKey() }); },
-        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update plan")),
+        onError: (err: unknown) => { if (isRateLimitError(err)) planRateLimit.trigger(); toast.error(getApiErrorMessage(err, "Failed to update plan")); },
       });
     } else {
       createMutation.mutate({ data: payload }, {
         onSuccess: () => { toast.success("Plan created"); setDialogOpen(false); qc.invalidateQueries({ queryKey: getListPlansQueryKey() }); },
-        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to create plan")),
+        onError: (err: unknown) => { if (isRateLimitError(err)) planRateLimit.trigger(); toast.error(getApiErrorMessage(err, "Failed to create plan")); },
       });
     }
   };
@@ -634,9 +636,10 @@ export default function AdminPlans() {
 
           </div>
 
+          <RateLimitBanner secondsLeft={planRateLimit.secondsLeft} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={!form.name.trim() || isPending}>
+            <Button onClick={handleSave} disabled={!form.name.trim() || isPending || planRateLimit.isRateLimited}>
               {isPending ? "Saving..." : editPlan ? "Update Plan" : "Create Plan"}
             </Button>
           </DialogFooter>

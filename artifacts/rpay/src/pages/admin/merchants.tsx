@@ -35,7 +35,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff, Bell, Globe, Pencil, Webhook, ExternalLink, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
-import { getApiErrorMessage } from "@/lib/utils";
+import { getApiErrorMessage, isRateLimitError } from "@/lib/utils";
+import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
 
 const ACTION_COLOR: Record<string, string> = {
   assigned: "text-sky-400",
@@ -57,6 +58,8 @@ const PLAN_SUB_STATUS_COLOR: Record<string, string> = {
 export default function AdminMerchants() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
+  const assignPlanRateLimit = useRateLimit();
+  const planActionRateLimit = useRateLimit();
   const [search, setSearch] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("search") ?? "";
@@ -353,29 +356,29 @@ export default function AdminMerchants() {
       const mutation = action === "upgrade" ? upgradeMutation : downgradeMutation;
       mutation.mutate({ id, data: { planId: parseInt(selectedPlanId), expiresAt: actionExpiresAt || null, notes } }, {
         onSuccess: () => afterSuccess(`Plan ${action}d`, () => setSelectedPlanId("")),
-        onError: (err: unknown) => toast.error(getApiErrorMessage(err, `Failed to ${action} plan`)),
+        onError: (err: unknown) => { if (isRateLimitError(err)) planActionRateLimit.trigger(); toast.error(getApiErrorMessage(err, `Failed to ${action} plan`)); },
       });
     } else if (action === "suspend") {
       suspendPlanMutation.mutate({ id, data: { notes } }, {
         onSuccess: () => afterSuccess("Plan suspended"),
-        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to suspend plan")),
+        onError: (err: unknown) => { if (isRateLimitError(err)) planActionRateLimit.trigger(); toast.error(getApiErrorMessage(err, "Failed to suspend plan")); },
       });
     } else if (action === "reinstate") {
       reinstatePlanMutation.mutate({ id, data: { notes } }, {
         onSuccess: () => afterSuccess("Plan reinstated"),
-        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reinstate plan")),
+        onError: (err: unknown) => { if (isRateLimitError(err)) planActionRateLimit.trigger(); toast.error(getApiErrorMessage(err, "Failed to reinstate plan")); },
       });
     } else if (action === "renew") {
       const defaultExpiry = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
       renewMutation.mutate({ id, data: { expiresAt: renewExpiresAt || defaultExpiry, scheduledRenewalAt: renewScheduledRenewalAt || null, notes } }, {
         onSuccess: () => afterSuccess("Plan renewed", () => { setRenewExpiresAt(""); setRenewScheduledRenewalAt(""); }),
-        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to renew plan")),
+        onError: (err: unknown) => { if (isRateLimitError(err)) planActionRateLimit.trigger(); toast.error(getApiErrorMessage(err, "Failed to renew plan")); },
       });
     } else if (action === "schedule-renewal") {
       const dateVal = scheduleRenewalDate || null;
       scheduleRenewalMutation.mutate({ id, data: { scheduledRenewalAt: dateVal } }, {
         onSuccess: () => afterSuccess(dateVal ? "Renewal scheduled" : "Scheduled renewal cancelled", () => setScheduleRenewalDate("")),
-        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update scheduled renewal")),
+        onError: (err: unknown) => { if (isRateLimitError(err)) planActionRateLimit.trigger(); toast.error(getApiErrorMessage(err, "Failed to update scheduled renewal")); },
       });
     }
   };
@@ -498,7 +501,7 @@ export default function AdminMerchants() {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
         closeAssignPlan();
       },
-      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to assign plan")),
+      onError: (err: unknown) => { if (isRateLimitError(err)) assignPlanRateLimit.trigger(); toast.error(getApiErrorMessage(err, "Failed to assign plan")); },
     });
   };
 
@@ -2340,9 +2343,10 @@ export default function AdminMerchants() {
                       <Label className="text-xs">Notes (optional)</Label>
                       <Input className="h-8 text-sm" value={actionNotes} onChange={e => setActionNotes(e.target.value)} placeholder="Internal note..." />
                     </div>
+                    <RateLimitBanner secondsLeft={planActionRateLimit.secondsLeft} />
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => { setConfirmAction(null); setActionNotes(""); setActionExpiresAt(""); setScheduleRenewalDate(""); }}>Cancel</Button>
-                      <Button size="sm" onClick={() => handlePlanAction(confirmAction)} disabled={isActionPending || ((confirmAction === "upgrade" || confirmAction === "downgrade") && (!selectedPlanId || (() => { const tp = plans?.find(p => String(p.id) === selectedPlanId); return !!(tp && tp.monthlyFee !== "0" && tp.name.toLowerCase() !== "custom" && !actionExpiresAt); })()))}>
+                      <Button size="sm" onClick={() => handlePlanAction(confirmAction)} disabled={isActionPending || planActionRateLimit.isRateLimited || ((confirmAction === "upgrade" || confirmAction === "downgrade") && (!selectedPlanId || (() => { const tp = plans?.find(p => String(p.id) === selectedPlanId); return !!(tp && tp.monthlyFee !== "0" && tp.name.toLowerCase() !== "custom" && !actionExpiresAt); })()))}>
                         {isActionPending ? "Processing..." : confirmAction === "schedule-renewal"
                           ? (scheduleRenewalDate ? "Set Auto-Renewal" : "Cancel Auto-Renewal")
                           : `Confirm ${confirmAction.charAt(0).toUpperCase() + confirmAction.slice(1)}`}
@@ -2507,6 +2511,7 @@ export default function AdminMerchants() {
               </div>
             )}
           </div>
+          <RateLimitBanner secondsLeft={assignPlanRateLimit.secondsLeft} />
           <DialogFooter>
             <Button variant="outline" onClick={closeAssignPlan}>Cancel</Button>
             {(() => {
@@ -2514,7 +2519,7 @@ export default function AdminMerchants() {
               const isPaid = plan && plan.monthlyFee !== "0" && plan.name.toLowerCase() !== "custom";
               const missingExpiry = isPaid && !expiresAt;
               return (
-                <Button onClick={handleAssignPlan} disabled={!selectedPlanId || !!missingExpiry || assignPlanMutation.isPending}>
+                <Button onClick={handleAssignPlan} disabled={!selectedPlanId || !!missingExpiry || assignPlanMutation.isPending || assignPlanRateLimit.isRateLimited}>
                   {assignPlanMutation.isPending ? "Assigning..." : currentMerchantPlan ? "Change Plan" : "Assign Plan"}
                 </Button>
               );
