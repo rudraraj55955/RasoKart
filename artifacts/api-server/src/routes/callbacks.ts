@@ -6,6 +6,7 @@ import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackA
 import { logger } from "../lib/logger";
 import { fireCallback, scheduleCallbackRetry, recordAttempt } from "../helpers/callbackRetry";
 import { dismissSecretRotationNotifications } from "../helpers/webhookSecretChecker";
+import { sendCallbackSecretRotatedEmail } from "../helpers/callbackSecretRotatedEmail";
 import { ALERT_THRESHOLD } from "../helpers/signatureFailureAlert";
 
 const router = Router();
@@ -333,6 +334,27 @@ router.post("/secret/rotate", async (req, res) => {
   dismissSecretRotationNotifications(user.id).catch((err: unknown) => {
     req.log.warn({ err, userId: user.id }, "Failed to dismiss webhook secret rotation notifications");
   });
+
+  // Send security alert email to the merchant (fire-and-forget)
+  const rawIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    ?? req.ip
+    ?? "";
+  db.select({ email: merchantsTable.email, businessName: merchantsTable.businessName })
+    .from(merchantsTable)
+    .where(eq(merchantsTable.id, user.merchantId))
+    .limit(1)
+    .then(([merchant]) => {
+      if (!merchant) return;
+      return sendCallbackSecretRotatedEmail({
+        to: merchant.email,
+        businessName: merchant.businessName,
+        rotatedAt: now,
+        ipAddress: rawIp,
+      });
+    })
+    .catch((err: unknown) => {
+      req.log.warn({ err, merchantId: user.merchantId }, "Failed to send callback secret rotation email");
+    });
 
   res.json({ secret: newSecret });
 });
