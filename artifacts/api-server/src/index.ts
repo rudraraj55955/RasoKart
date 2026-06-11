@@ -7,6 +7,7 @@ import { processPendingRetries } from "./helpers/callbackRetry";
 import { initReconciliationScheduler } from "./helpers/reconScheduler";
 import { initAuditReportScheduler } from "./helpers/auditReportScheduler";
 import { startProviderLimitAlertScheduler } from "./helpers/providerLimitScheduler";
+import { initQrCleanupScheduler } from "./helpers/qrCleanupScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -54,6 +55,7 @@ async function main() {
   await initReconciliationScheduler();
   initAuditReportScheduler();
   startProviderLimitAlertScheduler();
+  initQrCleanupScheduler();
   scheduleCallbackRetryWorker();
 
   app.listen(port, (err) => {

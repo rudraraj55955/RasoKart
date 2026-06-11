@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey } from "@workspace/api-client-react";
@@ -86,6 +86,8 @@ export default function AdminSettings() {
   const [testEmailTo, setTestEmailTo] = useState<string>("");
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("daily");
   const [initialized, setInitialized] = useState(false);
+  const [retentionDays, setRetentionDays] = useState<number>(30);
+  const [retentionInitialized, setRetentionInitialized] = useState(false);
 
   const { data: me } = useGetMe();
   const alertEnabled = me?.reconciliationAlertEmails ?? true;
@@ -147,6 +149,29 @@ export default function AdminSettings() {
     onSuccess: () => {
       toast.success("Reconciliation schedule saved");
       qc.invalidateQueries({ queryKey: ["/api/settings"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const { data: qrCleanupData, isLoading: qrCleanupLoading } = useQuery<{ retentionDays: number }>({
+    queryKey: ["/api/system-config/qr-cleanup"],
+    queryFn: () => apiGet("/system-config/qr-cleanup"),
+    onSuccess: (d: { retentionDays: number }) => {
+      if (!retentionInitialized) {
+        setRetentionDays(d.retentionDays);
+        setRetentionInitialized(true);
+      }
+    },
+  } as any);
+
+  const currentRetentionDays = qrCleanupData?.retentionDays ?? 30;
+  const retentionUnchanged = retentionDays === currentRetentionDays;
+
+  const { mutate: saveRetention, isPending: savingRetention } = useMutation({
+    mutationFn: () => apiPut("/system-config/qr-cleanup", { retentionDays }),
+    onSuccess: () => {
+      toast.success("QR cleanup retention saved");
+      qc.invalidateQueries({ queryKey: ["/api/system-config/qr-cleanup"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -390,6 +415,82 @@ export default function AdminSettings() {
               <code className="bg-muted px-1 py-0.5 rounded text-xs">SMTP_PORT</code> (default 587) and{" "}
               <code className="bg-muted px-1 py-0.5 rounded text-xs">SMTP_FROM</code>.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* QR Code Auto-Cleanup */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">QR Code Auto-Cleanup</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            Automatically delete expired and used QR codes after a configurable number of days.
+            The cleanup job runs nightly at 02:00 server time.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!qrCleanupLoading && currentRetentionDays === 0 && (
+            <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Auto-cleanup is <strong>disabled</strong>. Expired and used QR codes will never be deleted automatically.</span>
+            </div>
+          )}
+          {!qrCleanupLoading && currentRetentionDays > 0 && (
+            <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                Expired and used QR codes are deleted automatically after{" "}
+                <strong>{currentRetentionDays} day{currentRetentionDays !== 1 ? "s" : ""}</strong>.
+              </span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="retention-days" className="text-sm">Retention period (days)</Label>
+            <div className="flex items-center gap-3">
+              <Input
+                id="retention-days"
+                type="number"
+                min={0}
+                max={365}
+                value={retentionDays}
+                onChange={e => {
+                  const v = parseInt(e.target.value);
+                  if (!isNaN(v)) setRetentionDays(Math.max(0, Math.min(365, v)));
+                }}
+                disabled={qrCleanupLoading}
+                className="w-32"
+              />
+              <span className="text-sm text-muted-foreground">days after expiry/use</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Set to <strong>0</strong> to disable automatic cleanup entirely.
+              Maximum is 365 days.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => saveRetention()}
+              disabled={savingRetention || qrCleanupLoading || retentionUnchanged}
+            >
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+              {savingRetention ? "Saving…" : "Save"}
+            </Button>
+            {!retentionUnchanged && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setRetentionDays(currentRetentionDays)}
+                disabled={savingRetention}
+              >
+                Cancel
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -3605,6 +3605,41 @@ export const UpdateReconciliationScheduleConfigResponse = zod.object({
 
 
 /**
+ * @summary Get QR code auto-cleanup retention configuration (admin only)
+ */
+export const getQrCleanupConfigResponseRetentionDaysMin = 0;
+export const getQrCleanupConfigResponseRetentionDaysMax = 365;
+
+
+
+export const GetQrCleanupConfigResponse = zod.object({
+  "retentionDays": zod.number().min(getQrCleanupConfigResponseRetentionDaysMin).max(getQrCleanupConfigResponseRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+
+/**
+ * @summary Update QR code auto-cleanup retention configuration (admin only)
+ */
+export const updateQrCleanupConfigBodyRetentionDaysMin = 0;
+export const updateQrCleanupConfigBodyRetentionDaysMax = 365;
+
+
+
+export const UpdateQrCleanupConfigBody = zod.object({
+  "retentionDays": zod.number().min(updateQrCleanupConfigBodyRetentionDaysMin).max(updateQrCleanupConfigBodyRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+export const updateQrCleanupConfigResponseRetentionDaysMin = 0;
+export const updateQrCleanupConfigResponseRetentionDaysMax = 365;
+
+
+
+export const UpdateQrCleanupConfigResponse = zod.object({
+  "retentionDays": zod.number().min(updateQrCleanupConfigResponseRetentionDaysMin).max(updateQrCleanupConfigResponseRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+
+/**
  * @summary Mark a single notification as read
  */
 export const MarkNotificationReadParams = zod.object({

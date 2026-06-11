@@ -170,6 +170,7 @@ export * from './providerReorderInput';
 export * from './providerVisibilityInput';
 export * from './publicPaymentLink';
 export * from './publicPaymentLinkStatus';
+export * from './qrCleanupConfig';
 export * from './qrCode';
 export * from './qrCodeActivity';
 export * from './qrCodeActivityResponse';

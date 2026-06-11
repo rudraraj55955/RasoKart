@@ -1981,6 +1981,16 @@ export interface ReconciliationScheduleConfig {
   enabled: boolean;
 }
 
+export interface QrCleanupConfig {
+  /**
+     * Days to retain expired/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.
+
+     * @minimum 0
+     * @maximum 365
+     */
+  retentionDays: number;
+}
+
 export interface UploadUrlRequest {
   /**
      * Original file name.

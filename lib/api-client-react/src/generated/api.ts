@@ -137,6 +137,7 @@ import type {
   ProviderReorderInput,
   ProviderVisibilityInput,
   PublicPaymentLink,
+  QrCleanupConfig,
   QrCode,
   QrCodeActivityResponse,
   QrCodeInput,
@@ -11785,6 +11786,154 @@ export const useUpdateReconciliationScheduleConfig = <TError = ErrorType<ErrorRe
         TContext
       > => {
       return useMutation(getUpdateReconciliationScheduleConfigMutationOptions(options));
+    }
+
+export const getGetQrCleanupConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/qr-cleanup`
+}
+
+/**
+ * @summary Get QR code auto-cleanup retention configuration (admin only)
+ */
+export const getQrCleanupConfig = async ( options?: RequestInit): Promise<QrCleanupConfig> => {
+
+  return customFetch<QrCleanupConfig>(getGetQrCleanupConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetQrCleanupConfigQueryKey = () => {
+    return [
+    `/api/system-config/qr-cleanup`
+    ] as const;
+    }
+
+
+export const getGetQrCleanupConfigQueryOptions = <TData = Awaited<ReturnType<typeof getQrCleanupConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQrCleanupConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetQrCleanupConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getQrCleanupConfig>>> = ({ signal }) => getQrCleanupConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getQrCleanupConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetQrCleanupConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getQrCleanupConfig>>>
+export type GetQrCleanupConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get QR code auto-cleanup retention configuration (admin only)
+ */
+
+export function useGetQrCleanupConfig<TData = Awaited<ReturnType<typeof getQrCleanupConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQrCleanupConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetQrCleanupConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateQrCleanupConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/qr-cleanup`
+}
+
+/**
+ * @summary Update QR code auto-cleanup retention configuration (admin only)
+ */
+export const updateQrCleanupConfig = async (qrCleanupConfig: QrCleanupConfig, options?: RequestInit): Promise<QrCleanupConfig> => {
+
+  return customFetch<QrCleanupConfig>(getUpdateQrCleanupConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      qrCleanupConfig,)
+  }
+);}
+
+
+
+
+export const getUpdateQrCleanupConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateQrCleanupConfig>>, TError,{data: BodyType<QrCleanupConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateQrCleanupConfig>>, TError,{data: BodyType<QrCleanupConfig>}, TContext> => {
+
+const mutationKey = ['updateQrCleanupConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateQrCleanupConfig>>, {data: BodyType<QrCleanupConfig>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateQrCleanupConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateQrCleanupConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateQrCleanupConfig>>>
+    export type UpdateQrCleanupConfigMutationBody = BodyType<QrCleanupConfig>
+    export type UpdateQrCleanupConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update QR code auto-cleanup retention configuration (admin only)
+ */
+export const useUpdateQrCleanupConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateQrCleanupConfig>>, TError,{data: BodyType<QrCleanupConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateQrCleanupConfig>>,
+        TError,
+        {data: BodyType<QrCleanupConfig>},
+        TContext
+      > => {
+      return useMutation(getUpdateQrCleanupConfigMutationOptions(options));
     }
 
 export const getMarkNotificationReadUrl = (id: number,) => {

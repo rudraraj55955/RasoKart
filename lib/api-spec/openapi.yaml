@@ -3602,6 +3602,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /system-config/qr-cleanup:
+    get:
+      operationId: getQrCleanupConfig
+      tags: [system-config]
+      summary: Get QR code auto-cleanup retention configuration (admin only)
+      responses:
+        "200":
+          description: Current QR cleanup config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrCleanupConfig"
+    put:
+      operationId: updateQrCleanupConfig
+      tags: [system-config]
+      summary: Update QR code auto-cleanup retention configuration (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QrCleanupConfig"
+      responses:
+        "200":
+          description: Updated QR cleanup config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrCleanupConfig"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /notifications/{id}/read:
     post:
       operationId: markNotificationRead
@@ -6223,6 +6259,18 @@ components:
         enabled:
           type: boolean
           description: Whether the scheduled auto-reconciliation is enabled
+
+    QrCleanupConfig:
+      type: object
+      required: [retentionDays]
+      properties:
+        retentionDays:
+          type: integer
+          minimum: 0
+          maximum: 365
+          description: >
+            Days to retain expired/used QR codes before auto-deleting them.
+            Set to 0 to disable automatic cleanup.
 
     UploadUrlRequest:
       type: object

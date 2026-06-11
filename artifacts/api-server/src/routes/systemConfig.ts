@@ -3,6 +3,7 @@ import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, audi
 import { inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
+import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
 import { sql } from "drizzle-orm";
 
 const router = Router();
@@ -130,6 +131,66 @@ router.put("/reconciliation", async (req, res, next) => {
     req.log.info({ hour, minute, lookbackDays, enabled: enabledValue }, "Reconciliation schedule config updated");
 
     res.json({ hour, minute, lookbackDays, enabled: enabledValue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/qr-cleanup
+router.get("/qr-cleanup", async (req, res, next) => {
+  try {
+    const retentionDays = await loadQrCleanupRetentionDays();
+    res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/qr-cleanup
+router.put("/qr-cleanup", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { retentionDays } = req.body;
+
+    if (typeof retentionDays !== "number" || !Number.isInteger(retentionDays)) {
+      res.status(400).json({ error: "retentionDays must be an integer" });
+      return;
+    }
+
+    if (retentionDays < 0 || retentionDays > 365) {
+      res.status(400).json({ error: "retentionDays must be between 0 and 365 (0 = disabled)" });
+      return;
+    }
+
+    await db
+      .insert(systemConfigTable)
+      .values({
+        key: SYSTEM_CONFIG_KEYS.QR_CLEANUP_RETENTION_DAYS,
+        value: String(retentionDays),
+        updatedByEmail: user.email,
+      })
+      .onConflictDoUpdate({
+        target: systemConfigTable.key,
+        set: {
+          value: String(retentionDays),
+          updatedByEmail: user.email,
+          updatedAt: sql`now()`,
+        },
+      });
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "qr_cleanup", retentionDays }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ retentionDays }, "QR cleanup retention config updated");
+
+    res.json({ retentionDays });
   } catch (err) {
     next(err);
   }
