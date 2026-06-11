@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, WebhookTestRequestEventType } from "@workspace/api-client-react";
+import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, WebhookTestRequestEventType, GetWebhookLogsEventType } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 import type { CallbackLog } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -362,7 +362,11 @@ export default function MerchantWebhook() {
   const qc = useQueryClient();
   const { data: config, isLoading } = useGetWebhookConfig();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
-  const { data: logsData, isLoading: logsLoading } = useGetWebhookLogs({ limit: 10 });
+  const [eventTypeFilter, setEventTypeFilter] = useState<GetWebhookLogsEventType | null>(null);
+  const { data: logsData, isLoading: logsLoading } = useGetWebhookLogs({
+    limit: 20,
+    ...(eventTypeFilter != null ? { eventType: eventTypeFilter } : {}),
+  });
   const updateMutation = useUpdateWebhookConfig();
   const rotateMutation = useRotateCallbackSecret();
   const testMutation = useSendWebhookTest();
@@ -578,9 +582,40 @@ export default function MerchantWebhook() {
             <Activity className="w-5 h-5 text-primary" />
             <CardTitle>Recent Deliveries</CardTitle>
           </div>
-          <CardDescription>Last 10 webhook delivery attempts to your endpoint</CardDescription>
+          <CardDescription>Last 20 webhook delivery attempts to your endpoint</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Event type filter pills */}
+          <div className="flex items-center gap-1.5 flex-wrap mb-4 pb-3 border-b border-border/40">
+            <button
+              onClick={() => setEventTypeFilter(null)}
+              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                eventTypeFilter === null
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground border border-border/50"
+              }`}
+            >
+              All
+            </button>
+            {EVENTS.map(event => {
+              const colors = EVENT_TYPE_COLORS[event.id] ?? { bg: "bg-muted/40", text: "text-muted-foreground", border: "border-border/50" };
+              const isActive = eventTypeFilter === event.id;
+              return (
+                <button
+                  key={event.id}
+                  onClick={() => setEventTypeFilter(isActive ? null : event.id as GetWebhookLogsEventType)}
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-mono font-medium transition-colors ${
+                    isActive
+                      ? `${colors.bg} ${colors.text} ${colors.border} ring-1 ring-inset ring-current/30`
+                      : "bg-muted/20 text-muted-foreground border-border/40 hover:bg-muted/40 hover:text-foreground"
+                  }`}
+                >
+                  {event.id}
+                </button>
+              );
+            })}
+          </div>
+
           {logsLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -590,8 +625,14 @@ export default function MerchantWebhook() {
           ) : logs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <Activity className="w-8 h-8 text-muted-foreground/40 mb-3" />
-              <p className="text-sm text-muted-foreground">No deliveries yet</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Delivery logs appear here once webhooks are triggered</p>
+              <p className="text-sm text-muted-foreground">
+                {eventTypeFilter != null ? `No deliveries for ${eventTypeFilter}` : "No deliveries yet"}
+              </p>
+              <p className="text-xs text-muted-foreground/60 mt-1">
+                {eventTypeFilter != null
+                  ? "Try a different event type filter or select All"
+                  : "Delivery logs appear here once webhooks are triggered"}
+              </p>
             </div>
           ) : (
             <div className="divide-y divide-border/50">

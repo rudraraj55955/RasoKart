@@ -81,6 +81,7 @@ export * from './exportVaBalanceAuditCsvParams';
 export * from './getQrCodeStatsParams';
 export * from './getReconciliationRunEmailLogs200';
 export * from './getVirtualAccountBalanceHistoryParams';
+export * from './getWebhookLogsEventType';
 export * from './getWebhookLogsParams';
 export * from './healthStatus';
 export * from './invoice';

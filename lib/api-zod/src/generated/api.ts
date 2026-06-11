@@ -1318,7 +1318,8 @@ export const getWebhookLogsQueryLimitMax = 50;
 
 
 export const GetWebhookLogsQueryParams = zod.object({
-  "limit": zod.coerce.number().min(1).max(getWebhookLogsQueryLimitMax).default(getWebhookLogsQueryLimitDefault).describe('Number of recent log entries to return (default 10, max 50)')
+  "limit": zod.coerce.number().min(1).max(getWebhookLogsQueryLimitMax).default(getWebhookLogsQueryLimitDefault).describe('Number of recent log entries to return (default 10, max 50)'),
+  "eventType": zod.enum(['payment.success', 'payment.failed', 'payment.pending', 'withdrawal.approved', 'withdrawal.rejected', 'settlement.processed']).optional().describe('Filter logs to only those matching this event type')
 })
 
 export const GetWebhookLogsResponse = zod.object({

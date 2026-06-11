@@ -1323,6 +1323,18 @@ paths:
             minimum: 1
             maximum: 50
           description: Number of recent log entries to return (default 10, max 50)
+        - name: eventType
+          in: query
+          schema:
+            type: string
+            enum:
+              - payment.success
+              - payment.failed
+              - payment.pending
+              - withdrawal.approved
+              - withdrawal.rejected
+              - settlement.processed
+          description: Filter logs to only those matching this event type
       responses:
         "200":
           description: Recent webhook delivery logs

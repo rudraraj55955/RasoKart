@@ -131,11 +131,30 @@ router.get("/logs", async (req, res) => {
   }
 
   const limitNum = Math.min(50, Math.max(1, parseInt((req.query['limit'] as string) || "10")));
+  const eventType = (req.query['eventType'] as string | undefined) ?? null;
+
+  const ALLOWED_EVENT_TYPES = new Set([
+    "payment.success",
+    "payment.failed",
+    "payment.pending",
+    "withdrawal.approved",
+    "withdrawal.rejected",
+    "settlement.processed",
+  ]);
+
+  if (eventType !== null && !ALLOWED_EVENT_TYPES.has(eventType)) {
+    res.status(400).json({ error: "Invalid eventType" });
+    return;
+  }
+
+  const whereClause = eventType !== null
+    ? sql`${callbackLogsTable.merchantId} = ${merchantId} AND (${callbackLogsTable.requestBody})::json->>'event' = ${eventType}`
+    : eq(callbackLogsTable.merchantId, merchantId);
 
   const data = await db
     .select()
     .from(callbackLogsTable)
-    .where(eq(callbackLogsTable.merchantId, merchantId))
+    .where(whereClause)
     .orderBy(sql`${callbackLogsTable.createdAt} DESC`)
     .limit(limitNum);
 

@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetWebhookLogsEventType } from './getWebhookLogsEventType';
 
 export type GetWebhookLogsParams = {
 /**
@@ -13,4 +14,8 @@ export type GetWebhookLogsParams = {
  * @maximum 50
  */
 limit?: number;
+/**
+ * Filter logs to only those matching this event type
+ */
+eventType?: GetWebhookLogsEventType;
 };

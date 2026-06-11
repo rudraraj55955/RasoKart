@@ -2338,7 +2338,23 @@ export type GetWebhookLogsParams = {
  * @maximum 50
  */
 limit?: number;
+/**
+ * Filter logs to only those matching this event type
+ */
+eventType?: GetWebhookLogsEventType;
 };
+
+export type GetWebhookLogsEventType = typeof GetWebhookLogsEventType[keyof typeof GetWebhookLogsEventType];
+
+
+export const GetWebhookLogsEventType = {
+  paymentsuccess: 'payment.success',
+  paymentfailed: 'payment.failed',
+  paymentpending: 'payment.pending',
+  withdrawalapproved: 'withdrawal.approved',
+  withdrawalrejected: 'withdrawal.rejected',
+  settlementprocessed: 'settlement.processed',
+} as const;
 
 export type RetryWebhookLog200 = {
   success: boolean;
