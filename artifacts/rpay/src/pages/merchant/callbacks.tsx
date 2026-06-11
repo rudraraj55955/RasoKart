@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { useListCallbackLogs, useGetCallbackStats } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useListCallbackLogs, useGetCallbackStats, useGetWebhookLogAttempts, useRetryWebhookLog, getListCallbackLogsQueryKey } from "@workspace/api-client-react";
+import type { CallbackLogAttempt } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertTriangle, ChevronDown, ChevronRight, ListOrdered, Loader2, QrCode, ShieldAlert, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, ListOrdered, Loader2, QrCode, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -44,8 +46,61 @@ function RetryHistorySection({ logId: _logId }: { logId: number }) {
   );
 }
 
+const RETRY_COOLDOWN_DEFAULT = 30;
+
 function CallbackRow({ log }: { log: any }) {
   const [open, setOpen] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (cooldownUntil == null) return;
+    const tick = () => {
+      const remaining = Math.ceil((cooldownUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setSecondsLeft(0);
+        setCooldownUntil(null);
+      } else {
+        setSecondsLeft(remaining);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
+
+  const startCooldown = (seconds: number) => {
+    setCooldownUntil(Date.now() + seconds * 1000);
+    setSecondsLeft(seconds);
+  };
+
+  const { mutate: retryWebhook, isPending: isRetrying } = useRetryWebhookLog({
+    mutation: {
+      onSuccess: () => {
+        setRetryError(null);
+        startCooldown(RETRY_COOLDOWN_DEFAULT);
+        queryClient.invalidateQueries({ queryKey: getListCallbackLogsQueryKey() });
+      },
+      onError: (err: any) => {
+        const msg = (err?.data as any)?.error ?? err?.message ?? "Retry failed";
+        setRetryError(msg);
+        const bodyRetryAfter = (err?.data as any)?.retryAfter;
+        const headerRetryAfter = Number(err?.headers?.get?.("retry-after"));
+        const retryAfter: number =
+          (Number.isFinite(bodyRetryAfter) && bodyRetryAfter > 0 ? bodyRetryAfter : null) ??
+          (Number.isFinite(headerRetryAfter) && headerRetryAfter > 0 ? headerRetryAfter : null) ??
+          RETRY_COOLDOWN_DEFAULT;
+        startCooldown(retryAfter);
+      },
+    },
+  });
+
+  const isCoolingDown = secondsLeft > 0;
+  const canRetry = log.status === "failed" || log.status === "pending_retry";
+
+
   const tryParse = (s: string | null) => {
     if (!s) return null;
     try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
@@ -81,6 +136,33 @@ function CallbackRow({ log }: { log: any }) {
               </div>
             </div>
             {open && <RetryHistorySection logId={log.id} />}
+            {canRetry && (
+              <div className="flex items-center gap-3 mt-3 px-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isRetrying || isCoolingDown}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setRetryError(null);
+                    retryWebhook({ id: log.id });
+                  }}
+                >
+                  {isRetrying ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : isCoolingDown ? (
+                    <Clock className="w-3.5 h-3.5" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  {isRetrying ? "Retrying…" : isCoolingDown ? `Retry in ${secondsLeft}s…` : "Retry now"}
+                </Button>
+                {retryError && (
+                  <span className="text-xs text-rose-400">{retryError}</span>
+                )}
+              </div>
+            )}
           </TableCell>
         </TableRow>
       </CollapsibleContent>

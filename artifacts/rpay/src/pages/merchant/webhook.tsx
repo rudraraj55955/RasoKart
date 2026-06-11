@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { EVENT_TYPE_COLORS, EventTypeBadge } from "@/components/ui/event-type-badge";
-import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, WebhookTestRequestEventType, GetWebhookLogsEventType } from "@workspace/api-client-react";
+import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, WebhookTestRequestEventType } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 import type { CallbackLog } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
@@ -363,7 +363,7 @@ export default function MerchantWebhook() {
   const qc = useQueryClient();
   const { data: config, isLoading } = useGetWebhookConfig();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
-  const [eventTypeFilter, setEventTypeFilter] = useState<GetWebhookLogsEventType | null>(null);
+  const [eventTypeFilter, setEventTypeFilter] = useState<string | null>(null);
   const logsParams = { limit: 20, ...(eventTypeFilter != null ? { eventType: eventTypeFilter } : {}) };
   const { data: logsData, isLoading: logsLoading } = useGetWebhookLogs(logsParams, {
     query: { queryKey: getGetWebhookLogsQueryKey(logsParams) },
@@ -389,6 +389,8 @@ export default function MerchantWebhook() {
   const [selectedLog, setSelectedLog] = useState<CallbackLog | null>(null);
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const [testEventType, setTestEventType] = useState<WebhookTestRequestEventType>(WebhookTestRequestEventType.paymentsuccess);
+  const [secretSavedAt, setSecretSavedAt] = useState<number | null>(null);
+  const [secretVerifiedDismissed, setSecretVerifiedDismissed] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -647,7 +649,7 @@ onError: () => toast.error("Failed to send test event"),
               return (
                 <button
                   key={event.id}
-                  onClick={() => setEventTypeFilter(isActive ? null : event.id as GetWebhookLogsEventType)}
+                  onClick={() => setEventTypeFilter(isActive ? null : event.id)}
                   className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-mono font-medium transition-colors ${
                     isActive
                       ? `${colors.bg} ${colors.text} ${colors.border} ring-1 ring-inset ring-current/30`

@@ -1363,6 +1363,11 @@ export const GetWebhookLogAttemptsResponse = zod.object({
   "firedAt": zod.string().describe('ISO timestamp when this attempt was fired'),
   "httpStatus": zod.number().nullish(),
   "responseBody": zod.string().nullish()
+}))
+})
+
+
+/**
  * Returns aggregated delivery counts (total, success, failed) grouped by event type for the merchant's webhook logs. Only event types with at least one log entry are returned.
  * @summary Get per-event-type delivery stats for the authenticated merchant
  */

@@ -31,8 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
-import { getApiErrorMessage, isRateLimitError } from "@/lib/utils";
-import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
+import { getApiErrorMessage } from "@/lib/utils";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 
 const ACTION_COLOR: Record<string, string> = {

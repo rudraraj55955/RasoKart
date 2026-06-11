@@ -271,7 +271,6 @@ export * from './webhookConfig';
 export * from './webhookConfigInput';
 export * from './webhookLogEventStat';
 export * from './webhookLogStatsResponse';
-export * from './webhookSecretCheckResult';
 export * from './webhookTestRequest';
 export * from './webhookTestRequestEventType';
 export * from './webhookTestResult';
