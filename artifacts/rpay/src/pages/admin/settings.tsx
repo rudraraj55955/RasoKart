@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
@@ -195,6 +196,9 @@ export default function AdminSettings() {
   const [storageScheduleEnabled, setStorageScheduleEnabled] = useState<boolean>(true);
   const [storageScheduleHour, setStorageScheduleHour] = useState<number>(3);
   const [storageScheduleInitialized, setStorageScheduleInitialized] = useState(false);
+
+  const [auditLogRetentionDays, setAuditLogRetentionDays] = useState<number>(90);
+  const [auditLogRetentionInitialized, setAuditLogRetentionInitialized] = useState(false);
 
   const [retryDelay1, setRetryDelay1] = useState<number>(300);
   const [retryDelay2, setRetryDelay2] = useState<number>(900);
@@ -486,6 +490,30 @@ export default function AdminSettings() {
     onSuccess: () => {
       toast.success("Test email history retention saved");
       qc.invalidateQueries({ queryKey: ["/api/system-config/test-email-retention"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const { data: auditLogRetentionData, isLoading: auditLogRetentionLoading } = useQuery<{ retentionDays: number }>({
+    queryKey: ["/api/system-config/audit-report-retention"],
+    queryFn: () => apiGet("/system-config/audit-report-retention"),
+    onSuccess: (d: { retentionDays: number }) => {
+      if (!auditLogRetentionInitialized) {
+        setAuditLogRetentionDays(d.retentionDays);
+        setAuditLogRetentionInitialized(true);
+      }
+    },
+  } as any);
+
+  const currentAuditLogRetentionDays = auditLogRetentionData?.retentionDays ?? 90;
+  const auditLogRetentionUnchanged = auditLogRetentionDays === currentAuditLogRetentionDays;
+
+  const { mutate: saveAuditLogRetention, isPending: savingAuditLogRetention } = useMutation({
+    mutationFn: () => apiPut("/system-config/audit-report-retention", { retentionDays: auditLogRetentionDays }),
+    onSuccess: () => {
+      toast.success("Audit report log retention saved");
+      qc.invalidateQueries({ queryKey: ["/api/system-config/audit-report-retention"] });
+
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -1470,6 +1498,83 @@ export default function AdminSettings() {
                 variant="ghost"
                 onClick={() => setVaRetentionDays(currentVaRetentionDays)}
                 disabled={savingVaRetention}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Audit Report Log Retention */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Scheduled Report Log Retention</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            Automatically delete old audit report delivery log entries after a configurable number of days.
+            The cleanup job runs nightly at 02:30 server time.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!auditLogRetentionLoading && currentAuditLogRetentionDays === 0 && (
+            <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Log retention is <strong>disabled</strong>. Audit report delivery logs will never be deleted automatically.</span>
+            </div>
+          )}
+          {!auditLogRetentionLoading && currentAuditLogRetentionDays > 0 && (
+            <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                Audit report delivery logs are deleted automatically after{" "}
+                <strong>{currentAuditLogRetentionDays} day{currentAuditLogRetentionDays !== 1 ? "s" : ""}</strong>.
+              </span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="audit-log-retention" className="text-sm">Retention period</Label>
+            <Select
+              value={String(auditLogRetentionDays)}
+              onValueChange={v => setAuditLogRetentionDays(parseInt(v))}
+              disabled={auditLogRetentionLoading}
+            >
+              <SelectTrigger id="audit-log-retention" className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="60">60 days</SelectItem>
+                <SelectItem value="90">90 days (default)</SelectItem>
+                <SelectItem value="180">180 days</SelectItem>
+                <SelectItem value="365">365 days</SelectItem>
+                <SelectItem value="0">Disabled (keep forever)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Applies to entries in the <strong>delivery history</strong> panel on the Audit Logs page.
+              Set to <strong>Disabled</strong> to keep logs indefinitely.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => saveAuditLogRetention()}
+              disabled={savingAuditLogRetention || auditLogRetentionLoading || auditLogRetentionUnchanged}
+            >
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+              {savingAuditLogRetention ? "Saving…" : "Save"}
+            </Button>
+            {!auditLogRetentionUnchanged && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setAuditLogRetentionDays(currentAuditLogRetentionDays)}
+                disabled={savingAuditLogRetention}
               >
                 Cancel
               </Button>

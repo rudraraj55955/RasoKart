@@ -863,7 +863,7 @@ export const ListMerchantCredentialEventsQueryParams = zod.object({
 })
 
 export const ListMerchantCredentialEventsResponseItem = zod.object({
-  "eventType": zod.enum(['key_generated', 'key_revoked', 'secret_rotated', 'api_key_generated', 'api_key_revoked']),
+  "eventType": zod.enum(['key_generated', 'key_revoked', 'secret_rotated']),
   "keyPrefix": zod.string().nullish().describe('Key prefix for key_generated\/key_revoked events; null for secret_rotated'),
   "occurredAt": zod.string().describe('ISO timestamp of when the event occurred'),
   "ipAddress": zod.string().nullish().describe('Masked IP address of the actor who performed the action'),
@@ -4329,6 +4329,41 @@ export const UpdateTestEmailRetentionConfigResponse = zod.object({
  */
 export const RunTestEmailRetentionCleanupResponse = zod.object({
   "deleted": zod.number().describe('Number of test email history rows deleted by this cleanup run.')
+})
+
+
+/**
+ * @summary Get audit report log retention configuration (admin only)
+ */
+export const getAuditReportRetentionConfigResponseRetentionDaysMin = 0;
+export const getAuditReportRetentionConfigResponseRetentionDaysMax = 3650;
+
+
+
+export const GetAuditReportRetentionConfigResponse = zod.object({
+  "retentionDays": zod.number().min(getAuditReportRetentionConfigResponseRetentionDaysMin).max(getAuditReportRetentionConfigResponseRetentionDaysMax).describe('Days to retain scheduled audit report delivery logs before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+
+/**
+ * @summary Update audit report log retention configuration (admin only)
+ */
+export const updateAuditReportRetentionConfigBodyRetentionDaysMin = 0;
+export const updateAuditReportRetentionConfigBodyRetentionDaysMax = 3650;
+
+
+
+export const UpdateAuditReportRetentionConfigBody = zod.object({
+  "retentionDays": zod.number().min(updateAuditReportRetentionConfigBodyRetentionDaysMin).max(updateAuditReportRetentionConfigBodyRetentionDaysMax).describe('Days to retain scheduled audit report delivery logs before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+export const updateAuditReportRetentionConfigResponseRetentionDaysMin = 0;
+export const updateAuditReportRetentionConfigResponseRetentionDaysMax = 3650;
+
+
+
+export const UpdateAuditReportRetentionConfigResponse = zod.object({
+  "retentionDays": zod.number().min(updateAuditReportRetentionConfigResponseRetentionDaysMin).max(updateAuditReportRetentionConfigResponseRetentionDaysMax).describe('Days to retain scheduled audit report delivery logs before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
 })
 
 

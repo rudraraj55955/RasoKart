@@ -886,6 +886,7 @@ export default function AdminReconciliation() {
       // Exhausted all pages — run ID not found, stop searching
       setSearchingForRun(false);
     }
+    return undefined;
   }, [runs, isLoading, deepLinkRunId, searchingForRun, historyPage, historyTotalPages]);
 
   // Scroll the highlighted row into view once it appears

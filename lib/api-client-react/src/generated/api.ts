@@ -39,6 +39,7 @@ import type {
   ApiMonitoringStats,
   AssignPlanInput,
   AuditReportEmailPreview,
+  AuditReportRetentionConfig,
   AuditReportSchedule,
   AuditReportScheduleInput,
   AuditReportScheduleListResponse,
@@ -125,11 +126,11 @@ import type {
   MerchantBrandingInput,
   MerchantConnection,
   MerchantConnectionInput,
-  MerchantCredentialEvent,
   MerchantFeaturesEntry,
   MerchantFeaturesInput,
   MerchantFeaturesListResponse,
   MerchantFeaturesRecord,
+  MerchantListCredentialEvent,
   MerchantListResponse,
   MerchantPlan,
   MerchantPlanWithDetails,
@@ -2681,9 +2682,9 @@ export const getListMerchantCredentialEventsUrl = (id: number,
  * @summary List credential events for a merchant (admin only)
  */
 export const listMerchantCredentialEvents = async (id: number,
-    params?: ListMerchantCredentialEventsParams, options?: RequestInit): Promise<MerchantCredentialEvent[]> => {
+    params?: ListMerchantCredentialEventsParams, options?: RequestInit): Promise<MerchantListCredentialEvent[]> => {
 
-  return customFetch<MerchantCredentialEvent[]>(getListMerchantCredentialEventsUrl(id,params),
+  return customFetch<MerchantListCredentialEvent[]>(getListMerchantCredentialEventsUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -14217,6 +14218,154 @@ export const useRunTestEmailRetentionCleanup = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRunTestEmailRetentionCleanupMutationOptions(options));
+    }
+
+export const getGetAuditReportRetentionConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/audit-report-retention`
+}
+
+/**
+ * @summary Get audit report log retention configuration (admin only)
+ */
+export const getAuditReportRetentionConfig = async ( options?: RequestInit): Promise<AuditReportRetentionConfig> => {
+
+  return customFetch<AuditReportRetentionConfig>(getGetAuditReportRetentionConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAuditReportRetentionConfigQueryKey = () => {
+    return [
+    `/api/system-config/audit-report-retention`
+    ] as const;
+    }
+
+
+export const getGetAuditReportRetentionConfigQueryOptions = <TData = Awaited<ReturnType<typeof getAuditReportRetentionConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuditReportRetentionConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAuditReportRetentionConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuditReportRetentionConfig>>> = ({ signal }) => getAuditReportRetentionConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAuditReportRetentionConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAuditReportRetentionConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getAuditReportRetentionConfig>>>
+export type GetAuditReportRetentionConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get audit report log retention configuration (admin only)
+ */
+
+export function useGetAuditReportRetentionConfig<TData = Awaited<ReturnType<typeof getAuditReportRetentionConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuditReportRetentionConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAuditReportRetentionConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAuditReportRetentionConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/audit-report-retention`
+}
+
+/**
+ * @summary Update audit report log retention configuration (admin only)
+ */
+export const updateAuditReportRetentionConfig = async (auditReportRetentionConfig: AuditReportRetentionConfig, options?: RequestInit): Promise<AuditReportRetentionConfig> => {
+
+  return customFetch<AuditReportRetentionConfig>(getUpdateAuditReportRetentionConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      auditReportRetentionConfig,)
+  }
+);}
+
+
+
+
+export const getUpdateAuditReportRetentionConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAuditReportRetentionConfig>>, TError,{data: BodyType<AuditReportRetentionConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAuditReportRetentionConfig>>, TError,{data: BodyType<AuditReportRetentionConfig>}, TContext> => {
+
+const mutationKey = ['updateAuditReportRetentionConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAuditReportRetentionConfig>>, {data: BodyType<AuditReportRetentionConfig>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateAuditReportRetentionConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAuditReportRetentionConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateAuditReportRetentionConfig>>>
+    export type UpdateAuditReportRetentionConfigMutationBody = BodyType<AuditReportRetentionConfig>
+    export type UpdateAuditReportRetentionConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update audit report log retention configuration (admin only)
+ */
+export const useUpdateAuditReportRetentionConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAuditReportRetentionConfig>>, TError,{data: BodyType<AuditReportRetentionConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAuditReportRetentionConfig>>,
+        TError,
+        {data: BodyType<AuditReportRetentionConfig>},
+        TContext
+      > => {
+      return useMutation(getUpdateAuditReportRetentionConfigMutationOptions(options));
     }
 
 export const getGetWebhookRetriesConfigUrl = () => {

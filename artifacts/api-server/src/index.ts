@@ -13,6 +13,7 @@ import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initRateLimitCleanupScheduler } from "./helpers/rateLimitCleanupScheduler";
 import { initTestEmailRetentionScheduler } from "./helpers/testEmailRetentionScheduler";
+import { initAuditReportRetentionScheduler } from "./helpers/auditReportRetentionScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -66,6 +67,7 @@ async function main() {
   initPlanRenewalScheduler();
   initRateLimitCleanupScheduler();
   initTestEmailRetentionScheduler();
+  initAuditReportRetentionScheduler();
   scheduleCallbackRetryWorker();
 
   // Startup sweep: immediately scan all active connections so merchants receive

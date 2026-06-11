@@ -6,6 +6,7 @@ import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
 import { loadVaCleanupRetentionDays } from "../helpers/vaCleanupScheduler";
 import { loadTestEmailRetentionDays, runTestEmailRetentionCleanup } from "../helpers/testEmailRetentionScheduler";
+import { loadAuditReportLogRetentionDays } from "../helpers/auditReportRetentionScheduler";
 import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 import { sql } from "drizzle-orm";
 
@@ -556,6 +557,66 @@ router.delete("/signature-failure-alert-history", async (req, res, next) => {
     req.log.info("Signature failure alert history cleared");
 
     res.json({ cleared: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/audit-report-retention
+router.get("/audit-report-retention", async (req, res, next) => {
+  try {
+    const retentionDays = await loadAuditReportLogRetentionDays();
+    res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/audit-report-retention
+router.put("/audit-report-retention", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { retentionDays } = req.body;
+
+    if (typeof retentionDays !== "number" || !Number.isInteger(retentionDays)) {
+      res.status(400).json({ error: "retentionDays must be an integer" });
+      return;
+    }
+
+    if (retentionDays < 0 || retentionDays > 3650) {
+      res.status(400).json({ error: "retentionDays must be between 0 and 3650 (0 = disabled)" });
+      return;
+    }
+
+    await db
+      .insert(systemConfigTable)
+      .values({
+        key: SYSTEM_CONFIG_KEYS.AUDIT_REPORT_LOG_RETENTION_DAYS,
+        value: String(retentionDays),
+        updatedByEmail: user.email,
+      })
+      .onConflictDoUpdate({
+        target: systemConfigTable.key,
+        set: {
+          value: String(retentionDays),
+          updatedByEmail: user.email,
+          updatedAt: sql`now()`,
+        },
+      });
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "audit_report_log_retention", retentionDays }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ retentionDays }, "Audit report log retention config updated");
+
+    res.json({ retentionDays });
   } catch (err) {
     next(err);
   }

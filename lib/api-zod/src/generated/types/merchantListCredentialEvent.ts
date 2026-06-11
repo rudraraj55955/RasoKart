@@ -5,16 +5,17 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
-import type { CredentialEventEventType } from './credentialEventEventType';
+import type { MerchantListCredentialEventEventType } from './merchantListCredentialEventEventType';
 
-export interface CredentialEvent {
-  eventType: CredentialEventEventType;
-  occurredAt: Date;
-  /** @nullable */
+export interface MerchantListCredentialEvent {
+  eventType: MerchantListCredentialEventEventType;
+  /**
+     * Key prefix for key_generated/key_revoked events; null for secret_rotated
+     * @nullable
+     */
   keyPrefix?: string | null;
-  /** @nullable */
-  description?: string | null;
-  isRevoked?: boolean;
+  /** ISO timestamp of when the event occurred */
+  occurredAt: string;
   /**
      * Masked IP address of the actor who performed the action
      * @nullable

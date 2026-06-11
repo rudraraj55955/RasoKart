@@ -9,13 +9,12 @@ import type { MerchantCredentialEventEventType } from './merchantCredentialEvent
 
 export interface MerchantCredentialEvent {
   eventType: MerchantCredentialEventEventType;
-  /**
-     * Key prefix for key_generated/key_revoked events; null for secret_rotated
-     * @nullable
-     */
+  occurredAt: Date;
+  /** @nullable */
   keyPrefix?: string | null;
-  /** ISO timestamp of when the event occurred */
-  occurredAt: string;
+  /** @nullable */
+  description?: string | null;
+  isRevoked?: boolean;
   /**
      * Masked IP address of the actor who performed the action
      * @nullable

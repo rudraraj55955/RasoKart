@@ -866,7 +866,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/MerchantCredentialEvent"
+                  $ref: "#/components/schemas/MerchantListCredentialEvent"
         "403":
           description: Admin access only
         "404":
@@ -4407,6 +4407,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/TestEmailRetentionRunResult"
 
+  /system-config/audit-report-retention:
+    get:
+      operationId: getAuditReportRetentionConfig
+      tags: [system-config]
+      summary: Get audit report log retention configuration (admin only)
+      responses:
+        "200":
+          description: Current audit report log retention config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReportRetentionConfig"
+    put:
+      operationId: updateAuditReportRetentionConfig
+      tags: [system-config]
+      summary: Update audit report log retention configuration (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditReportRetentionConfig"
+      responses:
+        "200":
+          description: Updated audit report log retention config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReportRetentionConfig"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /system-config/webhook-retries:
     get:
       operationId: getWebhookRetriesConfig
@@ -5420,7 +5456,27 @@ components:
           format: date-time
           description: ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.
 
-    CredentialEvent:
+    MerchantListCredentialEvent:
+      type: object
+      required: [eventType, occurredAt]
+      properties:
+        eventType:
+          type: string
+          enum: [key_generated, key_revoked, secret_rotated]
+        keyPrefix:
+          type: ["string", "null"]
+          description: Key prefix for key_generated/key_revoked events; null for secret_rotated
+        occurredAt:
+          type: string
+          description: ISO timestamp of when the event occurred
+        ipAddress:
+          type: ["string", "null"]
+          description: Masked IP address of the actor who performed the action
+        actorEmail:
+          type: ["string", "null"]
+          description: Email of the actor who performed the action
+
+    MerchantCredentialEvent:
       type: object
       required: [eventType, occurredAt]
       properties:
@@ -5450,7 +5506,7 @@ components:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/CredentialEvent"
+            $ref: "#/components/schemas/MerchantCredentialEvent"
 
     CallbackSecretRotateResponse:
       type: object
@@ -7770,6 +7826,18 @@ components:
             $ref: "#/components/schemas/WebhookRetryDelay"
           description: Per-attempt delay schedule. Entry N gives the wait before attempt N+1.
 
+    AuditReportRetentionConfig:
+      type: object
+      required: [retentionDays]
+      properties:
+        retentionDays:
+          type: integer
+          minimum: 0
+          maximum: 3650
+          description: >
+            Days to retain scheduled audit report delivery logs before auto-deleting them.
+            Set to 0 to disable automatic cleanup.
+
     QrCleanupConfig:
       type: object
       required: [retentionDays]
@@ -7801,26 +7869,6 @@ components:
         deleted:
           type: integer
           description: Number of test email history rows deleted by this cleanup run.
-
-    MerchantCredentialEvent:
-      type: object
-      required: [eventType, occurredAt]
-      properties:
-        eventType:
-          type: string
-          enum: [key_generated, key_revoked, secret_rotated, api_key_generated, api_key_revoked]
-        keyPrefix:
-          type: ["string", "null"]
-          description: Key prefix for key_generated/key_revoked events; null for secret_rotated
-        occurredAt:
-          type: string
-          description: ISO timestamp of when the event occurred
-        ipAddress:
-          type: ["string", "null"]
-          description: Masked IP address of the actor who performed the action
-        actorEmail:
-          type: ["string", "null"]
-          description: Email of the actor who performed the action
 
     StorageCleanupRun:
       type: object
@@ -7909,6 +7957,7 @@ components:
             $ref: "#/components/schemas/SignatureFailureAlertLogEntry"
         total:
           type: integer
+
 
     WebhookRetriesConfig:
       type: object

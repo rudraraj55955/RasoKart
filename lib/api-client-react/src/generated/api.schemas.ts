@@ -567,10 +567,40 @@ export interface CallbackSecretStatus {
   lastRotatedAt?: string | null;
 }
 
-export type CredentialEventEventType = typeof CredentialEventEventType[keyof typeof CredentialEventEventType];
+export type MerchantListCredentialEventEventType = typeof MerchantListCredentialEventEventType[keyof typeof MerchantListCredentialEventEventType];
 
 
-export const CredentialEventEventType = {
+export const MerchantListCredentialEventEventType = {
+  key_generated: 'key_generated',
+  key_revoked: 'key_revoked',
+  secret_rotated: 'secret_rotated',
+} as const;
+
+export interface MerchantListCredentialEvent {
+  eventType: MerchantListCredentialEventEventType;
+  /**
+     * Key prefix for key_generated/key_revoked events; null for secret_rotated
+     * @nullable
+     */
+  keyPrefix?: string | null;
+  /** ISO timestamp of when the event occurred */
+  occurredAt: string;
+  /**
+     * Masked IP address of the actor who performed the action
+     * @nullable
+     */
+  ipAddress?: string | null;
+  /**
+     * Email of the actor who performed the action
+     * @nullable
+     */
+  actorEmail?: string | null;
+}
+
+export type MerchantCredentialEventEventType = typeof MerchantCredentialEventEventType[keyof typeof MerchantCredentialEventEventType];
+
+
+export const MerchantCredentialEventEventType = {
   key_generated: 'key_generated',
   key_revoked: 'key_revoked',
   secret_rotated: 'secret_rotated',
@@ -578,8 +608,8 @@ export const CredentialEventEventType = {
   api_key_revoked: 'api_key_revoked',
 } as const;
 
-export interface CredentialEvent {
-  eventType: CredentialEventEventType;
+export interface MerchantCredentialEvent {
+  eventType: MerchantCredentialEventEventType;
   occurredAt: string;
   /** @nullable */
   keyPrefix?: string | null;
@@ -599,7 +629,7 @@ export interface CredentialEvent {
 }
 
 export interface CredentialEventList {
-  data: CredentialEvent[];
+  data: MerchantCredentialEvent[];
 }
 
 export interface CallbackSecretRotateResponse {
@@ -2401,6 +2431,16 @@ export interface WebhookRetryPolicy {
   delays: WebhookRetryDelay[];
 }
 
+export interface AuditReportRetentionConfig {
+  /**
+     * Days to retain scheduled audit report delivery logs before auto-deleting them. Set to 0 to disable automatic cleanup.
+
+     * @minimum 0
+     * @maximum 3650
+     */
+  retentionDays: number;
+}
+
 export interface QrCleanupConfig {
   /**
      * Days to retain expired/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.
@@ -2424,38 +2464,6 @@ export interface TestEmailRetentionConfig {
 export interface TestEmailRetentionRunResult {
   /** Number of test email history rows deleted by this cleanup run. */
   deleted: number;
-}
-
-export type MerchantCredentialEventEventType = typeof MerchantCredentialEventEventType[keyof typeof MerchantCredentialEventEventType];
-
-
-export const MerchantCredentialEventEventType = {
-  key_generated: 'key_generated',
-  key_revoked: 'key_revoked',
-  secret_rotated: 'secret_rotated',
-  api_key_generated: 'api_key_generated',
-  api_key_revoked: 'api_key_revoked',
-} as const;
-
-export interface MerchantCredentialEvent {
-  eventType: MerchantCredentialEventEventType;
-  /**
-     * Key prefix for key_generated/key_revoked events; null for secret_rotated
-     * @nullable
-     */
-  keyPrefix?: string | null;
-  /** ISO timestamp of when the event occurred */
-  occurredAt: string;
-  /**
-     * Masked IP address of the actor who performed the action
-     * @nullable
-     */
-  ipAddress?: string | null;
-  /**
-     * Email of the actor who performed the action
-     * @nullable
-     */
-  actorEmail?: string | null;
 }
 
 export interface StorageCleanupRun {

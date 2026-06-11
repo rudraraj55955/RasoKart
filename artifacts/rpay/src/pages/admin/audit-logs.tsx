@@ -9,6 +9,7 @@ import {
   useListAllAuditReportScheduleLogs,
   previewAuditReportEmail,
   useListCredentialEvents,
+  useGetAuditReportRetentionConfig,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -957,6 +958,8 @@ const FREQUENCY_LABELS: Record<string, string> = {
 
 function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
   const { data, isLoading } = useListAuditReportScheduleLogs(scheduleId, { limit: 20 });
+  const { data: retentionData } = useGetAuditReportRetentionConfig();
+  const retentionDays = retentionData?.retentionDays ?? 90;
   const logs = data?.data ?? [];
 
   if (isLoading) {
@@ -969,9 +972,17 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
 
   if (logs.length === 0) {
     return (
-      <div className="flex items-center gap-2 px-3 py-3 text-muted-foreground">
-        <History className="w-4 h-4 opacity-40" />
-        <span className="text-xs">No sends recorded yet — history will appear here after the first delivery.</span>
+      <div className="space-y-0">
+        <div className="flex items-center gap-2 px-3 py-3 text-muted-foreground">
+          <History className="w-4 h-4 opacity-40" />
+          <span className="text-xs">No sends recorded yet — history will appear here after the first delivery.</span>
+        </div>
+        {retentionDays > 0 && (
+          <div className="border-t border-border/30 px-3 py-2 flex items-center gap-1.5 text-xs text-muted-foreground/60">
+            <Trash2 className="w-3 h-3 shrink-0" />
+            <span>Entries older than {retentionDays} day{retentionDays !== 1 ? "s" : ""} are removed automatically.</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -1014,6 +1025,12 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
           </div>
         </div>
       ))}
+      {retentionDays > 0 && (
+        <div className="px-4 py-2 flex items-center gap-1.5 text-xs text-muted-foreground/60">
+          <Trash2 className="w-3 h-3 shrink-0" />
+          <span>Entries older than {retentionDays} day{retentionDays !== 1 ? "s" : ""} are removed automatically.</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1222,12 +1239,12 @@ function ScheduledReportsPanel() {
   const { data: schedulesData, isLoading } = useListAuditReportSchedules({
     query: {
       queryKey: getListAuditReportSchedulesQueryKey(),
-      refetchInterval: (query) => {
-        const rows = (query.state.data as { data?: { retryInProgress?: boolean }[] } | undefined)?.data ?? [];
+      refetchInterval: (query: { state: { data?: { data?: { retryInProgress?: boolean }[] } } }) => {
+        const rows = query.state.data?.data ?? [];
         return rows.some((s) => s.retryInProgress) ? 30_000 : false;
       },
     },
-  });
+  } as any);
   const createSchedule = useCreateAuditReportSchedule();
   const updateSchedule = useUpdateAuditReportSchedule();
   const deleteSchedule = useDeleteAuditReportSchedule();

@@ -5,8 +5,8 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
-import type { CredentialEvent } from './credentialEvent';
+import type { MerchantCredentialEvent } from './merchantCredentialEvent';
 
 export interface CredentialEventList {
-  data: CredentialEvent[];
+  data: MerchantCredentialEvent[];
 }
