@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   useListSettlements,
   useGetSettlementStats,
@@ -396,6 +396,16 @@ export default function AdminSettlements() {
     setSavedFilters(updated);
     storeSavedFilters(updated);
   };
+
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === SETTLEMENTS_SAVED_FILTERS_KEY) {
+        setSavedFilters(loadSavedFilters());
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   return (
     <div className="space-y-6">

@@ -129,6 +129,16 @@ export default function AdminDeposits() {
   const anyFilterActive = hasSmartFilter || !!search || !!merchantId || status !== "all" || !!dateFrom || !!dateTo;
 
   useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === DEPOSITS_SAVED_FILTERS_KEY) {
+        setSavedFilters(loadSavedFilters());
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  useEffect(() => {
     const onPop = () => {
       const q = new URLSearchParams(window.location.search).get("q") ?? "";
       setSmartInput(q);
