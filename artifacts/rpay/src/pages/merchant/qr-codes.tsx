@@ -823,7 +823,10 @@ export default function MerchantQrCodes() {
           </div>
           {createRateLimited && (
             <div className="px-0 pb-2">
-              <RateLimitBanner secondsLeft={createSecondsLeft} />
+              <RateLimitBanner
+                secondsLeft={createSecondsLeft}
+                message="You've created too many QR codes recently. Please wait a few minutes and try again."
+              />
             </div>
           )}
           <DialogFooter>

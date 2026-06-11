@@ -35,14 +35,20 @@ export function useRateLimit() {
   return { isRateLimited: secondsLeft > 0, secondsLeft, trigger, clear };
 }
 
-export function RateLimitBanner({ secondsLeft }: { secondsLeft: number }) {
+export function RateLimitBanner({ secondsLeft, message }: { secondsLeft: number; message?: string }) {
   if (secondsLeft <= 0) return null;
   return (
     <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
       <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
       <div className="flex-1 min-w-0">
-        <span className="font-semibold text-amber-200">Too many requests — </span>
-        please wait before trying again.
+        {message ? (
+          <span>{message}</span>
+        ) : (
+          <>
+            <span className="font-semibold text-amber-200">Too many requests — </span>
+            please wait before trying again.
+          </>
+        )}
         <span className="inline-flex items-center gap-1 ml-2 font-mono text-amber-400">
           <Clock className="w-3 h-3 shrink-0" />
           {secondsLeft}s
