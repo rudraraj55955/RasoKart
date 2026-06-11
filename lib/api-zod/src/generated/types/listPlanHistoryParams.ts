@@ -5,9 +5,11 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListPlanHistoryAction } from './listPlanHistoryAction';
 
 export type ListPlanHistoryParams = {
 merchantId?: number;
+action?: ListPlanHistoryAction;
 page?: number;
 limit?: number;
 };

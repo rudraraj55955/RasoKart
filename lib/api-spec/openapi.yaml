@@ -2319,6 +2319,11 @@ paths:
           in: query
           schema:
             type: integer
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [assigned, upgraded, downgraded, suspended, reinstated, renewed, unassigned]
         - name: page
           in: query
           schema:

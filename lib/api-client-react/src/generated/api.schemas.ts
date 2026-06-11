@@ -2852,9 +2852,23 @@ export const ListMerchantConnectionsStatus = {
 
 export type ListPlanHistoryParams = {
 merchantId?: number;
+action?: ListPlanHistoryAction;
 page?: number;
 limit?: number;
 };
+
+export type ListPlanHistoryAction = typeof ListPlanHistoryAction[keyof typeof ListPlanHistoryAction];
+
+
+export const ListPlanHistoryAction = {
+  assigned: 'assigned',
+  upgraded: 'upgraded',
+  downgraded: 'downgraded',
+  suspended: 'suspended',
+  reinstated: 'reinstated',
+  renewed: 'renewed',
+  unassigned: 'unassigned',
+} as const;
 
 export type ListQrCodesParams = {
 type?: ListQrCodesType;

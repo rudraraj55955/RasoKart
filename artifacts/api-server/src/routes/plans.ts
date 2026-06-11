@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, plansTable, merchantPlansTable, merchantsTable, planHistoryTable, auditLogsTable } from "@workspace/db";
-import { eq, and, gte, count, desc, sql } from "drizzle-orm";
+import { eq, and, gte, count, desc, sql, SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 
@@ -95,12 +95,15 @@ router.get("/", async (_req, res) => {
 
 // GET /api/plans/history — admin: plan history across all merchants
 router.get("/history", requireAdmin, async (req, res) => {
-  const { merchantId, page = "1", limit = "25" } = req.query as Record<string, string>;
+  const { merchantId, action, page = "1", limit = "25" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
 
-  const where = merchantId ? eq(planHistoryTable.merchantId, parseInt(merchantId)) : undefined;
+  const conditions: SQL[] = [];
+  if (merchantId) conditions.push(eq(planHistoryTable.merchantId, parseInt(merchantId)));
+  if (action) conditions.push(eq(planHistoryTable.action, action));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [{ total }] = await db.select({ total: count() }).from(planHistoryTable).where(where);
 
   const rows = await db

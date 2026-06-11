@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useListPlans, useCreatePlan, useUpdatePlan, useDeletePlan, getListPlansQueryKey, useListPlanHistory } from "@workspace/api-client-react";
+import { useState, useMemo } from "react";
+import { useListPlans, useCreatePlan, useUpdatePlan, useDeletePlan, getListPlansQueryKey, useListPlanHistory, useListMerchants } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Pencil, Trash2, PlusCircle, Search, Infinity, KeyRound, Webhook, Percent, CheckCircle2, XCircle, Network, ChevronLeft, ChevronRight, History } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Pencil, Trash2, PlusCircle, Search, Infinity, KeyRound, Webhook, Percent, CheckCircle2, XCircle, Network, ChevronLeft, ChevronRight, History, X } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import type { Plan } from "@workspace/api-client-react";
@@ -88,10 +89,25 @@ export default function AdminPlans() {
   const [form, setForm] = useState<PlanFormState>(DEFAULT_FORM);
 
   const [historyPage, setHistoryPage] = useState(1);
+  const [historyMerchantId, setHistoryMerchantId] = useState<string>("");
+  const [historyAction, setHistoryAction] = useState<string>("");
+  const [merchantSearch, setMerchantSearch] = useState("");
   const HISTORY_LIMIT = 25;
-  const { data: historyData, isLoading: historyLoading } = useListPlanHistory(
-    { page: historyPage, limit: HISTORY_LIMIT },
-  );
+
+  const { data: merchantsData } = useListMerchants({ limit: 200 });
+  const filteredMerchants = useMemo(() => {
+    const all = merchantsData?.data ?? [];
+    if (!merchantSearch) return all;
+    const q = merchantSearch.toLowerCase();
+    return all.filter(m => m.businessName?.toLowerCase().includes(q) || m.email.toLowerCase().includes(q));
+  }, [merchantsData, merchantSearch]);
+
+  const { data: historyData, isLoading: historyLoading } = useListPlanHistory({
+    page: historyPage,
+    limit: HISTORY_LIMIT,
+    ...(historyMerchantId ? { merchantId: parseInt(historyMerchantId) } : {}),
+    ...(historyAction ? { action: historyAction as "assigned" | "upgraded" | "downgraded" | "suspended" | "reinstated" | "renewed" | "unassigned" } : {}),
+  });
 
   const filteredPlans = plans?.filter(p =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.description ?? "").toLowerCase().includes(search.toLowerCase())
@@ -181,6 +197,22 @@ export default function AdminPlans() {
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   const historyTotalPages = historyData ? Math.ceil(historyData.total / HISTORY_LIMIT) : 1;
+
+  const hasHistoryFilters = !!historyMerchantId || !!historyAction;
+  const clearHistoryFilters = () => {
+    setHistoryMerchantId("");
+    setHistoryAction("");
+    setMerchantSearch("");
+    setHistoryPage(1);
+  };
+  const applyMerchantFilter = (val: string) => {
+    setHistoryMerchantId(val === "all" ? "" : val);
+    setHistoryPage(1);
+  };
+  const applyActionFilter = (val: string) => {
+    setHistoryAction(val === "all" ? "" : val);
+    setHistoryPage(1);
+  };
 
   return (
     <div className="space-y-6">
@@ -282,7 +314,63 @@ export default function AdminPlans() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="history" className="mt-4">
+        <TabsContent value="history" className="mt-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex-1 min-w-[200px] max-w-xs">
+              <Select value={historyMerchantId || "all"} onValueChange={applyMerchantFilter}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="All merchants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <div className="px-2 py-1.5">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input
+                        className="pl-7 h-7 text-xs"
+                        placeholder="Search merchants..."
+                        value={merchantSearch}
+                        onChange={e => setMerchantSearch(e.target.value)}
+                        onKeyDown={e => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                  <SelectItem value="all">All merchants</SelectItem>
+                  {filteredMerchants.map(m => (
+                    <SelectItem key={m.id} value={String(m.id)}>
+                      {m.businessName ?? m.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="min-w-[180px]">
+              <Select value={historyAction || "all"} onValueChange={applyActionFilter}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="All actions" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All actions</SelectItem>
+                  {(["assigned", "upgraded", "downgraded", "suspended", "reinstated", "renewed", "unassigned"] as const).map(act => (
+                    <SelectItem key={act} value={act}>
+                      <span className={`capitalize ${ACTION_COLOR[act] ?? ""}`}>{act}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {hasHistoryFilters && (
+              <Button variant="ghost" size="sm" className="h-9 text-muted-foreground" onClick={clearHistoryFilters}>
+                <X className="w-3.5 h-3.5 mr-1.5" />Clear filters
+              </Button>
+            )}
+
+            {historyData && (
+              <p className="ml-auto text-xs text-muted-foreground">{historyData.total} result{historyData.total !== 1 ? "s" : ""}</p>
+            )}
+          </div>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Plan Assignment History</CardTitle>

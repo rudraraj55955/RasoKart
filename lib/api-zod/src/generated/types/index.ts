@@ -129,6 +129,7 @@ export * from './listNotificationsIsRead';
 export * from './listNotificationsParams';
 export * from './listPaymentLinksParams';
 export * from './listPaymentLinksStatus';
+export * from './listPlanHistoryAction';
 export * from './listPlanHistoryParams';
 export * from './listProvidersAdminParams';
 export * from './listProvidersParams';
