@@ -292,6 +292,24 @@ export default function MerchantCallbacks() {
                 </button>
               </div>
             )}
+            {sigFilter === "verified" && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-2.5 py-1">
+                <ShieldAlert className="w-3 h-3" />
+                <span>Sig. verified only</span>
+                <button type="button" onClick={clearSigFilter} className="ml-0.5 hover:text-emerald-300">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {sigFilter === "none" && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-2.5 py-1">
+                <ShieldAlert className="w-3 h-3" />
+                <span>No signature</span>
+                <button type="button" onClick={clearSigFilter} className="ml-0.5 hover:text-amber-300">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -315,6 +333,10 @@ export default function MerchantCallbacks() {
                   <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
                     {sigFilter === "failed"
                       ? "No signature failure logs found"
+                      : sigFilter === "verified"
+                      ? "No verified-signature logs found"
+                      : sigFilter === "none"
+                      ? "No unsigned callback logs found"
                       : qrCodeId ? `No webhook logs for QR #${qrCodeId}` : "No callback logs yet"}
                   </TableCell>
                 </TableRow>
