@@ -1858,6 +1858,7 @@ export type AuditReportScheduleLogTriggerType = typeof AuditReportScheduleLogTri
 export const AuditReportScheduleLogTriggerType = {
   manual: 'manual',
   scheduled: 'scheduled',
+  auto_recovery: 'auto_recovery',
 } as const;
 
 export interface AuditReportScheduleLog {
@@ -1887,6 +1888,7 @@ export type AuditReportScheduleLogWithScheduleTriggerType = typeof AuditReportSc
 export const AuditReportScheduleLogWithScheduleTriggerType = {
   manual: 'manual',
   scheduled: 'scheduled',
+  auto_recovery: 'auto_recovery',
 } as const;
 
 export type AuditReportScheduleLogWithScheduleScheduleFrequency = typeof AuditReportScheduleLogWithScheduleScheduleFrequency[keyof typeof AuditReportScheduleLogWithScheduleScheduleFrequency];
@@ -3261,6 +3263,7 @@ export type ListAllAuditReportScheduleLogsTriggerType = typeof ListAllAuditRepor
 export const ListAllAuditReportScheduleLogsTriggerType = {
   manual: 'manual',
   scheduled: 'scheduled',
+  auto_recovery: 'auto_recovery',
 } as const;
 
 export type ListAuditReportScheduleLogsParams = {
@@ -3286,6 +3289,7 @@ export type ListAuditReportScheduleLogsTriggerType = typeof ListAuditReportSched
 export const ListAuditReportScheduleLogsTriggerType = {
   manual: 'manual',
   scheduled: 'scheduled',
+  auto_recovery: 'auto_recovery',
 } as const;
 
 export type ListMySecurityActivityParams = {

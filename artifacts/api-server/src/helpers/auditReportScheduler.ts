@@ -3,10 +3,18 @@ import { randomUUID } from "crypto";
 import { db, scheduledAuditReportsTable, scheduledAuditReportLogsTable, auditLogsTable, usersTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { sendMail } from "./mailer";
+import { sendMail, checkMailerHealth } from "./mailer";
 import { createBulkNotifications } from "./notifications";
 
 let scheduledTask: ScheduledTask | null = null;
+
+/**
+ * Tracks the mailer health state from the previous scheduler run.
+ * null  = not yet checked (first run)
+ * false = was unhealthy on the last run
+ * true  = was healthy on the last run
+ */
+let mailerWasHealthy: boolean | null = null;
 
 function escapeCsv(val: string | number | null | undefined): string {
   if (val === null || val === undefined) return "";
@@ -126,7 +134,7 @@ function isDue(frequency: string, lastSentAt: Date | null): boolean {
 export async function sendScheduledReport(
   schedule: typeof scheduledAuditReportsTable.$inferSelect,
   retryAttempt: number = 0,
-  triggerType: "manual" | "scheduled" = "scheduled",
+  triggerType: "manual" | "scheduled" | "auto_recovery" = "scheduled",
   deliveryCycleId?: string,
 ): Promise<boolean> {
   const isRetry = retryAttempt > 0;
@@ -311,12 +319,57 @@ function isActiveRetryCycle(
   return latestLog.sentAt >= windowCutoff;
 }
 
+/**
+ * Auto-recovery pass — triggered when the mailer transitions from unhealthy
+ * to healthy. Retries every active schedule that has a failure in the last 24 h
+ * and has not yet succeeded since that failure.
+ *
+ * These sends are logged with triggerType="auto_recovery" and isRetry=true so
+ * admins can see them in ScheduleHistoryPanel without any manual action.
+ */
+async function runRecoveryPass(
+  active: (typeof scheduledAuditReportsTable.$inferSelect)[],
+): Promise<void> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  for (const schedule of active) {
+    const latestLog = await getLatestLog(schedule.id);
+    if (!latestLog || latestLog.success) continue;
+    if (latestLog.sentAt < cutoff) continue;
+
+    const nextAttempt = latestLog.retryAttempt + 1;
+    logger.info(
+      { scheduleId: schedule.id, frequency: schedule.frequency, nextAttempt },
+      "Auto-recovery: retrying failed scheduled audit report after mailer outage cleared",
+    );
+    await sendScheduledReport(schedule, nextAttempt, "auto_recovery").catch(err => {
+      logger.error({ err, scheduleId: schedule.id, nextAttempt }, "Auto-recovery retry also failed");
+    });
+  }
+}
+
 async function runDueReports(): Promise<void> {
   try {
+    // ── Mailer health check — detect outage-clearing transitions ─────────────
+    const mailerNowHealthy = await checkMailerHealth().catch(() => false);
+    const outageJustCleared = mailerWasHealthy === false && mailerNowHealthy === true;
+    if (outageJustCleared) {
+      logger.info("Mailer outage cleared — scheduling auto-recovery pass for recent failures");
+    } else if (!mailerNowHealthy && mailerWasHealthy !== false) {
+      logger.warn("Mailer appears unhealthy — scheduled sends may fail until connectivity is restored");
+    }
+    mailerWasHealthy = mailerNowHealthy;
+
     const active = await db
       .select()
       .from(scheduledAuditReportsTable)
       .where(eq(scheduledAuditReportsTable.isActive, true));
+
+    // ── Auto-recovery pass (runs before normal scheduling) ───────────────────
+    // If the mailer just came back up, retry recent failures immediately.
+    if (outageJustCleared && active.length > 0) {
+      await runRecoveryPass(active);
+    }
 
     const sentInThisRun = new Set<number>();
 

@@ -3379,7 +3379,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [manual, scheduled]
+            enum: [manual, scheduled, auto_recovery]
         - name: dateFrom
           in: query
           schema: { type: string }
@@ -3421,7 +3421,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [manual, scheduled]
+            enum: [manual, scheduled, auto_recovery]
         - name: dateFrom
           in: query
           schema: { type: string }
@@ -7630,7 +7630,7 @@ components:
           type: ["string", "null"]
         triggerType:
           type: string
-          enum: [manual, scheduled]
+          enum: [manual, scheduled, auto_recovery]
         deliveryCycleId:
           type: ["string", "null"]
           description: UUID shared by the initial attempt and all its retries within a single delivery cycle.
@@ -7657,7 +7657,7 @@ components:
           type: boolean
         triggerType:
           type: string
-          enum: [manual, scheduled]
+          enum: [manual, scheduled, auto_recovery]
         scheduleFrequency:
           type: string
           enum: [daily, weekly, monthly]

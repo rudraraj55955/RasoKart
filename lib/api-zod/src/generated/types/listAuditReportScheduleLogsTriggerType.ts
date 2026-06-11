@@ -12,4 +12,5 @@ export type ListAuditReportScheduleLogsTriggerType = typeof ListAuditReportSched
 export const ListAuditReportScheduleLogsTriggerType = {
   manual: 'manual',
   scheduled: 'scheduled',
+  auto_recovery: 'auto_recovery',
 } as const;

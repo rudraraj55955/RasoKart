@@ -3203,7 +3203,7 @@ export const ListAllAuditReportScheduleLogsQueryParams = zod.object({
   "page": zod.coerce.number().default(listAllAuditReportScheduleLogsQueryPageDefault),
   "limit": zod.coerce.number().default(listAllAuditReportScheduleLogsQueryLimitDefault),
   "status": zod.enum(['success', 'failed']).optional(),
-  "triggerType": zod.enum(['manual', 'scheduled']).optional(),
+  "triggerType": zod.enum(['manual', 'scheduled', 'auto_recovery']).optional(),
   "dateFrom": zod.coerce.string().optional(),
   "dateTo": zod.coerce.string().optional()
 })
@@ -3218,7 +3218,7 @@ export const ListAllAuditReportScheduleLogsResponse = zod.object({
   "errorMessage": zod.string().nullish(),
   "recipientEmail": zod.string().nullish(),
   "isRetry": zod.boolean(),
-  "triggerType": zod.enum(['manual', 'scheduled']),
+  "triggerType": zod.enum(['manual', 'scheduled', 'auto_recovery']),
   "scheduleFrequency": zod.enum(['daily', 'weekly', 'monthly']),
   "scheduleRecipient": zod.string(),
   "deliveryCycleId": zod.string().nullish().describe('UUID shared by the initial attempt and all its retries within a single delivery cycle.')
@@ -3248,7 +3248,7 @@ export const ListAuditReportScheduleLogsQueryParams = zod.object({
   "page": zod.coerce.number().default(listAuditReportScheduleLogsQueryPageDefault),
   "limit": zod.coerce.number().default(listAuditReportScheduleLogsQueryLimitDefault),
   "status": zod.enum(['success', 'failed']).optional(),
-  "triggerType": zod.enum(['manual', 'scheduled']).optional(),
+  "triggerType": zod.enum(['manual', 'scheduled', 'auto_recovery']).optional(),
   "dateFrom": zod.coerce.string().optional(),
   "dateTo": zod.coerce.string().optional()
 })
@@ -3264,7 +3264,7 @@ export const ListAuditReportScheduleLogsResponse = zod.object({
   "isRetry": zod.boolean(),
   "retryAttempt": zod.number().describe('Which attempt number this log entry represents (0 = initial, 1 = first retry, 2 = second retry, etc.).'),
   "recipientEmail": zod.string().nullish(),
-  "triggerType": zod.enum(['manual', 'scheduled']),
+  "triggerType": zod.enum(['manual', 'scheduled', 'auto_recovery']),
   "deliveryCycleId": zod.string().nullish().describe('UUID shared by the initial attempt and all its retries within a single delivery cycle.')
 })),
   "total": zod.number(),

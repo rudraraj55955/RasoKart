@@ -1,7 +1,7 @@
 import { pgTable, serial, integer, boolean, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { scheduledAuditReportsTable } from "./scheduledAuditReports";
 
-export const auditReportTriggerTypeEnum = pgEnum("audit_report_trigger_type", ["manual", "scheduled"]);
+export const auditReportTriggerTypeEnum = pgEnum("audit_report_trigger_type", ["manual", "scheduled", "auto_recovery"]);
 
 export const scheduledAuditReportLogsTable = pgTable("scheduled_audit_report_logs", {
   id: serial("id").primaryKey(),

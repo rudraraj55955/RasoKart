@@ -1139,7 +1139,7 @@ const PAGE_SIZE = 20;
 
 function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: number; maxRetryAttempts: number }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
-  const [triggerFilter, setTriggerFilter] = useState<"all" | "manual" | "scheduled">("all");
+  const [triggerFilter, setTriggerFilter] = useState<"all" | "manual" | "scheduled" | "auto_recovery">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [retryingId, setRetryingId] = useState<number | null>(null);
@@ -1292,7 +1292,7 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
           ))}
         </div>
         <div className="flex items-center rounded-md border border-border/40 bg-muted/10 overflow-hidden text-[11px]">
-          {(["all", "manual", "scheduled"] as const).map(v => (
+          {(["all", "manual", "scheduled", "auto_recovery"] as const).map(v => (
             <button
               key={v}
               onClick={() => setTriggerFilter(v)}
@@ -1302,11 +1302,13 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
                     ? "bg-violet-500/20 text-violet-400 font-medium"
                     : v === "scheduled"
                     ? "bg-sky-500/20 text-sky-400 font-medium"
+                    : v === "auto_recovery"
+                    ? "bg-teal-500/20 text-teal-400 font-medium"
                     : "bg-muted/30 text-foreground font-medium"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {v === "all" ? "All" : v === "manual" ? "Manual" : "Scheduled"}
+              {v === "all" ? "All" : v === "manual" ? "Manual" : v === "scheduled" ? "Scheduled" : "Auto-recovery"}
             </button>
           ))}
         </div>
@@ -1457,12 +1459,16 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
                         <span className="inline-flex items-center rounded border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
                           Manual
                         </span>
+                      ) : log.triggerType === "auto_recovery" ? (
+                        <span className="inline-flex items-center rounded border border-teal-500/20 bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-medium text-teal-400" title="Automatically retried after mailer outage cleared">
+                          ⟳ Auto-recovery
+                        </span>
                       ) : (
                         <span className="inline-flex items-center rounded border border-zinc-500/20 bg-zinc-500/10 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
                           Scheduled
                         </span>
                       )}
-                      {log.isRetry && (
+                      {log.isRetry && log.triggerType !== "auto_recovery" && (
                         <span className="inline-flex items-center gap-0.5 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
                           ↩ Attempt {log.retryAttempt} of {maxRetryAttempts}
                         </span>
@@ -1548,6 +1554,10 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
                       {latestAttempt.triggerType === "manual" ? (
                         <span className="inline-flex items-center rounded border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
                           Manual
+                        </span>
+                      ) : latestAttempt.triggerType === "auto_recovery" ? (
+                        <span className="inline-flex items-center rounded border border-teal-500/20 bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-medium text-teal-400" title="Automatically retried after mailer outage cleared">
+                          ⟳ Auto-recovery
                         </span>
                       ) : (
                         <span className="inline-flex items-center rounded border border-zinc-500/20 bg-zinc-500/10 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">

@@ -492,6 +492,7 @@ router.get("/schedules/logs", async (req, res) => {
   else if (status === "failed") dataConditions.push(eq(scheduledAuditReportLogsTable.success, false));
   if (triggerType === "manual") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "manual"));
   else if (triggerType === "scheduled") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "scheduled"));
+  else if (triggerType === "auto_recovery") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "auto_recovery"));
   const dataWhere = dataConditions.length > 0 ? and(...dataConditions) : undefined;
 
   const [{ filteredTotal }] = await db
@@ -595,6 +596,7 @@ router.get("/schedules/:id/logs", async (req, res) => {
   else if (status === "failed") dataConditions.push(eq(scheduledAuditReportLogsTable.success, false));
   if (triggerType === "manual") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "manual"));
   else if (triggerType === "scheduled") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "scheduled"));
+  else if (triggerType === "auto_recovery") dataConditions.push(eq(scheduledAuditReportLogsTable.triggerType, "auto_recovery"));
   const dataWhere = and(...dataConditions);
 
   const [{ filteredTotal }] = await db

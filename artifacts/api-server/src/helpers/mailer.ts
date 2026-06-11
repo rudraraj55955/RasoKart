@@ -61,6 +61,23 @@ export interface MailOptions {
   }>;
 }
 
+/**
+ * Returns true when the SMTP server is reachable and accepts the configured
+ * credentials. Used by the scheduler to detect outage-clearing events.
+ * Never throws — returns false on any error.
+ */
+export async function checkMailerHealth(): Promise<boolean> {
+  const cfg = await getSmtpConfig().catch(() => null);
+  if (!cfg) return false;
+  const transport = createTransportFromConfig(cfg);
+  try {
+    await transport.verify();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function sendMail(opts: MailOptions): Promise<boolean> {
   const cfg = await getSmtpConfig();
   if (!cfg) {
