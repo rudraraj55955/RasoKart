@@ -39,7 +39,7 @@ router.get("/stats", async (req, res) => {
 router.get("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
-  const { page = "1", limit = "20", action, targetType, search, dateFrom, dateTo, merchantId } = req.query as Record<string, string>;
+  const { page = "1", limit = "20", action, targetType, search, dateFrom, dateTo, merchantId, settingKey } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -75,6 +75,13 @@ router.get("/", async (req, res) => {
           sql`${auditLogsTable.details}::jsonb -> 'merchantIds' @> ${JSON.stringify([merchantIdNum])}::jsonb`,
         )!
       );
+    }
+  }
+  if (settingKey) {
+    if (action === "setting_updated") {
+      conditions.push(sql`${auditLogsTable.details}::jsonb->>'key' = ${settingKey}`);
+    } else if (action === "system_config_updated") {
+      conditions.push(sql`${auditLogsTable.details}::jsonb->>'section' = ${settingKey}`);
     }
   }
 

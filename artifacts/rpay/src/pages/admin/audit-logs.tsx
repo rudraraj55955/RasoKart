@@ -62,6 +62,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   virtual_account_deleted:  { label: "VA Deleted",            color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   test_email_sent:              { label: "Test Email Sent",              color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
   setting_updated:              { label: "Setting Updated",              color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  system_config_updated:        { label: "System Config Updated",        color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   security_activity_exported:   { label: "Security Activity Exported",   color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
 };
 
@@ -1685,6 +1686,17 @@ function SecurityEventsPanel() {
   );
 }
 
+const SETTING_KEY_OPTIONS: { value: string; label: string }[] = [
+  { value: "finance_report_email",   label: "Finance Report Email" },
+  { value: "reconciliation_schedule", label: "Reconciliation Schedule" },
+];
+
+const SYSTEM_CONFIG_SECTION_OPTIONS: { value: string; label: string }[] = [
+  { value: "reconciliation",          label: "Reconciliation" },
+  { value: "qr_cleanup",              label: "QR Cleanup" },
+  { value: "signature_failure_alert", label: "Signature Failure Alert" },
+];
+
 export default function AdminAuditLogs() {
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("all");
@@ -1693,10 +1705,21 @@ export default function AdminAuditLogs() {
   const [dateTo, setDateTo] = useState("");
   const [merchantIdInput, setMerchantIdInput] = useState("");
   const [merchantId, setMerchantId] = useState<number | undefined>(undefined);
+  const [settingKey, setSettingKey] = useState("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any | null>(null);
   const [exporting, setExporting] = useState(false);
   const [lastExportCount, setLastExportCount] = useState<number | null>(null);
+
+  const showSettingKeyFilter = action === "setting_updated" || action === "system_config_updated";
+  const settingKeyOptions = action === "setting_updated" ? SETTING_KEY_OPTIONS : SYSTEM_CONFIG_SECTION_OPTIONS;
+  const settingKeyLabel = action === "setting_updated" ? "Setting Key" : "Config Section";
+
+  function handleActionChange(v: string) {
+    setAction(v);
+    setSettingKey("all");
+    setPage(1);
+  }
 
   async function handleExportCsv() {
     setExporting(true);
@@ -1708,6 +1731,7 @@ export default function AdminAuditLogs() {
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
       if (merchantId != null) params.set("merchantId", String(merchantId));
+      if (showSettingKeyFilter && settingKey !== "all") params.set("settingKey", settingKey);
 
       const token = localStorage.getItem("rasokart_token");
       const res = await fetch(`/api/audit-logs/export?${params.toString()}`, {
@@ -1739,6 +1763,7 @@ export default function AdminAuditLogs() {
   const hasDateFilter = dateFrom !== "" || dateTo !== "";
   const hasTargetType = targetType !== "all";
   const hasMerchantId = merchantId != null;
+  const hasSettingKey = showSettingKeyFilter && settingKey !== "all";
 
   function resetFilters() {
     setSearch("");
@@ -1748,6 +1773,7 @@ export default function AdminAuditLogs() {
     setDateTo("");
     setMerchantIdInput("");
     setMerchantId(undefined);
+    setSettingKey("all");
     setPage(1);
   }
 
@@ -1765,6 +1791,7 @@ export default function AdminAuditLogs() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     merchantId,
+    settingKey: hasSettingKey ? settingKey : undefined,
     page,
     limit: 20,
   } as any);
@@ -1839,7 +1866,7 @@ export default function AdminAuditLogs() {
                   onChange={e => { setSearch(e.target.value); setPage(1); }}
                 />
               </div>
-              <Select value={action} onValueChange={v => { setAction(v); setPage(1); }}>
+              <Select value={action} onValueChange={handleActionChange}>
                 <SelectTrigger className="w-[200px]"><SelectValue placeholder="Action type" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Actions</SelectItem>
@@ -1848,6 +1875,17 @@ export default function AdminAuditLogs() {
                   ))}
                 </SelectContent>
               </Select>
+              {showSettingKeyFilter && (
+                <Select value={settingKey} onValueChange={v => { setSettingKey(v); setPage(1); }}>
+                  <SelectTrigger className="w-[220px]"><SelectValue placeholder={settingKeyLabel} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All {settingKeyLabel}s</SelectItem>
+                    {settingKeyOptions.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={targetType} onValueChange={v => { setTargetType(v); setPage(1); }}>
                 <SelectTrigger className="w-[200px]"><SelectValue placeholder="Target type" /></SelectTrigger>
                 <SelectContent>
@@ -1964,7 +2002,7 @@ export default function AdminAuditLogs() {
           </div>
         </CardHeader>
 
-        {(hasTargetType || hasDateFilter || hasMerchantId) && (
+        {(hasTargetType || hasDateFilter || hasMerchantId || hasSettingKey) && (
           <div className="flex items-center gap-2 px-6 py-2 border-t border-border/40 bg-muted/10 flex-wrap">
             {hasMerchantId && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-0.5 text-xs font-medium text-orange-400">
@@ -1974,6 +2012,19 @@ export default function AdminAuditLogs() {
                   onClick={() => { setMerchantIdInput(""); setMerchantId(undefined); setPage(1); }}
                   className="ml-0.5 hover:text-orange-300 transition-colors"
                   aria-label="Clear merchant ID filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {hasSettingKey && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-0.5 text-xs font-medium text-amber-400">
+                <Settings className="w-3 h-3" />
+                {settingKeyLabel}: {settingKeyOptions.find(o => o.value === settingKey)?.label ?? settingKey}
+                <button
+                  onClick={() => { setSettingKey("all"); setPage(1); }}
+                  className="ml-0.5 hover:text-amber-300 transition-colors"
+                  aria-label={`Clear ${settingKeyLabel} filter`}
                 >
                   <X className="w-3 h-3" />
                 </button>

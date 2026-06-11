@@ -27,4 +27,8 @@ dateTo?: Date;
  * Filter logs by merchant ID — matches rows where target_id equals the merchant, as well as bulk-action rows whose details.merchantIds array includes the merchant
  */
 merchantId?: number;
+/**
+ * Sub-filter for setting/config logs. For action=setting_updated, matches details->>'key'. For action=system_config_updated, matches details->>'section'.
+ */
+settingKey?: string;
 };

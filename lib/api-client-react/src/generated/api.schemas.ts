@@ -2857,6 +2857,10 @@ dateTo?: string;
  * Filter logs by merchant ID — matches rows where target_id equals the merchant, as well as bulk-action rows whose details.merchantIds array includes the merchant
  */
 merchantId?: number;
+/**
+ * Sub-filter for setting/config logs. For action=setting_updated, matches details->>'key'. For action=system_config_updated, matches details->>'section'.
+ */
+settingKey?: string;
 };
 
 export type ListMerchantFeaturesParams = {
@@ -2954,5 +2958,82 @@ export type ResendReconciliationReportEmail200 = {
 
 export type ListSavedFilters200 = {
   data: SavedFilter[];
+};
+
+export interface WebhookSecretCheckResult {
+  message: string;
+  notificationsSent: number;
+  reminderCount: number;
+  overdueCount: number;
+}
+
+export interface StorageCleanupRun {
+  id: number;
+  runAt: string;
+  totalScanned: number;
+  deleted: number;
+  errors: number;
+  triggeredBy: string;
+  createdAt: string;
+}
+
+export type ListStorageCleanupRuns200 = {
+  data: StorageCleanupRun[];
+};
+
+export type ListStorageCleanupRunsParams = {
+  /**
+   * Maximum number of runs to return, newest first.
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+};
+
+export type RunStorageCleanup200 = {
+  totalScanned: number;
+  deleted: number;
+  errors: number;
+};
+
+export type ClearTestEmailHistory200 = {
+  /** Number of rows deleted */
+  deleted: number;
+};
+
+export type SignatureFailureAlertLogEntryAffectedMerchantsItem = {
+  name: string;
+  count: number;
+};
+
+export interface SignatureFailureAlertLogEntry {
+  id: number;
+  sentAt: string;
+  /** Total signature failures in the rolling window at the time the alert was sent */
+  failureCount: number;
+  /** Number of distinct merchants affected at the time the alert was sent */
+  affectedMerchantCount: number;
+  /** Number of admin emails the alert was successfully delivered to */
+  recipientCount: number;
+  /** List of admin email addresses the alert was sent to */
+  recipientEmails: string[];
+  /** Per-merchant breakdown captured at alert dispatch time */
+  affectedMerchants: SignatureFailureAlertLogEntryAffectedMerchantsItem[];
+  /** Rolling window (hours) used to count failures */
+  windowHours: number;
+  /** Failure threshold that triggered this alert */
+  threshold: number;
+}
+
+export interface SignatureFailureAlertHistoryResponse {
+  data: SignatureFailureAlertLogEntry[];
+  total: number;
+}
+
+export type GetSignatureFailureAlertHistoryParams = {
+  /**
+   * Maximum number of records to return (default 20)
+   */
+  limit?: number;
 };
 
