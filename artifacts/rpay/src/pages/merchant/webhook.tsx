@@ -797,8 +797,19 @@ export default function MerchantWebhook() {
                   className="flex items-center gap-3 py-3 first:pt-0 last:pb-0 group cursor-pointer hover:bg-muted/20 -mx-1 px-1 rounded transition-colors"
                   onClick={() => setSelectedLog(log)}
                 >
-                  <div className="w-28 shrink-0">
+                  <div className="w-28 shrink-0 flex flex-col items-start gap-1">
                     <StatusBadge status={log.status} />
+                    {(log.status === "failed" || log.status === "pending_retry") && (
+                      log.httpStatus != null ? (
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-rose-500/10 border border-rose-500/25 text-rose-400">
+                          {log.httpStatus}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-orange-500/10 border border-orange-500/25 text-orange-400">
+                          no resp
+                        </span>
+                      )
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -821,15 +832,13 @@ export default function MerchantWebhook() {
                       <p className="text-xs font-mono text-muted-foreground truncate" title={log.url}>{log.url}</p>
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-xs text-muted-foreground/70">
-                        {log.httpStatus != null ? (
+                      {log.httpStatus != null && (
+                        <span className="text-xs text-muted-foreground/70">
                           <span className={log.httpStatus >= 200 && log.httpStatus < 300 ? "text-emerald-400/80" : "text-rose-400/80"}>
                             HTTP {log.httpStatus}
                           </span>
-                        ) : (
-                          <span className="text-muted-foreground/50">No response</span>
-                        )}
-                      </span>
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground/50">·</span>
                       <span className="text-xs text-muted-foreground/70">
                         {log.attempts} {log.attempts === 1 ? "attempt" : "attempts"}
