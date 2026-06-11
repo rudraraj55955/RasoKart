@@ -6854,7 +6854,7 @@ components:
 
     AuditReportScheduleLog:
       type: object
-      required: [id, scheduleId, sentAt, rowCount, success, isRetry]
+      required: [id, scheduleId, sentAt, rowCount, success, isRetry, triggerType]
       properties:
         id:
           type: integer
@@ -6870,6 +6870,9 @@ components:
           type: ["string", "null"]
         isRetry:
           type: boolean
+        triggerType:
+          type: string
+          enum: [manual, scheduled]
 
     AuditReportScheduleLogListResponse:
       type: object

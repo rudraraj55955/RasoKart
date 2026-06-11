@@ -1706,6 +1706,14 @@ export interface AuditReportScheduleListResponse {
   data: AuditReportSchedule[];
 }
 
+export type AuditReportScheduleLogTriggerType = typeof AuditReportScheduleLogTriggerType[keyof typeof AuditReportScheduleLogTriggerType];
+
+
+export const AuditReportScheduleLogTriggerType = {
+  manual: 'manual',
+  scheduled: 'scheduled',
+} as const;
+
 export interface AuditReportScheduleLog {
   id: number;
   scheduleId: number;
@@ -1715,6 +1723,7 @@ export interface AuditReportScheduleLog {
   /** @nullable */
   errorMessage?: string | null;
   isRetry: boolean;
+  triggerType: AuditReportScheduleLogTriggerType;
 }
 
 export interface AuditReportScheduleLogListResponse {

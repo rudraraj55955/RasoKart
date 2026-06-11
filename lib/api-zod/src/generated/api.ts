@@ -3018,7 +3018,8 @@ export const ListAuditReportScheduleLogsResponse = zod.object({
   "rowCount": zod.number(),
   "success": zod.boolean(),
   "errorMessage": zod.string().nullish(),
-  "isRetry": zod.boolean()
+  "isRetry": zod.boolean(),
+  "triggerType": zod.enum(['manual', 'scheduled'])
 })),
   "total": zod.number(),
   "failureCount": zod.number(),

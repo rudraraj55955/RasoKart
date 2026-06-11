@@ -113,7 +113,7 @@ function isDue(frequency: string, lastSentAt: Date | null): boolean {
   }
 }
 
-export async function sendScheduledReport(schedule: typeof scheduledAuditReportsTable.$inferSelect, isRetry = false): Promise<boolean> {
+export async function sendScheduledReport(schedule: typeof scheduledAuditReportsTable.$inferSelect, isRetry = false, triggerType: "manual" | "scheduled" = "scheduled"): Promise<boolean> {
   const { dateFrom, dateTo } = getDateRange(schedule.frequency);
   const sentAt = new Date();
 
@@ -161,6 +161,7 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
     success: sent,
     errorMessage,
     isRetry,
+    triggerType,
   });
 
   if (sent) {

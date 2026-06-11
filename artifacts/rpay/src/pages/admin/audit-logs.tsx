@@ -1163,6 +1163,15 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
                       </span>
                     )
                   }
+                  {log.triggerType === "manual" ? (
+                    <span className="inline-flex items-center rounded border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">
+                      Manual
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded border border-zinc-500/20 bg-zinc-500/10 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+                      Scheduled
+                    </span>
+                  )}
                   {log.isRetry && (
                     <span className="inline-flex items-center gap-0.5 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
                       ↩ Retry

@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { AuditReportScheduleLogTriggerType } from './auditReportScheduleLogTriggerType';
 
 export interface AuditReportScheduleLog {
   id: number;
@@ -15,4 +16,5 @@ export interface AuditReportScheduleLog {
   /** @nullable */
   errorMessage?: string | null;
   isRetry: boolean;
+  triggerType: AuditReportScheduleLogTriggerType;
 }

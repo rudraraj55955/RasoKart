@@ -1,5 +1,7 @@
-import { pgTable, serial, integer, boolean, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, boolean, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { scheduledAuditReportsTable } from "./scheduledAuditReports";
+
+export const auditReportTriggerTypeEnum = pgEnum("audit_report_trigger_type", ["manual", "scheduled"]);
 
 export const scheduledAuditReportLogsTable = pgTable("scheduled_audit_report_logs", {
   id: serial("id").primaryKey(),
@@ -11,6 +13,7 @@ export const scheduledAuditReportLogsTable = pgTable("scheduled_audit_report_log
   success: boolean("success").notNull(),
   errorMessage: text("error_message"),
   isRetry: boolean("is_retry").notNull().default(false),
+  triggerType: auditReportTriggerTypeEnum("trigger_type").notNull().default("scheduled"),
 });
 
 export type ScheduledAuditReportLog = typeof scheduledAuditReportLogsTable.$inferSelect;

@@ -41,6 +41,7 @@ export * from './auditReportScheduleLastSendStatus';
 export * from './auditReportScheduleListResponse';
 export * from './auditReportScheduleLog';
 export * from './auditReportScheduleLogListResponse';
+export * from './auditReportScheduleLogTriggerType';
 export * from './auditReportSchedulePatch';
 export * from './auditReportSchedulePatchFrequency';
 export * from './authResponse';

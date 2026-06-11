@@ -492,7 +492,7 @@ router.post("/schedules/:id/send", async (req, res) => {
 
   if (!schedule) { res.status(404).json({ error: "Schedule not found" }); return; }
 
-  const sent = await sendScheduledReport(schedule);
+  const sent = await sendScheduledReport(schedule, false, "manual");
   if (!sent) {
     res.status(502).json({ error: "Email delivery failed. Check mailer configuration." });
     return;
