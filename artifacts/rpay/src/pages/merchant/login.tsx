@@ -82,7 +82,7 @@ export default function MerchantLogin() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="you@company.com" {...field} />
+                  <Input placeholder="you@company.com" disabled={rateLimitSeconds !== null} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -95,7 +95,7 @@ export default function MerchantLogin() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input type="password" placeholder="••••••••" {...field} />
+                  <Input type="password" placeholder="••••••••" disabled={rateLimitSeconds !== null} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

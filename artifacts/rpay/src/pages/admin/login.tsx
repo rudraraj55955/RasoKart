@@ -82,7 +82,7 @@ export default function AdminLogin() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="admin@rasokart.com" {...field} />
+                  <Input placeholder="admin@rasokart.com" disabled={rateLimitSeconds !== null} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -95,7 +95,7 @@ export default function AdminLogin() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input type="password" placeholder="••••••••" {...field} />
+                  <Input type="password" placeholder="••••••••" disabled={rateLimitSeconds !== null} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
