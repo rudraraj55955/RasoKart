@@ -6,12 +6,12 @@ import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 import rateLimit from "express-rate-limit";
 
 const qrCodeCreateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  limit: 20,
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
-  message: { error: "Too many QR code creation requests. Please slow down and try again shortly." },
+  message: { error: "Too many QR code creation requests. You may create up to 10 QR codes per 15 minutes. Please try again later." },
 });
 
 async function logQrAudit(req: any, action: string, targetId: number | null, details: object) {
