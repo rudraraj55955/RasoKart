@@ -197,7 +197,7 @@ export async function sendScheduledReport(
 
         if (admins.length > 0) {
           const appDomain = process.env["APP_DOMAIN"] ?? "https://rasokart.com";
-          const scheduleLink = `${appDomain}/admin/audit-logs`;
+          const scheduleLink = `${appDomain}/admin/audit-logs?scheduleId=${schedule.id}`;
           const attemptSummary = schedule.maxRetryAttempts > 0
             ? ` after ${schedule.maxRetryAttempts} retry attempt${schedule.maxRetryAttempts !== 1 ? "s" : ""}`
             : "";

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from "@workspace/api-client-react";
 import { Bell, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -27,14 +26,36 @@ function notifColor(type: string): string {
   return "text-blue-400";
 }
 
+function extractMetadata(raw: unknown): Record<string, unknown> {
+  if (raw == null) return {};
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+  }
+  return {};
+}
+
 function getNotifLink(type: string, metadata: unknown): string | null {
-  if (type === "reconciliation_email_failure" || type === "report_delivery_failure") {
-    const meta = metadata as Record<string, unknown> | null;
-    const runId = meta?.runId;
+  const meta = extractMetadata(metadata);
+  if (type === "reconciliation_email_failure") {
+    const runId = meta["runId"];
     if (runId != null) return `/admin/reconciliation?runId=${runId}`;
     return "/admin/reconciliation";
   }
+  if (type === "report_delivery_failure") {
+    const scheduleLink = typeof meta["scheduleLink"] === "string" ? meta["scheduleLink"] : null;
+    if (scheduleLink) {
+      return scheduleLink.replace(/^https?:\/\/[^/]+/, "");
+    }
+    return "/admin/audit-logs";
+  }
   return null;
+}
+
+function getNotifLinkLabel(type: string): string {
+  if (type === "reconciliation_email_failure") return "Click to view run →";
+  if (type === "report_delivery_failure") return "Click to view schedule →";
+  return "Click to view →";
 }
 
 export function NotificationBell() {
@@ -135,7 +156,7 @@ export function NotificationBell() {
                       </div>
                       <p className="text-[11px] text-muted-foreground leading-snug mt-0.5 line-clamp-2">{n.body}</p>
                       {isClickable && (
-                        <p className="text-[10px] text-primary/70 mt-0.5">Click to view run →</p>
+                        <p className="text-[10px] text-primary/70 mt-0.5">{getNotifLinkLabel(n.type)}</p>
                       )}
                       <p className="text-[10px] text-muted-foreground/50 mt-0.5">
                         {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}

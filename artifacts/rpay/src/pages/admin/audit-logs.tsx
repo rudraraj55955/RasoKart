@@ -1684,6 +1684,7 @@ function ScheduleRow({
   onAcknowledge,
   sendingId,
   acknowledgingId,
+  highlighted,
 }: {
   s: any;
   onToggle: (id: number, isActive: boolean) => void;
@@ -1692,15 +1693,28 @@ function ScheduleRow({
   onAcknowledge?: (id: number) => void;
   sendingId?: number | null;
   acknowledgingId?: number | null;
+  highlighted?: boolean;
 }) {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (highlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlighted]);
 
   return (
-    <div className={`rounded-lg border transition-colors ${
-      s.isActive
-        ? "border-violet-500/20 bg-violet-500/5"
-        : "border-border/40 bg-muted/10 opacity-70"
-    }`}>
+    <div
+      ref={rowRef}
+      className={`rounded-lg border transition-colors ${
+        highlighted
+          ? "border-amber-500/50 bg-amber-500/10 ring-1 ring-amber-500/30"
+          : s.isActive
+          ? "border-violet-500/20 bg-violet-500/5"
+          : "border-border/40 bg-muted/10 opacity-70"
+      }`}
+    >
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="flex items-center justify-center w-8 h-8 rounded-md bg-violet-500/10 border border-violet-500/20 shrink-0">
           <Mail className="w-4 h-4 text-violet-400" />
@@ -1840,6 +1854,11 @@ function ScheduleRow({
 function ScheduledReportsPanel() {
   const queryClient = useQueryClient();
   const { data: schedulesData, isLoading } = useListAuditReportSchedules();
+  const highlightId = (() => {
+    const raw = new URLSearchParams(window.location.search).get("scheduleId");
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return isNaN(n) ? null : n;
+  })();
   const createSchedule = useCreateAuditReportSchedule();
   const updateSchedule = useUpdateAuditReportSchedule();
   const deleteSchedule = useDeleteAuditReportSchedule();
@@ -2015,6 +2034,7 @@ function ScheduledReportsPanel() {
                 onAcknowledge={handleAcknowledge}
                 sendingId={sendingId}
                 acknowledgingId={acknowledgingId}
+                highlighted={highlightId === s.id}
               />
             ))}
           </div>
