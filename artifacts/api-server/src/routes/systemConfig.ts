@@ -4,7 +4,7 @@ import { inArray, desc, count } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
-import { loadVaCleanupRetentionDays } from "../helpers/vaCleanupScheduler";
+import { loadVaCleanupRetentionDays, runVaCleanup } from "../helpers/vaCleanupScheduler";
 import { loadTestEmailRetentionDays, runTestEmailRetentionCleanup } from "../helpers/testEmailRetentionScheduler";
 import { loadAuditReportLogRetentionDays } from "../helpers/auditReportRetentionScheduler";
 import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
@@ -255,6 +255,17 @@ router.put("/va-cleanup", async (req, res, next) => {
     req.log.info({ retentionDays }, "VA cleanup retention config updated");
 
     res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/system-config/va-cleanup/run
+router.post("/va-cleanup/run", async (req, res, next) => {
+  try {
+    const { closed, deleted } = await runVaCleanup();
+    req.log.info({ closed, deleted }, "VA cleanup triggered manually");
+    res.json({ closed, deleted });
   } catch (err) {
     next(err);
   }

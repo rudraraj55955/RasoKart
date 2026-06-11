@@ -483,6 +483,24 @@ export default function AdminSettings() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const [vaCleanupRunResult, setVaCleanupRunResult] = useState<{ closed: number; deleted: number } | null>(null);
+
+  const { mutate: runVaCleanupNow, isPending: runningVaCleanup } = useMutation({
+    mutationFn: () => apiPost("/system-config/va-cleanup/run"),
+    onSuccess: (res: { closed: number; deleted: number }) => {
+      setVaCleanupRunResult(res);
+      if (res.closed === 0 && res.deleted === 0) {
+        toast.info("Cleanup complete — nothing to clean up.");
+      } else {
+        const parts: string[] = [];
+        if (res.closed > 0) parts.push(`${res.closed} account${res.closed !== 1 ? "s" : ""} closed`);
+        if (res.deleted > 0) parts.push(`${res.deleted} account${res.deleted !== 1 ? "s" : ""} deleted`);
+        toast.success(`Cleanup complete — ${parts.join(", ")}.`);
+      }
+    },
+    onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
+  });
+
   const currentTestEmailRetentionDays = testEmailRetentionData?.retentionDays ?? 30;
   const testEmailRetentionUnchanged = testEmailRetentionDays === currentTestEmailRetentionDays;
 
@@ -1504,6 +1522,44 @@ export default function AdminSettings() {
               >
                 Cancel
               </Button>
+            )}
+          </div>
+
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Run cleanup now</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Trigger the VA cleanup job immediately, using the current retention window.
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setVaCleanupRunResult(null); runVaCleanupNow(); }}
+              disabled={runningVaCleanup || currentVaRetentionDays === 0}
+              title={currentVaRetentionDays === 0 ? "Enable auto-cleanup first (set retention days > 0)" : undefined}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${runningVaCleanup ? "animate-spin" : ""}`} />
+              {runningVaCleanup ? "Running…" : "Run cleanup now"}
+            </Button>
+
+            {vaCleanupRunResult !== null && (
+              <div className={`flex items-center gap-2 text-xs rounded-md px-3 py-2 border ${
+                vaCleanupRunResult.closed === 0 && vaCleanupRunResult.deleted === 0
+                  ? "text-muted-foreground bg-muted/30 border-border/40"
+                  : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+              }`}>
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {vaCleanupRunResult.closed === 0 && vaCleanupRunResult.deleted === 0
+                    ? "Nothing to clean up — all virtual accounts are within the retention window."
+                    : [
+                        vaCleanupRunResult.closed > 0 && `${vaCleanupRunResult.closed} account${vaCleanupRunResult.closed !== 1 ? "s" : ""} closed`,
+                        vaCleanupRunResult.deleted > 0 && `${vaCleanupRunResult.deleted} account${vaCleanupRunResult.deleted !== 1 ? "s" : ""} deleted`,
+                      ].filter(Boolean).join(", ") + "."}
+                </span>
+              </div>
             )}
           </div>
         </CardContent>
