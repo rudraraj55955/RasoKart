@@ -205,6 +205,7 @@ import type {
   VisibilityRuleUpdateInput,
   WebhookConfig,
   WebhookConfigInput,
+  WebhookSecretCheckResult,
   WebhookTestRequest,
   WebhookTestResult,
   Withdrawal,
@@ -12269,6 +12270,83 @@ export function useCheckPlanExpiry<TData = Awaited<ReturnType<typeof checkPlanEx
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getCheckPlanExpiryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCheckWebhookSecretsUrl = () => {
+
+
+
+
+  return `/api/notifications/check-webhook-secrets`
+}
+
+/**
+ * @summary Trigger webhook secret rotation reminder check (admin only)
+ */
+export const checkWebhookSecrets = async ( options?: RequestInit): Promise<WebhookSecretCheckResult> => {
+
+  return customFetch<WebhookSecretCheckResult>(getCheckWebhookSecretsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getCheckWebhookSecretsQueryKey = () => {
+    return [
+    `/api/notifications/check-webhook-secrets`
+    ] as const;
+    }
+
+
+export const getCheckWebhookSecretsQueryOptions = <TData = Awaited<ReturnType<typeof checkWebhookSecrets>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof checkWebhookSecrets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCheckWebhookSecretsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof checkWebhookSecrets>>> = ({ signal }) => checkWebhookSecrets({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof checkWebhookSecrets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type CheckWebhookSecretsQueryResult = NonNullable<Awaited<ReturnType<typeof checkWebhookSecrets>>>
+export type CheckWebhookSecretsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Trigger webhook secret rotation reminder check (admin only)
+ */
+
+export function useCheckWebhookSecrets<TData = Awaited<ReturnType<typeof checkWebhookSecrets>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof checkWebhookSecrets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getCheckWebhookSecretsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

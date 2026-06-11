@@ -3756,6 +3756,17 @@ export const CheckPlanExpiryResponse = zod.object({
 
 
 /**
+ * @summary Trigger webhook secret rotation reminder check (admin only)
+ */
+export const CheckWebhookSecretsResponse = zod.object({
+  "message": zod.string(),
+  "notificationsSent": zod.number(),
+  "reminderCount": zod.number(),
+  "overdueCount": zod.number()
+})
+
+
+/**
  * @summary Trigger a reconciliation run (admin only)
  */
 export const RunReconciliationBody = zod.object({

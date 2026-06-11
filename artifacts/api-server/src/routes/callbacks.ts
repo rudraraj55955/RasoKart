@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
 import { logger } from "../lib/logger";
 import { fireCallback, scheduleCallbackRetry, recordAttempt } from "../helpers/callbackRetry";
+import { dismissSecretRotationNotifications } from "../helpers/webhookSecretChecker";
 
 const router = Router();
 
@@ -284,6 +285,11 @@ router.post("/secret/rotate", async (req, res) => {
     .where(eq(merchantsTable.id, user.merchantId));
 
   req.log.info({ merchantId: user.merchantId }, "Callback secret rotated");
+
+  // Dismiss any pending rotation reminder/overdue notifications for this user
+  dismissSecretRotationNotifications(user.id).catch((err: unknown) => {
+    req.log.warn({ err, userId: user.id }, "Failed to dismiss webhook secret rotation notifications");
+  });
 
   res.json({ secret: newSecret });
 });

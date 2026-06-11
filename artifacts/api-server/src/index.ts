@@ -11,6 +11,7 @@ import { initQrCleanupScheduler } from "./helpers/qrCleanupScheduler";
 import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initNonceCleanupScheduler } from "./helpers/nonceCleanupScheduler";
+import { initWebhookSecretScheduler } from "./helpers/webhookSecretScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -62,6 +63,7 @@ async function main() {
   initPlanExpiryScheduler();
   initPlanRenewalScheduler();
   initNonceCleanupScheduler();
+  initWebhookSecretScheduler();
   scheduleCallbackRetryWorker();
 
   // Startup sweep: immediately scan all active connections so merchants receive

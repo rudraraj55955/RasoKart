@@ -2191,6 +2191,13 @@ export interface ExpiryCheckResult {
   expiredCount: number;
 }
 
+export interface WebhookSecretCheckResult {
+  message: string;
+  notificationsSent: number;
+  reminderCount: number;
+  overdueCount: number;
+}
+
 export interface ReconciliationNextRun {
   /** ISO timestamp of the next scheduled reconciliation run */
   nextRunAt: string | null;

@@ -3864,6 +3864,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExpiryCheckResult"
 
+  /notifications/check-webhook-secrets:
+    get:
+      operationId: checkWebhookSecrets
+      tags: [notifications]
+      summary: Trigger webhook secret rotation reminder check (admin only)
+      responses:
+        "200":
+          description: Check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretCheckResult"
+
   /reconciliation/run:
     post:
       operationId: runReconciliation
@@ -7154,6 +7167,15 @@ components:
         notificationsSent: { type: integer }
         expiringCount: { type: integer }
         expiredCount: { type: integer }
+
+    WebhookSecretCheckResult:
+      type: object
+      required: [message, notificationsSent, reminderCount, overdueCount]
+      properties:
+        message: { type: string }
+        notificationsSent: { type: integer }
+        reminderCount: { type: integer }
+        overdueCount: { type: integer }
 
     ReconciliationNextRun:
       type: object

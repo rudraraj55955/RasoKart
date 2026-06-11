@@ -4,6 +4,7 @@ import { eq, and, desc, count, lt, gte, or, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createBulkNotifications, createNotification } from "../helpers/notifications";
 import { runProviderLimitAlertScan } from "../helpers/providerLimitScheduler";
+import { checkWebhookSecretRotation } from "../helpers/webhookSecretChecker";
 
 const router = Router();
 router.use(requireAuth);
@@ -228,6 +229,24 @@ router.get("/check-expiry", requireAdmin, async (req, res, next) => {
     await runProviderLimitAlertScan();
 
     res.json({ message: "Expiry check complete", notificationsSent: notifications.length, expiringCount: activePlans.length, expiredCount: justExpired.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/notifications/check-webhook-secrets (admin triggered)
+// Scans all merchants with a callback secret set and fires rotation reminders:
+//   75–89 days old → webhook_secret_rotation_reminder  (dedupe: once per ISO week)
+//   90+ days old   → webhook_secret_rotation_overdue   (dedupe: once per calendar day)
+router.get("/check-webhook-secrets", requireAdmin, async (req, res, next) => {
+  try {
+    const { reminderCount, overdueCount, notificationsSent } = await checkWebhookSecretRotation();
+    res.json({
+      message: "Webhook secret rotation check complete",
+      notificationsSent,
+      reminderCount,
+      overdueCount,
+    });
   } catch (err) {
     next(err);
   }
