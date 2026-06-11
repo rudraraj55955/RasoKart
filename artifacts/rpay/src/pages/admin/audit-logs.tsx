@@ -1926,7 +1926,15 @@ function ScheduleRow({
               </TooltipProvider>
             )}
           </div>
-          <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {s.sendCount > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {s.sendCount} {s.sendCount === 1 ? "send" : "sends"}
+                </span>
+                <span className="text-[10px] text-muted-foreground/40">·</span>
+              </>
+            )}
             {s.lastSendStatus === "ok" && s.lastSentAt ? (
               <TooltipProvider>
                 <Tooltip>

@@ -7263,7 +7263,7 @@ components:
 
     AuditReportSchedule:
       type: object
-      required: [id, frequency, recipientEmail, isActive, maxRetryAttempts, retryBackoffMinutes, lastSendStatus, createdAt, updatedAt]
+      required: [id, frequency, recipientEmail, isActive, maxRetryAttempts, retryBackoffMinutes, lastSendStatus, sendCount, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -7291,6 +7291,9 @@ components:
           type: ["string", "null"]
         failureAcknowledgedByEmail:
           type: ["string", "null"]
+        sendCount:
+          type: integer
+          description: Total number of send attempts (successful and failed) for this schedule.
         createdAt:
           type: string
         updatedAt:

@@ -1750,6 +1750,8 @@ export interface AuditReportSchedule {
   failureAcknowledgedAt?: string | null;
   /** @nullable */
   failureAcknowledgedByEmail?: string | null;
+  /** Total number of send attempts (successful and failed) for this schedule. */
+  sendCount: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -342,6 +342,10 @@ router.get("/schedules", async (req, res) => {
         ORDER BY sent_at DESC
         LIMIT 1
       )`,
+      sendCount: sql<number>`(
+        SELECT COUNT(*) FROM ${scheduledAuditReportLogsTable}
+        WHERE schedule_id = ${scheduledAuditReportsTable.id}
+      )`,
     })
     .from(scheduledAuditReportsTable)
     .orderBy(scheduledAuditReportsTable.createdAt);
@@ -355,6 +359,7 @@ router.get("/schedules", async (req, res) => {
         r.failureAcknowledgedAt,
       ),
       lastErrorMessage: r.lastErrorMessage ?? null,
+      sendCount: Number(r.sendCount),
     })),
   });
 });
@@ -549,7 +554,7 @@ router.post("/schedules", async (req, res) => {
     retryBackoffMinutes: parsedBackoff,
   }).returning();
 
-  res.status(201).json(serializeSchedule(schedule));
+  res.status(201).json({ ...serializeSchedule(schedule), sendCount: 0 });
 });
 
 router.patch("/schedules/bulk-toggle", async (req, res) => {
@@ -601,7 +606,17 @@ router.patch("/schedules/bulk-toggle", async (req, res) => {
         : sql`FALSE`
     );
 
-  res.json({ data: rows.map(r => serializeSchedule(r)) });
+  res.json({
+    data: rows.map(r => ({
+      ...serializeSchedule(r),
+      lastSendStatus: deriveLastSendStatus(
+        r.lastSuccess,
+        null,
+        r.failureAcknowledgedAt,
+      ),
+      sendCount: 0,
+    })),
+  });
 });
 
 router.patch("/schedules/:id", async (req, res) => {
@@ -660,7 +675,28 @@ router.patch("/schedules/:id", async (req, res) => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Schedule not found" }); return; }
-  res.json(serializeSchedule(updated));
+
+  const [{ sendCount }] = await db
+    .select({ sendCount: sql<number>`COUNT(*)` })
+    .from(scheduledAuditReportLogsTable)
+    .where(eq(scheduledAuditReportLogsTable.scheduleId, id));
+
+  const [lastLog] = await db
+    .select({ success: scheduledAuditReportLogsTable.success, sentAt: scheduledAuditReportLogsTable.sentAt })
+    .from(scheduledAuditReportLogsTable)
+    .where(eq(scheduledAuditReportLogsTable.scheduleId, id))
+    .orderBy(desc(scheduledAuditReportLogsTable.sentAt))
+    .limit(1);
+
+  res.json({
+    ...serializeSchedule(updated),
+    lastSendStatus: deriveLastSendStatus(
+      lastLog?.success ?? null,
+      lastLog?.sentAt ?? null,
+      updated.failureAcknowledgedAt,
+    ),
+    sendCount: Number(sendCount),
+  });
 });
 
 router.delete("/schedules/:id", async (req, res) => {

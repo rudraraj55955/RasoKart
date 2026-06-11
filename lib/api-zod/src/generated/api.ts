@@ -3030,6 +3030,7 @@ export const ListAuditReportSchedulesResponse = zod.object({
   "lastErrorMessage": zod.string().nullish(),
   "failureAcknowledgedAt": zod.string().nullish(),
   "failureAcknowledgedByEmail": zod.string().nullish(),
+  "sendCount": zod.number().describe('Total number of send attempts (successful and failed) for this schedule.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
@@ -3068,6 +3069,7 @@ export const BulkToggleAuditReportSchedulesResponse = zod.object({
   "lastErrorMessage": zod.string().nullish(),
   "failureAcknowledgedAt": zod.string().nullish(),
   "failureAcknowledgedByEmail": zod.string().nullish(),
+  "sendCount": zod.number().describe('Total number of send attempts (successful and failed) for this schedule.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
@@ -3093,6 +3095,7 @@ export const SendAuditReportNowResponse = zod.object({
   "lastErrorMessage": zod.string().nullish(),
   "failureAcknowledgedAt": zod.string().nullish(),
   "failureAcknowledgedByEmail": zod.string().nullish(),
+  "sendCount": zod.number().describe('Total number of send attempts (successful and failed) for this schedule.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -3201,6 +3204,7 @@ export const UpdateAuditReportScheduleResponse = zod.object({
   "lastErrorMessage": zod.string().nullish(),
   "failureAcknowledgedAt": zod.string().nullish(),
   "failureAcknowledgedByEmail": zod.string().nullish(),
+  "sendCount": zod.number().describe('Total number of send attempts (successful and failed) for this schedule.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
