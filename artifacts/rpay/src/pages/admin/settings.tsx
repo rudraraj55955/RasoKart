@@ -185,6 +185,9 @@ export default function AdminSettings() {
   const [initialized, setInitialized] = useState(false);
   const [retentionDays, setRetentionDays] = useState<number>(30);
   const [retentionInitialized, setRetentionInitialized] = useState(false);
+  const [storageScheduleEnabled, setStorageScheduleEnabled] = useState(true);
+  const [storageScheduleHour, setStorageScheduleHour] = useState(3);
+  const [storageScheduleInitialized, setStorageScheduleInitialized] = useState(false);
 
   const [retryDelay1, setRetryDelay1] = useState<number>(300);
   const [retryDelay2, setRetryDelay2] = useState<number>(900);
@@ -493,8 +496,27 @@ export default function AdminSettings() {
   });
 
   const [cleanupResult, setCleanupResult] = useState<{ totalScanned: number; deleted: number; errors: number } | null>(null);
-  void cleanupResult;
-  void setCleanupResult;
+  const CLEANUP_RUNS_QUERY_KEY = ["/api/system-config/storage-cleanup/runs"] as const;
+  const { data: cleanupRunsData, refetch: refetchCleanupRuns } = useQuery<{ data: any[] }>({
+    queryKey: CLEANUP_RUNS_QUERY_KEY,
+    queryFn: () => apiGet("/system-config/storage-cleanup/runs?limit=20"),
+  });
+  const cleanupRuns: any[] = cleanupRunsData?.data ?? [];
+
+  const { mutate: runCleanup, isPending: runningCleanup } = useMutation({
+    mutationFn: () => apiPost("/system-config/storage-cleanup/run", {}),
+    onSuccess: (result: any) => {
+      setCleanupResult(result);
+      void refetchCleanupRuns();
+      qc.invalidateQueries({ queryKey: CLEANUP_RUNS_QUERY_KEY });
+      if (result.deleted === 0) {
+        toast.success("No orphaned files found — storage is already clean");
+      } else {
+        toast.success(`Deleted ${result.deleted} orphaned file${result.deleted !== 1 ? "s" : ""}`);
+      }
+    },
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Cleanup failed")),
+  });
 
 
   const testEmailTrimmed = testEmailTo.trim();
@@ -1430,7 +1452,7 @@ export default function AdminSettings() {
             <Switch
               checked={signatureFailureEnabled}
               onCheckedChange={val =>
-                updatePrefs({ data: { signatureFailureAlertEmails: val } })
+                updatePrefs({ data: { signatureFailureAlertEmails: val } as any })
               }
               disabled={savingPrefs || me === undefined}
             />

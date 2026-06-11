@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -778,6 +778,7 @@ export default function AdminReconciliation() {
   const [emailFailureBannerDismissed, setEmailFailureBannerDismissed] = useState(false);
   const HISTORY_PAGE_SIZE = 15;
 
+  // Sync selectedRunId back to ?run= URL param so the browser URL stays consistent
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (selectedRunId != null) {
@@ -791,6 +792,21 @@ export default function AdminReconciliation() {
       : window.location.pathname;
     history.replaceState(null, "", newUrl);
   }, [selectedRunId]);
+
+  // Deep-link: ?run=N — auto-advance pagination and highlight the matching row
+  const [deepLinkRunId] = useState<number | null>(() => {
+    const raw = new URLSearchParams(window.location.search).get("run");
+    if (!raw) return null;
+    const id = parseInt(raw, 10);
+    return isNaN(id) ? null : id;
+  });
+  const [searchingForRun, setSearchingForRun] = useState<boolean>(() => {
+    const raw = new URLSearchParams(window.location.search).get("run");
+    return !!raw;
+  });
+  const [highlightedRunId, setHighlightedRunId] = useState<number | null>(null);
+  const deepLinkOpenedRef = useRef(false);
+  const highlightRowRef = useRef<HTMLTableRowElement | null>(null);
 
   const schedulerQuery = useQuery({
     queryKey: ["/api/reconciliation/scheduler-status"],
@@ -850,6 +866,34 @@ export default function AdminReconciliation() {
   function handleResolved() {
     qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "items"] });
   }
+
+  // Deep-link: when runs data changes, find the target run and advance pages if needed
+  useEffect(() => {
+    if (!deepLinkRunId || !searchingForRun || isLoading) return;
+    const found = (runs as any[]).find((r: any) => r.id === deepLinkRunId);
+    if (found) {
+      setSearchingForRun(false);
+      setHighlightedRunId(deepLinkRunId);
+      if (!deepLinkOpenedRef.current) {
+        deepLinkOpenedRef.current = true;
+        setSelectedRunId(deepLinkRunId);
+      }
+      const fadeTimer = setTimeout(() => setHighlightedRunId(null), 4000);
+      return () => clearTimeout(fadeTimer);
+    } else if (historyPage < historyTotalPages) {
+      setHistoryPage(p => p + 1);
+    } else {
+      // Exhausted all pages — run ID not found, stop searching
+      setSearchingForRun(false);
+    }
+  }, [runs, isLoading, deepLinkRunId, searchingForRun, historyPage, historyTotalPages]);
+
+  // Scroll the highlighted row into view once it appears
+  useEffect(() => {
+    if (highlightedRunId && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightedRunId]);
 
   const schedulerStatus = schedulerQuery.data as {
     nextRunAt: string;
@@ -1066,8 +1110,13 @@ export default function AdminReconciliation() {
                     {runs.map((run: any) => {
                       const meta = STATUS_META[run.status] ?? STATUS_META.complete;
                       const lastEmail = run.lastEmail as { sentAt: string; status: string; recipients: string } | null;
+                      const isHighlighted = run.id === highlightedRunId;
                       return (
-                        <tr key={run.id} className="group hover:bg-muted/30 transition-colors">
+                        <tr
+                          key={run.id}
+                          ref={isHighlighted ? highlightRowRef : null}
+                          className={`group hover:bg-muted/30 transition-colors duration-700${isHighlighted ? " bg-primary/10 ring-1 ring-inset ring-primary/40" : ""}`}
+                        >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5 font-medium">
                               #{run.id}
