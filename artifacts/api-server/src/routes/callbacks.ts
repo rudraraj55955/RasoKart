@@ -7,7 +7,7 @@ import { logger } from "../lib/logger";
 import { fireCallback, scheduleCallbackRetry, recordAttempt } from "../helpers/callbackRetry";
 import { dismissSecretRotationNotifications } from "../helpers/webhookSecretChecker";
 import { sendCallbackSecretRotatedEmail } from "../helpers/callbackSecretRotatedEmail";
-import { ALERT_THRESHOLD } from "../helpers/signatureFailureAlert";
+import { loadSignatureAlertConfig } from "../helpers/signatureFailureAlert";
 
 const router = Router();
 
@@ -202,43 +202,45 @@ router.get("/stats", async (req, res) => {
 router.get("/admin/stats", requireAdmin, async (req, res) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [row] = await db
-    .select({
-      signatureFailures24h: count(),
-      affectedMerchants: countDistinct(callbackLogsTable.merchantId),
-    })
-    .from(callbackLogsTable)
-    .where(
-      and(
-        eq(callbackLogsTable.signatureVerified, false),
-        gte(callbackLogsTable.createdAt, since),
+  const [{ threshold }, [row], breakdown] = await Promise.all([
+    loadSignatureAlertConfig(),
+    db
+      .select({
+        signatureFailures24h: count(),
+        affectedMerchants: countDistinct(callbackLogsTable.merchantId),
+      })
+      .from(callbackLogsTable)
+      .where(
+        and(
+          eq(callbackLogsTable.signatureVerified, false),
+          gte(callbackLogsTable.createdAt, since),
+        )
+      ),
+    db
+      .select({
+        merchantId: callbackLogsTable.merchantId,
+        merchantName: merchantsTable.businessName,
+        failures: count(),
+      })
+      .from(callbackLogsTable)
+      .leftJoin(merchantsTable, eq(callbackLogsTable.merchantId, merchantsTable.id))
+      .where(
+        and(
+          eq(callbackLogsTable.signatureVerified, false),
+          gte(callbackLogsTable.createdAt, since),
+        )
       )
-    );
-
-  const breakdown = await db
-    .select({
-      merchantId: callbackLogsTable.merchantId,
-      merchantName: merchantsTable.businessName,
-      failures: count(),
-    })
-    .from(callbackLogsTable)
-    .leftJoin(merchantsTable, eq(callbackLogsTable.merchantId, merchantsTable.id))
-    .where(
-      and(
-        eq(callbackLogsTable.signatureVerified, false),
-        gte(callbackLogsTable.createdAt, since),
-      )
-    )
-    .groupBy(callbackLogsTable.merchantId, merchantsTable.businessName)
-    .orderBy(sql`count(*) DESC`);
+      .groupBy(callbackLogsTable.merchantId, merchantsTable.businessName)
+      .orderBy(sql`count(*) DESC`),
+  ]);
 
   const signatureFailures24h = row?.signatureFailures24h ?? 0;
   res.json({
     signatureFailures24h,
     affectedMerchants: row?.affectedMerchants ?? 0,
     merchantBreakdown: breakdown,
-    thresholdExceeded: signatureFailures24h > ALERT_THRESHOLD,
-    alertThreshold: ALERT_THRESHOLD,
+    thresholdExceeded: signatureFailures24h > threshold,
+    alertThreshold: threshold,
   });
 });
 

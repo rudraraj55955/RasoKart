@@ -20,7 +20,7 @@ interface SignatureAlertConfig {
   rateLimitMs: number;
 }
 
-async function loadSignatureAlertConfig(): Promise<SignatureAlertConfig> {
+export async function loadSignatureAlertConfig(): Promise<SignatureAlertConfig> {
   const keys = [
     SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD,
     SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_WINDOW_HOURS,
