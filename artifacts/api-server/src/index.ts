@@ -8,6 +8,7 @@ import { initReconciliationScheduler } from "./helpers/reconScheduler";
 import { initAuditReportScheduler } from "./helpers/auditReportScheduler";
 import { startProviderLimitAlertScheduler, runProviderLimitAlertScan } from "./helpers/providerLimitScheduler";
 import { initQrCleanupScheduler, runQrCleanup } from "./helpers/qrCleanupScheduler";
+import { initVaCleanupScheduler, runVaCleanup } from "./helpers/vaCleanupScheduler";
 import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initNonceCleanupScheduler, pruneExpiredNonces } from "./helpers/nonceCleanupScheduler";
@@ -67,6 +68,13 @@ async function main() {
   // was down, before the first scheduled run (nightly at 02:00) fires.
   runQrCleanup().catch((err) => {
     logger.warn({ err }, "Startup QR cleanup sweep failed");
+  });
+  initVaCleanupScheduler();
+  // Startup sweep: prune any closed virtual accounts past their retention window
+  // that accumulated while the server was down, before the first scheduled run
+  // (nightly at 02:30) fires.
+  runVaCleanup().catch((err) => {
+    logger.warn({ err }, "Startup VA cleanup sweep failed");
   });
   initPlanExpiryScheduler();
   initPlanRenewalScheduler();
