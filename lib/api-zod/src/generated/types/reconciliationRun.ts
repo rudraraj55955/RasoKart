@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ReconciliationRunLastEmail } from './reconciliationRunLastEmail';
 
 export interface ReconciliationRun {
   id: number;
@@ -28,4 +29,6 @@ export interface ReconciliationRun {
   notes?: string | null;
   completedAt?: string | null;
   createdAt: string;
+  /** Summary of the most recent email delivery for this run */
+  lastEmail?: ReconciliationRunLastEmail;
 }

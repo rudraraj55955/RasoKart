@@ -229,6 +229,7 @@ export * from './reconciliationItemResolveInputResolutionType';
 export * from './reconciliationNextRun';
 export * from './reconciliationRun';
 export * from './reconciliationRunInput';
+export * from './reconciliationRunLastEmail';
 export * from './reconciliationRunListResponse';
 export * from './reconciliationScheduleConfig';
 export * from './reconciliationSchedulerStatus';

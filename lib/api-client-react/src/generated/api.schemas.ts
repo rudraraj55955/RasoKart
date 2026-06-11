@@ -2152,6 +2152,15 @@ export interface ReconciliationSchedulerStatus {
   lastAutoRunStatus?: string | null;
 }
 
+/**
+ * Summary of the most recent email delivery for this run
+ */
+export type ReconciliationRunLastEmail = {
+  sentAt: string;
+  status: string;
+  recipients: string;
+} | null;
+
 export interface ReconciliationRun {
   id: number;
   merchantId?: number | null;
@@ -2174,6 +2183,8 @@ export interface ReconciliationRun {
   notes?: string | null;
   completedAt?: string | null;
   createdAt: string;
+  /** Summary of the most recent email delivery for this run */
+  lastEmail?: ReconciliationRunLastEmail;
 }
 
 export interface ReconciliationRunListResponse {

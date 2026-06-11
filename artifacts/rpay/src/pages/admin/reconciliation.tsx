@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { useGetReconciliationScheduleConfig, useUpdateReconciliationScheduleConfig, useGetReconciliationNextRun } from "@workspace/api-client-react";
+import type { ReconciliationRun } from "@workspace/api-client-react";
 
 async function apiPost(path: string, body: object) {
   const res = await fetch(`/api${path}`, {
@@ -838,7 +839,7 @@ export default function AdminReconciliation() {
 
   const runs = data?.data ?? [];
   const historyTotal: number = data?.total ?? 0;
-  const failedEmailRuns: any[] = runs.filter((r: any) => r.lastEmail?.status === "failed");
+  const failedEmailRuns: ReconciliationRun[] = runs.filter((r: ReconciliationRun) => r.lastEmail?.status === "failed");
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const selectedRun = detailQuery.data?.run;
   const allItems: any[] = detailQuery.data?.data ?? [];
@@ -1084,9 +1085,9 @@ export default function AdminReconciliation() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/30">
-                    {runs.map((run: any) => {
+                    {runs.map((run: ReconciliationRun) => {
                       const meta = STATUS_META[run.status] ?? STATUS_META.complete;
-                      const lastEmail = run.lastEmail as { sentAt: string; status: string; recipients: string } | null;
+                      const lastEmail = run.lastEmail ?? null;
                       return (
                         <tr key={run.id} className="hover:bg-muted/30 transition-colors">
                           <td className="px-4 py-3">
@@ -1102,9 +1103,9 @@ export default function AdminReconciliation() {
                                 </Badge>
                               )}
                             </div>
-                            {run.triggeredBy !== "auto" && (run as any).createdByEmail && (
+                            {run.triggeredBy !== "auto" && run.createdByEmail && (
                               <div className="text-[10px] text-muted-foreground/60 mt-0.5">
-                                by {(run as any).createdByEmail}
+                                by {run.createdByEmail}
                               </div>
                             )}
                             <div className="text-xs text-muted-foreground">

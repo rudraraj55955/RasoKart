@@ -3892,7 +3892,12 @@ export const ListReconciliationRunsResponse = zod.object({
   "triggeredBy": zod.string().optional().describe('\"manual\" or \"auto\" (scheduled)'),
   "notes": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "lastEmail": zod.object({
+  "sentAt": zod.string(),
+  "status": zod.string(),
+  "recipients": zod.string()
+}).nullish().describe('Summary of the most recent email delivery for this run')
 })),
   "total": zod.number(),
   "page": zod.number(),
@@ -3937,7 +3942,12 @@ export const ListReconciliationRunItemsResponse = zod.object({
   "triggeredBy": zod.string().optional().describe('\"manual\" or \"auto\" (scheduled)'),
   "notes": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "lastEmail": zod.object({
+  "sentAt": zod.string(),
+  "status": zod.string(),
+  "recipients": zod.string()
+}).nullish().describe('Summary of the most recent email delivery for this run')
 }),
   "data": zod.array(zod.object({
   "id": zod.number(),

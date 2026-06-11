@@ -7424,6 +7424,15 @@ components:
           type: string
           nullable: true
         createdAt: { type: string }
+        lastEmail:
+          type: object
+          nullable: true
+          description: 'Summary of the most recent email delivery for this run'
+          required: [sentAt, status, recipients]
+          properties:
+            sentAt: { type: string }
+            status: { type: string }
+            recipients: { type: string }
 
     ReconciliationRunListResponse:
       type: object
