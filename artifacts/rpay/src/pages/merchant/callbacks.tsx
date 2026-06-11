@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useListCallbackLogs, useGetCallbackStats } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -135,7 +136,13 @@ export default function MerchantCallbacks() {
               Recent callbacks have failing signature checks — your signing secret may be misconfigured
             </p>
             <p className="text-xs text-amber-400/70 mt-0.5">
-              The last {SIG_WARN_THRESHOLD} logged callbacks all failed signature verification. Check that your webhook signing secret matches the one configured on your server.
+              The last {SIG_WARN_THRESHOLD} logged callbacks all failed signature verification. Check that your webhook signing secret matches the one configured on your server.{" "}
+              <Link
+                href="/merchant/webhook"
+                className="underline text-amber-400 hover:text-amber-300 transition-colors"
+              >
+                Check webhook settings →
+              </Link>
             </p>
           </div>
           <button
