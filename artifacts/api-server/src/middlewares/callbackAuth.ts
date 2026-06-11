@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { Request, Response, NextFunction } from "express";
-import { db, apiKeysTable, merchantsTable, callbackLogsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, apiKeysTable, merchantsTable, callbackLogsTable, callbackNoncesTable } from "@workspace/db";
+import { eq, lt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 /**
@@ -17,26 +17,6 @@ const TIMESTAMP_WINDOW_SECONDS = (() => {
   }
   return 5 * 60; // 5 minutes
 })();
-
-/**
- * In-memory nonce store.
- *
- * Keys are `${merchantId}:${nonce}` to prevent cross-merchant collisions.
- * Values are the Unix-ms expiry time.
- * Nonces are only inserted *after* HMAC verification succeeds so an
- * unauthenticated caller cannot poison the store.
- */
-const nonceStore = new Map<string, number>();
-
-/** Remove nonces whose TTL has already passed. */
-function pruneExpiredNonces(): void {
-  const now = Date.now();
-  for (const [key, expiresAt] of nonceStore) {
-    if (expiresAt <= now) {
-      nonceStore.delete(key);
-    }
-  }
-}
 
 /**
  * Middleware: authenticate an inbound callback request via the X-Api-Key header.
@@ -85,6 +65,61 @@ function verifyHmacSignature(secret: string, rawBody: Buffer, signatureHeader: s
 }
 
 /**
+ * Check whether a nonce has already been seen (replay detection).
+ *
+ * Queries the `callback_nonces` table.  If the DB is unavailable this logs a
+ * warning and returns false (i.e. does NOT block the request) so that a
+ * transient outage doesn't take down the callback endpoint — the timestamp
+ * window check is still enforced regardless.
+ *
+ * Returns true  → nonce was already used (block the request).
+ * Returns false → nonce is new (or DB unavailable — allow through with warning).
+ */
+async function isNonceSeen(nonceKey: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ key: callbackNoncesTable.key })
+      .from(callbackNoncesTable)
+      .where(
+        sql`${callbackNoncesTable.key} = ${nonceKey}
+            AND ${callbackNoncesTable.expiresAt} > now()`,
+      )
+      .limit(1);
+    return row !== undefined;
+  } catch (err) {
+    logger.warn({ err, nonceKey }, "Nonce store unavailable; skipping nonce check (timestamp window still enforced)");
+    return false;
+  }
+}
+
+/**
+ * Record a nonce in the persistent store and lazily prune any expired rows.
+ *
+ * The nonce is only written AFTER HMAC verification succeeds so unauthenticated
+ * callers cannot poison the store.
+ *
+ * Failures are logged but do not block the request — the timestamp window
+ * still limits the replay opportunity if the DB write fails.
+ */
+async function recordNonce(nonceKey: string, expiresAt: Date): Promise<void> {
+  try {
+    await db
+      .insert(callbackNoncesTable)
+      .values({ key: nonceKey, expiresAt })
+      .onConflictDoNothing();
+
+    // Lazy pruning: delete expired rows in the background (fire-and-forget).
+    db.delete(callbackNoncesTable)
+      .where(lt(callbackNoncesTable.expiresAt, new Date()))
+      .catch((err: unknown) => {
+        logger.warn({ err }, "Failed to prune expired nonces");
+      });
+  } catch (err) {
+    logger.warn({ err, nonceKey }, "Failed to persist nonce; replay window may be open until next restart");
+  }
+}
+
+/**
  * Middleware: enforce HMAC-SHA256 callback signature verification plus replay-attack
  * prevention via timestamp and nonce checks.
  *
@@ -100,6 +135,8 @@ function verifyHmacSignature(secret: string, rawBody: Buffer, signatureHeader: s
  *      *this merchant* within the current window. Nonces are scoped per-merchant to
  *      prevent cross-merchant collisions. **The nonce is only recorded after the
  *      HMAC check passes**, so unauthenticated callers cannot poison the store.
+ *      Nonces are persisted in Postgres so replay protection survives restarts and
+ *      works correctly across multiple server instances.
  *
  *   3. **HMAC signature**: `X-Signature: sha256=<hex>` must match
  *      HMAC-SHA256(secret, rawBody).
@@ -159,8 +196,8 @@ export async function verifyCallbackSignature(req: Request, res: Response, next:
   const nonceKey = nonce ? `${merchantId}:${nonce}` : null;
 
   if (nonceKey) {
-    pruneExpiredNonces();
-    if (nonceStore.has(nonceKey)) {
+    const seen = await isNonceSeen(nonceKey);
+    if (seen) {
       logAndReject(res, merchantId, req.originalUrl, "X-Nonce has already been used (replay detected)");
       return;
     }
@@ -190,8 +227,8 @@ export async function verifyCallbackSignature(req: Request, res: Response, next:
   // poisoned by unauthenticated callers.
   if (nonceKey) {
     // Expire slightly after the window ends to cover boundary-edge timestamps.
-    const expiresAt = (timestampSec + windowSeconds + 60) * 1000;
-    nonceStore.set(nonceKey, expiresAt);
+    const expiresAt = new Date((timestampSec + windowSeconds + 60) * 1000);
+    await recordNonce(nonceKey, expiresAt);
   }
 
   (req as any).signatureVerified = true;
