@@ -9,7 +9,7 @@ export const settlementsTable = pgTable("settlements", {
   requestedAmount: numeric("requested_amount", { precision: 18, scale: 2 }),
   requestedNote: text("requested_note"),
   currency: text("currency").notNull().default("INR"),
-  status: text("status").notNull().default("pending"), // pending | processing | approved | rejected | paid
+  status: text("status").notNull().default("pending"), // pending | processing | approved | rejected | paid | cancelled
   periodFrom: date("period_from", { mode: "string" }),
   periodTo: date("period_to", { mode: "string" }),
   transactionCount: integer("transaction_count").notNull().default(0),

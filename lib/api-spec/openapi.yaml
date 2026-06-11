@@ -1848,7 +1848,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [pending, processing, approved, rejected, paid, all]
+            enum: [pending, processing, approved, rejected, paid, cancelled, all]
         - name: dateFrom
           in: query
           schema:
@@ -2014,6 +2014,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Settlement"
+
+  /settlements/{id}/cancel:
+    post:
+      operationId: cancelSettlement
+      tags: [settlements]
+      summary: Cancel a pending settlement (merchant)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Settlement cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settlement"
+        "400":
+          description: Settlement cannot be cancelled in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Settlement not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many cancellation requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /settlements/{id}/mark-paid:
     post:
@@ -5870,7 +5907,7 @@ components:
           type: string
         status:
           type: string
-          enum: [pending, processing, approved, rejected, paid]
+          enum: [pending, processing, approved, rejected, paid, cancelled]
         periodFrom:
           type: ["string", "null"]
         periodTo:

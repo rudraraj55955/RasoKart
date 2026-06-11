@@ -852,6 +852,7 @@ export const SettlementStatus = {
   approved: 'approved',
   rejected: 'rejected',
   paid: 'paid',
+  cancelled: 'cancelled',
 } as const;
 
 export interface Settlement {
@@ -2908,6 +2909,7 @@ export const ListSettlementsStatus = {
   approved: 'approved',
   rejected: 'rejected',
   paid: 'paid',
+  cancelled: 'cancelled',
   all: 'all',
 } as const;
 

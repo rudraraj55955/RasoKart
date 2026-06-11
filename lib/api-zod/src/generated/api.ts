@@ -1763,7 +1763,7 @@ export const RotateCallbackSecretResponse = zod.object({
  */
 export const ListSettlementsQueryParams = zod.object({
   "merchantId": zod.coerce.number().optional(),
-  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'all']).optional(),
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled', 'all']).optional(),
   "dateFrom": zod.coerce.string().optional(),
   "dateTo": zod.coerce.string().optional(),
   "page": zod.coerce.number().optional(),
@@ -1779,7 +1779,7 @@ export const ListSettlementsResponse = zod.object({
   "requestedAmount": zod.number().nullish(),
   "requestedNote": zod.string().nullish(),
   "currency": zod.string(),
-  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid']),
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled']),
   "periodFrom": zod.string().nullish(),
   "periodTo": zod.string().nullish(),
   "transactionCount": zod.number(),
@@ -1835,7 +1835,7 @@ export const ProcessSettlementResponse = zod.object({
   "requestedAmount": zod.number().nullish(),
   "requestedNote": zod.string().nullish(),
   "currency": zod.string(),
-  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid']),
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled']),
   "periodFrom": zod.string().nullish(),
   "periodTo": zod.string().nullish(),
   "transactionCount": zod.number(),
@@ -1868,7 +1868,7 @@ export const ApproveSettlementResponse = zod.object({
   "requestedAmount": zod.number().nullish(),
   "requestedNote": zod.string().nullish(),
   "currency": zod.string(),
-  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid']),
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled']),
   "periodFrom": zod.string().nullish(),
   "periodTo": zod.string().nullish(),
   "transactionCount": zod.number(),
@@ -1901,7 +1901,7 @@ export const RejectSettlementResponse = zod.object({
   "requestedAmount": zod.number().nullish(),
   "requestedNote": zod.string().nullish(),
   "currency": zod.string(),
-  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid']),
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled']),
   "periodFrom": zod.string().nullish(),
   "periodTo": zod.string().nullish(),
   "transactionCount": zod.number(),
@@ -1934,7 +1934,36 @@ export const HoldSettlementResponse = zod.object({
   "requestedAmount": zod.number().nullish(),
   "requestedNote": zod.string().nullish(),
   "currency": zod.string(),
-  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid']),
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled']),
+  "periodFrom": zod.string().nullish(),
+  "periodTo": zod.string().nullish(),
+  "transactionCount": zod.number(),
+  "adminRemark": zod.string().nullish(),
+  "processedBy": zod.number().nullish(),
+  "processedAt": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "referenceNumber": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Cancel a pending settlement (merchant)
+ */
+export const CancelSettlementParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CancelSettlementResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "amount": zod.number(),
+  "requestedAmount": zod.number().nullish(),
+  "requestedNote": zod.string().nullish(),
+  "currency": zod.string(),
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled']),
   "periodFrom": zod.string().nullish(),
   "periodTo": zod.string().nullish(),
   "transactionCount": zod.number(),
@@ -1968,7 +1997,7 @@ export const MarkSettlementPaidResponse = zod.object({
   "requestedAmount": zod.number().nullish(),
   "requestedNote": zod.string().nullish(),
   "currency": zod.string(),
-  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid']),
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled']),
   "periodFrom": zod.string().nullish(),
   "periodTo": zod.string().nullish(),
   "transactionCount": zod.number(),

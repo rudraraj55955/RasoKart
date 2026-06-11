@@ -13,6 +13,13 @@ const settlementCreateLimiter = makeRateLimiter({
   message: { error: "Too many settlement requests. Please wait before submitting another." },
 });
 
+const settlementCancelLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => (req as Request & { user?: { merchantId?: number | null } }).user?.merchantId,
+  message: { error: "Too many cancellation requests. Please wait before trying again." },
+});
+
 async function getUserIdForMerchant(merchantId: number): Promise<number | null> {
   const [u] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.merchantId, merchantId)).limit(1);
   return u?.id ?? null;
@@ -216,6 +223,42 @@ router.post("/", settlementCreateLimiter, async (req, res) => {
   }).returning();
 
   res.status(201).json(mapSettlement(settlement));
+});
+
+// POST /api/settlements/:id/cancel  (merchant cancels their own pending settlement)
+router.post("/:id/cancel", settlementCancelLimiter, async (req, res) => {
+  const user = (req as any).user;
+  if (!user.merchantId) {
+    res.status(403).json({ error: "Not a merchant" });
+    return;
+  }
+
+  const id = parseId(req.params['id'] as string);
+  const [s] = await db.select().from(settlementsTable)
+    .where(and(eq(settlementsTable.id, id), eq(settlementsTable.merchantId, user.merchantId)))
+    .limit(1);
+
+  if (!s) {
+    res.status(404).json({ error: "Settlement not found" });
+    return;
+  }
+
+  if (s.status !== "pending") {
+    res.status(400).json({ error: `Only pending settlements can be cancelled (current status: '${s.status}')` });
+    return;
+  }
+
+  const [updated] = await db.update(settlementsTable)
+    .set({ status: "cancelled" })
+    .where(and(eq(settlementsTable.id, id), eq(settlementsTable.status, "pending")))
+    .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "Settlement status changed — concurrent modification detected" });
+    return;
+  }
+
+  res.json(mapSettlement(updated));
 });
 
 // --- Admin action helpers ---

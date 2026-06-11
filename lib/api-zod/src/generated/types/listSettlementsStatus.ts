@@ -15,5 +15,6 @@ export const ListSettlementsStatus = {
   approved: 'approved',
   rejected: 'rejected',
   paid: 'paid',
+  cancelled: 'cancelled',
   all: 'all',
 } as const;

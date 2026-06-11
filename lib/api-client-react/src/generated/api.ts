@@ -6026,6 +6026,76 @@ export const useHoldSettlement = <TError = ErrorType<unknown>,
       return useMutation(getHoldSettlementMutationOptions(options));
     }
 
+export const getCancelSettlementUrl = (id: number,) => {
+
+
+
+
+  return `/api/settlements/${id}/cancel`
+}
+
+/**
+ * @summary Cancel a pending settlement (merchant)
+ */
+export const cancelSettlement = async (id: number, options?: RequestInit): Promise<Settlement> => {
+
+  return customFetch<Settlement>(getCancelSettlementUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getCancelSettlementMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelSettlement>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelSettlement>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['cancelSettlement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelSettlement>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  cancelSettlement(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelSettlementMutationResult = NonNullable<Awaited<ReturnType<typeof cancelSettlement>>>
+
+    export type CancelSettlementMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel a pending settlement (merchant)
+ */
+export const useCancelSettlement = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelSettlement>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelSettlement>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCancelSettlementMutationOptions(options));
+    }
+
 export const getMarkSettlementPaidUrl = (id: number,) => {
 
 
