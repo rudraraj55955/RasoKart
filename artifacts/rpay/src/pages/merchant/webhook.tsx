@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound, X } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 import { SIG_VERIFIED_KEY } from "./callbacks";
 
@@ -73,7 +73,58 @@ type TestResult = {
   signed: boolean;
 };
 
+const NODE_SNIPPET = `const crypto = require('crypto');
+
+// rawBody must be the raw request body as a string (before JSON.parse)
+function verifySignature(rawBody, signature) {
+  const expected = crypto
+    .createHmac('sha256', 'YOUR_CALLBACK_SECRET')
+    .update(rawBody)
+    .digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(signature, 'hex'),
+    Buffer.from(expected, 'hex')
+  );
+}
+
+// Express example
+app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+  const sig = req.headers['x-signature'];
+  if (!verifySignature(req.body.toString(), sig)) {
+    return res.status(401).send('Invalid signature');
+  }
+  const payload = JSON.parse(req.body);
+  // handle payload.event …
+  res.sendStatus(200);
+});`;
+
+const PYTHON_SNIPPET = `import hmac
+import hashlib
+
+# raw_body must be the raw request body as bytes (before json.loads)
+def verify_signature(raw_body: bytes, signature: str, secret: str) -> bool:
+    expected = hmac.new(
+        secret.encode(),
+        msg=raw_body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+# Flask example
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    raw_body = request.get_data()
+    sig = request.headers.get('X-Signature', '')
+    if not verify_signature(raw_body, sig, 'YOUR_CALLBACK_SECRET'):
+        return 'Invalid signature', 401
+    payload = request.get_json(force=True)
+    # handle payload['event'] …
+    return '', 200`;
+
 function WebhookTestPanel({ result, onDismiss, onRetry, isRetrying }: { result: TestResult; onDismiss: () => void; onRetry?: () => void; isRetrying?: boolean }) {
+  const [showVerifyGuide, setShowVerifyGuide] = useState(false);
+  const [activeTab, setActiveTab] = useState<"node" | "python">("node");
+
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard");
@@ -157,6 +208,76 @@ function WebhookTestPanel({ result, onDismiss, onRetry, isRetrying }: { result: 
           <pre className="text-xs font-mono bg-black/40 border border-border/30 rounded p-2.5 overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground max-h-32 overflow-y-auto">
             {result.responseBody}
           </pre>
+        </div>
+      )}
+
+      {result.signed && (
+        <div className="border border-emerald-500/20 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowVerifyGuide(v => !v)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/15 transition-colors text-left"
+          >
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="text-xs font-medium text-emerald-300">Verify on your server</span>
+            </div>
+            {showVerifyGuide
+              ? <ChevronDown className="w-3.5 h-3.5 text-emerald-400/70 shrink-0" />
+              : <ChevronRight className="w-3.5 h-3.5 text-emerald-400/70 shrink-0" />
+            }
+          </button>
+
+          {showVerifyGuide && (
+            <div className="p-3 space-y-3 bg-black/20">
+              <p className="text-xs text-muted-foreground/70 leading-relaxed">
+                Your server receives an <code className="font-mono text-emerald-300/80 bg-black/30 px-1 rounded">X-Signature</code> header with each signed webhook.
+                Use HMAC-SHA256 with your callback secret to verify it before trusting the payload.
+              </p>
+
+              <div className="space-y-1.5">
+                <ol className="text-xs text-muted-foreground/60 space-y-1 list-decimal list-inside">
+                  <li>Read the <strong className="text-muted-foreground/80">raw request body</strong> as a string (do not parse JSON first).</li>
+                  <li>Compute <code className="font-mono text-emerald-300/80 bg-black/30 px-1 rounded">HMAC-SHA256(rawBody, YOUR_CALLBACK_SECRET)</code> → hex digest.</li>
+                  <li>Compare with the incoming <code className="font-mono text-emerald-300/80 bg-black/30 px-1 rounded">X-Signature</code> header using a timing-safe comparison.</li>
+                  <li>Reject the request if the signatures do not match.</li>
+                </ol>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-1 border-b border-border/20 pb-1">
+                  <button
+                    onClick={() => setActiveTab("node")}
+                    className={`text-xs px-2 py-0.5 rounded transition-colors ${activeTab === "node" ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground/50 hover:text-muted-foreground/80"}`}
+                  >
+                    Node.js
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("python")}
+                    className={`text-xs px-2 py-0.5 rounded transition-colors ${activeTab === "python" ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground/50 hover:text-muted-foreground/80"}`}
+                  >
+                    Python
+                  </button>
+                </div>
+
+                <div className="relative group">
+                  <pre className="text-xs font-mono bg-black/40 border border-border/30 rounded p-2.5 overflow-x-auto whitespace-pre text-muted-foreground/80 max-h-52 overflow-y-auto leading-relaxed">
+                    {activeTab === "node" ? NODE_SNIPPET : PYTHON_SNIPPET}
+                  </pre>
+                  <button
+                    onClick={() => copy(activeTab === "node" ? NODE_SNIPPET : PYTHON_SNIPPET)}
+                    className="absolute top-2 right-2 text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors bg-black/60 rounded p-1"
+                    title="Copy snippet"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-muted-foreground/50">
+                  Replace <code className="font-mono text-amber-300/70 bg-black/30 px-1 rounded">YOUR_CALLBACK_SECRET</code> with the secret shown in the signing secret section above.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
