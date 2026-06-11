@@ -10,6 +10,7 @@ export const scheduledAuditReportLogsTable = pgTable("scheduled_audit_report_log
   rowCount: integer("row_count").notNull().default(0),
   success: boolean("success").notNull(),
   errorMessage: text("error_message"),
+  isRetry: boolean("is_retry").notNull().default(false),
 });
 
 export type ScheduledAuditReportLog = typeof scheduledAuditReportLogsTable.$inferSelect;

@@ -1,6 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { db, scheduledAuditReportsTable, scheduledAuditReportLogsTable, auditLogsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
 
@@ -112,7 +112,7 @@ function isDue(frequency: string, lastSentAt: Date | null): boolean {
   }
 }
 
-export async function sendScheduledReport(schedule: typeof scheduledAuditReportsTable.$inferSelect): Promise<boolean> {
+export async function sendScheduledReport(schedule: typeof scheduledAuditReportsTable.$inferSelect, isRetry = false): Promise<boolean> {
   const { dateFrom, dateTo } = getDateRange(schedule.frequency);
   const sentAt = new Date();
 
@@ -159,6 +159,7 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
     rowCount: rows.length,
     success: sent,
     errorMessage,
+    isRetry,
   });
 
   if (sent) {
@@ -166,9 +167,9 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
       .update(scheduledAuditReportsTable)
       .set({ lastSentAt: sentAt, updatedAt: new Date() })
       .where(eq(scheduledAuditReportsTable.id, schedule.id));
-    logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length }, "Scheduled audit report sent");
+    logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length, isRetry }, "Scheduled audit report sent");
   } else {
-    logger.warn({ scheduleId: schedule.id, errorMessage }, "Scheduled audit report send failed");
+    logger.warn({ scheduleId: schedule.id, errorMessage, isRetry }, "Scheduled audit report send failed");
     throw new Error(errorMessage ?? "Send failed");
   }
   return sent;
@@ -181,10 +182,33 @@ async function runDueReports(): Promise<void> {
       .from(scheduledAuditReportsTable)
       .where(eq(scheduledAuditReportsTable.isActive, true));
 
+    const sentInThisRun = new Set<number>();
+
     for (const schedule of active) {
       if (isDue(schedule.frequency, schedule.lastSentAt)) {
+        sentInThisRun.add(schedule.id);
         await sendScheduledReport(schedule).catch(err => {
           logger.error({ err, scheduleId: schedule.id }, "Failed to send scheduled audit report");
+        });
+      }
+    }
+
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+
+    for (const schedule of active) {
+      if (sentInThisRun.has(schedule.id)) continue;
+
+      const [latestLog] = await db
+        .select()
+        .from(scheduledAuditReportLogsTable)
+        .where(eq(scheduledAuditReportLogsTable.scheduleId, schedule.id))
+        .orderBy(desc(scheduledAuditReportLogsTable.sentAt))
+        .limit(1);
+
+      if (latestLog && !latestLog.success && latestLog.sentAt >= twoHoursAgo) {
+        logger.info({ scheduleId: schedule.id }, "Retrying recently-failed scheduled audit report");
+        await sendScheduledReport(schedule, true).catch(err => {
+          logger.error({ err, scheduleId: schedule.id }, "Retry of scheduled audit report also failed");
         });
       }
     }

@@ -2903,7 +2903,8 @@ export const ListAuditReportScheduleLogsResponse = zod.object({
   "sentAt": zod.string(),
   "rowCount": zod.number(),
   "success": zod.boolean(),
-  "errorMessage": zod.string().nullish()
+  "errorMessage": zod.string().nullish(),
+  "isRetry": zod.boolean()
 }))
 })
 

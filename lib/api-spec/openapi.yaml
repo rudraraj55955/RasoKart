@@ -6192,7 +6192,7 @@ components:
 
     AuditReportScheduleLog:
       type: object
-      required: [id, scheduleId, sentAt, rowCount, success]
+      required: [id, scheduleId, sentAt, rowCount, success, isRetry]
       properties:
         id:
           type: integer
@@ -6206,6 +6206,8 @@ components:
           type: boolean
         errorMessage:
           type: ["string", "null"]
+        isRetry:
+          type: boolean
 
     AuditReportScheduleLogListResponse:
       type: object

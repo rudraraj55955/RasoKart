@@ -14,4 +14,5 @@ export interface AuditReportScheduleLog {
   success: boolean;
   /** @nullable */
   errorMessage?: string | null;
+  isRetry: boolean;
 }
