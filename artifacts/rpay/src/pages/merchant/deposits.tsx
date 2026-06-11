@@ -232,7 +232,7 @@ export default function MerchantDeposits() {
     search: search || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
-    connectionProvider: provider !== "all" ? provider : undefined,
+    connectionProvider: provider !== "all" ? provider as import("@workspace/api-client-react").ListTransactionsConnectionProvider : undefined,
     page,
     limit: 20,
   });

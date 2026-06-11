@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transactionsTable, qrPaymentEventsTable, auditLogsTable } from "@workspace/db";
-import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray, type SQL } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 import rateLimit from "express-rate-limit";
@@ -132,8 +132,8 @@ router.get("/", async (req, res) => {
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
 
-  const qrConditions = [];
-  const merchantConditions = [];
+  const qrConditions: SQL<unknown>[] = [];
+  const merchantConditions: SQL<unknown>[] = [];
   if (user.role !== "admin") qrConditions.push(eq(qrCodesTable.merchantId, user.merchantId!));
   if (merchantId && user.role === "admin") qrConditions.push(eq(qrCodesTable.merchantId, parseInt(merchantId)));
   if (type && type !== "all") qrConditions.push(eq(qrCodesTable.type, type));
@@ -189,8 +189,8 @@ router.get("/stats", async (req, res) => {
   const user = (req as any).user;
   const { merchantName, search, dateFrom, dateTo } = req.query as Record<string, string>;
 
-  const qrConditions = [];
-  const merchantConditions = [];
+  const qrConditions: SQL<unknown>[] = [];
+  const merchantConditions: SQL<unknown>[] = [];
 
   if (user.role !== "admin") {
     qrConditions.push(eq(qrCodesTable.merchantId, user.merchantId!));
