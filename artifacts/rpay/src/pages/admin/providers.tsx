@@ -136,6 +136,8 @@ export default function AdminProviders() {
   // Rate-limit guards
   const reorderRateLimit = useRateLimit();
   const visRateLimit = useRateLimit();
+  const submitRateLimit = useRateLimit();
+  const deleteRateLimit = useRateLimit();
 
   // Mutations
   const createMut = useCreateProvider();
@@ -183,12 +185,18 @@ export default function AdminProviders() {
     if (dialog === "create") {
       createMut.mutate({ data: payload }, {
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Provider created"); setDialog(null); },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to create provider"),
+        onError: (e: any) => {
+          if (submitRateLimit.handleRateLimitError(e)) return;
+          toast.error(e?.response?.data?.error ?? "Failed to create provider");
+        },
       });
     } else if (editing) {
       updateMut.mutate({ id: editing.id, data: payload }, {
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Provider updated"); setDialog(null); },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to update provider"),
+        onError: (e: any) => {
+          if (submitRateLimit.handleRateLimitError(e)) return;
+          toast.error(e?.response?.data?.error ?? "Failed to update provider");
+        },
       });
     }
   }
@@ -197,7 +205,10 @@ export default function AdminProviders() {
     if (!editing) return;
     deleteMut.mutate({ id: editing.id }, {
       onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Provider deleted"); setDialog(null); setEditing(null); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to delete provider"),
+      onError: (e: any) => {
+        if (deleteRateLimit.handleRateLimitError(e)) return;
+        toast.error(e?.response?.data?.error ?? "Failed to delete provider");
+      },
     });
   }
 
@@ -504,9 +515,16 @@ export default function AdminProviders() {
               <Input type="number" value={form.sortOrder} onChange={e => setForm(f => ({ ...f, sortOrder: e.target.value }))} />
             </div>
           </div>
+          {submitRateLimit.isRateLimited && submitRateLimit.rateLimitSeconds !== null && (
+            <RateLimitBanner
+              retryAfterSeconds={submitRateLimit.rateLimitSeconds}
+              message="Too many requests. Please wait before trying again."
+              onDismiss={submitRateLimit.dismiss}
+            />
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending}>
+            <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending || submitRateLimit.isRateLimited}>
               {createMut.isPending || updateMut.isPending ? "Saving…" : dialog === "create" ? "Add Provider" : "Save Changes"}
             </Button>
           </DialogFooter>
@@ -522,9 +540,16 @@ export default function AdminProviders() {
               Delete <strong>{editing?.name}</strong>? This will also remove all visibility rules for this provider. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
+          {deleteRateLimit.isRateLimited && deleteRateLimit.rateLimitSeconds !== null && (
+            <RateLimitBanner
+              retryAfterSeconds={deleteRateLimit.rateLimitSeconds}
+              message="Too many requests. Please wait before trying again."
+              onDismiss={deleteRateLimit.dismiss}
+            />
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleteMut.isPending}>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteMut.isPending || deleteRateLimit.isRateLimited}>
               {deleteMut.isPending ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
