@@ -7352,6 +7352,8 @@ components:
           type: boolean
         errorMessage:
           type: ["string", "null"]
+        recipientEmail:
+          type: ["string", "null"]
         isRetry:
           type: boolean
         triggerType:

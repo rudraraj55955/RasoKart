@@ -172,6 +172,7 @@ export async function sendScheduledReport(
     rowCount: rows.length,
     success: sent,
     errorMessage,
+    recipientEmail: schedule.recipientEmail,
     isRetry,
     retryAttempt,
     triggerType,

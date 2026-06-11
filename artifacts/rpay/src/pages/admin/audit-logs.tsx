@@ -1346,6 +1346,11 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
                     {log.rowCount.toLocaleString()} row{log.rowCount !== 1 ? "s" : ""}
                   </span>
                 </div>
+                {log.recipientEmail && (
+                  <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                    → {log.recipientEmail}
+                  </p>
+                )}
                 {!log.success && log.errorMessage && (
                   <TooltipProvider>
                     <Tooltip>
