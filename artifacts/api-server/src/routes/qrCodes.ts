@@ -210,11 +210,16 @@ router.get("/stats", async (req, res) => {
     return conditions.length ? and(...conditions) : undefined;
   };
 
-  const runCount = (extraStatus?: string) =>
-    db.select({ n: count() })
-      .from(qrCodesTable)
-      .$if(needsJoin, q => q.leftJoin(merchantsTable, eq(qrCodesTable.merchantId, merchantsTable.id)))
-      .where(buildWhere(extraStatus));
+  const runCount = (extraStatus?: string) => {
+    const where = buildWhere(extraStatus);
+    if (needsJoin) {
+      return db.select({ n: count() })
+        .from(qrCodesTable)
+        .leftJoin(merchantsTable, eq(qrCodesTable.merchantId, merchantsTable.id))
+        .where(where);
+    }
+    return db.select({ n: count() }).from(qrCodesTable).where(where);
+  };
 
   const [totalRow, activeRow, usedRow, expiredRow] = await Promise.all([
     runCount(),

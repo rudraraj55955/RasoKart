@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useListQrCodes, useDeleteQrCode, useGetQrCodeStats } from "@workspace/api-client-react";
+import { useListQrCodes, useDeleteQrCode, useGetQrCodeStats, useBulkDeleteQrCodes } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,9 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, Trash2, Download, QrCode, X, RefreshCw } from "lucide-react";
+import { Search, Trash2, QrCode, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -18,6 +20,36 @@ function statusBadge(status: string) {
   if (status === "expired") return <Badge className="text-xs bg-rose-500/15 text-rose-400 border-rose-500/20 hover:bg-rose-500/20">Expired</Badge>;
   if (status === "used") return <Badge className="text-xs bg-blue-500/15 text-blue-400 border-blue-500/20 hover:bg-blue-500/20">Used</Badge>;
   return <Badge variant="secondary" className="text-xs capitalize">{status}</Badge>;
+}
+
+type BulkConfirmDialogProps = {
+  count: number;
+  label: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+};
+
+function BulkConfirmDialog({ count, label, onConfirm, onCancel, isPending }: BulkConfirmDialogProps) {
+  return (
+    <Dialog open onOpenChange={onCancel}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete {count} QR {count === 1 ? "code" : "codes"}?</DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            This will permanently delete {label}. This action cannot be undone.
+          </p>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onCancel} disabled={isPending}>Cancel</Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            {isPending ? "Deleting…" : `Delete ${count} ${count === 1 ? "code" : "codes"}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export default function AdminQrCodes() {
@@ -31,6 +63,8 @@ export default function AdminQrCodes() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkConfirm, setBulkConfirm] = useState<{ ids?: number[]; statusFilter?: string; count: number; label: string } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -62,10 +96,12 @@ export default function AdminQrCodes() {
     dateTo: dateTo || undefined,
   });
   const deleteMutation = useDeleteQrCode();
+  const bulkDeleteMutation = useBulkDeleteQrCodes();
 
   const invalidateQr = () => {
     qc.invalidateQueries({ queryKey: ["/api/qr-codes"] });
     qc.invalidateQueries({ queryKey: ["/api/qr-codes/stats"] });
+    setSelectedIds(new Set());
   };
 
   const handleDelete = (id: number) => {
@@ -96,7 +132,71 @@ export default function AdminQrCodes() {
     a.click();
   };
 
-  const clearAll = () => { setSearch(""); setMerchantName(""); setDateFrom(""); setDateTo(""); setPage(1); };
+  const clearAll = () => { setSearch(""); setMerchantName(""); setDateFrom(""); setDateTo(""); setPage(1); setSelectedIds(new Set()); };
+
+  const rowIds = (data?.data ?? []).map(r => r.id as number);
+  const allSelected = rowIds.length > 0 && rowIds.every(id => selectedIds.has(id));
+  const someSelected = rowIds.some(id => selectedIds.has(id));
+  const selectedCount = selectedIds.size;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        rowIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        rowIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const toggleSelect = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const openBulkDeleteSelected = () => {
+    const ids = Array.from(selectedIds);
+    setBulkConfirm({ ids, count: ids.length, label: `${ids.length} selected QR ${ids.length === 1 ? "code" : "codes"}` });
+  };
+
+  const openBulkDeleteByStatus = (statusFilter: string) => {
+    const count = statusFilter === "expired" ? (stats?.expired ?? 0) : (stats?.used ?? 0);
+    const merchantSuffix = merchantName ? ` for "${merchantName}"` : " across all merchants";
+    const label = `all ${statusFilter} QR codes${merchantSuffix}`;
+    setBulkConfirm({ statusFilter, count, label });
+  };
+
+  const executeBulkDelete = () => {
+    if (!bulkConfirm) return;
+    const payload = bulkConfirm.ids
+      ? { ids: bulkConfirm.ids }
+      : { status: bulkConfirm.statusFilter as "expired" | "used" };
+
+    bulkDeleteMutation.mutate({ data: payload }, {
+      onSuccess: (res) => {
+        toast.success(`${res.deleted} QR ${res.deleted === 1 ? "code" : "codes"} deleted`);
+        setBulkConfirm(null);
+        invalidateQr();
+      },
+      onError: () => {
+        toast.error("Bulk delete failed");
+        setBulkConfirm(null);
+      },
+    });
+  };
+
+  const showDeleteAllExpired = status === "expired" && (stats?.expired ?? 0) > 0;
+  const showDeleteAllUsed = status === "used" && (stats?.used ?? 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -126,7 +226,7 @@ export default function AdminQrCodes() {
             <button
               key={stat.label}
               type="button"
-              onClick={() => { setStatus(stat.filter); setPage(1); }}
+              onClick={() => { setStatus(stat.filter); setPage(1); setSelectedIds(new Set()); }}
               className={`text-left rounded-xl border bg-card transition-all hover:ring-2 focus-visible:outline-none focus-visible:ring-2 ${isActive ? `ring-2 ${stat.ring}` : "hover:ring-border"}`}
             >
               <div className="px-5 pt-5 pb-4">
@@ -165,7 +265,7 @@ export default function AdminQrCodes() {
                   </button>
                 )}
               </div>
-              <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+              <Select value={status} onValueChange={v => { setStatus(v); setPage(1); setSelectedIds(new Set()); }}>
                 <SelectTrigger className="w-[140px]"><SelectValue placeholder="All Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
@@ -175,7 +275,7 @@ export default function AdminQrCodes() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 items-center">
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
               <div className="flex items-center gap-2 flex-1">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">Date range:</span>
                 <Input type="date" className="h-9 text-sm" value={dateFrom}
@@ -189,6 +289,41 @@ export default function AdminQrCodes() {
                   </Button>
                 )}
               </div>
+
+              {/* Bulk action buttons */}
+              {selectedCount > 0 && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={openBulkDeleteSelected}
+                  className="shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete selected ({selectedCount})
+                </Button>
+              )}
+              {showDeleteAllExpired && selectedCount === 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openBulkDeleteByStatus("expired")}
+                  className="shrink-0 border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete all expired ({stats?.expired})
+                </Button>
+              )}
+              {showDeleteAllUsed && selectedCount === 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openBulkDeleteByStatus("used")}
+                  className="shrink-0 border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete all used ({stats?.used})
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -196,6 +331,15 @@ export default function AdminQrCodes() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8 pl-4">
+                  <Checkbox
+                    checked={allSelected}
+                    data-state={someSelected && !allSelected ? "indeterminate" : undefined}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                    disabled={rowIds.length === 0}
+                  />
+                </TableHead>
                 <TableHead>ID</TableHead>
                 <TableHead>Merchant</TableHead>
                 <TableHead>Order ID</TableHead>
@@ -211,22 +355,30 @@ export default function AdminQrCodes() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : !data?.data?.length ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-14">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-14">
                     <QrCode className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No QR codes found</p>
                   </TableCell>
                 </TableRow>
               ) : data.data.map(qr => {
                 const isExpiredTime = qr.expiresAt ? new Date(qr.expiresAt as string) < new Date() : false;
+                const isChecked = selectedIds.has(qr.id);
                 return (
-                  <TableRow key={qr.id}>
+                  <TableRow key={qr.id} className={isChecked ? "bg-muted/20" : ""}>
+                    <TableCell className="pl-4 pr-0" onClick={e => toggleSelect(qr.id, e)}>
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={() => {}}
+                        aria-label={`Select QR code ${qr.id}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">#{qr.id}</TableCell>
                     <TableCell className="text-sm font-medium">{qr.merchantName ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">{qr.orderId ?? <span className="text-muted-foreground">—</span>}</TableCell>
@@ -269,6 +421,17 @@ export default function AdminQrCodes() {
             <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 50 >= data.total}>Next</Button>
           </div>
         </div>
+      )}
+
+      {/* Bulk delete confirmation dialog */}
+      {bulkConfirm && (
+        <BulkConfirmDialog
+          count={bulkConfirm.count}
+          label={bulkConfirm.label}
+          onConfirm={executeBulkDelete}
+          onCancel={() => setBulkConfirm(null)}
+          isPending={bulkDeleteMutation.isPending}
+        />
       )}
     </div>
   );
