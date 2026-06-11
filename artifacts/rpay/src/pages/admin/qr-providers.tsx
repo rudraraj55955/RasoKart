@@ -47,6 +47,7 @@ export default function AdminQrProviders() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [dialog, setDialog] = useState<"create" | "edit" | "delete" | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
@@ -55,8 +56,8 @@ export default function AdminQrProviders() {
 
   // Fetch connections (QR provider assignments)
   const { data, isLoading } = useQuery({
-    queryKey: ["connections", search, providerFilter, page],
-    queryFn: () => api("GET", `/connections?search=${encodeURIComponent(search)}&provider=${providerFilter !== "all" ? providerFilter : ""}&page=${page}&limit=20`),
+    queryKey: ["connections", search, providerFilter, statusFilter, page],
+    queryFn: () => api("GET", `/connections?search=${encodeURIComponent(search)}&provider=${providerFilter !== "all" ? providerFilter : ""}&status=${statusFilter !== "all" ? statusFilter : ""}&page=${page}&limit=20`),
   });
 
   // Fetch merchants for the picker
@@ -145,6 +146,14 @@ export default function AdminQrProviders() {
               <SelectContent>
                 <SelectItem value="all">All Providers</SelectItem>
                 {QR_PROVIDERS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="All statuses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Deactivated</SelectItem>
               </SelectContent>
             </Select>
           </div>

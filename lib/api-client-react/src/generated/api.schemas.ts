@@ -2590,6 +2590,26 @@ export const ListUsersRole = {
   all: 'all',
 } as const;
 
+export type ListMerchantConnectionsParams = {
+search?: string;
+provider?: string;
+merchantId?: number;
+page?: number;
+limit?: number;
+/**
+ * Filter by connection status — active (isActive=true) or inactive (isActive=false)
+ */
+status?: ListMerchantConnectionsStatus;
+};
+
+export type ListMerchantConnectionsStatus = typeof ListMerchantConnectionsStatus[keyof typeof ListMerchantConnectionsStatus];
+
+
+export const ListMerchantConnectionsStatus = {
+  active: 'active',
+  inactive: 'inactive',
+} as const;
+
 export type ListPlanHistoryParams = {
 merchantId?: number;
 page?: number;

@@ -104,6 +104,8 @@ export * from './listCallbackLogsSignatureVerified';
 export * from './listCallbackLogsStatus';
 export * from './listInvoicesParams';
 export * from './listLedgerEntriesParams';
+export * from './listMerchantConnectionsParams';
+export * from './listMerchantConnectionsStatus';
 export * from './listMerchantFeaturesParams';
 export * from './listMerchantsCallbackSecretSet';
 export * from './listMerchantsExpiryStatus';

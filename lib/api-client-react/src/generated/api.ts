@@ -91,6 +91,7 @@ import type {
   ListCallbackLogsParams,
   ListInvoicesParams,
   ListLedgerEntriesParams,
+  ListMerchantConnectionsParams,
   ListMerchantFeaturesParams,
   ListMerchantsParams,
   ListMySecurityActivityParams,
@@ -6272,20 +6273,27 @@ export const useToggleMerchantProduct = <TError = ErrorType<unknown>,
       return useMutation(getToggleMerchantProductMutationOptions(options));
     }
 
-export const getListMerchantConnectionsUrl = () => {
+export const getListMerchantConnectionsUrl = (params?: ListMerchantConnectionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/connections`
+  return stringifiedParams.length > 0 ? `/api/connections?${stringifiedParams}` : `/api/connections`
 }
 
 /**
  * @summary List merchant payment provider connections
  */
-export const listMerchantConnections = async ( options?: RequestInit): Promise<MerchantConnection[]> => {
+export const listMerchantConnections = async (params?: ListMerchantConnectionsParams, options?: RequestInit): Promise<MerchantConnection[]> => {
 
-  return customFetch<MerchantConnection[]>(getListMerchantConnectionsUrl(),
+  return customFetch<MerchantConnection[]>(getListMerchantConnectionsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6298,23 +6306,23 @@ export const listMerchantConnections = async ( options?: RequestInit): Promise<M
 
 
 
-export const getListMerchantConnectionsQueryKey = () => {
+export const getListMerchantConnectionsQueryKey = (params?: ListMerchantConnectionsParams,) => {
     return [
-    `/api/connections`
+    `/api/connections`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListMerchantConnectionsQueryOptions = <TData = Awaited<ReturnType<typeof listMerchantConnections>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListMerchantConnectionsQueryOptions = <TData = Awaited<ReturnType<typeof listMerchantConnections>>, TError = ErrorType<unknown>>(params?: ListMerchantConnectionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListMerchantConnectionsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListMerchantConnectionsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMerchantConnections>>> = ({ signal }) => listMerchantConnections({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMerchantConnections>>> = ({ signal }) => listMerchantConnections(params, { signal, ...requestOptions });
 
 
 
@@ -6332,11 +6340,11 @@ export type ListMerchantConnectionsQueryError = ErrorType<unknown>
  */
 
 export function useListMerchantConnections<TData = Awaited<ReturnType<typeof listMerchantConnections>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListMerchantConnectionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListMerchantConnectionsQueryOptions(options)
+  const queryOptions = getListMerchantConnectionsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

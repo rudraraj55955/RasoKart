@@ -1985,6 +1985,15 @@ export const ToggleMerchantProductResponse = zod.object({
 /**
  * @summary List merchant payment provider connections
  */
+export const ListMerchantConnectionsQueryParams = zod.object({
+  "search": zod.coerce.string().optional(),
+  "provider": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.number().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional(),
+  "status": zod.enum(['active', 'inactive']).optional().describe('Filter by connection status — active (isActive=true) or inactive (isActive=false)')
+})
+
 export const ListMerchantConnectionsResponseItem = zod.object({
   "id": zod.number(),
   "merchantId": zod.number(),

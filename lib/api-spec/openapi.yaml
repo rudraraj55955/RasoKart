@@ -2086,6 +2086,33 @@ paths:
       operationId: listMerchantConnections
       tags: [connections]
       summary: List merchant payment provider connections
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          description: Filter by connection status — active (isActive=true) or inactive (isActive=false)
+          schema:
+            type: string
+            enum: [active, inactive]
       responses:
         "200":
           description: List of connections

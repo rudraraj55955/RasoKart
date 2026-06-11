@@ -69,7 +69,7 @@ router.get("/", async (req, res) => {
   const user = (req as any).user;
 
   if (user.role === "admin") {
-    const { search, provider, page = "1", limit = "20", merchantId } = req.query as Record<string, string>;
+    const { search, provider, page = "1", limit = "20", merchantId, status } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -77,6 +77,8 @@ router.get("/", async (req, res) => {
     const conditions: any[] = [];
     if (provider && provider !== "") conditions.push(eq(merchantConnectionsTable.provider, provider));
     if (merchantId && !isNaN(parseInt(merchantId))) conditions.push(eq(merchantConnectionsTable.merchantId, parseInt(merchantId)));
+    if (status === "active") conditions.push(eq(merchantConnectionsTable.isActive, true));
+    else if (status === "inactive") conditions.push(eq(merchantConnectionsTable.isActive, false));
 
     if (search) {
       const nameSearch = or(
