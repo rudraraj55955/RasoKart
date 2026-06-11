@@ -12,6 +12,7 @@ import { initVaCleanupScheduler } from "./helpers/vaCleanupScheduler";
 import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initRateLimitCleanupScheduler } from "./helpers/rateLimitCleanupScheduler";
+import { initVaCleanupScheduler } from "./helpers/vaCleanupScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -64,6 +65,7 @@ async function main() {
   initPlanExpiryScheduler();
   initPlanRenewalScheduler();
   initRateLimitCleanupScheduler();
+  initVaCleanupScheduler();
   scheduleCallbackRetryWorker();
 
   // Startup sweep: immediately scan all active connections so merchants receive

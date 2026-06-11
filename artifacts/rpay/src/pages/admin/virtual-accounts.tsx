@@ -7,6 +7,7 @@ import {
   useGetVirtualAccountBalanceHistory,
   useListVaBalanceAudit,
   useBackfillVaBalanceHistory,
+  useRunVaCleanup,
 } from "@workspace/api-client-react";
 import {
   LineChart,
@@ -287,6 +288,22 @@ export default function AdminVirtualAccounts() {
   const updateMutation = useUpdateVirtualAccount();
   const deleteMutation = useDeleteVirtualAccount();
   const backfillMutation = useBackfillVaBalanceHistory();
+  const cleanupMutation = useRunVaCleanup();
+
+  const handleRunCleanup = () => {
+    if (!confirm("Run VA cleanup now?\n\nThis will:\n• Close active VAs with no activity (zero totalCollection, no transactions) older than 30 days\n• Delete closed VAs with zero balance/collection and no transactions older than 30 days")) return;
+    cleanupMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        const parts = [];
+        if (result.closed > 0) parts.push(`${result.closed} account${result.closed !== 1 ? "s" : ""} closed`);
+        if (result.deleted > 0) parts.push(`${result.deleted} account${result.deleted !== 1 ? "s" : ""} deleted`);
+        const summary = parts.length > 0 ? parts.join(", ") : "No accounts affected";
+        toast.success(`Cleanup complete — ${summary}`);
+        qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] });
+      },
+      onError: () => toast.error("Cleanup failed"),
+    });
+  };
 
   const { data: historyData, isLoading: historyLoading } = useGetVirtualAccountTransactions(
     selectedVa?.id ?? 0,
@@ -459,6 +476,16 @@ export default function AdminVirtualAccounts() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
             <RefreshCw className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRunCleanup}
+            disabled={cleanupMutation.isPending}
+            className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+          >
+            <Trash2 className={`w-4 h-4 mr-1.5 ${cleanupMutation.isPending ? "animate-pulse" : ""}`} />
+            {cleanupMutation.isPending ? "Running…" : "Run cleanup"}
           </Button>
           {pageTab === "accounts" && <ExportCsvButton onExport={exportCsv} />}
           {pageTab === "audit" && <ExportCsvButton onExport={exportAuditCsv} />}

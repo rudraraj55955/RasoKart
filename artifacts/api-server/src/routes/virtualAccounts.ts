@@ -2,7 +2,8 @@ import { Router, type Request } from "express";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
 import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceHistoryTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, ilike, count, or, desc, gte, lte, sql } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { runVaCleanup } from "../helpers/vaCleanupScheduler";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 
 const createVaLimiter = makeRateLimiter({
@@ -177,6 +178,30 @@ router.get("/export/csv", async (req, res) => {
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename="virtual-accounts-export.csv"`);
   res.send(csv);
+});
+
+// POST /api/virtual-accounts/cleanup/run (admin only)
+router.post("/cleanup/run", requireAdmin, async (req, res) => {
+  try {
+    const result = await runVaCleanup();
+    req.log.info(result, "va_cleanup_manual_run");
+
+    const user = (req as any).user;
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "va_cleanup_run",
+      targetType: "virtual_account",
+      targetId: null,
+      details: JSON.stringify(result),
+      ipAddress: req.ip ?? null,
+    });
+
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "va_cleanup_manual_run_failed");
+    res.status(500).json({ error: "Cleanup failed" });
+  }
 });
 
 // POST /api/virtual-accounts/backfill (admin only)

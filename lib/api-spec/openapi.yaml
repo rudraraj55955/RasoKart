@@ -2731,6 +2731,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/VirtualAccount"
 
+  /virtual-accounts/cleanup/run:
+    post:
+      operationId: runVaCleanup
+      tags: [virtual-accounts]
+      summary: Manually trigger a virtual account cleanup run (admin only)
+      responses:
+        "200":
+          description: Cleanup result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [closed, deleted]
+                properties:
+                  closed:
+                    type: integer
+                    description: Number of stale active VAs that were closed
+                  deleted:
+                    type: integer
+                    description: Number of closed VAs with zero balance/collection that were deleted
+
   /virtual-accounts/backfill:
     post:
       operationId: backfillVaBalanceHistory

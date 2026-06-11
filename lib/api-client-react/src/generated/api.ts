@@ -45,6 +45,7 @@ import type {
   AuditReportScheduleLogListResponse,
   AuditReportSchedulePatch,
   AuthResponse,
+  RunVaCleanup200,
   BackfillVaBalanceHistory200,
   BroadcastNotificationInput,
   BroadcastNotificationResult,
@@ -8554,6 +8555,74 @@ export const useCreateVirtualAccount = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateVirtualAccountMutationOptions(options));
+    }
+
+export const getRunVaCleanupUrl = () => {
+
+
+
+
+  return `/api/virtual-accounts/cleanup/run`
+}
+
+/**
+ * @summary Manually trigger a virtual account cleanup run (admin only)
+ */
+export const runVaCleanup = async ( options?: RequestInit): Promise<RunVaCleanup200> => {
+
+  return customFetch<RunVaCleanup200>(getRunVaCleanupUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunVaCleanupMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runVaCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runVaCleanup>>, TError,void, TContext> => {
+
+const mutationKey = ['runVaCleanup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runVaCleanup>>, void> = () => {
+
+
+          return  runVaCleanup(requestOptions)
+        }
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunVaCleanupMutationResult = NonNullable<Awaited<ReturnType<typeof runVaCleanup>>>
+
+    export type RunVaCleanupMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Manually trigger a virtual account cleanup run (admin only)
+ */
+export const useRunVaCleanup = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runVaCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runVaCleanup>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunVaCleanupMutationOptions(options));
     }
 
 export const getBackfillVaBalanceHistoryUrl = () => {

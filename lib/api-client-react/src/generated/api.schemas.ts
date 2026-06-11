@@ -2731,6 +2731,11 @@ export const ListVirtualAccountsStatus = {
   all: 'all',
 } as const;
 
+export type RunVaCleanup200 = {
+  closed: number;
+  deleted: number;
+};
+
 export type BackfillVaBalanceHistory200 = {
   rowsUpdated: number;
   vasProcessed: number;
