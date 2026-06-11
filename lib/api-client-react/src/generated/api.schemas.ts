@@ -2304,6 +2304,21 @@ export interface StorageCleanupResult {
   errors: number;
 }
 
+export interface LookbackPreset {
+  /**
+     * Human-readable name for this preset (e.g. "Fortnightly")
+     * @minLength 1
+     * @maxLength 50
+     */
+  name: string;
+  /**
+     * Number of days to look back
+     * @minimum 1
+     * @maximum 90
+     */
+  days: number;
+}
+
 export interface QrCleanupConfig {
   /**
      * Days to retain expired/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.

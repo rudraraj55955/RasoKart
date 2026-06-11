@@ -9,13 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, ChevronLeft, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck, StickyNote } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, ChevronLeft, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck, StickyNote, BookmarkPlus, Trash2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { useGetReconciliationScheduleConfig, useUpdateReconciliationScheduleConfig, useGetReconciliationNextRun } from "@workspace/api-client-react";
+import { useGetReconciliationScheduleConfig, useUpdateReconciliationScheduleConfig, useGetReconciliationNextRun, useGetReconciliationLookbackPresets, useAddReconciliationLookbackPreset, useDeleteReconciliationLookbackPreset } from "@workspace/api-client-react";
 import type { ReconciliationRun } from "@workspace/api-client-react";
 
 async function apiPost(path: string, body: object) {
@@ -491,12 +491,54 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
   const [editing, setEditing] = useState(false);
   const [localTimeStr, setLocalTimeStr] = useState("00:00");
   const [lookbackDays, setLookbackDays] = useState(1);
-  const [lookbackPreset, setLookbackPreset] = useState<"1" | "3" | "7" | "30" | "custom">("1");
+  const [lookbackPreset, setLookbackPreset] = useState<string>("1");
   const [enabled, setEnabled] = useState(true);
+  const [presetName, setPresetName] = useState("");
+  const [savingPreset, setSavingPreset] = useState(false);
 
-  function syncLookback(days: number) {
+  const { data: savedPresets = [], refetch: refetchPresets } = useGetReconciliationLookbackPresets();
+
+  const { mutate: addPreset } = useAddReconciliationLookbackPreset({
+    mutation: {
+      onSuccess: (updated) => {
+        toast.success("Preset saved");
+        setPresetName("");
+        setSavingPreset(false);
+        refetchPresets();
+        const key = `s:${lookbackDays}`;
+        setLookbackPreset(key);
+      },
+      onError: (err: any) => {
+        toast.error(`Failed to save preset: ${err?.message ?? "Unknown error"}`);
+        setSavingPreset(false);
+      },
+    },
+  });
+
+  const { mutate: deletePreset } = useDeleteReconciliationLookbackPreset({
+    mutation: {
+      onSuccess: (updated) => {
+        toast.success("Preset removed");
+        refetchPresets();
+        if (lookbackPreset.startsWith("s:")) {
+          setLookbackPreset("custom");
+        }
+      },
+      onError: (err: any) => toast.error(`Failed to remove preset: ${err?.message ?? "Unknown error"}`),
+    },
+  });
+
+  const BUILTIN_DAYS = [1, 3, 7, 30];
+
+  function syncLookback(days: number, presets: Array<{ name: string; days: number }> = []) {
     setLookbackDays(days);
-    setLookbackPreset([1, 3, 7, 30].includes(days) ? (String(days) as "1" | "3" | "7" | "30") : "custom");
+    if (BUILTIN_DAYS.includes(days)) {
+      setLookbackPreset(String(days));
+    } else if (presets.some((p) => p.days === days)) {
+      setLookbackPreset(`s:${days}`);
+    } else {
+      setLookbackPreset("custom");
+    }
   }
 
   const tz = nextRunData?.serverTimezone ?? null;
@@ -509,10 +551,10 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
       } else {
         setLocalTimeStr(`${padTwo(config.hour)}:${padTwo(config.minute)}`);
       }
-      syncLookback(config.lookbackDays);
+      syncLookback(config.lookbackDays, savedPresets);
       setEnabled(config.enabled);
     }
-  }, [config, tz]);
+  }, [config, tz, savedPresets]);
 
   const { mutate: saveConfig, isPending: saving } = useUpdateReconciliationScheduleConfig({
     mutation: {
@@ -680,13 +722,17 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
                 <Select
                   value={lookbackPreset}
                   onValueChange={(v) => {
-                    const val = v as "1" | "3" | "7" | "30" | "custom";
-                    setLookbackPreset(val);
-                    if (val !== "custom") setLookbackDays(parseInt(val));
+                    setLookbackPreset(v);
+                    if (v !== "custom" && !v.startsWith("s:")) {
+                      setLookbackDays(parseInt(v));
+                    } else if (v.startsWith("s:")) {
+                      const d = parseInt(v.slice(2));
+                      setLookbackDays(d);
+                    }
                   }}
                   disabled={saving}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-48">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -694,20 +740,92 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
                     <SelectItem value="3">Last 3 days</SelectItem>
                     <SelectItem value="7">Last 7 days</SelectItem>
                     <SelectItem value="30">Last 30 days</SelectItem>
+                    {savedPresets.length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider mt-1">Saved presets</div>
+                        {savedPresets.map((p) => (
+                          <SelectItem key={`s:${p.days}`} value={`s:${p.days}`}>
+                            {p.name} ({p.days}d)
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
                     <SelectItem value="custom">Custom…</SelectItem>
                   </SelectContent>
                 </Select>
-                {lookbackPreset === "custom" && (
+                {(lookbackPreset === "custom" || lookbackPreset.startsWith("s:")) && (
                   <Input
                     type="number"
                     min={1}
                     max={90}
                     value={lookbackDays}
-                    onChange={e => setLookbackDays(Math.min(90, Math.max(1, parseInt(e.target.value) || 1)))}
+                    onChange={e => {
+                      const d = Math.min(90, Math.max(1, parseInt(e.target.value) || 1));
+                      setLookbackDays(d);
+                      if (lookbackPreset.startsWith("s:") && parseInt(lookbackPreset.slice(2)) !== d) {
+                        setLookbackPreset("custom");
+                      }
+                    }}
                     className="w-24 mt-1.5"
                     placeholder="1–90"
                     disabled={saving}
                   />
+                )}
+                {lookbackPreset === "custom" && (
+                  <div className="mt-2 rounded-md border border-primary/20 bg-primary/5 p-2.5 space-y-2">
+                    <p className="text-[10px] text-primary/70 font-medium flex items-center gap-1">
+                      <BookmarkPlus className="w-3 h-3" /> Save as preset
+                    </p>
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        placeholder="e.g. Fortnightly"
+                        value={presetName}
+                        onChange={e => setPresetName(e.target.value)}
+                        className="h-7 text-xs flex-1"
+                        maxLength={50}
+                        disabled={savingPreset || saving}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && presetName.trim()) {
+                            setSavingPreset(true);
+                            addPreset({ data: { name: presetName.trim(), days: lookbackDays } });
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10 shrink-0"
+                        disabled={!presetName.trim() || savingPreset || saving}
+                        onClick={() => {
+                          setSavingPreset(true);
+                          addPreset({ data: { name: presetName.trim(), days: lookbackDays } });
+                        }}
+                      >
+                        {savingPreset ? <Loader2 className="w-3 h-3 animate-spin" /> : <BookmarkPlus className="w-3 h-3" />}
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {savedPresets.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Manage presets</p>
+                    {savedPresets.map((p) => (
+                      <div key={p.days} className="flex items-center justify-between rounded border border-border/40 bg-muted/20 px-2 py-1">
+                        <span className="text-xs text-foreground/80">{p.name} <span className="text-muted-foreground/60">({p.days}d)</span></span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 w-5 p-0 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10"
+                          onClick={() => deletePreset({ days: p.days })}
+                          disabled={saving}
+                          title={`Remove "${p.name}" preset`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -738,8 +856,9 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
                     } else {
                       setLocalTimeStr(`${padTwo(config.hour)}:${padTwo(config.minute)}`);
                     }
-                    syncLookback(config.lookbackDays);
+                    syncLookback(config.lookbackDays, savedPresets);
                     setEnabled(config.enabled);
+                    setPresetName("");
                   }
                 }}
                 disabled={saving}

@@ -4125,6 +4125,69 @@ export const UpdateReconciliationScheduleConfigResponse = zod.object({
 
 
 /**
+ * @summary Get saved lookback window presets (admin only)
+ */
+export const getReconciliationLookbackPresetsResponseNameMax = 50;
+
+export const getReconciliationLookbackPresetsResponseDaysMax = 90;
+
+
+
+export const GetReconciliationLookbackPresetsResponseItem = zod.object({
+  "name": zod.string().min(1).max(getReconciliationLookbackPresetsResponseNameMax).describe('Human-readable name for this preset (e.g. \"Fortnightly\")'),
+  "days": zod.number().min(1).max(getReconciliationLookbackPresetsResponseDaysMax).describe('Number of days to look back')
+})
+export const GetReconciliationLookbackPresetsResponse = zod.array(GetReconciliationLookbackPresetsResponseItem)
+
+
+/**
+ * @summary Add or update a lookback window preset (admin only)
+ */
+export const addReconciliationLookbackPresetBodyNameMax = 50;
+
+export const addReconciliationLookbackPresetBodyDaysMax = 90;
+
+
+
+export const AddReconciliationLookbackPresetBody = zod.object({
+  "name": zod.string().min(1).max(addReconciliationLookbackPresetBodyNameMax).describe('Human-readable name for this preset (e.g. \"Fortnightly\")'),
+  "days": zod.number().min(1).max(addReconciliationLookbackPresetBodyDaysMax).describe('Number of days to look back')
+})
+
+export const addReconciliationLookbackPresetResponseNameMax = 50;
+
+export const addReconciliationLookbackPresetResponseDaysMax = 90;
+
+
+
+export const AddReconciliationLookbackPresetResponseItem = zod.object({
+  "name": zod.string().min(1).max(addReconciliationLookbackPresetResponseNameMax).describe('Human-readable name for this preset (e.g. \"Fortnightly\")'),
+  "days": zod.number().min(1).max(addReconciliationLookbackPresetResponseDaysMax).describe('Number of days to look back')
+})
+export const AddReconciliationLookbackPresetResponse = zod.array(AddReconciliationLookbackPresetResponseItem)
+
+
+/**
+ * @summary Delete a lookback window preset by day count (admin only)
+ */
+export const DeleteReconciliationLookbackPresetParams = zod.object({
+  "days": zod.coerce.number()
+})
+
+export const deleteReconciliationLookbackPresetResponseNameMax = 50;
+
+export const deleteReconciliationLookbackPresetResponseDaysMax = 90;
+
+
+
+export const DeleteReconciliationLookbackPresetResponseItem = zod.object({
+  "name": zod.string().min(1).max(deleteReconciliationLookbackPresetResponseNameMax).describe('Human-readable name for this preset (e.g. \"Fortnightly\")'),
+  "days": zod.number().min(1).max(deleteReconciliationLookbackPresetResponseDaysMax).describe('Number of days to look back')
+})
+export const DeleteReconciliationLookbackPresetResponse = zod.array(DeleteReconciliationLookbackPresetResponseItem)
+
+
+/**
  * @summary Get QR code auto-cleanup retention configuration (admin only)
  */
 export const getQrCleanupConfigResponseRetentionDaysMin = 0;

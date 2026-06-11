@@ -14,6 +14,7 @@ export const SYSTEM_CONFIG_KEYS = {
   RECONCILIATION_MINUTE: "reconciliation_minute",
   RECONCILIATION_LOOKBACK_DAYS: "reconciliation_lookback_days",
   RECONCILIATION_ENABLED: "reconciliation_enabled",
+  RECONCILIATION_LOOKBACK_PRESETS: "reconciliation_lookback_presets",
   QR_CLEANUP_RETENTION_DAYS: "qr_cleanup_retention_days",
 } as const;
 

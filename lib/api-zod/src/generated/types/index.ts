@@ -145,6 +145,7 @@ export * from './listVirtualAccountsStatus';
 export * from './listWithdrawalsParams';
 export * from './listWithdrawalsStatus';
 export * from './loginInput';
+export * from './lookbackPreset';
 export * from './merchant';
 export * from './merchantActivityLogEntry';
 export * from './merchantActivityLogListResponse';

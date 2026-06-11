@@ -114,6 +114,7 @@ import type {
   ListVirtualAccountsParams,
   ListWithdrawalsParams,
   LoginInput,
+  LookbackPreset,
   Merchant,
   MerchantActivityLogListResponse,
   MerchantBrandingInput,
@@ -13438,6 +13439,224 @@ export const useUpdateReconciliationScheduleConfig = <TError = ErrorType<ErrorRe
         TContext
       > => {
       return useMutation(getUpdateReconciliationScheduleConfigMutationOptions(options));
+    }
+
+export const getGetReconciliationLookbackPresetsUrl = () => {
+
+
+
+
+  return `/api/system-config/reconciliation/lookback-presets`
+}
+
+/**
+ * @summary Get saved lookback window presets (admin only)
+ */
+export const getReconciliationLookbackPresets = async ( options?: RequestInit): Promise<LookbackPreset[]> => {
+
+  return customFetch<LookbackPreset[]>(getGetReconciliationLookbackPresetsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReconciliationLookbackPresetsQueryKey = () => {
+    return [
+    `/api/system-config/reconciliation/lookback-presets`
+    ] as const;
+    }
+
+
+export const getGetReconciliationLookbackPresetsQueryOptions = <TData = Awaited<ReturnType<typeof getReconciliationLookbackPresets>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationLookbackPresets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReconciliationLookbackPresetsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReconciliationLookbackPresets>>> = ({ signal }) => getReconciliationLookbackPresets({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReconciliationLookbackPresets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReconciliationLookbackPresetsQueryResult = NonNullable<Awaited<ReturnType<typeof getReconciliationLookbackPresets>>>
+export type GetReconciliationLookbackPresetsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get saved lookback window presets (admin only)
+ */
+
+export function useGetReconciliationLookbackPresets<TData = Awaited<ReturnType<typeof getReconciliationLookbackPresets>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationLookbackPresets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReconciliationLookbackPresetsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAddReconciliationLookbackPresetUrl = () => {
+
+
+
+
+  return `/api/system-config/reconciliation/lookback-presets`
+}
+
+/**
+ * @summary Add or update a lookback window preset (admin only)
+ */
+export const addReconciliationLookbackPreset = async (lookbackPreset: LookbackPreset, options?: RequestInit): Promise<LookbackPreset[]> => {
+
+  return customFetch<LookbackPreset[]>(getAddReconciliationLookbackPresetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      lookbackPreset,)
+  }
+);}
+
+
+
+
+export const getAddReconciliationLookbackPresetMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addReconciliationLookbackPreset>>, TError,{data: BodyType<LookbackPreset>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addReconciliationLookbackPreset>>, TError,{data: BodyType<LookbackPreset>}, TContext> => {
+
+const mutationKey = ['addReconciliationLookbackPreset'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addReconciliationLookbackPreset>>, {data: BodyType<LookbackPreset>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  addReconciliationLookbackPreset(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddReconciliationLookbackPresetMutationResult = NonNullable<Awaited<ReturnType<typeof addReconciliationLookbackPreset>>>
+    export type AddReconciliationLookbackPresetMutationBody = BodyType<LookbackPreset>
+    export type AddReconciliationLookbackPresetMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add or update a lookback window preset (admin only)
+ */
+export const useAddReconciliationLookbackPreset = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addReconciliationLookbackPreset>>, TError,{data: BodyType<LookbackPreset>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addReconciliationLookbackPreset>>,
+        TError,
+        {data: BodyType<LookbackPreset>},
+        TContext
+      > => {
+      return useMutation(getAddReconciliationLookbackPresetMutationOptions(options));
+    }
+
+export const getDeleteReconciliationLookbackPresetUrl = (days: number,) => {
+
+
+
+
+  return `/api/system-config/reconciliation/lookback-presets/${days}`
+}
+
+/**
+ * @summary Delete a lookback window preset by day count (admin only)
+ */
+export const deleteReconciliationLookbackPreset = async (days: number, options?: RequestInit): Promise<LookbackPreset[]> => {
+
+  return customFetch<LookbackPreset[]>(getDeleteReconciliationLookbackPresetUrl(days),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteReconciliationLookbackPresetMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteReconciliationLookbackPreset>>, TError,{days: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteReconciliationLookbackPreset>>, TError,{days: number}, TContext> => {
+
+const mutationKey = ['deleteReconciliationLookbackPreset'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteReconciliationLookbackPreset>>, {days: number}> = (props) => {
+          const {days} = props ?? {};
+
+          return  deleteReconciliationLookbackPreset(days,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteReconciliationLookbackPresetMutationResult = NonNullable<Awaited<ReturnType<typeof deleteReconciliationLookbackPreset>>>
+
+    export type DeleteReconciliationLookbackPresetMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a lookback window preset by day count (admin only)
+ */
+export const useDeleteReconciliationLookbackPreset = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteReconciliationLookbackPreset>>, TError,{days: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteReconciliationLookbackPreset>>,
+        TError,
+        {days: number},
+        TContext
+      > => {
+      return useMutation(getDeleteReconciliationLookbackPresetMutationOptions(options));
     }
 
 export const getGetQrCleanupConfigUrl = () => {

@@ -4235,6 +4235,72 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /system-config/reconciliation/lookback-presets:
+    get:
+      operationId: getReconciliationLookbackPresets
+      tags: [system-config]
+      summary: Get saved lookback window presets (admin only)
+      responses:
+        "200":
+          description: List of saved lookback window presets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LookbackPreset"
+    post:
+      operationId: addReconciliationLookbackPreset
+      tags: [system-config]
+      summary: Add or update a lookback window preset (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LookbackPreset"
+      responses:
+        "200":
+          description: Updated list of presets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LookbackPreset"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /system-config/reconciliation/lookback-presets/{days}:
+    delete:
+      operationId: deleteReconciliationLookbackPreset
+      tags: [system-config]
+      summary: Delete a lookback window preset by day count (admin only)
+      parameters:
+        - name: days
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Updated list of presets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LookbackPreset"
+        "404":
+          description: Preset not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /system-config/qr-cleanup:
     get:
       operationId: getQrCleanupConfig
@@ -7607,6 +7673,21 @@ components:
         errors:
           type: integer
           description: Number of orphaned rows that could not be deleted due to errors.
+
+    LookbackPreset:
+      type: object
+      required: [name, days]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Human-readable name for this preset (e.g. "Fortnightly")
+        days:
+          type: integer
+          minimum: 1
+          maximum: 90
+          description: Number of days to look back
 
     QrCleanupConfig:
       type: object

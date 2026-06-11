@@ -143,6 +143,138 @@ router.put("/reconciliation", async (req, res, next) => {
   }
 });
 
+// Helper: load presets from DB
+async function loadLookbackPresets(): Promise<Array<{ name: string; days: number }>> {
+  const rows = await db
+    .select()
+    .from(systemConfigTable)
+    .where(inArray(systemConfigTable.key, [SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_PRESETS]));
+  const raw = rows[0]?.value;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {}
+  return [];
+}
+
+// Helper: save presets to DB
+async function saveLookbackPresets(
+  presets: Array<{ name: string; days: number }>,
+  updatedByEmail: string
+): Promise<void> {
+  await db
+    .insert(systemConfigTable)
+    .values({
+      key: SYSTEM_CONFIG_KEYS.RECONCILIATION_LOOKBACK_PRESETS,
+      value: JSON.stringify(presets),
+      updatedByEmail,
+    })
+    .onConflictDoUpdate({
+      target: systemConfigTable.key,
+      set: {
+        value: JSON.stringify(presets),
+        updatedByEmail,
+        updatedAt: sql`now()`,
+      },
+    });
+}
+
+// GET /api/system-config/reconciliation/lookback-presets
+router.get("/reconciliation/lookback-presets", async (req, res, next) => {
+  try {
+    const presets = await loadLookbackPresets();
+    res.json(presets);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/system-config/reconciliation/lookback-presets
+router.post("/reconciliation/lookback-presets", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { name, days } = req.body;
+
+    if (typeof name !== "string" || name.trim().length === 0) {
+      res.status(400).json({ error: "name must be a non-empty string" });
+      return;
+    }
+    if (name.trim().length > 50) {
+      res.status(400).json({ error: "name must be 50 characters or fewer" });
+      return;
+    }
+    if (typeof days !== "number" || !Number.isInteger(days)) {
+      res.status(400).json({ error: "days must be an integer" });
+      return;
+    }
+    if (days < 1 || days > 90) {
+      res.status(400).json({ error: "days must be between 1 and 90" });
+      return;
+    }
+
+    const existing = await loadLookbackPresets();
+    const updated = existing.filter((p) => p.days !== days);
+    updated.push({ name: name.trim(), days });
+    updated.sort((a, b) => a.days - b.days);
+
+    await saveLookbackPresets(updated, user.email);
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "reconciliation_lookback_presets", action: "add", name: name.trim(), days }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ name, days }, "Lookback preset added");
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/system-config/reconciliation/lookback-presets/:days
+router.delete("/reconciliation/lookback-presets/:days", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const days = parseInt(req.params['days'] as string);
+
+    if (isNaN(days)) {
+      res.status(400).json({ error: "days must be a number" });
+      return;
+    }
+
+    const existing = await loadLookbackPresets();
+    const idx = existing.findIndex((p) => p.days === days);
+    if (idx === -1) {
+      res.status(404).json({ error: `No preset with days=${days} found` });
+      return;
+    }
+
+    const updated = existing.filter((p) => p.days !== days);
+    await saveLookbackPresets(updated, user.email);
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "reconciliation_lookback_presets", action: "delete", days }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ days }, "Lookback preset deleted");
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/system-config/qr-cleanup
 router.get("/qr-cleanup", async (req, res, next) => {
   try {
