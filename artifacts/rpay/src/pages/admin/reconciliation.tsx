@@ -1788,19 +1788,30 @@ export default function AdminReconciliation() {
                         </Button>
                       );
                     })()}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full h-7 text-xs gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300"
-                      onClick={() => resendAlertMutation.mutate()}
-                      disabled={resendAlertMutation.isPending}
-                    >
-                      {resendAlertMutation.isPending
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                        : <AlertTriangle className="w-3 h-3" />
-                      }
-                      {resendAlertMutation.isPending ? "Sending…" : "Re-send Alert Email"}
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="w-full">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full h-7 text-xs gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300 disabled:pointer-events-none"
+                            onClick={() => resendAlertMutation.mutate()}
+                            disabled={resendAlertMutation.isPending || (selectedRun?.totalUnmatched ?? 0) === 0}
+                          >
+                            {resendAlertMutation.isPending
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <AlertTriangle className="w-3 h-3" />
+                            }
+                            {resendAlertMutation.isPending ? "Sending…" : "Re-send Alert Email"}
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      {(selectedRun?.totalUnmatched ?? 0) === 0 && (
+                        <TooltipContent side="bottom">
+                          No unmatched items — nothing to alert about
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
                   </div>
                 )}
               </div>
