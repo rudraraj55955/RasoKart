@@ -10,6 +10,7 @@ import { startProviderLimitAlertScheduler, runProviderLimitAlertScan } from "./h
 import { initQrCleanupScheduler } from "./helpers/qrCleanupScheduler";
 import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
+import { initNonceCleanupScheduler } from "./helpers/nonceCleanupScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -60,6 +61,7 @@ async function main() {
   initQrCleanupScheduler();
   initPlanExpiryScheduler();
   initPlanRenewalScheduler();
+  initNonceCleanupScheduler();
   scheduleCallbackRetryWorker();
 
   // Startup sweep: immediately scan all active connections so merchants receive
