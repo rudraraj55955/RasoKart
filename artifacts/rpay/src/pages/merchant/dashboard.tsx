@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
-import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, useGetCallbackSecret, useListApiKeys, type PaymentLink } from "@workspace/api-client-react";
+import { useState } from "react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert, X } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
 import { Link } from "wouter";
@@ -122,21 +122,6 @@ export default function MerchantDashboard() {
   const { data: myPlan } = useGetMyPlan();
   const { data: usage } = useGetMyPlanUsage();
   const { data: connectionsRaw, isLoading: connectionsLoading } = useListMerchantConnections();
-  const { data: callbackSecret } = useGetCallbackSecret();
-  const { data: apiKeys } = useListApiKeys();
-  const [callbackBannerDismissed, setCallbackBannerDismissed] = useState(false);
-  const [rotationBannerDismissed, setRotationBannerDismissed] = useState(false);
-  const rotationDismissKey = user?.id && callbackSecret?.lastRotatedAt
-    ? `rasokart_rotation_dismissed_${user.id}_${callbackSecret.lastRotatedAt}`
-    : null;
-  useEffect(() => {
-    if (!rotationDismissKey) return;
-    setRotationBannerDismissed(localStorage.getItem(rotationDismissKey) === "1");
-  }, [rotationDismissKey]);
-  const dismissRotationBanner = () => {
-    if (rotationDismissKey) localStorage.setItem(rotationDismissKey, "1");
-    setRotationBannerDismissed(true);
-  };
   const { data: allPaymentLinks, isLoading: paymentLinksLoading } = useQuery<PaymentLink[]>({
     queryKey: ["payment-links-all-for-dashboard"],
     queryFn: fetchAllPaymentLinks,
@@ -170,18 +155,6 @@ export default function MerchantDashboard() {
   });
 
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
-
-  const hasActiveApiKey = Array.isArray(apiKeys) && apiKeys.some(k => k.isActive);
-  const showCallbackWarning = !callbackBannerDismissed && callbackSecret != null && !callbackSecret.isSet && hasActiveApiKey;
-
-  const secretAgeExceeds90Days = (() => {
-    if (!callbackSecret?.isSet) return false;
-    const lastRotated = callbackSecret.lastRotatedAt;
-    if (!lastRotated) return true;
-    const diffMs = Date.now() - new Date(lastRotated).getTime();
-    return diffMs > 90 * 24 * 60 * 60 * 1000;
-  })();
-  const showRotationReminder = !rotationBannerDismissed && secretAgeExceeds90Days;
 
   const allLinks = allPaymentLinks ?? [];
   const activeLinks = allLinks.filter(l => l.status === ListPaymentLinksStatus.active);
@@ -264,70 +237,6 @@ export default function MerchantDashboard() {
             <Link href="/merchant/plan">
               <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 shrink-0">View Plan</Button>
             </Link>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Callback secret warning */}
-      {showCallbackWarning && (
-        <Card className="border-orange-500/40 bg-orange-950/20">
-          <CardContent className="py-4 flex items-center gap-3">
-            <ShieldAlert className="w-5 h-5 text-orange-400 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-orange-400 font-medium">Callback Secret Not Configured</p>
-              <p className="text-xs text-orange-400/70">
-                You have an active API key but no callback signing secret. Without it, payment notifications on{" "}
-                <code className="font-mono bg-orange-900/30 px-1 rounded">POST /api/callbacks</code> cannot be verified and may be spoofed.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link href="/merchant/webhook">
-                <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10">
-                  Set Up Secret
-                </Button>
-              </Link>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-orange-400/60 hover:text-orange-400 hover:bg-orange-500/10"
-                onClick={() => setCallbackBannerDismissed(true)}
-                aria-label="Dismiss callback secret warning"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Callback secret rotation reminder */}
-      {showRotationReminder && (
-        <Card className="border-amber-500/40 bg-amber-950/20">
-          <CardContent className="py-4 flex items-center gap-3">
-            <Lock className="w-5 h-5 text-amber-400 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-amber-400 font-medium">Callback Secret Rotation Due</p>
-              <p className="text-xs text-amber-400/70">
-                Your callback signing secret{callbackSecret?.lastRotatedAt ? ` was last rotated on ${format(new Date(callbackSecret.lastRotatedAt), "dd MMM yyyy")}` : " has not been rotated recently"}.
-                {" "}Rotate it every 90 days to keep your webhook endpoint secure.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link href="/merchant/webhook">
-                <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10">
-                  Rotate Secret
-                </Button>
-              </Link>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-amber-400/60 hover:text-amber-400 hover:bg-amber-500/10"
-                onClick={dismissRotationBanner}
-                aria-label="Dismiss rotation reminder"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
           </CardContent>
         </Card>
       )}

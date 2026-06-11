@@ -1,7 +1,8 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
+import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
 import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,51 +14,109 @@ import { Card, CardContent } from "@/components/ui/card";
 const CALLBACK_BANNER_SESSION_KEY = "rasokart_callback_banner_dismissed";
 
 function CallbackSecretBanner() {
+  const { user } = useAuth();
   const { data: callbackSecret } = useGetCallbackSecret();
   const { data: apiKeys } = useListApiKeys();
   const [dismissed, setDismissed] = useState(
     () => sessionStorage.getItem(CALLBACK_BANNER_SESSION_KEY) === "1"
   );
 
-  const hasActiveApiKey = Array.isArray(apiKeys) && apiKeys.some(k => k.isActive);
-  const showBanner = !dismissed && callbackSecret != null && !callbackSecret.isSet && hasActiveApiKey;
+  const rotationDismissKey = user?.id && callbackSecret?.lastRotatedAt
+    ? `rasokart_rotation_dismissed_${user.id}_${callbackSecret.lastRotatedAt}`
+    : null;
+  const [rotationDismissed, setRotationDismissed] = useState(false);
+  useEffect(() => {
+    if (!rotationDismissKey) return;
+    setRotationDismissed(localStorage.getItem(rotationDismissKey) === "1");
+  }, [rotationDismissKey]);
 
-  if (!showBanner) return null;
+  const hasActiveApiKey = Array.isArray(apiKeys) && apiKeys.some(k => k.isActive);
+  const showNotConfigured = !dismissed && callbackSecret != null && !callbackSecret.isSet && hasActiveApiKey;
+
+  const secretAgeExceeds90Days = (() => {
+    if (!callbackSecret?.isSet) return false;
+    const lastRotated = callbackSecret.lastRotatedAt;
+    if (!lastRotated) return true;
+    const diffMs = Date.now() - new Date(lastRotated).getTime();
+    return diffMs > 90 * 24 * 60 * 60 * 1000;
+  })();
+  const showRotationReminder = !rotationDismissed && secretAgeExceeds90Days;
 
   function handleDismiss() {
     sessionStorage.setItem(CALLBACK_BANNER_SESSION_KEY, "1");
     setDismissed(true);
   }
 
+  function handleRotationDismiss() {
+    if (rotationDismissKey) localStorage.setItem(rotationDismissKey, "1");
+    setRotationDismissed(true);
+  }
+
+  if (!showNotConfigured && !showRotationReminder) return null;
+
   return (
-    <Card className="border-orange-500/40 bg-orange-950/20 rounded-lg mb-6">
-      <CardContent className="py-3 flex items-center gap-3">
-        <ShieldAlert className="w-5 h-5 text-orange-400 shrink-0" />
-        <div className="flex-1">
-          <p className="text-sm text-orange-400 font-medium">Callback Secret Not Configured</p>
-          <p className="text-xs text-orange-400/70">
-            You have an active API key but no callback signing secret. Without it, payment notifications on{" "}
-            <code className="font-mono bg-orange-900/30 px-1 rounded">POST /api/callbacks</code> cannot be verified and may be spoofed.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Link href="/merchant/webhook">
-            <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10">
-              Set Up Secret
-            </Button>
-          </Link>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 w-8 p-0 text-orange-400/60 hover:text-orange-400 hover:bg-orange-500/10"
-            onClick={handleDismiss}
-            aria-label="Dismiss callback secret warning"
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <>
+      {showNotConfigured && (
+        <Card className="border-orange-500/40 bg-orange-950/20 rounded-lg mb-6">
+          <CardContent className="py-3 flex items-center gap-3">
+            <ShieldAlert className="w-5 h-5 text-orange-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-orange-400 font-medium">Callback Secret Not Configured</p>
+              <p className="text-xs text-orange-400/70">
+                You have an active API key but no callback signing secret. Without it, payment notifications on{" "}
+                <code className="font-mono bg-orange-900/30 px-1 rounded">POST /api/callbacks</code> cannot be verified and may be spoofed.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link href="/merchant/webhook">
+                <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10">
+                  Set Up Secret
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-orange-400/60 hover:text-orange-400 hover:bg-orange-500/10"
+                onClick={handleDismiss}
+                aria-label="Dismiss callback secret warning"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {showRotationReminder && (
+        <Card className="border-amber-500/40 bg-amber-950/20 rounded-lg mb-6">
+          <CardContent className="py-3 flex items-center gap-3">
+            <Lock className="w-5 h-5 text-amber-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-amber-400 font-medium">Callback Secret Rotation Due</p>
+              <p className="text-xs text-amber-400/70">
+                Your callback signing secret{callbackSecret?.lastRotatedAt ? ` was last rotated on ${format(new Date(callbackSecret.lastRotatedAt), "dd MMM yyyy")}` : " has not been rotated recently"}.
+                {" "}Rotate it every 90 days to keep your webhook endpoint secure.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link href="/merchant/webhook">
+                <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10">
+                  Rotate Secret
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-amber-400/60 hover:text-amber-400 hover:bg-amber-500/10"
+                onClick={handleRotationDismiss}
+                aria-label="Dismiss rotation reminder"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
   );
 }
 
