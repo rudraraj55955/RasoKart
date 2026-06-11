@@ -32,7 +32,7 @@ import {
   MonitorPlay, GitMerge, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 
@@ -1884,11 +1884,44 @@ function ScheduleRow({
               </TooltipProvider>
             )}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {s.lastSentAt
-              ? `Last sent: ${format(new Date(s.lastSentAt), "MMM d, yyyy 'at' HH:mm")}`
-              : "Not yet sent"}
-          </p>
+          <div className="flex items-center gap-1.5 mt-1">
+            {s.lastSendStatus === "ok" && s.lastSentAt ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 text-xs text-emerald-400 cursor-default">
+                      <CheckCircle2 className="w-3 h-3 shrink-0" />
+                      Last sent {formatDistanceToNow(new Date(s.lastSentAt), { addSuffix: true })} — OK
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    {format(new Date(s.lastSentAt), "MMM d, yyyy 'at' HH:mm")}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : s.lastSendStatus === "failed" && s.lastSentAt ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 text-xs text-rose-400 cursor-default">
+                      <XCircle className="w-3 h-3 shrink-0" />
+                      Last delivery failed {formatDistanceToNow(new Date(s.lastSentAt), { addSuffix: true })}
+                      {s.lastErrorMessage ? " — " + s.lastErrorMessage : ""}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    {format(new Date(s.lastSentAt), "MMM d, yyyy 'at' HH:mm")}
+                    {s.lastErrorMessage && <div className="mt-1 text-rose-300">{s.lastErrorMessage}</div>}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60">
+                <Clock className="w-3 h-3 shrink-0" />
+                Never sent
+              </span>
+            )}
+          </div>
           {s.failureAcknowledgedAt && s.failureAcknowledgedByEmail && (
             <p className="text-xs text-emerald-500/70 mt-0.5">
               Acknowledged by {s.failureAcknowledgedByEmail} at {format(new Date(s.failureAcknowledgedAt), "MMM d, yyyy 'at' HH:mm")}
