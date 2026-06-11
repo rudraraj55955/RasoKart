@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
 import {
   useListSettlements,
@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { ChevronDown, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock, CheckCircle2, DollarSign, RefreshCw, CheckSquare, AlertTriangle, Wallet, Sparkles, Hash, Bookmark, BookmarkCheck, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock, CheckCircle2, DollarSign, RefreshCw, CheckSquare, AlertTriangle, Wallet, Sparkles, Hash, Bookmark, BookmarkCheck, Trash2, Pencil } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { toast } from "sonner";
@@ -210,6 +210,22 @@ export default function AdminSettlements() {
   const [saveFilterName, setSaveFilterName] = useState("");
   const [saveFilterNameError, setSaveFilterNameError] = useState("");
   const saveNameInputRef = useRef<HTMLInputElement>(null);
+
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showSaveInput) {
+      setTimeout(() => saveNameInputRef.current?.focus(), 50);
+    }
+  }, [showSaveInput]);
+
+  useEffect(() => {
+    if (renamingId) {
+      setTimeout(() => renameInputRef.current?.focus(), 50);
+    }
+  }, [renamingId]);
 
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(() => {
     qc.invalidateQueries({ queryKey: getListSettlementsQueryKey() });
@@ -496,7 +512,40 @@ export default function AdminSettlements() {
     const updated = savedFilters.filter(f => f.id !== id);
     setSavedFilters(updated);
     storeSavedFilters(updated);
+    if (renamingId === id) setRenamingId(null);
   };
+
+  const moveSavedFilter = (id: string, dir: -1 | 1) => {
+    const idx = savedFilters.findIndex(f => f.id === id);
+    if (idx === -1) return;
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= savedFilters.length) return;
+    const updated = [...savedFilters];
+    [updated[idx], updated[newIdx]] = [updated[newIdx]!, updated[idx]!];
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+  };
+
+  const startRename = (saved: SavedFilter) => {
+    setRenamingId(saved.id);
+    setRenameValue(saved.name);
+  };
+
+  const commitRename = () => {
+    if (!renamingId) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) { setRenamingId(null); return; }
+    if (savedFilters.some(f => f.id !== renamingId && f.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error("A filter with this name already exists.");
+      return;
+    }
+    const updated = savedFilters.map(f => f.id === renamingId ? { ...f, name: trimmed } : f);
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+    setRenamingId(null);
+  };
+
+  const cancelRename = () => { setRenamingId(null); };
 
   return (
     <div className="space-y-6">
@@ -581,35 +630,102 @@ export default function AdminSettlements() {
           {savedFilters.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className="text-xs text-muted-foreground font-medium">Saved:</span>
-              {savedFilters.map(saved => (
+              {savedFilters.map((saved, idx) => (
                 <span
                   key={saved.id}
-                  className="group inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/8 px-2.5 py-0.5 text-xs font-medium text-violet-300 hover:border-violet-500/60 transition-colors"
+                  className="group inline-flex items-center gap-0.5 rounded-full border border-violet-500/30 bg-violet-500/8 text-xs font-medium text-violet-300 hover:border-violet-500/60 transition-colors"
                 >
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={() => applySavedFilter(saved)}
-                          className="flex items-center gap-1 hover:text-violet-100 transition-colors"
-                        >
-                          <BookmarkCheck className="w-3 h-3 shrink-0" />
-                          {saved.name}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-xs">
-                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Query</p>
-                        <p className="font-mono text-xs break-all">{saved.rawInput}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <button
-                    onClick={() => deleteSavedFilter(saved.id)}
-                    className="ml-0.5 rounded-full p-0.5 text-violet-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                    aria-label={`Delete saved filter "${saved.name}"`}
-                  >
-                    <Trash2 className="w-2.5 h-2.5" />
-                  </button>
+                  {/* Move left */}
+                  {idx > 0 && (
+                    <button
+                      onClick={() => moveSavedFilter(saved.id, -1)}
+                      className="pl-1.5 pr-0.5 py-1 rounded-l-full text-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label="Move left"
+                      title="Move left"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                  )}
+                  {idx === 0 && <span className="pl-2" />}
+
+                  {renamingId === saved.id ? (
+                    <input
+                      ref={renameInputRef}
+                      className="w-28 bg-transparent border-b border-violet-400 text-violet-100 text-xs outline-none py-0.5 mx-1"
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") commitRename();
+                        if (e.key === "Escape") cancelRename();
+                      }}
+                      onBlur={commitRename}
+                      maxLength={40}
+                    />
+                  ) : (
+                    <>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => applySavedFilter(saved)}
+                              className="p-0.5 text-violet-300 hover:text-violet-100 transition-colors"
+                              title={`Apply: ${saved.rawInput}`}
+                            >
+                              <BookmarkCheck className="w-3 h-3 shrink-0" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Query</p>
+                            <p className="font-mono text-xs break-all">{saved.rawInput}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <button
+                        onClick={() => startRename(saved)}
+                        className="px-0.5 py-1 hover:text-violet-100 transition-colors"
+                        title="Click to rename"
+                      >
+                        {saved.name}
+                      </button>
+                    </>
+                  )}
+
+                  {/* Rename icon */}
+                  {renamingId !== saved.id && (
+                    <button
+                      onClick={() => startRename(saved)}
+                      className="p-0.5 text-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Rename "${saved.name}"`}
+                      title="Rename"
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+
+                  {/* Delete */}
+                  {renamingId !== saved.id && (
+                    <button
+                      onClick={() => deleteSavedFilter(saved.id)}
+                      className="p-0.5 text-violet-400/40 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Delete saved filter "${saved.name}"`}
+                      title="Delete this saved filter"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+
+                  {/* Move right */}
+                  {idx < savedFilters.length - 1 && renamingId !== saved.id && (
+                    <button
+                      onClick={() => moveSavedFilter(saved.id, 1)}
+                      className="pr-1.5 pl-0.5 py-1 rounded-r-full text-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label="Move right"
+                      title="Move right"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  )}
+                  {idx === savedFilters.length - 1 && renamingId !== saved.id && <span className="pr-1" />}
                 </span>
               ))}
             </div>
