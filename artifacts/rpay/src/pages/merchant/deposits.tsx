@@ -34,6 +34,12 @@ import {
   CalendarRange,
   Trash2,
   X,
+  Sparkles,
+  Bookmark,
+  BookmarkCheck,
+  Pencil,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
@@ -101,6 +107,141 @@ function storeCustomDatePresets(presets: CustomDatePreset[]): void {
   localStorage.setItem(CUSTOM_DATE_PRESETS_KEY, JSON.stringify(presets));
 }
 
+interface SmartFilter {
+  amountMin?: number;
+  amountMax?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  txStatus?: "pending" | "success" | "failed";
+  txProvider?: string;
+}
+
+const STATUS_KEYWORDS: Record<string, "pending" | "success" | "failed"> = {
+  pending: "pending",
+  success: "success",
+  successful: "success",
+  failed: "failed",
+  failure: "failed",
+};
+
+const PROVIDER_KEYWORDS: Record<string, string> = {
+  phonepe: "phonepe",
+  paytm: "paytm",
+  bharatpe: "bharatpe",
+  yono: "yono_sbi",
+  yono_sbi: "yono_sbi",
+  hdfc: "hdfc_smarthub",
+  hdfc_smarthub: "hdfc_smarthub",
+  smartpay: "hdfc_smarthub",
+  upi: "upi_id",
+  upi_id: "upi_id",
+};
+
+function parseDateToken(token: string, now: Date): Pick<SmartFilter, "dateFrom" | "dateTo"> | null {
+  const { startOfDay, endOfDay, startOfWeek, endOfWeek } = {
+    startOfDay: (d: Date) => { const r = new Date(d); r.setHours(0, 0, 0, 0); return r; },
+    endOfDay: (d: Date) => { const r = new Date(d); r.setHours(23, 59, 59, 999); return r; },
+    startOfWeek: (d: Date) => { const r = new Date(d); const day = r.getDay(); const diff = (day === 0 ? -6 : 1 - day); r.setDate(r.getDate() + diff); r.setHours(0, 0, 0, 0); return r; },
+    endOfWeek: (d: Date) => { const r = new Date(d); const day = r.getDay(); const diff = (day === 0 ? 0 : 7 - day); r.setDate(r.getDate() + diff); r.setHours(23, 59, 59, 999); return r; },
+  };
+  if (token === "today") {
+    return { dateFrom: format(startOfDay(now), "yyyy-MM-dd"), dateTo: format(endOfDay(now), "yyyy-MM-dd") };
+  }
+  if (token === "this week") {
+    return { dateFrom: format(startOfWeek(now), "yyyy-MM-dd"), dateTo: format(endOfWeek(now), "yyyy-MM-dd") };
+  }
+  if (token === "this month") {
+    return { dateFrom: format(startOfMonth(now), "yyyy-MM-dd"), dateTo: format(endOfMonth(now), "yyyy-MM-dd") };
+  }
+  if (token === "last month") {
+    const prev = subMonths(now, 1);
+    return { dateFrom: format(startOfMonth(prev), "yyyy-MM-dd"), dateTo: format(endOfMonth(prev), "yyyy-MM-dd") };
+  }
+  if (token === "last week") {
+    const prevWeek = subDays(now, 7);
+    const pw = startOfWeek(prevWeek);
+    const pe = endOfWeek(prevWeek);
+    return { dateFrom: format(pw, "yyyy-MM-dd"), dateTo: format(pe, "yyyy-MM-dd") };
+  }
+  return null;
+}
+
+function parseAmountToken(token: string): Pick<SmartFilter, "amountMin" | "amountMax"> | null {
+  const gtMatch = token.match(/^(>=?)(\d+(?:\.\d+)?)$/);
+  if (gtMatch) {
+    const inclusive = gtMatch[1] === ">=";
+    const val = parseFloat(gtMatch[2]!);
+    return { amountMin: inclusive ? val : val + 0.01 };
+  }
+  const ltMatch = token.match(/^(<=?)(\d+(?:\.\d+)?)$/);
+  if (ltMatch) {
+    const inclusive = ltMatch[1] === "<=";
+    const val = parseFloat(ltMatch[2]!);
+    return { amountMax: inclusive ? val : val - 0.01 };
+  }
+  const rangeMatch = token.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+  if (rangeMatch) {
+    const min = parseFloat(rangeMatch[1]!);
+    const max = parseFloat(rangeMatch[2]!);
+    if (min <= max) return { amountMin: min, amountMax: max };
+  }
+  return null;
+}
+
+function parseSmartQuery(raw: string): SmartFilter | null {
+  if (!raw.trim()) return null;
+  const filter: SmartFilter = {};
+  const now = new Date();
+  const lower = raw.toLowerCase();
+
+  for (const phrase of ["this week", "last week", "this month", "last month"]) {
+    if (lower.includes(phrase)) {
+      const dateResult = parseDateToken(phrase, now);
+      if (dateResult) { Object.assign(filter, dateResult); break; }
+    }
+  }
+  if (!filter.dateFrom && lower.includes("today")) {
+    const dateResult = parseDateToken("today", now);
+    if (dateResult) Object.assign(filter, dateResult);
+  }
+
+  const tokens = lower.split(/\s+/);
+  for (const token of tokens) {
+    if (STATUS_KEYWORDS[token]) { filter.txStatus = STATUS_KEYWORDS[token]; continue; }
+    if (PROVIDER_KEYWORDS[token]) { filter.txProvider = PROVIDER_KEYWORDS[token]; continue; }
+    const amtResult = parseAmountToken(token);
+    if (amtResult) { Object.assign(filter, amtResult); continue; }
+    const bareNum = token.match(/^(\d+(?:\.\d+)?)$/);
+    if (bareNum) { filter.amountMin = parseFloat(bareNum[1]!); continue; }
+  }
+
+  if (Object.keys(filter).length === 0) return null;
+  return filter;
+}
+
+interface SavedFilter {
+  id: string;
+  name: string;
+  filter: SmartFilter;
+  rawInput: string;
+}
+
+const SAVED_FILTERS_KEY = "rasokart_merchant_deposits_saved_filters";
+
+function loadSavedFilters(): SavedFilter[] {
+  try {
+    const raw = localStorage.getItem(SAVED_FILTERS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as SavedFilter[];
+  } catch {
+    return [];
+  }
+}
+
+function storeSavedFilters(filters: SavedFilter[]): void {
+  localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(filters));
+}
+
 function buildCsvText(data: any[]): string {
   const rows = [["ID", "Amount", "Currency", "UTR", "Reference", "Status", "Description", "Source", "Date"]];
   data.forEach(t => rows.push([
@@ -157,11 +298,41 @@ export default function MerchantDeposits() {
   const [saveDatePresetNameError, setSaveDatePresetNameError] = useState("");
   const saveDatePresetNameRef = useRef<HTMLInputElement>(null);
 
+  // Smart filter state
+  const [smartInput, setSmartInput] = useState("");
+  const [smartFilter, setSmartFilter] = useState<SmartFilter | null>(null);
+  const [smartError, setSmartError] = useState("");
+  const smartInputRef = useRef<HTMLInputElement>(null);
+
+  // Saved filters state
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => loadSavedFilters());
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveFilterName, setSaveFilterName] = useState("");
+  const [saveFilterNameError, setSaveFilterNameError] = useState("");
+  const saveNameInputRef = useRef<HTMLInputElement>(null);
+
+  // Rename state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (showSaveDatePreset) {
       setTimeout(() => saveDatePresetNameRef.current?.focus(), 50);
     }
   }, [showSaveDatePreset]);
+
+  useEffect(() => {
+    if (showSaveInput) {
+      setTimeout(() => saveNameInputRef.current?.focus(), 50);
+    }
+  }, [showSaveInput]);
+
+  useEffect(() => {
+    if (renamingId) {
+      setTimeout(() => renameInputRef.current?.focus(), 50);
+    }
+  }, [renamingId]);
 
   const applyPreset = (preset: (typeof DATE_PRESETS)[number]) => {
     const { from, to } = preset.getRange();
@@ -233,6 +404,111 @@ export default function MerchantDeposits() {
     storeCustomDatePresets(updated);
   };
 
+  // Smart filter handlers
+  const applySmartSearch = () => {
+    setSmartError("");
+    const filter = parseSmartQuery(smartInput);
+    if (!filter) {
+      setSmartError("Try: pending, success >500, failed this week, >500, today");
+      return;
+    }
+    setSmartFilter(filter);
+    if (filter.txStatus) setStatus("all");
+    if (filter.dateFrom || filter.dateTo) { setDateFrom(""); setDateTo(""); }
+    setPage(1);
+    setShowSaveInput(false);
+    setSaveFilterName("");
+  };
+
+  const clearSmartFilter = () => {
+    setSmartFilter(null);
+    setSmartInput("");
+    setSmartError("");
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    setPage(1);
+    smartInputRef.current?.focus();
+  };
+
+  const applySavedFilter = (saved: SavedFilter) => {
+    setSmartFilter(saved.filter);
+    setSmartInput(saved.rawInput);
+    setSmartError("");
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    if (saved.filter.txStatus) setStatus("all");
+    if (saved.filter.dateFrom || saved.filter.dateTo) { setDateFrom(""); setDateTo(""); }
+    setPage(1);
+  };
+
+  const openSaveInput = () => {
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    setShowSaveInput(true);
+  };
+
+  const confirmSaveFilter = () => {
+    const trimmed = saveFilterName.trim();
+    if (!trimmed) { setSaveFilterNameError("Please enter a name."); saveNameInputRef.current?.focus(); return; }
+    if (!smartFilter) return;
+    if (savedFilters.some(f => f.name.toLowerCase() === trimmed.toLowerCase())) {
+      setSaveFilterNameError("A filter with this name already exists."); saveNameInputRef.current?.focus(); return;
+    }
+    const newFilter: SavedFilter = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: trimmed, filter: smartFilter, rawInput: smartInput,
+    };
+    const updated = [...savedFilters, newFilter];
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+  };
+
+  const cancelSaveFilter = () => { setShowSaveInput(false); setSaveFilterName(""); setSaveFilterNameError(""); };
+
+  const deleteSavedFilter = (id: string) => {
+    const updated = savedFilters.filter(f => f.id !== id);
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+    if (renamingId === id) setRenamingId(null);
+  };
+
+  const moveSavedFilter = (id: string, dir: -1 | 1) => {
+    const idx = savedFilters.findIndex(f => f.id === id);
+    if (idx === -1) return;
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= savedFilters.length) return;
+    const updated = [...savedFilters];
+    [updated[idx], updated[newIdx]] = [updated[newIdx]!, updated[idx]!];
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+  };
+
+  const startRename = (saved: SavedFilter) => {
+    setRenamingId(saved.id);
+    setRenameValue(saved.name);
+  };
+
+  const commitRename = () => {
+    if (!renamingId) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) { setRenamingId(null); return; }
+    if (savedFilters.some(f => f.id !== renamingId && f.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error("A filter with this name already exists.");
+      return;
+    }
+    const updated = savedFilters.map(f => f.id === renamingId ? { ...f, name: trimmed } : f);
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+    setRenamingId(null);
+  };
+
+  const cancelRename = () => { setRenamingId(null); };
+
   const isCustomDateRangeEntered = !!(dateFrom && dateTo);
   const isBuiltInPresetActive = DATE_PRESETS.some(p => {
     const { from, to } = p.getRange();
@@ -250,13 +526,22 @@ export default function MerchantDeposits() {
   const [simExpected, setSimExpected] = useState<"success" | "failed" | "pending">("success");
   const [simProvider, setSimProvider] = useState("");
 
+  const activeStatus = smartFilter?.txStatus ?? (status !== "all" ? status : undefined);
+  const activeDateFrom = smartFilter?.dateFrom ?? (dateFrom || undefined);
+  const activeDateTo = smartFilter?.dateTo ?? (dateTo || undefined);
+  const activeProvider = smartFilter?.txProvider ?? (provider !== "all" ? provider : undefined);
+  const amountMin = smartFilter?.amountMin;
+  const amountMax = smartFilter?.amountMax;
+
   const { data, isLoading } = useListTransactions({
     type: "deposit",
-    status: status === "all" ? undefined : (status as any),
+    status: activeStatus as any,
     search: search || undefined,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
-    connectionProvider: provider !== "all" ? provider as import("@workspace/api-client-react").ListTransactionsConnectionProvider : undefined,
+    dateFrom: activeDateFrom,
+    dateTo: activeDateTo,
+    connectionProvider: activeProvider as import("@workspace/api-client-react").ListTransactionsConnectionProvider,
+    ...(amountMin != null ? { amountMin } : {}),
+    ...(amountMax != null ? { amountMax } : {}),
     page,
     limit: 20,
   });
@@ -321,7 +606,11 @@ export default function MerchantDeposits() {
   const successCount = data?.data?.filter(t => t.status === "success").length ?? 0;
   const pendingCount = data?.data?.filter(t => t.status === "pending").length ?? 0;
 
-  const anyFilterActive = !!(search || status !== "all" || dateFrom || dateTo || provider !== "all");
+  const hasSmartFilter = smartFilter !== null;
+  const isCurrentFilterSaved = hasSmartFilter && savedFilters.some(
+    f => f.rawInput === smartInput && JSON.stringify(f.filter) === JSON.stringify(smartFilter)
+  );
+  const anyFilterActive = !!(hasSmartFilter || search || status !== "all" || dateFrom || dateTo || provider !== "all");
 
   const clearFilters = () => {
     setSearch("");
@@ -329,6 +618,12 @@ export default function MerchantDeposits() {
     setDateFrom("");
     setDateTo("");
     setProvider("all");
+    setSmartFilter(null);
+    setSmartInput("");
+    setSmartError("");
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
     setPage(1);
   };
 
@@ -428,6 +723,204 @@ export default function MerchantDeposits() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Smart Search Bar */}
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Smart Search</p>
+
+          {/* Saved filter chips */}
+          {savedFilters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="text-xs text-muted-foreground font-medium">Saved:</span>
+              {savedFilters.map((saved, idx) => (
+                <span
+                  key={saved.id}
+                  className="group inline-flex items-center gap-0.5 rounded-full border border-violet-500/30 bg-violet-500/8 text-xs font-medium text-violet-300 hover:border-violet-500/60 transition-colors"
+                >
+                  {/* Move left */}
+                  {idx > 0 && (
+                    <button
+                      onClick={() => moveSavedFilter(saved.id, -1)}
+                      className="pl-1.5 pr-0.5 py-1 rounded-l-full text-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label="Move left"
+                      title="Move left"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                  )}
+                  {idx === 0 && <span className="pl-2" />}
+
+                  {renamingId === saved.id ? (
+                    <input
+                      ref={renameInputRef}
+                      className="w-28 bg-transparent border-b border-violet-400 text-violet-100 text-xs outline-none py-0.5 mx-1"
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") commitRename();
+                        if (e.key === "Escape") cancelRename();
+                      }}
+                      onBlur={commitRename}
+                      maxLength={40}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => applySavedFilter(saved)}
+                      className="flex items-center gap-1 px-1 py-1 hover:text-violet-100 transition-colors"
+                      title={`Apply: ${saved.rawInput}`}
+                    >
+                      <BookmarkCheck className="w-3 h-3 shrink-0" />
+                      {saved.name}
+                    </button>
+                  )}
+
+                  {/* Rename icon (hidden until hover, not shown while renaming) */}
+                  {renamingId !== saved.id && (
+                    <button
+                      onClick={() => startRename(saved)}
+                      className="p-0.5 text-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Rename "${saved.name}"`}
+                      title="Rename"
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+
+                  {/* Delete */}
+                  {renamingId !== saved.id && (
+                    <button
+                      onClick={() => deleteSavedFilter(saved.id)}
+                      className="pr-1.5 p-0.5 rounded-r-full text-violet-400/40 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Delete saved filter "${saved.name}"`}
+                      title="Delete this saved filter"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+
+                  {/* Move right */}
+                  {idx < savedFilters.length - 1 && renamingId !== saved.id && (
+                    <button
+                      onClick={() => moveSavedFilter(saved.id, 1)}
+                      className="pr-1.5 pl-0.5 py-1 rounded-r-full text-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label="Move right"
+                      title="Move right"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  )}
+                  {idx === savedFilters.length - 1 && renamingId !== saved.id && <span className="pr-1" />}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400" />
+              <Input
+                ref={smartInputRef}
+                className="pl-9"
+                placeholder="Try: pending  ·  success >500  ·  failed this week  ·  >1000  ·  today"
+                value={smartInput}
+                onChange={e => { setSmartInput(e.target.value); setSmartError(""); }}
+                onKeyDown={e => { if (e.key === "Enter") applySmartSearch(); }}
+              />
+            </div>
+            <Button onClick={applySmartSearch} disabled={!smartInput.trim()}>
+              <Search className="w-4 h-4 mr-2" />Apply
+            </Button>
+            {hasSmartFilter && !isCurrentFilterSaved && !showSaveInput && (
+              <Button
+                variant="outline"
+                onClick={openSaveInput}
+                className="border-violet-500/40 text-violet-300 hover:bg-violet-500/10 hover:text-violet-200"
+                title="Save this filter for quick access"
+              >
+                <Bookmark className="w-4 h-4 mr-2" />Save filter
+              </Button>
+            )}
+            {hasSmartFilter && isCurrentFilterSaved && (
+              <Button variant="outline" disabled className="border-violet-500/20 text-violet-400/50 cursor-default">
+                <BookmarkCheck className="w-4 h-4 mr-2" />Saved
+              </Button>
+            )}
+            {hasSmartFilter && (
+              <Button variant="ghost" size="icon" onClick={clearSmartFilter} title="Clear smart filter">
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+
+          {smartError && (
+            <p className="mt-2 text-xs text-amber-400">{smartError}</p>
+          )}
+
+          {/* Save filter inline form */}
+          {showSaveInput && (
+            <div className="mt-3 flex items-start gap-2">
+              <div className="flex-1">
+                <Input
+                  ref={saveNameInputRef}
+                  className="h-8 text-sm max-w-[260px]"
+                  placeholder="Name this filter (e.g. Big pending deposits)"
+                  value={saveFilterName}
+                  onChange={e => { setSaveFilterName(e.target.value); setSaveFilterNameError(""); }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") confirmSaveFilter();
+                    if (e.key === "Escape") cancelSaveFilter();
+                  }}
+                  maxLength={40}
+                />
+                {saveFilterNameError && (
+                  <p className="mt-1 text-xs text-rose-400">{saveFilterNameError}</p>
+                )}
+              </div>
+              <Button size="sm" onClick={confirmSaveFilter} className="h-8 shrink-0">Save</Button>
+              <Button size="sm" variant="ghost" onClick={cancelSaveFilter} className="h-8 shrink-0 px-2">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+
+          {/* Active smart filter summary */}
+          {hasSmartFilter && smartFilter && (
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              {smartFilter.txStatus && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-200">
+                  Status: {smartFilter.txStatus}
+                </span>
+              )}
+              {smartFilter.amountMin != null && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-200">
+                  Amount ≥ ₹{smartFilter.amountMin.toLocaleString()}
+                </span>
+              )}
+              {smartFilter.amountMax != null && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-200">
+                  Amount ≤ ₹{smartFilter.amountMax.toLocaleString()}
+                </span>
+              )}
+              {smartFilter.dateFrom && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-200">
+                  From: {smartFilter.dateFrom}
+                </span>
+              )}
+              {smartFilter.dateTo && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-200">
+                  To: {smartFilter.dateTo}
+                </span>
+              )}
+              {smartFilter.txProvider && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-200">
+                  Provider: {smartFilter.txProvider}
+                </span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Filter summary bar */}
       {anyFilterActive && (
