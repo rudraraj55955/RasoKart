@@ -61,6 +61,7 @@ export default function MerchantDeposits() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  const [provider, setProvider] = useState("all");
 
   // Simulate payment dialog state
   const [showSimulate, setShowSimulate] = useState(false);
@@ -77,6 +78,7 @@ export default function MerchantDeposits() {
     search: search || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    connectionProvider: provider !== "all" ? provider : undefined,
     page,
     limit: 20,
   });
@@ -122,7 +124,7 @@ export default function MerchantDeposits() {
   const successCount = data?.data?.filter(t => t.status === "success").length ?? 0;
   const pendingCount = data?.data?.filter(t => t.status === "pending").length ?? 0;
 
-  const anyFilterActive = !!(search || status !== "all" || dateFrom || dateTo);
+  const anyFilterActive = !!(search || status !== "all" || dateFrom || dateTo || provider !== "all");
 
   return (
     <div className="space-y-6">
@@ -268,6 +270,19 @@ export default function MerchantDeposits() {
                 <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
+            {activeConnections.length > 0 && (
+              <Select value={provider} onValueChange={v => { setProvider(v); setPage(1); }}>
+                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Provider" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Providers</SelectItem>
+                  {activeConnections.map(c => (
+                    <SelectItem key={c.id} value={c.provider}>
+                      {c.provider.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Input
               type="date"
               className="w-[160px]"
