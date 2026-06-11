@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, Info, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, Info, ArrowRight, AlertTriangle } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -61,6 +61,18 @@ function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }
     return <Badge className="bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20 text-xs">✗ Failed</Badge>;
   }
   return <span className="text-muted-foreground text-xs">— None</span>;
+}
+
+function RetriesExhaustedBadge({ attempts, maxRetries }: { attempts: number; maxRetries: number | null | undefined }) {
+  if (maxRetries == null) return null;
+  const exhausted = (attempts - 1) >= maxRetries;
+  if (!exhausted) return null;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/25">
+      <AlertTriangle className="w-3 h-3" />
+      Retries exhausted
+    </span>
+  );
 }
 
 function CallbackRow({ log }: { log: any }) {
@@ -161,6 +173,21 @@ function CallbackRow({ log }: { log: any }) {
                   <p className="text-xs text-muted-foreground">{format(new Date(log.lastAttemptAt), "MMM d, yyyy HH:mm:ss")}</p>
                 </div>
               )}
+              <div className="md:col-span-2 flex items-center gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0">Retry Config</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono text-foreground">
+                    {log.attempts} {log.attempts === 1 ? "attempt" : "attempts"}
+                    {log.maxRetries != null && (
+                      <span className="text-muted-foreground"> / max {log.maxRetries} {log.maxRetries === 1 ? "retry" : "retries"}</span>
+                    )}
+                  </span>
+                  {log.maxRetries == null && (
+                    <span className="text-xs text-muted-foreground italic">No webhook configured</span>
+                  )}
+                  <RetriesExhaustedBadge attempts={log.attempts} maxRetries={log.maxRetries} />
+                </div>
+              </div>
             </div>
           </TableCell>
         </TableRow>

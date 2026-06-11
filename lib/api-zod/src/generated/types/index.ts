@@ -260,6 +260,8 @@ export * from './simulatePaymentInputExpectedStatus';
 export * from './simulatePaymentInputSourceType';
 export * from './storageCleanupRun';
 export * from './storageCleanupRunResult';
+export * from './testEmailRetentionConfig';
+export * from './testEmailRetentionRunResult';
 export * from './toggleProductInput';
 export * from './transaction';
 export * from './transactionListResponse';

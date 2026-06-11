@@ -50,5 +50,10 @@ export interface CallbackLog {
   merchantName?: string | null;
   /** true if this delivery was triggered by a merchant test event, not a real payment */
   isTest?: boolean;
+  /**
+     * The merchant's configured max retries setting from their webhook configuration
+     * @nullable
+     */
+  maxRetries?: number | null;
   createdAt: string;
 }

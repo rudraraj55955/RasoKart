@@ -195,6 +195,8 @@ import type {
   SignatureFailureAlertHistoryResponse,
   SimulatePaymentInput,
   StorageCleanupRunResult,
+  TestEmailRetentionConfig,
+  TestEmailRetentionRunResult,
   ToggleProductInput,
   Transaction,
   TransactionListResponse,
@@ -13834,6 +13836,224 @@ export const useUpdateQrCleanupConfig = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateQrCleanupConfigMutationOptions(options));
+    }
+
+export const getGetTestEmailRetentionConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/test-email-retention`
+}
+
+/**
+ * @summary Get test email history retention configuration (admin only)
+ */
+export const getTestEmailRetentionConfig = async ( options?: RequestInit): Promise<TestEmailRetentionConfig> => {
+
+  return customFetch<TestEmailRetentionConfig>(getGetTestEmailRetentionConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTestEmailRetentionConfigQueryKey = () => {
+    return [
+    `/api/system-config/test-email-retention`
+    ] as const;
+    }
+
+
+export const getGetTestEmailRetentionConfigQueryOptions = <TData = Awaited<ReturnType<typeof getTestEmailRetentionConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTestEmailRetentionConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTestEmailRetentionConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTestEmailRetentionConfig>>> = ({ signal }) => getTestEmailRetentionConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTestEmailRetentionConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTestEmailRetentionConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getTestEmailRetentionConfig>>>
+export type GetTestEmailRetentionConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get test email history retention configuration (admin only)
+ */
+
+export function useGetTestEmailRetentionConfig<TData = Awaited<ReturnType<typeof getTestEmailRetentionConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTestEmailRetentionConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTestEmailRetentionConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateTestEmailRetentionConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/test-email-retention`
+}
+
+/**
+ * @summary Update test email history retention configuration (admin only)
+ */
+export const updateTestEmailRetentionConfig = async (testEmailRetentionConfig: TestEmailRetentionConfig, options?: RequestInit): Promise<TestEmailRetentionConfig> => {
+
+  return customFetch<TestEmailRetentionConfig>(getUpdateTestEmailRetentionConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      testEmailRetentionConfig,)
+  }
+);}
+
+
+
+
+export const getUpdateTestEmailRetentionConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTestEmailRetentionConfig>>, TError,{data: BodyType<TestEmailRetentionConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTestEmailRetentionConfig>>, TError,{data: BodyType<TestEmailRetentionConfig>}, TContext> => {
+
+const mutationKey = ['updateTestEmailRetentionConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTestEmailRetentionConfig>>, {data: BodyType<TestEmailRetentionConfig>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateTestEmailRetentionConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTestEmailRetentionConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateTestEmailRetentionConfig>>>
+    export type UpdateTestEmailRetentionConfigMutationBody = BodyType<TestEmailRetentionConfig>
+    export type UpdateTestEmailRetentionConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update test email history retention configuration (admin only)
+ */
+export const useUpdateTestEmailRetentionConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTestEmailRetentionConfig>>, TError,{data: BodyType<TestEmailRetentionConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTestEmailRetentionConfig>>,
+        TError,
+        {data: BodyType<TestEmailRetentionConfig>},
+        TContext
+      > => {
+      return useMutation(getUpdateTestEmailRetentionConfigMutationOptions(options));
+    }
+
+export const getRunTestEmailRetentionCleanupUrl = () => {
+
+
+
+
+  return `/api/system-config/test-email-retention/run`
+}
+
+/**
+ * @summary Immediately run the test email history retention cleanup (admin only)
+ */
+export const runTestEmailRetentionCleanup = async ( options?: RequestInit): Promise<TestEmailRetentionRunResult> => {
+
+  return customFetch<TestEmailRetentionRunResult>(getRunTestEmailRetentionCleanupUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunTestEmailRetentionCleanupMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runTestEmailRetentionCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runTestEmailRetentionCleanup>>, TError,void, TContext> => {
+
+const mutationKey = ['runTestEmailRetentionCleanup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runTestEmailRetentionCleanup>>, void> = () => {
+
+
+          return  runTestEmailRetentionCleanup(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunTestEmailRetentionCleanupMutationResult = NonNullable<Awaited<ReturnType<typeof runTestEmailRetentionCleanup>>>
+
+    export type RunTestEmailRetentionCleanupMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Immediately run the test email history retention cleanup (admin only)
+ */
+export const useRunTestEmailRetentionCleanup = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runTestEmailRetentionCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runTestEmailRetentionCleanup>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunTestEmailRetentionCleanupMutationOptions(options));
     }
 
 export const getGetWebhookRetriesConfigUrl = () => {

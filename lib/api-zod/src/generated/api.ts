@@ -1381,6 +1381,7 @@ export const GetWebhookLogsResponse = zod.object({
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
+  "maxRetries": zod.number().nullish().describe('The merchant\'s configured max retries setting from their webhook configuration'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -1454,6 +1455,7 @@ export const RetryWebhookLogResponse = zod.object({
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
+  "maxRetries": zod.number().nullish().describe('The merchant\'s configured max retries setting from their webhook configuration'),
   "createdAt": zod.string()
 })
 })
@@ -1630,6 +1632,7 @@ export const ListCallbackLogsResponse = zod.object({
   "signatureVerified": zod.boolean().nullish().describe('HMAC signature verification result — true if passed, false if rejected, null if no secret is configured'),
   "merchantName": zod.string().nullish().describe('Business name of the merchant this callback belongs to'),
   "isTest": zod.boolean().optional().describe('true if this delivery was triggered by a merchant test event, not a real payment'),
+  "maxRetries": zod.number().nullish().describe('The merchant\'s configured max retries setting from their webhook configuration'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -4207,6 +4210,49 @@ export const updateQrCleanupConfigResponseRetentionDaysMax = 365;
 
 export const UpdateQrCleanupConfigResponse = zod.object({
   "retentionDays": zod.number().min(updateQrCleanupConfigResponseRetentionDaysMin).max(updateQrCleanupConfigResponseRetentionDaysMax).describe('Days to retain expired\/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+
+/**
+ * @summary Get test email history retention configuration (admin only)
+ */
+export const getTestEmailRetentionConfigResponseRetentionDaysMin = 0;
+export const getTestEmailRetentionConfigResponseRetentionDaysMax = 365;
+
+
+
+export const GetTestEmailRetentionConfigResponse = zod.object({
+  "retentionDays": zod.number().min(getTestEmailRetentionConfigResponseRetentionDaysMin).max(getTestEmailRetentionConfigResponseRetentionDaysMax).describe('Days to retain test email audit log entries before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+
+/**
+ * @summary Update test email history retention configuration (admin only)
+ */
+export const updateTestEmailRetentionConfigBodyRetentionDaysMin = 0;
+export const updateTestEmailRetentionConfigBodyRetentionDaysMax = 365;
+
+
+
+export const UpdateTestEmailRetentionConfigBody = zod.object({
+  "retentionDays": zod.number().min(updateTestEmailRetentionConfigBodyRetentionDaysMin).max(updateTestEmailRetentionConfigBodyRetentionDaysMax).describe('Days to retain test email audit log entries before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+export const updateTestEmailRetentionConfigResponseRetentionDaysMin = 0;
+export const updateTestEmailRetentionConfigResponseRetentionDaysMax = 365;
+
+
+
+export const UpdateTestEmailRetentionConfigResponse = zod.object({
+  "retentionDays": zod.number().min(updateTestEmailRetentionConfigResponseRetentionDaysMin).max(updateTestEmailRetentionConfigResponseRetentionDaysMax).describe('Days to retain test email audit log entries before auto-deleting them. Set to 0 to disable automatic cleanup.\n')
+})
+
+
+/**
+ * @summary Immediately run the test email history retention cleanup (admin only)
+ */
+export const RunTestEmailRetentionCleanupResponse = zod.object({
+  "deleted": zod.number().describe('Number of test email history rows deleted by this cleanup run.')
 })
 
 

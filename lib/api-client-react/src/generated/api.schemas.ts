@@ -679,6 +679,11 @@ export interface CallbackLog {
   merchantName?: string | null;
   /** true if this delivery was triggered by a merchant test event, not a real payment */
   isTest?: boolean;
+  /**
+     * The merchant's configured max retries setting from their webhook configuration
+     * @nullable
+     */
+  maxRetries?: number | null;
   createdAt: string;
 }
 
@@ -2343,6 +2348,21 @@ export interface QrCleanupConfig {
      * @maximum 365
      */
   retentionDays: number;
+}
+
+export interface TestEmailRetentionConfig {
+  /**
+     * Days to retain test email audit log entries before auto-deleting them. Set to 0 to disable automatic cleanup.
+
+     * @minimum 0
+     * @maximum 365
+     */
+  retentionDays: number;
+}
+
+export interface TestEmailRetentionRunResult {
+  /** Number of test email history rows deleted by this cleanup run. */
+  deleted: number;
 }
 
 export type MerchantCredentialEventEventType = typeof MerchantCredentialEventEventType[keyof typeof MerchantCredentialEventEventType];

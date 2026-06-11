@@ -481,9 +481,11 @@ router.get("/", async (req, res) => {
       isTest: callbackLogsTable.isTest,
       createdAt: callbackLogsTable.createdAt,
       merchantName: merchantsTable.businessName,
+      maxRetries: webhooksTable.maxRetries,
     })
     .from(callbackLogsTable)
     .leftJoin(merchantsTable, eq(callbackLogsTable.merchantId, merchantsTable.id))
+    .leftJoin(webhooksTable, eq(callbackLogsTable.merchantId, webhooksTable.merchantId))
     .where(where)
     .limit(limitNum)
     .offset(offset)
