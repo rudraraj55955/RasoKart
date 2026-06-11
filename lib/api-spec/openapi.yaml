@@ -830,6 +830,38 @@ paths:
         "404":
           description: Merchant not found
 
+  /merchants/{id}/credential-events:
+    get:
+      operationId: listMerchantCredentialEvents
+      tags: [merchants]
+      summary: List credential events for a merchant (admin only)
+      description: Returns key_generated, key_revoked, and secret_rotated events for a merchant, newest first. Optionally filter by eventType.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eventType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [key_generated, key_revoked, secret_rotated]
+      responses:
+        "200":
+          description: Credential event list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CredentialEvent"
+        "403":
+          description: Admin access only
+        "404":
+          description: Merchant not found
+
   /merchants/{id}/invoices:
     get:
       operationId: listMerchantInvoices
@@ -7137,6 +7169,20 @@ components:
           description: >
             Days to retain expired/used QR codes before auto-deleting them.
             Set to 0 to disable automatic cleanup.
+
+    CredentialEvent:
+      type: object
+      required: [eventType, keyPrefix, occurredAt]
+      properties:
+        eventType:
+          type: string
+          enum: [key_generated, key_revoked, secret_rotated]
+        keyPrefix:
+          type: ["string", "null"]
+          description: Key prefix for key_generated/key_revoked events; null for secret_rotated
+        occurredAt:
+          type: string
+          description: ISO timestamp of when the event occurred
 
     UploadUrlRequest:
       type: object

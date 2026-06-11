@@ -65,6 +65,7 @@ import type {
   ChartDataPoint,
   CreateSavedFilterInput,
   CreateSettlementInput,
+  CredentialEvent,
   DashboardStats,
   DeleteAccountDetail200,
   ErrorResponse,
@@ -92,6 +93,7 @@ import type {
   ListCallbackLogsParams,
   ListInvoicesParams,
   ListLedgerEntriesParams,
+  ListMerchantCredentialEventsParams,
   ListMerchantFeaturesParams,
   ListMerchantsParams,
   ListNotificationsParams,
@@ -2639,6 +2641,96 @@ export const useUpdateMerchantCallbackWindow = <TError = ErrorType<ErrorResponse
       > => {
       return useMutation(getUpdateMerchantCallbackWindowMutationOptions(options));
     }
+
+export const getListMerchantCredentialEventsUrl = (id: number,
+    params?: ListMerchantCredentialEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/merchants/${id}/credential-events?${stringifiedParams}` : `/api/merchants/${id}/credential-events`
+}
+
+/**
+ * Returns key_generated, key_revoked, and secret_rotated events for a merchant, newest first. Optionally filter by eventType.
+ * @summary List credential events for a merchant (admin only)
+ */
+export const listMerchantCredentialEvents = async (id: number,
+    params?: ListMerchantCredentialEventsParams, options?: RequestInit): Promise<CredentialEvent[]> => {
+
+  return customFetch<CredentialEvent[]>(getListMerchantCredentialEventsUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMerchantCredentialEventsQueryKey = (id: number,
+    params?: ListMerchantCredentialEventsParams,) => {
+    return [
+    `/api/merchants/${id}/credential-events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMerchantCredentialEventsQueryOptions = <TData = Awaited<ReturnType<typeof listMerchantCredentialEvents>>, TError = ErrorType<void>>(id: number,
+    params?: ListMerchantCredentialEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantCredentialEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMerchantCredentialEventsQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMerchantCredentialEvents>>> = ({ signal }) => listMerchantCredentialEvents(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMerchantCredentialEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMerchantCredentialEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listMerchantCredentialEvents>>>
+export type ListMerchantCredentialEventsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List credential events for a merchant (admin only)
+ */
+
+export function useListMerchantCredentialEvents<TData = Awaited<ReturnType<typeof listMerchantCredentialEvents>>, TError = ErrorType<void>>(
+ id: number,
+    params?: ListMerchantCredentialEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantCredentialEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMerchantCredentialEventsQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListMerchantInvoicesUrl = (id: number,) => {
 

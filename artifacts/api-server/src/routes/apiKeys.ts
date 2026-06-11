@@ -88,7 +88,7 @@ router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const conditions = [eq(apiKeysTable.id, id)];
   if (user.role !== "admin") conditions.push(eq(apiKeysTable.merchantId, user.merchantId!));
-  const [key] = await db.update(apiKeysTable).set({ isActive: false }).where(and(...conditions)).returning();
+  const [key] = await db.update(apiKeysTable).set({ isActive: false, revokedAt: new Date() }).where(and(...conditions)).returning();
   if (!key) {
     res.status(404).json({ error: "API key not found" });
     return;

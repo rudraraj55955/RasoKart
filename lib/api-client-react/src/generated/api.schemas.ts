@@ -2233,6 +2233,26 @@ export interface QrCleanupConfig {
   retentionDays: number;
 }
 
+export type CredentialEventEventType = typeof CredentialEventEventType[keyof typeof CredentialEventEventType];
+
+
+export const CredentialEventEventType = {
+  key_generated: 'key_generated',
+  key_revoked: 'key_revoked',
+  secret_rotated: 'secret_rotated',
+} as const;
+
+export interface CredentialEvent {
+  eventType: CredentialEventEventType;
+  /**
+     * Key prefix for key_generated/key_revoked events; null for secret_rotated
+     * @nullable
+     */
+  keyPrefix: string | null;
+  /** ISO timestamp of when the event occurred */
+  occurredAt: string;
+}
+
 export interface UploadUrlRequest {
   /**
      * Original file name.
@@ -2311,6 +2331,19 @@ export type ListMerchantsCallbackSecretSet = typeof ListMerchantsCallbackSecretS
 export const ListMerchantsCallbackSecretSet = {
   true: 'true',
   false: 'false',
+} as const;
+
+export type ListMerchantCredentialEventsParams = {
+eventType?: ListMerchantCredentialEventsEventType;
+};
+
+export type ListMerchantCredentialEventsEventType = typeof ListMerchantCredentialEventsEventType[keyof typeof ListMerchantCredentialEventsEventType];
+
+
+export const ListMerchantCredentialEventsEventType = {
+  key_generated: 'key_generated',
+  key_revoked: 'key_revoked',
+  secret_rotated: 'secret_rotated',
 } as const;
 
 export type ListInvoicesParams = {
@@ -2394,23 +2427,7 @@ export type GetWebhookLogsParams = {
  * @maximum 50
  */
 limit?: number;
-/**
- * Filter logs to only those matching this event type
- */
-eventType?: GetWebhookLogsEventType;
 };
-
-export type GetWebhookLogsEventType = typeof GetWebhookLogsEventType[keyof typeof GetWebhookLogsEventType];
-
-
-export const GetWebhookLogsEventType = {
-  paymentsuccess: 'payment.success',
-  paymentfailed: 'payment.failed',
-  paymentpending: 'payment.pending',
-  withdrawalapproved: 'withdrawal.approved',
-  withdrawalrejected: 'withdrawal.rejected',
-  settlementprocessed: 'settlement.processed',
-} as const;
 
 export type GetWebhookLogAttempts200 = {
   data: CallbackLogAttempt[];

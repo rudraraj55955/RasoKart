@@ -12,6 +12,7 @@ import {
   useGetAdminMerchantCallbackSecret, useResetAdminMerchantCallbackSecret,
   useUpdateMerchantCallbackWindow,
   useScheduleMerchantPlanRenewal, useGetMerchant,
+  useListMerchantCredentialEvents,
   getListMerchantsQueryKey,
   listMerchants,
 } from "@workspace/api-client-react";
@@ -100,6 +101,7 @@ export default function AdminMerchants() {
   const [renewScheduledRenewalAt, setRenewScheduledRenewalAt] = useState<string>("");
   const [scheduleRenewalDate, setScheduleRenewalDate] = useState<string>("");
   const [confirmSecretReset, setConfirmSecretReset] = useState(false);
+  const [credEventFilter, setCredEventFilter] = useState<"" | "key_generated" | "key_revoked" | "secret_rotated">("");
 
   // Parse ?open=<merchantId> once on mount (e.g. linked from QR/VA detail panels)
   const [deepLinkId] = useState<number | null>(() => {
@@ -167,6 +169,11 @@ export default function AdminMerchants() {
   const { data: callbackSecretStatus, refetch: refetchCallbackSecret } = useGetAdminMerchantCallbackSecret(
     assignPlanMerchant?.id ?? 0,
     { query: { enabled: !!assignPlanMerchant, queryKey: ["getAdminMerchantCallbackSecret", assignPlanMerchant?.id ?? 0] } }
+  );
+  const { data: credentialEvents, isLoading: credEventsLoading } = useListMerchantCredentialEvents(
+    assignPlanMerchant?.id ?? 0,
+    credEventFilter ? { eventType: credEventFilter } : undefined,
+    { query: { enabled: !!assignPlanMerchant, queryKey: ["listMerchantCredentialEvents", assignPlanMerchant?.id ?? 0, credEventFilter] } }
   );
   // Fetch the deep-link merchant by ID so the panel opens regardless of which page they're on
   const { data: deepLinkMerchant } = useGetMerchant(
@@ -437,6 +444,7 @@ export default function AdminMerchants() {
     setAssignNotes("");
     setAssignScheduledRenewalAt("");
     setShowHistory(false);
+    setCredEventFilter("");
   };
 
   const closeAssignPlan = () => {
@@ -451,6 +459,7 @@ export default function AdminMerchants() {
     setScheduleRenewalDate("");
     setWindowEditMode(false);
     setWindowInput("");
+    setCredEventFilter("");
   };
 
   const handleAssignPlan = () => {
@@ -1889,6 +1898,77 @@ export default function AdminMerchants() {
                       </Button>
                     )}
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Credential History */}
+            <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-muted-foreground shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Credential History</p>
+              </div>
+              {/* Filter chips */}
+              <div className="flex flex-wrap gap-1.5">
+                {(["", "key_generated", "key_revoked", "secret_rotated"] as const).map(f => {
+                  const labels: Record<string, string> = {
+                    "": "All",
+                    key_generated: "Key Generated",
+                    key_revoked: "Key Revoked",
+                    secret_rotated: "Secret Rotated",
+                  };
+                  const activeColors: Record<string, string> = {
+                    "": "bg-primary/20 text-primary border-primary/40",
+                    key_generated: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
+                    key_revoked: "bg-rose-500/20 text-rose-400 border-rose-500/40",
+                    secret_rotated: "bg-violet-500/20 text-violet-400 border-violet-500/40",
+                  };
+                  const isActive = credEventFilter === f;
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setCredEventFilter(f)}
+                      className={`px-2.5 py-1 rounded-md text-xs transition-colors border ${isActive ? activeColors[f] : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}
+                    >
+                      {labels[f]}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Event list */}
+              {credEventsLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => <div key={i} className="animate-pulse h-4 bg-muted/30 rounded w-full" />)}
+                </div>
+              ) : !credentialEvents || credentialEvents.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-2">No credential events found.</p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {credentialEvents.map((ev, i) => {
+                    const eventConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+                      key_generated: { label: "Key Generated", color: "text-emerald-400", icon: <KeyRound className="w-3 h-3 text-emerald-400 shrink-0" /> },
+                      key_revoked:   { label: "Key Revoked",   color: "text-rose-400",    icon: <XCircle className="w-3 h-3 text-rose-400 shrink-0" /> },
+                      secret_rotated: { label: "Secret Rotated", color: "text-violet-400", icon: <RotateCcw className="w-3 h-3 text-violet-400 shrink-0" /> },
+                    };
+                    const cfg = eventConfig[ev.eventType] ?? { label: ev.eventType, color: "text-muted-foreground", icon: null };
+                    return (
+                      <div key={i} className="flex items-start gap-2 text-xs">
+                        <div className="mt-0.5">{cfg.icon}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`font-medium ${cfg.color}`}>{cfg.label}</span>
+                            {ev.keyPrefix && (
+                              <span className="font-mono text-muted-foreground truncate">{ev.keyPrefix}</span>
+                            )}
+                            <span className="text-muted-foreground/70 ml-auto shrink-0">
+                              {formatDistanceToNow(new Date(ev.occurredAt), { addSuffix: true })}
+                            </span>
+                          </div>
+                          <p className="text-muted-foreground/60">{format(new Date(ev.occurredAt), "dd MMM yyyy, HH:mm")}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

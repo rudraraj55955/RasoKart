@@ -835,6 +835,26 @@ export const UpdateMerchantCallbackWindowResponse = zod.object({
 
 
 /**
+ * Returns key_generated, key_revoked, and secret_rotated events for a merchant, newest first. Optionally filter by eventType.
+ * @summary List credential events for a merchant (admin only)
+ */
+export const ListMerchantCredentialEventsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListMerchantCredentialEventsQueryParams = zod.object({
+  "eventType": zod.enum(['key_generated', 'key_revoked', 'secret_rotated']).optional()
+})
+
+export const ListMerchantCredentialEventsResponseItem = zod.object({
+  "eventType": zod.enum(['key_generated', 'key_revoked', 'secret_rotated']),
+  "keyPrefix": zod.string().nullable().describe('Key prefix for key_generated\/key_revoked events; null for secret_rotated'),
+  "occurredAt": zod.string().describe('ISO timestamp of when the event occurred')
+})
+export const ListMerchantCredentialEventsResponse = zod.array(ListMerchantCredentialEventsResponseItem)
+
+
+/**
  * @summary List invoices for a specific merchant (admin only)
  */
 export const ListMerchantInvoicesParams = zod.object({

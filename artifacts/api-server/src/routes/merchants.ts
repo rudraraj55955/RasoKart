@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable } from "@workspace/db";
+import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
@@ -890,6 +890,60 @@ router.get("/:id/invoices", requireAdmin, async (req, res) => {
   }));
 
   res.json({ data, total, page: pageNum, limit: limitNum });
+});
+
+// GET /api/merchants/:id/credential-events
+router.get("/:id/credential-events", requireAdmin, async (req, res) => {
+  const merchantId = parseInt(req.params['id'] as string);
+  const { eventType } = req.query as Record<string, string>;
+
+  const [merchant] = await db.select({ id: merchantsTable.id, callbackSecretUpdatedAt: merchantsTable.callbackSecretUpdatedAt })
+    .from(merchantsTable)
+    .where(eq(merchantsTable.id, merchantId))
+    .limit(1);
+
+  if (!merchant) {
+    res.status(404).json({ error: "Merchant not found" });
+    return;
+  }
+
+  const events: Array<{ eventType: string; keyPrefix: string | null; occurredAt: string }> = [];
+
+  if (!eventType || eventType === "key_generated") {
+    const generated = await db.select({
+      keyPrefix: apiKeysTable.keyPrefix,
+      createdAt: apiKeysTable.createdAt,
+    }).from(apiKeysTable).where(eq(apiKeysTable.merchantId, merchantId));
+
+    for (const row of generated) {
+      events.push({ eventType: "key_generated", keyPrefix: row.keyPrefix, occurredAt: row.createdAt.toISOString() });
+    }
+  }
+
+  if (!eventType || eventType === "key_revoked") {
+    const revoked = await db.select({
+      keyPrefix: apiKeysTable.keyPrefix,
+      revokedAt: apiKeysTable.revokedAt,
+    }).from(apiKeysTable).where(
+      and(eq(apiKeysTable.merchantId, merchantId), isNotNull(apiKeysTable.revokedAt))
+    );
+
+    for (const row of revoked) {
+      if (row.revokedAt) {
+        events.push({ eventType: "key_revoked", keyPrefix: row.keyPrefix, occurredAt: row.revokedAt.toISOString() });
+      }
+    }
+  }
+
+  if (!eventType || eventType === "secret_rotated") {
+    if (merchant.callbackSecretUpdatedAt) {
+      events.push({ eventType: "secret_rotated", keyPrefix: null, occurredAt: merchant.callbackSecretUpdatedAt.toISOString() });
+    }
+  }
+
+  events.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
+
+  res.json(events);
 });
 
 export default router;

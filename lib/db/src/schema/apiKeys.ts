@@ -10,6 +10,7 @@ export const apiKeysTable = pgTable("api_keys", {
   keyPrefix: text("key_prefix").notNull(),
   isActive: boolean("is_active").notNull().default(true),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
