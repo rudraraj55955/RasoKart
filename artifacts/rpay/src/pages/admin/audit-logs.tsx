@@ -1993,6 +1993,7 @@ function ScheduledReportsPanel() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [bulkToggling, setBulkToggling] = useState(false);
+  const [preActivatedIds, setPreActivatedIds] = useState<number[] | null>(null);
 
   const schedules = schedulesData?.data ?? [];
 
@@ -2019,12 +2020,39 @@ function ScheduledReportsPanel() {
 
   async function handleBulkToggle(targetActive: boolean) {
     setBulkToggling(true);
+    // Capture active IDs before the call (used only on success when pausing)
+    const activeNow = schedules.filter((s: any) => s.isActive).map((s: any) => s.id);
     try {
       await bulkToggle.mutateAsync({ data: { isActive: targetActive } });
+      if (!targetActive) {
+        // Snapshot which schedules were active so admin can selectively restore them later
+        setPreActivatedIds(activeNow.length > 0 ? activeNow : null);
+      } else {
+        // Resuming all — clear the snapshot
+        setPreActivatedIds(null);
+      }
       invalidate();
       toast.success(targetActive ? "All schedules resumed" : "All schedules paused");
     } catch {
       toast.error("Failed to update schedules");
+      // Do not touch preActivatedIds on failure — preserve any existing restore snapshot
+    } finally {
+      setBulkToggling(false);
+    }
+  }
+
+  async function handleRestorePreviousState() {
+    if (!preActivatedIds || preActivatedIds.length === 0) return;
+    setBulkToggling(true);
+    try {
+      await bulkToggle.mutateAsync({ data: { isActive: true, ids: preActivatedIds } });
+      invalidate();
+      setPreActivatedIds(null);
+      toast.success(
+        `Restored ${preActivatedIds.length} previously active schedule${preActivatedIds.length !== 1 ? "s" : ""}`
+      );
+    } catch {
+      toast.error("Failed to restore schedules");
     } finally {
       setBulkToggling(false);
     }
@@ -2090,26 +2118,56 @@ function ScheduledReportsPanel() {
           <div className="flex items-center gap-2">
             {schedules.length > 0 && (() => {
               const anyActive = schedules.some((s: any) => s.isActive);
+              const showRestore = !anyActive && preActivatedIds !== null && preActivatedIds.length > 0;
               return (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={bulkToggling}
-                  onClick={() => handleBulkToggle(!anyActive)}
-                  className={anyActive
-                    ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/50"
-                    : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/50"
-                  }
-                >
-                  {bulkToggling ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                  ) : anyActive ? (
-                    <Ban className="w-3.5 h-3.5 mr-1.5" />
-                  ) : (
-                    <MonitorPlay className="w-3.5 h-3.5 mr-1.5" />
+                <div className="flex items-center gap-2">
+                  {showRestore && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={bulkToggling}
+                            onClick={handleRestorePreviousState}
+                            className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/50"
+                          >
+                            {bulkToggling ? (
+                              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                            ) : (
+                              <GitMerge className="w-3.5 h-3.5 mr-1.5" />
+                            )}
+                            Restore Previous State
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-xs">
+                          Re-activate the {preActivatedIds.length} schedule{preActivatedIds.length !== 1 ? "s" : ""} that were active before the bulk pause — schedules that were already paused before will remain paused.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
-                  {anyActive ? "Pause All" : "Resume All"}
-                </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={bulkToggling}
+                    onClick={() => handleBulkToggle(!anyActive)}
+                    className={anyActive
+                      ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/50"
+                      : showRestore
+                      ? "border-border/40 text-muted-foreground hover:text-foreground"
+                      : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/50"
+                    }
+                  >
+                    {bulkToggling ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : anyActive ? (
+                      <Ban className="w-3.5 h-3.5 mr-1.5" />
+                    ) : (
+                      <MonitorPlay className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    {anyActive ? "Pause All" : "Resume All"}
+                  </Button>
+                </div>
               );
             })()}
             <Button

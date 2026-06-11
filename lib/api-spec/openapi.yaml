@@ -3156,7 +3156,7 @@ paths:
     patch:
       operationId: bulkToggleAuditReportSchedules
       tags: [dashboard]
-      summary: Pause or resume all audit report schedules at once
+      summary: Pause or resume audit report schedules — all or a specific subset
       requestBody:
         required: true
         content:
@@ -3167,6 +3167,13 @@ paths:
               properties:
                 isActive:
                   type: boolean
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: >
+                    Optional list of schedule IDs to target. When omitted every schedule is updated.
+                    When provided only the listed IDs are toggled, leaving all others untouched.
       responses:
         "200":
           description: Updated list of all schedules

@@ -8,4 +8,7 @@
 
 export type BulkToggleAuditReportSchedulesBody = {
   isActive: boolean;
+  /** Optional list of schedule IDs to target. When omitted every schedule is updated. When provided only the listed IDs are toggled, leaving all others untouched.
+   */
+  ids?: number[];
 };

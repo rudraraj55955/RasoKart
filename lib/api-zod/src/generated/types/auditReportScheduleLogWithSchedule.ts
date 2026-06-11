@@ -16,6 +16,8 @@ export interface AuditReportScheduleLogWithSchedule {
   success: boolean;
   /** @nullable */
   errorMessage?: string | null;
+  /** @nullable */
+  recipientEmail?: string | null;
   isRetry: boolean;
   triggerType: AuditReportScheduleLogWithScheduleTriggerType;
   scheduleFrequency: AuditReportScheduleLogWithScheduleScheduleFrequency;

@@ -9672,7 +9672,7 @@ export const getBulkToggleAuditReportSchedulesUrl = () => {
 }
 
 /**
- * @summary Pause or resume all audit report schedules at once
+ * @summary Pause or resume audit report schedules — all or a specific subset
  */
 export const bulkToggleAuditReportSchedules = async (bulkToggleAuditReportSchedulesBody: BulkToggleAuditReportSchedulesBody, options?: RequestInit): Promise<AuditReportScheduleListResponse> => {
 
@@ -9721,7 +9721,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BulkToggleAuditReportSchedulesMutationError = ErrorType<ErrorResponse | void>
 
     /**
- * @summary Pause or resume all audit report schedules at once
+ * @summary Pause or resume audit report schedules — all or a specific subset
  */
 export const useBulkToggleAuditReportSchedules = <TError = ErrorType<ErrorResponse | void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkToggleAuditReportSchedules>>, TError,{data: BodyType<BulkToggleAuditReportSchedulesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}

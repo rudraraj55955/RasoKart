@@ -1817,8 +1817,6 @@ export interface AuditReportScheduleLog {
   success: boolean;
   /** @nullable */
   errorMessage?: string | null;
-  /** @nullable */
-  recipientEmail?: string | null;
   isRetry: boolean;
   /** Which attempt number this log entry represents (0 = initial, 1 = first retry, 2 = second retry, etc.). */
   retryAttempt: number;
@@ -1850,6 +1848,8 @@ export interface AuditReportScheduleLogWithSchedule {
   success: boolean;
   /** @nullable */
   errorMessage?: string | null;
+  /** @nullable */
+  recipientEmail?: string | null;
   isRetry: boolean;
   triggerType: AuditReportScheduleLogWithScheduleTriggerType;
   scheduleFrequency: AuditReportScheduleLogWithScheduleScheduleFrequency;
@@ -3092,6 +3092,9 @@ export const PreviewAuditReportEmailFrequency = {
 
 export type BulkToggleAuditReportSchedulesBody = {
   isActive: boolean;
+  /** Optional list of schedule IDs to target. When omitted every schedule is updated. When provided only the listed IDs are toggled, leaving all others untouched.
+   */
+  ids?: number[];
 };
 
 export type ListAllAuditReportScheduleLogsParams = {

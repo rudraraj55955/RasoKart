@@ -15,8 +15,6 @@ export interface AuditReportScheduleLog {
   success: boolean;
   /** @nullable */
   errorMessage?: string | null;
-  /** @nullable */
-  recipientEmail?: string | null;
   isRetry: boolean;
   /** Which attempt number this log entry represents (0 = initial, 1 = first retry, 2 = second retry, etc.). */
   retryAttempt: number;

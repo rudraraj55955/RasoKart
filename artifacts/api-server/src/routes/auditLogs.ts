@@ -551,16 +551,34 @@ router.post("/schedules", async (req, res) => {
 router.patch("/schedules/bulk-toggle", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
-  const { isActive } = req.body;
+  const { isActive, ids } = req.body;
   if (typeof isActive !== "boolean") {
     res.status(400).json({ error: "isActive must be a boolean" });
     return;
   }
 
-  const updated = await db
-    .update(scheduledAuditReportsTable)
-    .set({ isActive, updatedAt: new Date() })
-    .returning();
+  // Optional: restrict update to a specific subset of schedule IDs
+  let whereClause: ReturnType<typeof eq> | undefined;
+  if (ids !== undefined) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: "ids must be a non-empty array of integers when provided" });
+      return;
+    }
+    const parsedIds: number[] = [];
+    for (const raw of ids) {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0) {
+        res.status(400).json({ error: `ids contains an invalid value: ${raw}` });
+        return;
+      }
+      parsedIds.push(n);
+    }
+    whereClause = sql`${scheduledAuditReportsTable.id} IN (${sql.join(parsedIds.map((id: number) => sql`${id}`), sql`, `)})` as any;
+  }
+
+  const updated = whereClause
+    ? await db.update(scheduledAuditReportsTable).set({ isActive, updatedAt: new Date() }).where(whereClause).returning()
+    : await db.update(scheduledAuditReportsTable).set({ isActive, updatedAt: new Date() }).returning();
 
   const scheduleColumns = getTableColumns(scheduledAuditReportsTable);
   const rows = await db

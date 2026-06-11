@@ -3048,10 +3048,11 @@ export const CreateAuditReportScheduleBody = zod.object({
 
 
 /**
- * @summary Pause or resume all audit report schedules at once
+ * @summary Pause or resume audit report schedules — all or a specific subset
  */
 export const BulkToggleAuditReportSchedulesBody = zod.object({
-  "isActive": zod.boolean()
+  "isActive": zod.boolean(),
+  "ids": zod.array(zod.number()).optional().describe('Optional list of schedule IDs to target. When omitted every schedule is updated. When provided only the listed IDs are toggled, leaving all others untouched.\n')
 })
 
 export const BulkToggleAuditReportSchedulesResponse = zod.object({
@@ -3120,6 +3121,7 @@ export const ListAllAuditReportScheduleLogsResponse = zod.object({
   "rowCount": zod.number(),
   "success": zod.boolean(),
   "errorMessage": zod.string().nullish(),
+  "recipientEmail": zod.string().nullish(),
   "isRetry": zod.boolean(),
   "triggerType": zod.enum(['manual', 'scheduled']),
   "scheduleFrequency": zod.enum(['daily', 'weekly', 'monthly']),
@@ -3158,7 +3160,6 @@ export const ListAuditReportScheduleLogsResponse = zod.object({
   "rowCount": zod.number(),
   "success": zod.boolean(),
   "errorMessage": zod.string().nullish(),
-  "recipientEmail": zod.string().nullish(),
   "isRetry": zod.boolean(),
   "retryAttempt": zod.number().describe('Which attempt number this log entry represents (0 = initial, 1 = first retry, 2 = second retry, etc.).'),
   "triggerType": zod.enum(['manual', 'scheduled'])
