@@ -18,122 +18,29 @@ import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
 import { Search, X, ArrowDownLeft, ArrowUpRight, CheckCircle, XCircle, Hash, RefreshCw, Loader2, Building2, CreditCard, FileText, Info, Plus, Link2, Zap, Pencil, AlertTriangle, Sparkles, Bookmark, BookmarkCheck, Trash2, TrendingUp, CheckCircle2, Clock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
+import { format } from "date-fns";
 import { toast } from "sonner";
+import { SmartFilterBase, parseSmartQuery } from "@/lib/smart-search";
 
-interface SmartFilter {
-  amountMin?: number;
-  amountMax?: number;
-  dateFrom?: string;
-  dateTo?: string;
+interface SmartFilter extends SmartFilterBase {
   txType?: "deposit" | "withdrawal";
   txStatus?: "pending" | "success" | "failed";
 }
 
-const TYPE_KEYWORDS: Record<string, "deposit" | "withdrawal"> = {
-  deposit: "deposit",
-  deposits: "deposit",
-  withdrawal: "withdrawal",
-  withdrawals: "withdrawal",
+const TYPE_KEYWORDS: Record<string, Partial<SmartFilter>> = {
+  deposit: { txType: "deposit" },
+  deposits: { txType: "deposit" },
+  withdrawal: { txType: "withdrawal" },
+  withdrawals: { txType: "withdrawal" },
 };
 
-const STATUS_KEYWORDS: Record<string, "pending" | "success" | "failed"> = {
-  pending: "pending",
-  success: "success",
-  successful: "success",
-  failed: "failed",
-  failure: "failed",
+const STATUS_KEYWORDS: Record<string, Partial<SmartFilter>> = {
+  pending: { txStatus: "pending" },
+  success: { txStatus: "success" },
+  successful: { txStatus: "success" },
+  failed: { txStatus: "failed" },
+  failure: { txStatus: "failed" },
 };
-
-function parseDateToken(token: string, now: Date): Pick<SmartFilter, "dateFrom" | "dateTo"> | null {
-  if (token === "today") {
-    return { dateFrom: format(startOfDay(now), "yyyy-MM-dd"), dateTo: format(endOfDay(now), "yyyy-MM-dd") };
-  }
-  if (token === "this week") {
-    return {
-      dateFrom: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-      dateTo: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-    };
-  }
-  if (token === "this month") {
-    return { dateFrom: format(startOfMonth(now), "yyyy-MM-dd"), dateTo: format(endOfMonth(now), "yyyy-MM-dd") };
-  }
-  if (token === "last month") {
-    const prev = subMonths(now, 1);
-    return { dateFrom: format(startOfMonth(prev), "yyyy-MM-dd"), dateTo: format(endOfMonth(prev), "yyyy-MM-dd") };
-  }
-  if (token === "last week") {
-    const prevWeekStart = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
-    const prevWeekEnd = endOfWeek(subDays(now, 7), { weekStartsOn: 1 });
-    return { dateFrom: format(prevWeekStart, "yyyy-MM-dd"), dateTo: format(prevWeekEnd, "yyyy-MM-dd") };
-  }
-  return null;
-}
-
-function parseAmountToken(token: string): Pick<SmartFilter, "amountMin" | "amountMax"> | null {
-  const gtMatch = token.match(/^(>=?)(\d+(?:\.\d+)?)$/);
-  if (gtMatch) {
-    const inclusive = gtMatch[1] === ">=";
-    const val = parseFloat(gtMatch[2]!);
-    return { amountMin: inclusive ? val : val + 0.01 };
-  }
-  const ltMatch = token.match(/^(<=?)(\d+(?:\.\d+)?)$/);
-  if (ltMatch) {
-    const inclusive = ltMatch[1] === "<=";
-    const val = parseFloat(ltMatch[2]!);
-    return { amountMax: inclusive ? val : val - 0.01 };
-  }
-  const rangeMatch = token.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
-  if (rangeMatch) {
-    const min = parseFloat(rangeMatch[1]!);
-    const max = parseFloat(rangeMatch[2]!);
-    if (min <= max) return { amountMin: min, amountMax: max };
-  }
-  return null;
-}
-
-function parseSmartQuery(raw: string): SmartFilter | null {
-  const q = raw.trim().toLowerCase();
-  if (!q) return null;
-
-  const filter: SmartFilter = {};
-  const now = new Date();
-
-  for (const phrase of ["this week", "this month", "last month", "last week"]) {
-    if (q.includes(phrase)) {
-      const dateResult = parseDateToken(phrase, now);
-      if (dateResult) { Object.assign(filter, dateResult); break; }
-    }
-  }
-
-  let remaining = q;
-  if (filter.dateFrom) {
-    for (const phrase of ["this week", "this month", "last month", "last week"]) {
-      remaining = remaining.replace(phrase, "").trim();
-    }
-  }
-
-  const tokens = remaining.split(/\s+/).filter(Boolean);
-
-  for (const token of tokens) {
-    if (token in TYPE_KEYWORDS) { filter.txType = TYPE_KEYWORDS[token]!; continue; }
-    if (token in STATUS_KEYWORDS) { filter.txStatus = STATUS_KEYWORDS[token]!; continue; }
-    if (!filter.dateFrom) {
-      const dateResult = parseDateToken(token, now);
-      if (dateResult) { Object.assign(filter, dateResult); continue; }
-    }
-    if (filter.amountMin == null && filter.amountMax == null) {
-      const amtResult = parseAmountToken(token);
-      if (amtResult) { Object.assign(filter, amtResult); continue; }
-    }
-  }
-
-  const hasContent =
-    filter.txType != null || filter.txStatus != null ||
-    filter.dateFrom != null || filter.amountMin != null || filter.amountMax != null;
-
-  return hasContent ? filter : null;
-}
 
 interface SmartFilterShape {
   amountMin?: number;
@@ -993,7 +900,7 @@ export default function AdminTransactions() {
   // Smart search handlers
   const applySmartSearch = () => {
     setSmartError("");
-    const filter = parseSmartQuery(smartInput);
+    const filter = parseSmartQuery<SmartFilter>(smartInput, [TYPE_KEYWORDS, STATUS_KEYWORDS]);
     if (!filter) {
       setSmartError("Try: failed deposits, pending >500, deposits this week, >500, today");
       return;
