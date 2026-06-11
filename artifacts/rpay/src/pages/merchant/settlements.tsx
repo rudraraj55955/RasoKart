@@ -269,11 +269,12 @@ export default function MerchantSettlements() {
 
   const exportCsv = () => {
     if (!data?.data) return;
-    const header = ["ID", "Amount", "Status", "Admin Remark", "Reference", "Note", "Created"];
+    const header = ["ID", "Amount", "Status", "Actioned By", "Admin Remark", "Reference", "Note", "Created"];
     const rows = data.data.map(s => [
       String(s.id),
       String(s.requestedAmount ?? s.amount),
       s.status,
+      s.actionedByEmail ?? "",
       s.adminRemark ?? "",
       s.referenceNumber ?? "",
       s.requestedNote ?? "",
@@ -497,7 +498,7 @@ export default function MerchantSettlements() {
                 </TableRow>
               ) : data?.data?.map(s => {
                 const isExpanded = expandedId === s.id;
-                const hasDetails = s.adminRemark || s.referenceNumber || s.paidAt;
+                const hasDetails = s.adminRemark || s.referenceNumber || s.paidAt || s.actionedByEmail;
                 return (
                   <>
                     <TableRow
@@ -511,7 +512,14 @@ export default function MerchantSettlements() {
                       <TableCell className="text-right font-mono font-semibold">
                         ₹{Number(s.requestedAmount ?? s.amount).toLocaleString()}
                       </TableCell>
-                      <TableCell><StatusBadge status={s.status} /></TableCell>
+                      <TableCell>
+                        <StatusBadge status={s.status} />
+                        {s.actionedByEmail && (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]" title={s.actionedByEmail}>
+                            {s.status === "paid" ? "Approved" : s.status === "rejected" ? "Rejected" : "Actioned"} by {s.actionedByEmail}
+                          </p>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-xs truncate">{s.requestedNote || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{format(new Date(s.createdAt), "MMM d, yyyy")}</TableCell>
                     </TableRow>
@@ -536,6 +544,14 @@ export default function MerchantSettlements() {
                               <div>
                                 <p className="text-xs text-muted-foreground mb-0.5">Paid At</p>
                                 <p className="font-medium">{format(new Date(s.paidAt), "MMM d, yyyy HH:mm")}</p>
+                              </div>
+                            )}
+                            {s.actionedByEmail && (
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-0.5">
+                                  {s.status === "paid" ? "Approved By" : s.status === "rejected" ? "Rejected By" : "Actioned By"}
+                                </p>
+                                <p className="font-medium">{s.actionedByEmail}</p>
                               </div>
                             )}
                           </div>
