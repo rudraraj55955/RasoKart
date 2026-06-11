@@ -127,7 +127,7 @@ export function buildEmailHtml(run: typeof reconciliationRunsTable.$inferSelect)
 </html>`;
 }
 
-function buildUnmatchedAlertHtml(run: typeof reconciliationRunsTable.$inferSelect): string {
+export function buildUnmatchedAlertHtml(run: typeof reconciliationRunsTable.$inferSelect): string {
   const dateRange = `${run.dateFrom} to ${run.dateTo}`;
   const unmatchedCount = run.totalUnmatched ?? 0;
   const unmatchedAmountFmt = formatAmount(run.unmatchedAmount);

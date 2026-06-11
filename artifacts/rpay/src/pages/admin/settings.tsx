@@ -214,6 +214,29 @@ export default function AdminSettings() {
   });
 
   const [previewingEmail, setPreviewingEmail] = useState(false);
+  const [previewingAlertEmail, setPreviewingAlertEmail] = useState(false);
+
+  async function handlePreviewAlertEmail() {
+    setPreviewingAlertEmail(true);
+    try {
+      const res = await fetch("/api/settings/reconciliation_alert_email/preview", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Failed to load preview");
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const tab = window.open(url, "_blank");
+      if (tab) {
+        tab.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Could not load alert email preview");
+    } finally {
+      setPreviewingAlertEmail(false);
+    }
+  }
 
   async function handlePreviewEmail() {
     setPreviewingEmail(true);
@@ -839,13 +862,25 @@ export default function AdminSettings() {
                 Receive an email when an auto-reconciliation run finds unmatched items that require review.
               </p>
             </div>
-            <Switch
-              checked={alertEnabled}
-              onCheckedChange={val =>
-                updatePrefs({ data: { reconciliationAlertEmails: val } })
-              }
-              disabled={savingPrefs || me === undefined}
-            />
+            <div className="flex items-center gap-3">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handlePreviewAlertEmail}
+                disabled={previewingAlertEmail}
+                title="Preview the unmatched-items alert email with sample data"
+              >
+                <Eye className="w-3.5 h-3.5 mr-1.5" />
+                {previewingAlertEmail ? "Loading…" : "Preview alert email"}
+              </Button>
+              <Switch
+                checked={alertEnabled}
+                onCheckedChange={val =>
+                  updatePrefs({ data: { reconciliationAlertEmails: val } })
+                }
+                disabled={savingPrefs || me === undefined}
+              />
+            </div>
           </div>
           {!alertEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">

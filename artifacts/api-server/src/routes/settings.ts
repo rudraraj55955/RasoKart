@@ -3,7 +3,7 @@ import { db, systemSettingsTable, auditLogsTable, reconciliationRunsTable } from
 import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMail, getSmtpConfig } from "../helpers/mailer";
-import { buildEmailHtml } from "../helpers/reconcileEmail";
+import { buildEmailHtml, buildUnmatchedAlertHtml } from "../helpers/reconcileEmail";
 
 const router = Router();
 router.use(requireAuth);
@@ -159,6 +159,38 @@ router.get("/finance_report_email/preview", (_req, res) => {
   };
 
   const html = buildEmailHtml(sampleRun);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// GET /api/settings/reconciliation_alert_email/preview
+router.get("/reconciliation_alert_email/preview", (_req, res) => {
+  const today = new Date();
+  const dateFrom = new Date(today);
+  dateFrom.setDate(today.getDate() - 1);
+
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  const sampleRun: typeof reconciliationRunsTable.$inferSelect = {
+    id: 7,
+    merchantId: null,
+    dateFrom: fmt(dateFrom),
+    dateTo: fmt(today),
+    runAt: today,
+    totalDeposits: 24,
+    totalMatched: 19,
+    totalUnmatched: 5,
+    totalSettlements: 22,
+    matchedAmount: "312400.00",
+    unmatchedAmount: "47250.00",
+    status: "completed",
+    createdBy: null,
+    triggeredBy: "auto",
+    notes: null,
+    createdAt: today,
+  };
+
+  const html = buildUnmatchedAlertHtml(sampleRun);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
 });
