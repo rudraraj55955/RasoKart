@@ -7,6 +7,36 @@ import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
 import { loadStorageCleanupConfig, rescheduleStorageCleanupFromDb } from "../helpers/storageCleanupScheduler";
 import { sql } from "drizzle-orm";
 
+async function getSignatureFailureAlertConfig() {
+  const keys = [
+    SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD,
+    SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_WINDOW_HOURS,
+    SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS,
+  ];
+
+  const rows = await db
+    .select()
+    .from(systemConfigTable)
+    .where(inArray(systemConfigTable.key, keys));
+
+  const map = new Map(rows.map(r => [r.key, r.value]));
+
+  const threshold = parseInt(
+    map.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD) ??
+    SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD]
+  );
+  const windowHours = parseFloat(
+    map.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_WINDOW_HOURS) ??
+    SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_WINDOW_HOURS]
+  );
+  const rateLimitHours = parseFloat(
+    map.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS) ??
+    SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS]
+  );
+
+  return { threshold, windowHours, rateLimitHours };
+}
+
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
@@ -331,6 +361,83 @@ router.put("/qr-cleanup", async (req, res, next) => {
     req.log.info({ retentionDays }, "QR cleanup retention config updated");
 
     res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/signature-failure-alert
+router.get("/signature-failure-alert", async (req, res, next) => {
+  try {
+    const config = await getSignatureFailureAlertConfig();
+    res.json(config);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/signature-failure-alert
+router.put("/signature-failure-alert", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { threshold, windowHours, rateLimitHours } = req.body;
+
+    if (typeof threshold !== "number" || !Number.isInteger(threshold)) {
+      res.status(400).json({ error: "threshold must be an integer" });
+      return;
+    }
+    if (threshold < 1 || threshold > 10000) {
+      res.status(400).json({ error: "threshold must be between 1 and 10000" });
+      return;
+    }
+
+    if (typeof windowHours !== "number") {
+      res.status(400).json({ error: "windowHours must be a number" });
+      return;
+    }
+    if (windowHours < 0.25 || windowHours > 72) {
+      res.status(400).json({ error: "windowHours must be between 0.25 and 72" });
+      return;
+    }
+
+    if (typeof rateLimitHours !== "number") {
+      res.status(400).json({ error: "rateLimitHours must be a number" });
+      return;
+    }
+    if (rateLimitHours < 0.25 || rateLimitHours > 72) {
+      res.status(400).json({ error: "rateLimitHours must be between 0.25 and 72" });
+      return;
+    }
+
+    const entries = [
+      { key: SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD, value: String(threshold), updatedByEmail: user.email },
+      { key: SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_WINDOW_HOURS, value: String(windowHours), updatedByEmail: user.email },
+      { key: SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS, value: String(rateLimitHours), updatedByEmail: user.email },
+    ];
+
+    for (const entry of entries) {
+      await db
+        .insert(systemConfigTable)
+        .values(entry)
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: entry.value, updatedByEmail: entry.updatedByEmail, updatedAt: sql`now()` },
+        });
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "signature_failure_alert", threshold, windowHours, rateLimitHours }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ threshold, windowHours, rateLimitHours }, "Signature failure alert config updated");
+
+    res.json({ threshold, windowHours, rateLimitHours });
   } catch (err) {
     next(err);
   }

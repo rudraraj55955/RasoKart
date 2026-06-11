@@ -267,6 +267,7 @@ export * from './settlementMarkPaidInput';
 export * from './settlementStats';
 export * from './settlementStatsCounts';
 export * from './settlementStatus';
+export * from './signatureFailureAlertConfig';
 export * from './signatureFailureAlertHistoryResponse';
 export * from './signatureFailureAlertLogEntry';
 export * from './signatureFailureAlertLogEntryAffectedMerchantsItem';

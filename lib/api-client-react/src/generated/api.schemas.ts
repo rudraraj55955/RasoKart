@@ -2426,6 +2426,30 @@ export interface LookbackPreset {
   days: number;
 }
 
+export interface SignatureFailureAlertConfig {
+  /**
+     * Number of signature verification failures within the window that must be exceeded before an alert email is sent.
+
+     * @minimum 1
+     * @maximum 10000
+     */
+  threshold: number;
+  /**
+     * Rolling time window (in hours) over which signature failures are counted.
+
+     * @minimum 0.25
+     * @maximum 72
+     */
+  windowHours: number;
+  /**
+     * Minimum hours between consecutive alert emails (cooldown period).
+
+     * @minimum 0.25
+     * @maximum 72
+     */
+  rateLimitHours: number;
+}
+
 export interface QrCleanupConfig {
   /**
      * Days to retain expired/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.

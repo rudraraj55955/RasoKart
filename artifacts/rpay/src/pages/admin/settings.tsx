@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -385,9 +385,48 @@ export default function AdminSettings() {
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save QR cleanup retention")),
   });
 
+  const [sigAlertThreshold, setSigAlertThreshold] = useState<number>(10);
+  const [sigAlertWindowHours, setSigAlertWindowHours] = useState<number>(1);
+  const [sigAlertRateLimitHours, setSigAlertRateLimitHours] = useState<number>(1);
+  const [sigAlertInitialized, setSigAlertInitialized] = useState(false);
+
   const [storageScheduleEnabled, setStorageScheduleEnabled] = useState<boolean>(true);
   const [storageScheduleHour, setStorageScheduleHour] = useState<number>(3);
   const [storageScheduleInitialized, setStorageScheduleInitialized] = useState(false);
+
+  const { data: sigAlertData, isLoading: sigAlertLoading } = useQuery<{ threshold: number; windowHours: number; rateLimitHours: number }>({
+    queryKey: ["/api/system-config/signature-failure-alert"],
+    queryFn: () => apiGet("/system-config/signature-failure-alert"),
+    onSuccess: (d: { threshold: number; windowHours: number; rateLimitHours: number }) => {
+      if (!sigAlertInitialized) {
+        setSigAlertThreshold(d.threshold);
+        setSigAlertWindowHours(d.windowHours);
+        setSigAlertRateLimitHours(d.rateLimitHours);
+        setSigAlertInitialized(true);
+      }
+    },
+  } as any);
+
+  const currentSigAlertThreshold = sigAlertData?.threshold ?? 10;
+  const currentSigAlertWindowHours = sigAlertData?.windowHours ?? 1;
+  const currentSigAlertRateLimitHours = sigAlertData?.rateLimitHours ?? 1;
+  const sigAlertUnchanged =
+    sigAlertThreshold === currentSigAlertThreshold &&
+    sigAlertWindowHours === currentSigAlertWindowHours &&
+    sigAlertRateLimitHours === currentSigAlertRateLimitHours;
+
+  const { mutate: saveSigAlert, isPending: savingSigAlert } = useMutation({
+    mutationFn: () => apiPut("/system-config/signature-failure-alert", {
+      threshold: sigAlertThreshold,
+      windowHours: sigAlertWindowHours,
+      rateLimitHours: sigAlertRateLimitHours,
+    }),
+    onSuccess: () => {
+      toast.success("Signature failure alert settings saved");
+      qc.invalidateQueries({ queryKey: ["/api/system-config/signature-failure-alert"] });
+    },
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save signature failure alert settings")),
+  });
 
   const { data: storageCleanupConfig, isLoading: storageConfigLoading } = useQuery<{ enabled: boolean; hour: number }>({
     queryKey: ["/api/system-config/storage-cleanup"],
@@ -1575,6 +1614,130 @@ export default function AdminSettings() {
         </CardContent>
       </Card>
 
+      {/* Signature Failure Alert */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Signature Failure Alert</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            Configure when admins receive email alerts for signature verification failures.
+            Failures above the threshold within the detection window trigger an alert, rate-limited to avoid flooding.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="sig-alert-threshold" className="text-sm">Alert threshold</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="sig-alert-threshold"
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={sigAlertThreshold}
+                  onChange={e => {
+                    const v = parseInt(e.target.value);
+                    if (!isNaN(v)) setSigAlertThreshold(Math.max(1, Math.min(10000, v)));
+                  }}
+                  disabled={sigAlertLoading}
+                  className="w-28"
+                />
+                <span className="text-sm text-muted-foreground">failures</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Alert fires when failures exceed this number.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="sig-alert-window" className="text-sm">Detection window</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="sig-alert-window"
+                  type="number"
+                  min={0.25}
+                  max={72}
+                  step={0.25}
+                  value={sigAlertWindowHours}
+                  onChange={e => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v)) setSigAlertWindowHours(Math.max(0.25, Math.min(72, v)));
+                  }}
+                  disabled={sigAlertLoading}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">hours</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Rolling window over which failures are counted.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="sig-alert-rate-limit" className="text-sm">Alert cooldown</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="sig-alert-rate-limit"
+                  type="number"
+                  min={0.25}
+                  max={72}
+                  step={0.25}
+                  value={sigAlertRateLimitHours}
+                  onChange={e => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v)) setSigAlertRateLimitHours(Math.max(0.25, Math.min(72, v)));
+                  }}
+                  disabled={sigAlertLoading}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">hours</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Minimum time between consecutive alert emails.
+              </p>
+            </div>
+          </div>
+
+          {!sigAlertLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/50 rounded-md px-3 py-2">
+              <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span>
+                An alert fires when more than <strong>{currentSigAlertThreshold}</strong> signature failure{currentSigAlertThreshold !== 1 ? "s" : ""} occur within{" "}
+                <strong>{currentSigAlertWindowHours === 1 ? "1 hour" : `${currentSigAlertWindowHours} hours`}</strong>,
+                at most once every <strong>{currentSigAlertRateLimitHours === 1 ? "hour" : `${currentSigAlertRateLimitHours} hours`}</strong>.
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => saveSigAlert()}
+              disabled={savingSigAlert || sigAlertLoading || sigAlertUnchanged}
+            >
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+              {savingSigAlert ? "Saving…" : "Save"}
+            </Button>
+            {!sigAlertUnchanged && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setSigAlertThreshold(currentSigAlertThreshold);
+                  setSigAlertWindowHours(currentSigAlertWindowHours);
+                  setSigAlertRateLimitHours(currentSigAlertRateLimitHours);
+                }}
+                disabled={savingSigAlert}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* My Notification Preferences */}
       <Card className="border-border/50">
         <CardHeader className="pb-3">
@@ -1669,7 +1832,7 @@ export default function AdminSettings() {
             <div className="space-y-0.5">
               <p className="text-sm font-medium">Signature failure alert emails</p>
               <p className="text-xs text-muted-foreground">
-                Receive an email when signature verification failures spike above the alert threshold (default: 10 failures/hour). Alerts are rate-limited to at most one per hour.
+                Receive an email when signature verification failures spike above the configured alert threshold. Use the Signature Failure Alert card above to adjust the threshold, window, and cooldown.
               </p>
             </div>
             <Switch

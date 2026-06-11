@@ -1,5 +1,5 @@
-import { db, callbackLogsTable, merchantsTable, usersTable, signatureFailureAlertLogsTable } from "@workspace/db";
-import { and, eq, gte, count, sql, desc } from "drizzle-orm";
+import { db, callbackLogsTable, merchantsTable, usersTable, signatureFailureAlertLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { and, eq, gte, count, sql, desc, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
 
@@ -14,38 +14,74 @@ export const ALERT_THRESHOLD = (() => {
   return 10;
 })();
 
-const WINDOW_HOURS = (() => {
-  const raw = process.env["SIGNATURE_FAILURE_ALERT_WINDOW_HOURS"];
-  if (raw) {
-    const parsed = parseFloat(raw);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return 1;
-})();
+interface SignatureAlertConfig {
+  threshold: number;
+  windowHours: number;
+  rateLimitMs: number;
+}
 
-const RATE_LIMIT_MS = (() => {
-  const raw = process.env["SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS"];
-  if (raw) {
-    const parsed = parseFloat(raw);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed * 60 * 60 * 1000;
-  }
-  return 60 * 60 * 1000;
-})();
+async function loadSignatureAlertConfig(): Promise<SignatureAlertConfig> {
+  const keys = [
+    SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD,
+    SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_WINDOW_HOURS,
+    SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS,
+  ];
+
+  const rows = await db
+    .select()
+    .from(systemConfigTable)
+    .where(inArray(systemConfigTable.key, keys));
+
+  const map = new Map(rows.map(r => [r.key, r.value]));
+
+  const thresholdRaw =
+    map.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD) ??
+    process.env["SIGNATURE_FAILURE_ALERT_THRESHOLD"] ??
+    SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD];
+
+  const windowRaw =
+    map.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_WINDOW_HOURS) ??
+    process.env["SIGNATURE_FAILURE_ALERT_WINDOW_HOURS"] ??
+    SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_WINDOW_HOURS];
+
+  const rateLimitRaw =
+    map.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS) ??
+    process.env["SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS"] ??
+    SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_RATE_LIMIT_HOURS];
+
+  const threshold = (() => {
+    const parsed = parseInt(thresholdRaw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+  })();
+
+  const windowHours = (() => {
+    const parsed = parseFloat(windowRaw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  })();
+
+  const rateLimitMs = (() => {
+    const parsed = parseFloat(rateLimitRaw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed * 60 * 60 * 1000 : 60 * 60 * 1000;
+  })();
+
+  return { threshold, windowHours, rateLimitMs };
+}
 
 /**
  * Module-level state for rate limiting and in-flight deduplication.
  *
- * Node.js is single-threaded: the synchronous checks and writes to both
- * variables run atomically within a single event-loop tick — before any
- * `await` yields control — so no concurrent call can slip through the guard.
+ * Node.js is single-threaded: the synchronous check and write to `checkInFlight`
+ * run atomically within a single event-loop tick — before any `await` yields
+ * control — so no concurrent call can slip through the in-flight guard.
  *
  * - `checkInFlight`: prevents two concurrent async invocations from both
  *   querying the DB and dispatching emails. Once set to true at the top of the
  *   function (before the first await), every subsequent call will see it and
  *   return immediately.
- * - `lastAlertSentAt`: rate-limits alerts to at most one per RATE_LIMIT_MS
- *   window. It is seeded from the DB on startup (see seedLastAlertSentAt) so
- *   restarts do not reset the cooldown.
+ * - `lastAlertSentAt`: rate-limits alerts to at most one per the configured
+ *   rate-limit window. It is seeded from the DB on startup (see seedLastAlertSentAt)
+ *   so restarts do not reset the cooldown, and set *before* emails are sent so
+ *   the guard stays closed even if the mailer fails.
  */
 let checkInFlight = false;
 let lastAlertSentAt: Date | null = null;
@@ -149,7 +185,7 @@ function buildSignatureFailureAlertHtml(opts: {
     </div>
     <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
       <p style="margin: 0; color: #52525b; font-size: 11px;">
-        This alert was sent by RasoKart. Alerts are rate-limited to at most one per hour.
+        This alert was sent by RasoKart. Alerts are rate-limited to at most one per the configured cooldown window.
         To stop receiving these alerts, update your notification preferences in Admin Settings.
       </p>
     </div>
@@ -167,24 +203,27 @@ function escapeHtml(str: string): string {
 }
 
 export async function checkAndAlertSignatureFailures(): Promise<void> {
-  // ── Synchronous guards (run atomically in the event loop before any await) ──
+  // ── In-flight guard (runs atomically before any await) ──
   //
-  // 1. Rate-limit: skip if we already sent an alert within the cooldown window.
-  // 2. In-flight: skip if another async invocation is already mid-check.
-  //
-  // Because both checks and the `checkInFlight = true` write happen synchronously
-  // (before the first `await`), Node.js's single-threaded model guarantees that
-  // no concurrent call can pass through both checks simultaneously.
-  if (lastAlertSentAt !== null && Date.now() - lastAlertSentAt.getTime() < RATE_LIMIT_MS) {
-    return;
-  }
+  // Prevents two concurrent async invocations from both querying the DB and
+  // dispatching emails. Because the check and the write happen synchronously
+  // (before the first `await`), Node.js's single-threaded model guarantees
+  // no concurrent call can pass through simultaneously.
   if (checkInFlight) {
     return;
   }
   checkInFlight = true;
 
   try {
-    const since = new Date(Date.now() - WINDOW_HOURS * 60 * 60 * 1000);
+    // Load config from DB (falling back to env vars / built-in defaults)
+    const { threshold, windowHours, rateLimitMs } = await loadSignatureAlertConfig();
+
+    // Rate-limit check: skip if we already sent an alert within the cooldown window.
+    if (lastAlertSentAt !== null && Date.now() - lastAlertSentAt.getTime() < rateLimitMs) {
+      return;
+    }
+
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
 
     const [{ total }] = await db
       .select({ total: count() })
@@ -194,7 +233,7 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
         gte(callbackLogsTable.createdAt, since),
       ));
 
-    if (total <= ALERT_THRESHOLD) {
+    if (total <= threshold) {
       return;
     }
 
@@ -229,12 +268,12 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
     const html = buildSignatureFailureAlertHtml({
       failureCount: total,
       affectedMerchants,
-      windowHours: WINDOW_HOURS,
-      threshold: ALERT_THRESHOLD,
+      windowHours,
+      threshold,
       callbacksLink,
     });
 
-    const subject = `[RasoKart] 🚨 Signature Failure Alert — ${total} failure${total !== 1 ? "s" : ""} in ${WINDOW_HOURS === 1 ? "1 hour" : `${WINDOW_HOURS} hours`}`;
+    const subject = `[RasoKart] 🚨 Signature Failure Alert — ${total} failure${total !== 1 ? "s" : ""} in ${windowHours === 1 ? "1 hour" : `${windowHours} hours`}`;
 
     // Set the rate-limit timestamp BEFORE dispatching emails so the guard stays
     // closed even if the mailer throws — preventing a flood of retries.
@@ -248,7 +287,7 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
     const failed = results.length - sent;
 
     logger.info(
-      { total, affectedMerchants: affectedMerchants.length, threshold: ALERT_THRESHOLD, windowHours: WINDOW_HOURS, sent, failed },
+      { total, affectedMerchants: affectedMerchants.length, threshold, windowHours, sent, failed },
       "Admin signature failure alert emails dispatched"
     );
 
@@ -262,8 +301,8 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
       recipientCount: sent,
       recipientEmails: JSON.stringify(recipients),
       affectedMerchants: JSON.stringify(affectedMerchants),
-      windowHours: WINDOW_HOURS,
-      threshold: ALERT_THRESHOLD,
+      windowHours,
+      threshold,
     }).catch((err: unknown) => {
       logger.warn({ err }, "Failed to persist signature failure alert log to DB");
     });

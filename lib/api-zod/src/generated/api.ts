@@ -4329,6 +4329,62 @@ export const UpdateQrCleanupConfigResponse = zod.object({
 
 
 /**
+ * @summary Get signature failure alert configuration (admin only)
+ */
+export const getSignatureFailureAlertConfigResponseThresholdMax = 10000;
+
+export const getSignatureFailureAlertConfigResponseWindowHoursMin = 0.25;
+export const getSignatureFailureAlertConfigResponseWindowHoursMax = 72;
+
+export const getSignatureFailureAlertConfigResponseRateLimitHoursMin = 0.25;
+export const getSignatureFailureAlertConfigResponseRateLimitHoursMax = 72;
+
+
+
+export const GetSignatureFailureAlertConfigResponse = zod.object({
+  "threshold": zod.number().min(1).max(getSignatureFailureAlertConfigResponseThresholdMax).describe('Number of signature verification failures within the window that must be exceeded before an alert email is sent.\n'),
+  "windowHours": zod.number().min(getSignatureFailureAlertConfigResponseWindowHoursMin).max(getSignatureFailureAlertConfigResponseWindowHoursMax).describe('Rolling time window (in hours) over which signature failures are counted.\n'),
+  "rateLimitHours": zod.number().min(getSignatureFailureAlertConfigResponseRateLimitHoursMin).max(getSignatureFailureAlertConfigResponseRateLimitHoursMax).describe('Minimum hours between consecutive alert emails (cooldown period).\n')
+})
+
+
+/**
+ * @summary Update signature failure alert configuration (admin only)
+ */
+export const updateSignatureFailureAlertConfigBodyThresholdMax = 10000;
+
+export const updateSignatureFailureAlertConfigBodyWindowHoursMin = 0.25;
+export const updateSignatureFailureAlertConfigBodyWindowHoursMax = 72;
+
+export const updateSignatureFailureAlertConfigBodyRateLimitHoursMin = 0.25;
+export const updateSignatureFailureAlertConfigBodyRateLimitHoursMax = 72;
+
+
+
+export const UpdateSignatureFailureAlertConfigBody = zod.object({
+  "threshold": zod.number().min(1).max(updateSignatureFailureAlertConfigBodyThresholdMax).describe('Number of signature verification failures within the window that must be exceeded before an alert email is sent.\n'),
+  "windowHours": zod.number().min(updateSignatureFailureAlertConfigBodyWindowHoursMin).max(updateSignatureFailureAlertConfigBodyWindowHoursMax).describe('Rolling time window (in hours) over which signature failures are counted.\n'),
+  "rateLimitHours": zod.number().min(updateSignatureFailureAlertConfigBodyRateLimitHoursMin).max(updateSignatureFailureAlertConfigBodyRateLimitHoursMax).describe('Minimum hours between consecutive alert emails (cooldown period).\n')
+})
+
+export const updateSignatureFailureAlertConfigResponseThresholdMax = 10000;
+
+export const updateSignatureFailureAlertConfigResponseWindowHoursMin = 0.25;
+export const updateSignatureFailureAlertConfigResponseWindowHoursMax = 72;
+
+export const updateSignatureFailureAlertConfigResponseRateLimitHoursMin = 0.25;
+export const updateSignatureFailureAlertConfigResponseRateLimitHoursMax = 72;
+
+
+
+export const UpdateSignatureFailureAlertConfigResponse = zod.object({
+  "threshold": zod.number().min(1).max(updateSignatureFailureAlertConfigResponseThresholdMax).describe('Number of signature verification failures within the window that must be exceeded before an alert email is sent.\n'),
+  "windowHours": zod.number().min(updateSignatureFailureAlertConfigResponseWindowHoursMin).max(updateSignatureFailureAlertConfigResponseWindowHoursMax).describe('Rolling time window (in hours) over which signature failures are counted.\n'),
+  "rateLimitHours": zod.number().min(updateSignatureFailureAlertConfigResponseRateLimitHoursMin).max(updateSignatureFailureAlertConfigResponseRateLimitHoursMax).describe('Minimum hours between consecutive alert emails (cooldown period).\n')
+})
+
+
+/**
  * @summary Mark a single notification as read
  */
 export const MarkNotificationReadParams = zod.object({

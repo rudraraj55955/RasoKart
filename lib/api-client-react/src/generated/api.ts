@@ -199,6 +199,7 @@ import type {
   SettlementListResponse,
   SettlementMarkPaidInput,
   SettlementStats,
+  SignatureFailureAlertConfig,
   SignatureFailureAlertHistoryResponse,
   SimulatePaymentInput,
   StorageCleanupResult,
@@ -14124,6 +14125,154 @@ export const useUpdateQrCleanupConfig = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateQrCleanupConfigMutationOptions(options));
+    }
+
+export const getGetSignatureFailureAlertConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/signature-failure-alert`
+}
+
+/**
+ * @summary Get signature failure alert configuration (admin only)
+ */
+export const getSignatureFailureAlertConfig = async ( options?: RequestInit): Promise<SignatureFailureAlertConfig> => {
+
+  return customFetch<SignatureFailureAlertConfig>(getGetSignatureFailureAlertConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSignatureFailureAlertConfigQueryKey = () => {
+    return [
+    `/api/system-config/signature-failure-alert`
+    ] as const;
+    }
+
+
+export const getGetSignatureFailureAlertConfigQueryOptions = <TData = Awaited<ReturnType<typeof getSignatureFailureAlertConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignatureFailureAlertConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSignatureFailureAlertConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSignatureFailureAlertConfig>>> = ({ signal }) => getSignatureFailureAlertConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSignatureFailureAlertConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSignatureFailureAlertConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getSignatureFailureAlertConfig>>>
+export type GetSignatureFailureAlertConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get signature failure alert configuration (admin only)
+ */
+
+export function useGetSignatureFailureAlertConfig<TData = Awaited<ReturnType<typeof getSignatureFailureAlertConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignatureFailureAlertConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSignatureFailureAlertConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateSignatureFailureAlertConfigUrl = () => {
+
+
+
+
+  return `/api/system-config/signature-failure-alert`
+}
+
+/**
+ * @summary Update signature failure alert configuration (admin only)
+ */
+export const updateSignatureFailureAlertConfig = async (signatureFailureAlertConfig: SignatureFailureAlertConfig, options?: RequestInit): Promise<SignatureFailureAlertConfig> => {
+
+  return customFetch<SignatureFailureAlertConfig>(getUpdateSignatureFailureAlertConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      signatureFailureAlertConfig,)
+  }
+);}
+
+
+
+
+export const getUpdateSignatureFailureAlertConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSignatureFailureAlertConfig>>, TError,{data: BodyType<SignatureFailureAlertConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSignatureFailureAlertConfig>>, TError,{data: BodyType<SignatureFailureAlertConfig>}, TContext> => {
+
+const mutationKey = ['updateSignatureFailureAlertConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSignatureFailureAlertConfig>>, {data: BodyType<SignatureFailureAlertConfig>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateSignatureFailureAlertConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSignatureFailureAlertConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateSignatureFailureAlertConfig>>>
+    export type UpdateSignatureFailureAlertConfigMutationBody = BodyType<SignatureFailureAlertConfig>
+    export type UpdateSignatureFailureAlertConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update signature failure alert configuration (admin only)
+ */
+export const useUpdateSignatureFailureAlertConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSignatureFailureAlertConfig>>, TError,{data: BodyType<SignatureFailureAlertConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSignatureFailureAlertConfig>>,
+        TError,
+        {data: BodyType<SignatureFailureAlertConfig>},
+        TContext
+      > => {
+      return useMutation(getUpdateSignatureFailureAlertConfigMutationOptions(options));
     }
 
 export const getMarkNotificationReadUrl = (id: number,) => {
