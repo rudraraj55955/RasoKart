@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useUpload } from "@workspace/object-storage-web";
 import {
@@ -116,6 +116,15 @@ export default function AdminMerchants() {
     timestamp: string;
   } | null>(null);
 
+  // Undo state — tracks reverse action for bulk approve/suspend within 10-second window
+  const [bulkUndoState, setBulkUndoState] = useState<{
+    action: "approve" | "suspend" | "reinstate";
+    ids: number[];
+    deadline: number;
+  } | null>(null);
+  const [bulkUndoSecondsLeft, setBulkUndoSecondsLeft] = useState(0);
+  const [bulkUndoUsed, setBulkUndoUsed] = useState(false);
+
   const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined });
   const { data: plans } = useListPlans();
   const { data: currentMerchantPlan, isLoading: planLoading } = useGetMerchantPlan(
@@ -145,6 +154,57 @@ export default function AdminMerchants() {
   const bulkApproveMutation = useBulkApproveMerchants();
   const bulkSuspendMutation = useBulkSuspendMerchants();
   const bulkRejectMutation = useBulkRejectMerchants();
+
+  // Countdown timer for undo window
+  useEffect(() => {
+    if (!bulkUndoState || bulkUndoUsed) return;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((bulkUndoState.deadline - Date.now()) / 1000));
+      setBulkUndoSecondsLeft(left);
+    };
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [bulkUndoState, bulkUndoUsed]);
+
+  const handleBulkUndo = () => {
+    if (!bulkUndoState || bulkUndoUsed || bulkUndoSecondsLeft === 0) return;
+    setBulkUndoUsed(true);
+    const { action, ids } = bulkUndoState;
+
+    if (action === "approve") {
+      bulkApproveMutation.mutate({ data: { merchantIds: ids } }, {
+        onSuccess: (result) => {
+          qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+          setBulkResultTitle("Undo — Approve");
+          setBulkResultItems(result.results ?? []);
+          setBulkUndoState(null);
+          toast.success(`Undo: approved ${result.updated} merchant${result.updated !== 1 ? "s" : ""}`);
+        },
+        onError: () => { setBulkUndoUsed(false); toast.error("Undo failed"); },
+      });
+    } else {
+      bulkSuspendMutation.mutate({ data: { merchantIds: ids, action } }, {
+        onSuccess: (result) => {
+          qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+          const actionLabel = action === "suspend" ? "Suspend" : "Reinstate";
+          setBulkResultTitle(`Undo — ${actionLabel}`);
+          setBulkResultItems(result.results ?? []);
+          setBulkUndoState(null);
+          toast.success(`Undo: ${action === "suspend" ? "suspended" : "reinstated"} ${result.updated} merchant${result.updated !== 1 ? "s" : ""}`);
+        },
+        onError: () => { setBulkUndoUsed(false); toast.error("Undo failed"); },
+      });
+    }
+  };
+
+  const handleBulkResultClose = (open: boolean) => {
+    setBulkResultOpen(open);
+    if (!open) {
+      setBulkUndoState(null);
+      setBulkUndoUsed(false);
+    }
+  };
 
   const invalidatePlanData = (id: number) => {
     qc.invalidateQueries({ queryKey: ["getMerchantPlan", id] });
@@ -357,6 +417,13 @@ export default function AdminMerchants() {
           setBulkResultItems(results ?? []);
           setBulkRetryContext({ type: "approve" });
           setBulkResultOpen(true);
+          const successIds = (results ?? []).filter(r => r.success).map(r => r.id);
+          if (successIds.length > 0) {
+            setBulkUndoState({ action: "suspend", ids: successIds, deadline: Date.now() + 10000 });
+            setBulkUndoUsed(false);
+          } else {
+            setBulkUndoState(null);
+          }
           const label = `Bulk approved ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
           if (failed === 0) {
             toast.success(label);
@@ -374,11 +441,20 @@ export default function AdminMerchants() {
           const { updated, failed, results } = result;
           qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
           clearSelection();
+          const capturedAction = bulkStatusAction;
           setBulkStatusAction(null);
           setBulkResultTitle(`Bulk ${capturedAction === "suspend" ? "Suspend" : "Reinstate"}`);
           setBulkResultItems(results ?? []);
           setBulkRetryContext({ type: capturedAction });
           setBulkResultOpen(true);
+          const successIds = (results ?? []).filter(r => r.success).map(r => r.id);
+          if (successIds.length > 0) {
+            const undoAction = capturedAction === "suspend" ? "reinstate" : "suspend";
+            setBulkUndoState({ action: undoAction, ids: successIds, deadline: Date.now() + 10000 });
+            setBulkUndoUsed(false);
+          } else {
+            setBulkUndoState(null);
+          }
           const label = `Bulk ${actionLabel} ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
           if (failed === 0) {
             toast.success(label);
@@ -1663,7 +1739,7 @@ export default function AdminMerchants() {
       </Dialog>
 
       {/* Bulk Action Result Summary Dialog */}
-      <Dialog open={bulkResultOpen} onOpenChange={setBulkResultOpen}>
+      <Dialog open={bulkResultOpen} onOpenChange={handleBulkResultClose}>
         <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{bulkResultTitle} — Results</DialogTitle>
@@ -1688,7 +1764,7 @@ export default function AdminMerchants() {
               </div>
             ))}
           </div>
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             {bulkResultItems.filter(r => !r.success).length > 0 && bulkRetryContext && (
               <Button
                 variant="outline"
@@ -1700,7 +1776,32 @@ export default function AdminMerchants() {
                 Retry failed ({bulkResultItems.filter(r => !r.success).length})
               </Button>
             )}
-            <Button onClick={() => setBulkResultOpen(false)}>Dismiss</Button>
+            {bulkUndoState && !bulkUndoUsed && (
+              <div className="flex items-center gap-2 flex-1">
+                <Button
+                  variant="outline"
+                  className="text-amber-400 border-amber-500/30 hover:bg-amber-500/10 gap-1.5"
+                  disabled={bulkUndoSecondsLeft === 0 || bulkApproveMutation.isPending || bulkSuspendMutation.isPending}
+                  onClick={handleBulkUndo}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Undo
+                  {bulkUndoSecondsLeft > 0
+                    ? <span className="text-amber-400/70">({bulkUndoSecondsLeft}s)</span>
+                    : <span className="text-muted-foreground">(expired)</span>}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Reverses the {bulkUndoState.ids.length} successful change{bulkUndoState.ids.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+            )}
+            {bulkUndoUsed && (bulkApproveMutation.isPending || bulkSuspendMutation.isPending) && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1.5 flex-1">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Undoing…
+              </span>
+            )}
+            <Button onClick={() => handleBulkResultClose(false)}>Dismiss</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
