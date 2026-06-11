@@ -338,6 +338,15 @@ function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: Callb
                 Test
               </span>
             )}
+            {(log.attempts ?? 1) > 1 && (() => {
+              const retries = (log.attempts ?? 1) - 1;
+              return (
+                <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 px-2 py-0.5 text-xs font-semibold" title={`Auto-retried ${retries} time${retries === 1 ? "" : "s"}`}>
+                  <RefreshCw className="w-3 h-3" />
+                  Auto-retried
+                </span>
+              );
+            })()}
           </DialogTitle>
         </DialogHeader>
 
@@ -800,6 +809,15 @@ export default function MerchantWebhook() {
                           Test
                         </span>
                       )}
+                      {(log.attempts ?? 1) > 1 && (() => {
+                        const retries = (log.attempts ?? 1) - 1;
+                        return (
+                          <span className="shrink-0 flex items-center gap-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 px-1.5 py-0.5 text-[10px] font-semibold" title={`Auto-retried ${retries} time${retries === 1 ? "" : "s"}`}>
+                            <RefreshCw className="w-2.5 h-2.5" />
+                            Auto-retried
+                          </span>
+                        );
+                      })()}
                       <p className="text-xs font-mono text-muted-foreground truncate" title={log.url}>{log.url}</p>
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">
