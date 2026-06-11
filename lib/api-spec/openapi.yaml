@@ -1360,6 +1360,24 @@ paths:
           description: Access denied
         "404":
           description: Callback log not found
+  /webhooks/logs/stats:
+    get:
+      operationId: getWebhookLogStats
+      tags: [webhooks]
+      summary: Get per-event-type delivery stats for the authenticated merchant
+      description: Returns aggregated delivery counts (total, success, failed) grouped by event type for the merchant's webhook logs. Only event types with at least one log entry are returned.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Per-event-type delivery stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookLogStatsResponse"
+        "403":
+          description: Merchants only
+
 
   /webhooks/logs/{id}/retry:
     post:
@@ -5083,6 +5101,32 @@ components:
           type: integer
         limit:
           type: integer
+
+    WebhookLogEventStat:
+      type: object
+      required: [eventType, total, success, failed]
+      properties:
+        eventType:
+          type: string
+          description: Event type (e.g. payment.success)
+        total:
+          type: integer
+          description: Total delivery attempts for this event type
+        success:
+          type: integer
+          description: Number of successful deliveries
+        failed:
+          type: integer
+          description: Number of failed or pending-retry deliveries
+
+    WebhookLogStatsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookLogEventStat"
 
     CallbackStatsResponse:
       type: object

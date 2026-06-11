@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, WebhookTestRequestEventType } from "@workspace/api-client-react";
+import { EVENT_TYPE_COLORS, EventTypeBadge } from "@/components/ui/event-type-badge";
+import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, WebhookTestRequestEventType, GetWebhookLogsEventType } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 import type { CallbackLog } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -362,7 +363,17 @@ export default function MerchantWebhook() {
   const qc = useQueryClient();
   const { data: config, isLoading } = useGetWebhookConfig();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
-  const { data: logsData, isLoading: logsLoading } = useGetWebhookLogs({ limit: 10 });
+  const [eventTypeFilter, setEventTypeFilter] = useState<GetWebhookLogsEventType | null>(null);
+  const logsParams = { limit: 20, ...(eventTypeFilter != null ? { eventType: eventTypeFilter } : {}) };
+  const { data: logsData, isLoading: logsLoading } = useGetWebhookLogs(logsParams, {
+    query: { queryKey: getGetWebhookLogsQueryKey(logsParams) },
+  });
+  const { data: logStatsData } = useGetWebhookLogStats({
+    query: { refetchInterval: 60_000, queryKey: getGetWebhookLogStatsQueryKey() },
+  });
+  const logStatsByEventType = Object.fromEntries(
+    (logStatsData?.data ?? []).map(s => [s.eventType, s])
+  );
   const updateMutation = useUpdateWebhookConfig();
   const rotateMutation = useRotateCallbackSecret();
   const testMutation = useSendWebhookTest();
@@ -424,8 +435,11 @@ export default function MerchantWebhook() {
           toast.error(`Test event failed — HTTP ${data.httpStatus ?? "no response"}`);
         }
       },
-      onError: () => toast.error("Failed to send test event"),
-      onSettled: () => qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() }),
+onError: () => toast.error("Failed to send test event"),
+      onSettled: () => {
+        qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetWebhookLogStatsQueryKey() });
+      },
     });
   };
 
@@ -439,8 +453,11 @@ export default function MerchantWebhook() {
           toast.error(`Test event failed — HTTP ${data.httpStatus ?? "no response"}`);
         }
       },
-      onError: () => toast.error("Failed to send test event"),
-      onSettled: () => qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() }),
+onError: () => toast.error("Failed to send test event"),
+      onSettled: () => {
+        qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetWebhookLogStatsQueryKey() });
+      },
     });
   };
 
@@ -465,6 +482,7 @@ export default function MerchantWebhook() {
           toast.error("Retry failed — endpoint still unreachable");
         }
         qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetWebhookLogStatsQueryKey() });
         if (data.log) {
           setSelectedLog(prev => (prev?.id === logId ? (data.log as CallbackLog) : prev));
         }
@@ -608,6 +626,51 @@ export default function MerchantWebhook() {
           <CardDescription>Last 10 webhook delivery attempts to your endpoint</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Event type filter pills */}
+          <div className="flex items-center gap-1.5 flex-wrap mb-4 pb-3 border-b border-border/40">
+            <button
+              onClick={() => setEventTypeFilter(null)}
+              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                eventTypeFilter === null
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground border border-border/50"
+              }`}
+            >
+              All
+            </button>
+            {EVENTS.map(event => {
+              const colors = EVENT_TYPE_COLORS[event.id] ?? { bg: "bg-muted/40", text: "text-muted-foreground", border: "border-border/50" };
+              const isActive = eventTypeFilter === event.id;
+              const stats = logStatsByEventType[event.id];
+              const failureCount = stats ? stats.failed : 0;
+              const hasFailures = failureCount > 0;
+              return (
+                <button
+                  key={event.id}
+                  onClick={() => setEventTypeFilter(isActive ? null : event.id as GetWebhookLogsEventType)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-mono font-medium transition-colors ${
+                    isActive
+                      ? `${colors.bg} ${colors.text} ${colors.border} ring-1 ring-inset ring-current/30`
+                      : "bg-muted/20 text-muted-foreground border-border/40 hover:bg-muted/40 hover:text-foreground"
+                  }`}
+                  title={stats ? `${stats.total} total · ${stats.success} success · ${failureCount} failed` : undefined}
+                >
+                  {event.id}
+                  {hasFailures && (
+                    <span className={`inline-flex items-center justify-center min-w-[16px] h-4 rounded-full px-1 text-[10px] font-semibold leading-none ${
+                      isActive
+                        ? "bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                        : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                    }`}>
+                      {failureCount > 99 ? "99+" : failureCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+
           {logsLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, webhooksTable, callbackLogsTable, auditLogsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { fireCallback } from "../helpers/callbackRetry";
 import crypto from "crypto";
@@ -140,6 +140,38 @@ router.get("/logs", async (req, res) => {
     .limit(limitNum);
 
   res.json({ data, total: data.length, page: 1, limit: limitNum });
+});
+
+// GET /api/webhooks/logs/stats — per-event-type delivery stats for the merchant
+router.get("/logs/stats", async (req, res) => {
+  const user = (req as any).user;
+  const merchantId = user.role === "merchant" ? user.merchantId! : undefined;
+  if (!merchantId) {
+    res.status(403).json({ error: "Merchants only" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      eventType: callbackLogsTable.eventType,
+      total: count(),
+      success: sql<number>`COUNT(*) FILTER (WHERE ${callbackLogsTable.status} = 'success')`,
+      failed: sql<number>`COUNT(*) FILTER (WHERE ${callbackLogsTable.status} != 'success')`,
+    })
+    .from(callbackLogsTable)
+    .where(
+      sql`${callbackLogsTable.merchantId} = ${merchantId} AND ${callbackLogsTable.eventType} IS NOT NULL`
+    )
+    .groupBy(callbackLogsTable.eventType);
+
+  res.json({
+    data: rows.map(r => ({
+      eventType: r.eventType!,
+      total: Number(r.total),
+      success: Number(r.success),
+      failed: Number(r.failed),
+    })),
+  });
 });
 
 // POST /api/webhooks/logs/:id/retry — merchant retries a failed webhook delivery

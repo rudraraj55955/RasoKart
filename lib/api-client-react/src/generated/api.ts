@@ -202,6 +202,8 @@ import type {
   VisibilityRuleUpdateInput,
   WebhookConfig,
   WebhookConfigInput,
+  WebhookLogStatsResponse,
+  WebhookSecretCheckResult,
   WebhookTestRequest,
   WebhookTestResult,
   Withdrawal,
@@ -4147,6 +4149,7 @@ export function useGetWebhookLogs<TData = Awaited<ReturnType<typeof getWebhookLo
 
 
 export const getGetWebhookLogAttemptsUrl = (id: number,) => {
+export const getGetWebhookLogStatsUrl = () => {
 
 
 
@@ -4161,6 +4164,16 @@ export const getGetWebhookLogAttemptsUrl = (id: number,) => {
 export const getWebhookLogAttempts = async (id: number, options?: RequestInit): Promise<GetWebhookLogAttempts200> => {
 
   return customFetch<GetWebhookLogAttempts200>(getGetWebhookLogAttemptsUrl(id),
+  return `/api/webhooks/logs/stats`
+}
+
+/**
+ * Returns aggregated delivery counts (total, success, failed) grouped by event type for the merchant's webhook logs. Only event types with at least one log entry are returned.
+ * @summary Get per-event-type delivery stats for the authenticated merchant
+ */
+export const getWebhookLogStats = async ( options?: RequestInit): Promise<WebhookLogStatsResponse> => {
+
+  return customFetch<WebhookLogStatsResponse>(getGetWebhookLogStatsUrl(),
   {
     ...options,
     method: 'GET'
@@ -4176,11 +4189,15 @@ export const getWebhookLogAttempts = async (id: number, options?: RequestInit): 
 export const getGetWebhookLogAttemptsQueryKey = (id: number,) => {
     return [
     `/api/callbacks/${id}/attempts`
+export const getGetWebhookLogStatsQueryKey = () => {
+    return [
+    `/api/webhooks/logs/stats`
     ] as const;
     }
 
 
 export const getGetWebhookLogAttemptsQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookLogAttempts>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogAttempts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetWebhookLogStatsQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookLogStats>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -4190,6 +4207,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookLogAttempts>>> = ({ signal }) => getWebhookLogAttempts(id, { signal, ...requestOptions });
+  const queryKey =  queryOptions?.queryKey ?? getGetWebhookLogStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookLogStats>>> = ({ signal }) => getWebhookLogStats({ signal, ...requestOptions });
 
 
 
@@ -4212,15 +4234,28 @@ export function useGetWebhookLogAttempts<TData = Awaited<ReturnType<typeof getWe
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetWebhookLogAttemptsQueryOptions(id,options)
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebhookLogStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getWebhookLogStats>>>
+export type GetWebhookLogStatsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get per-event-type delivery stats for the authenticated merchant
+ */
+
+export function useGetWebhookLogStats<TData = Awaited<ReturnType<typeof getWebhookLogStats>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebhookLogStatsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
-
-
-
 
 
 

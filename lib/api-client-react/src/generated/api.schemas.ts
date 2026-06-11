@@ -661,6 +661,21 @@ export interface CallbackLogListResponse {
   limit: number;
 }
 
+export interface WebhookLogEventStat {
+  /** Event type (e.g. payment.success) */
+  eventType: string;
+  /** Total delivery attempts for this event type */
+  total: number;
+  /** Number of successful deliveries */
+  success: number;
+  /** Number of failed or pending-retry deliveries */
+  failed: number;
+}
+
+export interface WebhookLogStatsResponse {
+  data: WebhookLogEventStat[];
+}
+
 export interface CallbackStatsResponse {
   /** Number of signature verification failures in the last 24 hours for this merchant */
   signatureFailures24h: number;
