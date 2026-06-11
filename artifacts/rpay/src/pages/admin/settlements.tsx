@@ -28,7 +28,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
 import { ChevronDown, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock, CheckCircle2, DollarSign, RefreshCw, CheckSquare, AlertTriangle, Wallet, Sparkles, Hash, Bookmark, BookmarkCheck, Trash2 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO, isValid } from "date-fns";
 import { toast } from "sonner";
 import { SmartFilterBase, parseSmartQuery } from "@/lib/smart-search";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -614,9 +614,87 @@ export default function AdminSettlements() {
 
       {/* Filter summary bar */}
       {anyFilterActive && (
-        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3">
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Active filters</span>
+            {search && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                Search: <span className="font-mono">{search}</span>
+                <button
+                  onClick={() => { handleSearchChange(""); }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                  aria-label="Remove search filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {activeStatus && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                Status: {(activeStatus as string).charAt(0).toUpperCase() + (activeStatus as string).slice(1)}
+                <button
+                  onClick={() => {
+                    if (smartFilter?.settlementStatus) setSmartFilter(prev => prev ? { ...prev, settlementStatus: undefined } : null);
+                    else setStatus("all");
+                    setPage(1);
+                  }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                  aria-label="Remove status filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {activeDateFrom && (() => { const d = parseISO(activeDateFrom); return isValid(d) ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                From: {format(d, "MMM d, yyyy")}
+                <button
+                  onClick={() => {
+                    if (smartFilter?.dateFrom) setSmartFilter(prev => prev ? { ...prev, dateFrom: undefined, dateTo: undefined } : null);
+                    else setDateFrom("");
+                    setPage(1);
+                    clearSelection();
+                  }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                  aria-label="Remove from-date filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : null; })()}
+            {activeDateTo && (() => { const d = parseISO(activeDateTo); return isValid(d) ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                To: {format(d, "MMM d, yyyy")}
+                <button
+                  onClick={() => {
+                    if (smartFilter?.dateTo) setSmartFilter(prev => prev ? { ...prev, dateFrom: undefined, dateTo: undefined } : null);
+                    else setDateTo("");
+                    setPage(1);
+                    clearSelection();
+                  }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                  aria-label="Remove to-date filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : null; })()}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                handleSearchChange("");
+                handleStatusChange("all");
+                setDateFrom(""); setDateTo("");
+                if (hasSmartFilter) clearSmartFilter();
+              }}
+              className="ml-auto h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 gap-1.5"
+            >
+              <X className="w-3 h-3" />
+              Clear filters
+            </Button>
+          </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider mr-1">Filter results</span>
             <div className="flex items-center gap-1.5 text-sm">
               <Hash className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="font-semibold text-foreground">
