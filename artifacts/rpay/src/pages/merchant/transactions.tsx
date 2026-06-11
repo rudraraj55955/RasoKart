@@ -73,6 +73,7 @@ interface SmartFilter {
   dateTo?: string;
   txType?: "deposit" | "withdrawal";
   txStatus?: "pending" | "success" | "failed";
+  txProvider?: string;
 }
 
 const TYPE_KEYWORDS: Record<string, "deposit" | "withdrawal"> = {
@@ -88,6 +89,19 @@ const STATUS_KEYWORDS: Record<string, "pending" | "success" | "failed"> = {
   successful: "success",
   failed: "failed",
   failure: "failed",
+};
+
+const PROVIDER_KEYWORDS: Record<string, string> = {
+  phonepe: "phonepe",
+  paytm: "paytm",
+  bharatpe: "bharatpe",
+  yono: "yono_sbi",
+  yono_sbi: "yono_sbi",
+  hdfc: "hdfc_smarthub",
+  hdfc_smarthub: "hdfc_smarthub",
+  smartpay: "hdfc_smarthub",
+  upi: "upi_id",
+  upi_id: "upi_id",
 };
 
 function parseDateToken(token: string, now: Date): Pick<SmartFilter, "dateFrom" | "dateTo"> | null {
@@ -221,6 +235,10 @@ function parseSmartQuery(raw: string): SmartFilter | null {
       filter.txStatus = STATUS_KEYWORDS[token]!;
       continue;
     }
+    if (token in PROVIDER_KEYWORDS) {
+      filter.txProvider = PROVIDER_KEYWORDS[token]!;
+      continue;
+    }
     // Single-word date shortcuts
     if (!filter.dateFrom) {
       const dateResult = parseDateToken(token, now);
@@ -238,7 +256,8 @@ function parseSmartQuery(raw: string): SmartFilter | null {
     filter.txStatus != null ||
     filter.dateFrom != null ||
     filter.amountMin != null ||
-    filter.amountMax != null;
+    filter.amountMax != null ||
+    filter.txProvider != null;
 
   return hasContent ? filter : null;
 }
@@ -488,9 +507,10 @@ export default function MerchantTransactions() {
   const activeDateFrom = smartDateFrom ?? dateFrom;
   const activeDateTo = smartDateTo ?? dateTo;
 
-  // Smart type/status override dropdowns when set
+  // Smart type/status/provider override dropdowns when set
   const activeType = smartFilter?.txType ?? type;
   const activeStatus = smartFilter?.txStatus ?? status;
+  const activeProvider = smartFilter?.txProvider ?? (provider !== "all" ? provider : undefined);
 
   const { data, isLoading } = useListTransactions({
     type: activeType as any,
@@ -502,7 +522,7 @@ export default function MerchantTransactions() {
     ...(activeDateTo ? { dateTo: activeDateTo } : {}),
     ...(amountMin != null ? { amountMin } : {}),
     ...(amountMax != null ? { amountMax } : {}),
-    ...(provider !== "all" ? { connectionProvider: provider as any } : {}),
+    ...(activeProvider ? { connectionProvider: activeProvider as any } : {}),
   });
   const { data: utrResult, isLoading: utrLoading, error: utrError } = useSearchByUtr(
     { utr: utrSearch || "" },
@@ -682,9 +702,9 @@ export default function MerchantTransactions() {
 
   const exportCsv = async () => {
     const params = new URLSearchParams();
-    if (type && type !== "all") params.set("type", type);
-    if (status && status !== "all") params.set("status", status);
-    if (provider && provider !== "all") params.set("connectionProvider", provider);
+    if (activeType && activeType !== "all") params.set("type", activeType);
+    if (activeStatus && activeStatus !== "all") params.set("status", activeStatus);
+    if (activeProvider) params.set("connectionProvider", activeProvider);
     if (utrSearch) params.set("search", utrSearch);
     if (activeDateFrom) params.set("dateFrom", activeDateFrom);
     if (activeDateTo) params.set("dateTo", activeDateTo);
@@ -710,7 +730,7 @@ export default function MerchantTransactions() {
   const hasStatusFilter = status !== "all";
   const hasProviderFilter = provider !== "all";
   const hasDateFilter = !!(activeDateFrom || activeDateTo);
-  const anyFilterActive = hasSmartFilter || hasUtrSearch || hasTypeFilter || hasStatusFilter || hasProviderFilter || hasDateFilter;
+  const anyFilterActive = hasSmartFilter || hasUtrSearch || hasTypeFilter || hasStatusFilter || hasProviderFilter || hasDateFilter || !!smartFilter?.txProvider;
 
   // Check if the current active smart filter is already saved
   const isCurrentFilterSaved = hasSmartFilter && savedFilters.some(
@@ -774,7 +794,7 @@ export default function MerchantTransactions() {
               <Input
                 ref={smartInputRef}
                 className="pl-9"
-                placeholder="Try: failed deposits  ·  pending >500  ·  deposits this week  ·  >500  ·  today"
+                placeholder="Try: phonepe deposits  ·  failed deposits  ·  pending >500  ·  deposits this week  ·  today"
                 value={smartInput}
                 onChange={e => { setSmartInput(e.target.value); setSmartError(""); }}
                 onKeyDown={e => { if (e.key === "Enter") applySmartSearch(); }}
@@ -833,7 +853,7 @@ export default function MerchantTransactions() {
             <p className="mt-2 text-xs text-amber-400">{smartError}</p>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
-            Type: <span className="font-mono text-foreground/60">deposit</span>, <span className="font-mono text-foreground/60">withdrawal</span> — Status: <span className="font-mono text-foreground/60">pending</span>, <span className="font-mono text-foreground/60">success</span>, <span className="font-mono text-foreground/60">failed</span> — Amount: <span className="font-mono text-foreground/60">{">500"}</span>, <span className="font-mono text-foreground/60">{"200-999"}</span> — Date: <span className="font-mono text-foreground/60">today</span>, <span className="font-mono text-foreground/60">this week</span>, <span className="font-mono text-foreground/60">this month</span> — Combine freely: <span className="font-mono text-foreground/60">failed deposits this week</span>
+            Type: <span className="font-mono text-foreground/60">deposit</span>, <span className="font-mono text-foreground/60">withdrawal</span> — Status: <span className="font-mono text-foreground/60">pending</span>, <span className="font-mono text-foreground/60">success</span>, <span className="font-mono text-foreground/60">failed</span> — Amount: <span className="font-mono text-foreground/60">{">500"}</span>, <span className="font-mono text-foreground/60">{"200-999"}</span> — Date: <span className="font-mono text-foreground/60">today</span>, <span className="font-mono text-foreground/60">this week</span>, <span className="font-mono text-foreground/60">this month</span> — Provider: <span className="font-mono text-foreground/60">phonepe</span>, <span className="font-mono text-foreground/60">paytm</span>, <span className="font-mono text-foreground/60">upi</span>, <span className="font-mono text-foreground/60">hdfc</span> — Combine freely: <span className="font-mono text-foreground/60">phonepe deposits this week</span>
           </p>
         </CardContent>
       </Card>
@@ -890,6 +910,7 @@ export default function MerchantTransactions() {
             } else if (sf.amountMax != null) {
               chips.push({ key: "amount", label: `≤ ₹${sf.amountMax.toLocaleString()}` });
             }
+            if (sf.txProvider) chips.push({ key: "provider", label: formatProvider(sf.txProvider) });
             return chips.map((chip, i) => (
               <span key={chip.key} className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
                 <Sparkles className="w-3 h-3" />
