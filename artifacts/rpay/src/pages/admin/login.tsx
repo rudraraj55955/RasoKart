@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +10,8 @@ import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { isRateLimitError } from "@/lib/utils";
+import { AlertCircle } from "lucide-react";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -20,7 +23,8 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function AdminLogin() {
   const [_, setLocation] = useLocation();
   const { login: setAuthToken } = useAuth();
-  
+  const [rateLimitError, setRateLimitError] = useState<string | null>(null);
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -31,7 +35,12 @@ export default function AdminLogin() {
 
   const loginMutation = useLogin();
 
+  const clearRateLimitError = () => {
+    if (rateLimitError) setRateLimitError(null);
+  };
+
   const onSubmit = (data: LoginFormValues) => {
+    setRateLimitError(null);
     loginMutation.mutate(
       { data },
       {
@@ -45,7 +54,11 @@ export default function AdminLogin() {
           setLocation("/admin/dashboard");
         },
         onError: (err) => {
-          toast.error(err.message || "Login failed");
+          if (isRateLimitError(err)) {
+            setRateLimitError("Too many login attempts. Please wait before trying again.");
+          } else {
+            toast.error((err as { message?: string }).message || "Login failed");
+          }
         },
       }
     );
@@ -55,6 +68,12 @@ export default function AdminLogin() {
     <AuthLayout title="Admin Portal" subtitle="Sign in to RasoKart operations">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          {rateLimitError && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{rateLimitError}</span>
+            </div>
+          )}
           <FormField
             control={form.control}
             name="email"
@@ -62,7 +81,11 @@ export default function AdminLogin() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="admin@rasokart.com" {...field} />
+                  <Input
+                    placeholder="admin@rasokart.com"
+                    {...field}
+                    onChange={(e) => { field.onChange(e); clearRateLimitError(); }}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -75,16 +98,21 @@ export default function AdminLogin() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input type="password" placeholder="••••••••" {...field} />
+                  <Input
+                    type="password"
+                    placeholder="••••••••"
+                    {...field}
+                    onChange={(e) => { field.onChange(e); clearRateLimitError(); }}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <Button 
-            type="submit" 
-            className="w-full" 
-            disabled={loginMutation.isPending}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loginMutation.isPending || !!rateLimitError}
           >
             {loginMutation.isPending ? "Authenticating..." : "Sign in"}
           </Button>
