@@ -575,6 +575,25 @@ export interface QrCodeActivityResponse {
   data: QrCodeActivity[];
 }
 
+export interface CallbackLogAttempt {
+  id: number;
+  callbackLogId: number;
+  /** 1-based sequence number of this attempt within the delivery log */
+  attemptNumber: number;
+  /** ISO timestamp when this attempt was made */
+  firedAt: string;
+  /**
+     * HTTP status returned by the remote endpoint, null if connection failed
+     * @nullable
+     */
+  httpStatus?: number | null;
+  /**
+     * Truncated response body (up to 500 chars)
+     * @nullable
+     */
+  responseBody?: string | null;
+}
+
 export type CallbackLogStatus = typeof CallbackLogStatus[keyof typeof CallbackLogStatus];
 
 
@@ -2388,6 +2407,10 @@ export type RetryWebhookLog429 = {
   error: string;
   /** Seconds remaining until a retry is allowed */
   retryAfter: number;
+};
+
+export type GetWebhookLogAttempts200 = {
+  data: CallbackLogAttempt[];
 };
 
 export type ListCallbackLogsParams = {

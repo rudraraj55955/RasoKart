@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, WebhookTestRequestEventType, GetWebhookLogsEventType } from "@workspace/api-client-react";
+import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogAttempts, WebhookTestRequestEventType, GetWebhookLogsEventType } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
-import type { CallbackLog } from "@workspace/api-client-react";
+import type { CallbackLog, CallbackLogAttempt } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, RotateCcw, ShieldOff, Shield, FlaskRound, ListOrdered, Loader2 } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -235,6 +235,71 @@ function useCooldownSeconds(lastAttemptAt: string | null | undefined): number {
   return remaining;
 }
 
+function AttemptStatusDot({ httpStatus }: { httpStatus: number | null | undefined }) {
+  if (httpStatus != null && httpStatus >= 200 && httpStatus < 300) {
+    return <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shrink-0" />;
+  }
+  if (httpStatus != null) {
+    return <span className="inline-block w-2 h-2 rounded-full bg-rose-400 shrink-0" />;
+  }
+  return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/30 shrink-0" />;
+}
+
+function RetryHistorySection({ logId }: { logId: number }) {
+  const { data, isLoading } = useGetWebhookLogAttempts(logId);
+  const attempts: CallbackLogAttempt[] = data?.data ?? [];
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <ListOrdered className="w-3.5 h-3.5 text-muted-foreground/60" />
+        <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">Retry History</p>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-3 text-muted-foreground/50">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span className="text-xs">Loading…</span>
+        </div>
+      ) : attempts.length === 0 ? (
+        <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records yet — history is recorded for new deliveries going forward.</p>
+      ) : (
+        <div className="space-y-0 rounded-lg border border-border/40 overflow-hidden">
+          {attempts.map((attempt, idx) => (
+            <div
+              key={attempt.id}
+              className={`flex items-start gap-3 px-3 py-2.5 text-xs ${idx < attempts.length - 1 ? "border-b border-border/30" : ""} ${idx % 2 === 0 ? "bg-muted/10" : ""}`}
+            >
+              <AttemptStatusDot httpStatus={attempt.httpStatus} />
+              <div className="shrink-0 w-16">
+                <span className="text-muted-foreground/50">#{attempt.attemptNumber}</span>
+              </div>
+              <div className="flex-1 min-w-0 space-y-0.5">
+                <div className="flex items-center gap-3 flex-wrap">
+                  {attempt.httpStatus != null ? (
+                    <span className={`font-mono font-semibold ${attempt.httpStatus >= 200 && attempt.httpStatus < 300 ? "text-emerald-400" : "text-rose-400"}`}>
+                      HTTP {attempt.httpStatus}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/50 italic">No response</span>
+                  )}
+                  <span className="text-muted-foreground/50 font-mono">
+                    {format(new Date(attempt.firedAt), "MMM d, HH:mm:ss")}
+                  </span>
+                </div>
+                {attempt.responseBody && (
+                  <p className="text-muted-foreground/60 font-mono truncate" title={attempt.responseBody}>
+                    {attempt.responseBody}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: CallbackLog | null; onClose: () => void; onRetry?: (id: number) => void; isRetrying?: boolean }) {
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -315,6 +380,9 @@ function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: Callb
             </div>
           )}
 
+          {/* Retry history */}
+          <RetryHistorySection logId={log.id} />
+
           {/* Request body */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -337,7 +405,7 @@ function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: Callb
           {/* Response body */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">Response Body</p>
+              <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">Last Response Body</p>
               {resBody && (
                 <button onClick={() => copy(resBody)} className="text-muted-foreground/50 hover:text-muted-foreground transition-colors" title="Copy response body">
                   <Copy className="w-3.5 h-3.5" />

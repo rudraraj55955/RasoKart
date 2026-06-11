@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { db, webhooksTable, callbackLogsTable } from "@workspace/db";
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { db, webhooksTable, callbackLogsTable, callbackLogAttemptsTable } from "@workspace/db";
+import { and, eq, isNull, lt, or, sql, asc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { fireCallback } from "../helpers/callbackRetry";
+import { fireCallback, recordAttempt } from "../helpers/callbackRetry";
 import crypto from "crypto";
 import dns from "dns";
 import net from "net";
@@ -235,6 +235,8 @@ router.post("/logs/:id/retry", async (req, res) => {
   const newAttempts = log.attempts + 1;
   const newStatus = ok ? "success" : "failed";
 
+  await recordAttempt(id, newAttempts, httpStatus, responseBody);
+
   const [updated] = await db
     .update(callbackLogsTable)
     .set({
@@ -251,6 +253,46 @@ router.post("/logs/:id/retry", async (req, res) => {
   req.log.info({ logId: id, ok, httpStatus, merchantId }, "Merchant-triggered webhook retry");
 
   res.json({ success: ok, delivered: ok, log: updated });
+});
+
+// GET /api/webhooks/logs/:id/attempts — per-attempt retry history for a delivery log
+router.get("/logs/:id/attempts", async (req, res) => {
+  const user = (req as any).user;
+  const merchantId = user.role === "merchant" ? user.merchantId! : undefined;
+  if (!merchantId) {
+    res.status(403).json({ error: "Merchants only" });
+    return;
+  }
+
+  const id = parseInt(req.params['id'] as string);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid log id" });
+    return;
+  }
+
+  const [log] = await db
+    .select({ id: callbackLogsTable.id, merchantId: callbackLogsTable.merchantId })
+    .from(callbackLogsTable)
+    .where(eq(callbackLogsTable.id, id))
+    .limit(1);
+
+  if (!log) {
+    res.status(404).json({ error: "Webhook log not found" });
+    return;
+  }
+
+  if (log.merchantId !== merchantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const attempts = await db
+    .select()
+    .from(callbackLogAttemptsTable)
+    .where(eq(callbackLogAttemptsTable.callbackLogId, id))
+    .orderBy(asc(callbackLogAttemptsTable.attemptNumber));
+
+  res.json({ data: attempts });
 });
 
 const SUPPORTED_TEST_EVENTS = [
@@ -458,7 +500,7 @@ router.post("/test", async (req, res) => {
   // Insert a log row so test deliveries appear in Recent Deliveries with an isTest flag.
   try {
     const deliveryStatus = delivered ? "success" : "failed";
-    await db.insert(callbackLogsTable).values({
+    const [inserted] = await db.insert(callbackLogsTable).values({
       merchantId,
       url: targetUrl,
       status: deliveryStatus,
@@ -469,7 +511,11 @@ router.post("/test", async (req, res) => {
       lastAttemptAt: new Date(),
       signatureVerified: signed ? true : null,
       isTest: true,
-    });
+    }).returning({ id: callbackLogsTable.id });
+
+    if (inserted) {
+      await recordAttempt(inserted.id, 1, httpStatus, responseBody);
+    }
   } catch (err) {
     req.log.warn({ err, merchantId }, "Failed to insert test webhook delivery log");
   }

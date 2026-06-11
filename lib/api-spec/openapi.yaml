@@ -1393,6 +1393,40 @@ paths:
                     description: Seconds remaining until a retry is allowed
                 required: [error, retryAfter]
 
+  /webhooks/logs/{id}/attempts:
+    get:
+      operationId: getWebhookLogAttempts
+      tags: [webhooks]
+      summary: Get per-attempt retry history for a webhook delivery log
+      description: |
+        Returns the ordered list of individual delivery attempts recorded for a
+        specific callback log entry. Each attempt captures the exact timestamp,
+        HTTP status code, and truncated response body so merchants can diagnose
+        the exact sequence of failures.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Attempt history for the given delivery log
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CallbackLogAttempt"
+        "403":
+          description: Merchant access only, or log does not belong to this merchant
+        "404":
+          description: Webhook log not found
+
   /webhooks/test:
     post:
       operationId: sendWebhookTest
@@ -5011,6 +5045,27 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/QrCodeActivity"
+
+    CallbackLogAttempt:
+      type: object
+      required: [id, callbackLogId, attemptNumber, firedAt]
+      properties:
+        id:
+          type: integer
+        callbackLogId:
+          type: integer
+        attemptNumber:
+          type: integer
+          description: 1-based sequence number of this attempt within the delivery log
+        firedAt:
+          type: string
+          description: ISO timestamp when this attempt was made
+        httpStatus:
+          type: ["integer", "null"]
+          description: HTTP status returned by the remote endpoint, null if connection failed
+        responseBody:
+          type: ["string", "null"]
+          description: Truncated response body (up to 500 chars)
 
     CallbackLog:
       type: object

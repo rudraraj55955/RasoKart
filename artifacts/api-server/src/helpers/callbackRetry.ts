@@ -1,5 +1,5 @@
-import { db, callbackLogsTable, usersTable, notificationsTable } from "@workspace/db";
-import { eq, and, lte, sql } from "drizzle-orm";
+import { db, callbackLogsTable, callbackLogAttemptsTable, usersTable, notificationsTable } from "@workspace/db";
+import { eq, and, lte, sql, count } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { createNotification } from "./notifications";
 
@@ -44,6 +44,18 @@ async function notifyWebhookFailure(merchantId: number, url: string, attempts: n
     title: "Webhook Delivery Failed",
     body: `Callback to ${url} failed after ${attempts} attempt${attempts !== 1 ? "s" : ""}${qrLabel}. Please check your endpoint and ensure it returns a 2xx response.`,
     metadata: { qrCodeId, url, attempts, dedupeKey },
+  });
+}
+
+export async function recordAttempt(callbackLogId: number, attemptNumber: number, httpStatus: number | null, responseBody: string | null): Promise<void> {
+  await db.insert(callbackLogAttemptsTable).values({
+    callbackLogId,
+    attemptNumber,
+    firedAt: new Date(),
+    httpStatus,
+    responseBody: responseBody && responseBody.length > 500 ? responseBody.slice(0, 500) + "…" : responseBody,
+  }).catch((err) => {
+    logger.warn({ err, callbackLogId, attemptNumber }, "Failed to insert callback_log_attempt row");
   });
 }
 
@@ -130,6 +142,8 @@ export async function processPendingRetries(): Promise<void> {
 
     const newAttempts = log.attempts + 1;
     const { ok, httpStatus, responseBody } = await fireCallback(log.url, log.requestBody);
+
+    await recordAttempt(log.id, newAttempts, httpStatus, responseBody);
 
     if (ok) {
       await db

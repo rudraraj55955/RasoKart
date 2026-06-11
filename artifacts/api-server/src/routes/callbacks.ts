@@ -4,7 +4,7 @@ import { eq, and, count, countDistinct, sql, gte, isNull, like } from "drizzle-o
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
 import { logger } from "../lib/logger";
-import { fireCallback, scheduleCallbackRetry } from "../helpers/callbackRetry";
+import { fireCallback, scheduleCallbackRetry, recordAttempt } from "../helpers/callbackRetry";
 
 const router = Router();
 
@@ -114,7 +114,7 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
       const { ok, httpStatus, responseBody } = await fireCallback(capturedQr.callbackUrl!, bodyStr);
 
       if (ok) {
-        await db.insert(callbackLogsTable).values({
+        const [inserted] = await db.insert(callbackLogsTable).values({
           merchantId: capturedQr.merchantId,
           qrCodeId: capturedQr.id,
           transactionId: transactionId ?? null,
@@ -126,7 +126,11 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
           attempts: 1,
           lastAttemptAt: now,
           signatureVerified: capturedSignatureVerified,
-        });
+        }).returning({ id: callbackLogsTable.id });
+
+        if (inserted) {
+          await recordAttempt(inserted.id, 1, httpStatus, responseBody);
+        }
       } else {
         logger.warn({ httpStatus, url: capturedQr.callbackUrl }, "QR callbackUrl fire failed — scheduling retries");
 
@@ -145,6 +149,7 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
         }).returning({ id: callbackLogsTable.id });
 
         if (inserted) {
+          await recordAttempt(inserted.id, 1, httpStatus, responseBody);
           await scheduleCallbackRetry(inserted.id, 1);
         }
       }

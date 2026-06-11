@@ -1383,6 +1383,30 @@ export const RetryWebhookLogResponse = zod.object({
 
 
 /**
+ * Returns the ordered list of individual delivery attempts recorded for a
+specific callback log entry. Each attempt captures the exact timestamp,
+HTTP status code, and truncated response body so merchants can diagnose
+the exact sequence of failures.
+
+ * @summary Get per-attempt retry history for a webhook delivery log
+ */
+export const GetWebhookLogAttemptsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetWebhookLogAttemptsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "callbackLogId": zod.number(),
+  "attemptNumber": zod.number().describe('1-based sequence number of this attempt within the delivery log'),
+  "firedAt": zod.string().describe('ISO timestamp when this attempt was made'),
+  "httpStatus": zod.number().nullish().describe('HTTP status returned by the remote endpoint, null if connection failed'),
+  "responseBody": zod.string().nullish().describe('Truncated response body (up to 500 chars)')
+}))
+})
+
+
+/**
  * Fires a sample payload for the specified event type to the merchant's configured
 webhook URL. Defaults to `payment.success` when no `eventType` is provided.
 If the merchant has set a webhook signing secret, the payload is signed with

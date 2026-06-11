@@ -75,6 +75,7 @@ import type {
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
   GetVirtualAccountBalanceHistoryParams,
+  GetWebhookLogAttempts200,
   GetWebhookLogsParams,
   HealthStatus,
   Invoice,
@@ -4219,6 +4220,88 @@ export const useRetryWebhookLog = <TError = ErrorType<void | RetryWebhookLog429>
       > => {
       return useMutation(getRetryWebhookLogMutationOptions(options));
     }
+
+export const getGetWebhookLogAttemptsUrl = (id: number,) => {
+
+
+
+
+  return `/api/webhooks/logs/${id}/attempts`
+}
+
+/**
+ * Returns the ordered list of individual delivery attempts recorded for a
+specific callback log entry. Each attempt captures the exact timestamp,
+HTTP status code, and truncated response body so merchants can diagnose
+the exact sequence of failures.
+
+ * @summary Get per-attempt retry history for a webhook delivery log
+ */
+export const getWebhookLogAttempts = async (id: number, options?: RequestInit): Promise<GetWebhookLogAttempts200> => {
+
+  return customFetch<GetWebhookLogAttempts200>(getGetWebhookLogAttemptsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebhookLogAttemptsQueryKey = (id: number,) => {
+    return [
+    `/api/webhooks/logs/${id}/attempts`
+    ] as const;
+    }
+
+
+export const getGetWebhookLogAttemptsQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookLogAttempts>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogAttempts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebhookLogAttemptsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookLogAttempts>>> = ({ signal }) => getWebhookLogAttempts(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogAttempts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebhookLogAttemptsQueryResult = NonNullable<Awaited<ReturnType<typeof getWebhookLogAttempts>>>
+export type GetWebhookLogAttemptsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get per-attempt retry history for a webhook delivery log
+ */
+
+export function useGetWebhookLogAttempts<TData = Awaited<ReturnType<typeof getWebhookLogAttempts>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookLogAttempts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebhookLogAttemptsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getSendWebhookTestUrl = () => {
 
