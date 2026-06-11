@@ -67,6 +67,7 @@ import type {
   ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
   GetQrCodeStatsParams,
+  GetReconciliationRunEmailLogs200,
   GetVirtualAccountBalanceHistoryParams,
   GetWebhookLogsParams,
   HealthStatus,
@@ -155,6 +156,7 @@ import type {
   ReconciliationSchedulerStatus,
   RejectInput,
   RenewPlanInput,
+  ResendReconciliationReportEmail200,
   RetryCallback200,
   RetryWebhookLog200,
   SearchByUtrParams,
@@ -11787,6 +11789,153 @@ export function useGetReconciliationSchedulerStatus<TData = Awaited<ReturnType<t
 
 
 
+
+export const getGetReconciliationRunEmailLogsUrl = (id: number,) => {
+
+
+
+
+  return `/api/reconciliation/runs/${id}/email-logs`
+}
+
+/**
+ * @summary Get email delivery logs for a reconciliation run (admin only)
+ */
+export const getReconciliationRunEmailLogs = async (id: number, options?: RequestInit): Promise<GetReconciliationRunEmailLogs200> => {
+
+  return customFetch<GetReconciliationRunEmailLogs200>(getGetReconciliationRunEmailLogsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReconciliationRunEmailLogsQueryKey = (id: number,) => {
+    return [
+    `/api/reconciliation/runs/${id}/email-logs`
+    ] as const;
+    }
+
+
+export const getGetReconciliationRunEmailLogsQueryOptions = <TData = Awaited<ReturnType<typeof getReconciliationRunEmailLogs>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationRunEmailLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReconciliationRunEmailLogsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReconciliationRunEmailLogs>>> = ({ signal }) => getReconciliationRunEmailLogs(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReconciliationRunEmailLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReconciliationRunEmailLogsQueryResult = NonNullable<Awaited<ReturnType<typeof getReconciliationRunEmailLogs>>>
+export type GetReconciliationRunEmailLogsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get email delivery logs for a reconciliation run (admin only)
+ */
+
+export function useGetReconciliationRunEmailLogs<TData = Awaited<ReturnType<typeof getReconciliationRunEmailLogs>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationRunEmailLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReconciliationRunEmailLogsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getResendReconciliationReportEmailUrl = (id: number,) => {
+
+
+
+
+  return `/api/reconciliation/runs/${id}/email-logs/resend`
+}
+
+/**
+ * @summary Re-send the reconciliation report email for a run (admin only)
+ */
+export const resendReconciliationReportEmail = async (id: number, options?: RequestInit): Promise<ResendReconciliationReportEmail200> => {
+
+  return customFetch<ResendReconciliationReportEmail200>(getResendReconciliationReportEmailUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getResendReconciliationReportEmailMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendReconciliationReportEmail>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resendReconciliationReportEmail>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['resendReconciliationReportEmail'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resendReconciliationReportEmail>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  resendReconciliationReportEmail(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResendReconciliationReportEmailMutationResult = NonNullable<Awaited<ReturnType<typeof resendReconciliationReportEmail>>>
+
+    export type ResendReconciliationReportEmailMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Re-send the reconciliation report email for a run (admin only)
+ */
+export const useResendReconciliationReportEmail = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendReconciliationReportEmail>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resendReconciliationReportEmail>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getResendReconciliationReportEmailMutationOptions(options));
+    }
 
 export const getResolveReconciliationItemUrl = (id: number,) => {
 

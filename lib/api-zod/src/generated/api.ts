@@ -3605,6 +3605,38 @@ export const GetReconciliationSchedulerStatusResponse = zod.object({
 
 
 /**
+ * @summary Get email delivery logs for a reconciliation run (admin only)
+ */
+export const GetReconciliationRunEmailLogsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetReconciliationRunEmailLogsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "runId": zod.number(),
+  "emailType": zod.string(),
+  "recipients": zod.string(),
+  "status": zod.string(),
+  "errorMessage": zod.string().nullish(),
+  "sentAt": zod.coerce.date()
+})).optional()
+})
+
+
+/**
+ * @summary Re-send the reconciliation report email for a run (admin only)
+ */
+export const ResendReconciliationReportEmailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResendReconciliationReportEmailResponse = zod.object({
+  "ok": zod.boolean().optional()
+})
+
+
+/**
  * @summary Manually resolve an unmatched reconciliation item (admin only)
  */
 export const ResolveReconciliationItemParams = zod.object({

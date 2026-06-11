@@ -1973,6 +1973,16 @@ export interface ReconciliationItemListResponse {
   limit: number;
 }
 
+export interface ReconciliationEmailLog {
+  id: number;
+  runId: number;
+  emailType: string;
+  recipients: string;
+  status: string;
+  errorMessage?: string | null;
+  sentAt: string;
+}
+
 export interface ExpiryCheckResult {
   message: string;
   notificationsSent: number;
@@ -2480,5 +2490,13 @@ page?: number;
 limit?: number;
 status?: string;
 merchantId?: number;
+};
+
+export type GetReconciliationRunEmailLogs200 = {
+  data?: ReconciliationEmailLog[];
+};
+
+export type ResendReconciliationReportEmail200 = {
+  ok?: boolean;
 };
 

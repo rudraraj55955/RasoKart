@@ -744,6 +744,15 @@ export default function AdminReconciliation() {
     onError: (err: any) => toast.error(`Run failed: ${err.message}`),
   });
 
+  const resendEmailMutation = useMutation({
+    mutationFn: () => apiPost(`/reconciliation/runs/${selectedRunId}/email-logs/resend`, {}),
+    onSuccess: () => {
+      toast.success("Report email resent");
+      qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
+    },
+    onError: (err: any) => toast.error(`Resend failed: ${err.message}`),
+  });
+
   const runs = data?.data ?? [];
   const historyTotal: number = data?.total ?? 0;
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
@@ -1290,6 +1299,27 @@ export default function AdminReconciliation() {
                         </div>
                       ))
                     )}
+                    {(() => {
+                      const reportLogs = emailLogs.filter(l => l.emailType === "report");
+                      const lastReport = reportLogs[0];
+                      const showResend = !lastReport || lastReport.status === "failed";
+                      if (!showResend) return null;
+                      return (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full h-7 text-xs gap-1.5 border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+                          onClick={() => resendEmailMutation.mutate()}
+                          disabled={resendEmailMutation.isPending}
+                        >
+                          {resendEmailMutation.isPending
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <Mail className="w-3 h-3" />
+                          }
+                          {resendEmailMutation.isPending ? "Sending…" : "Resend Report Email"}
+                        </Button>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

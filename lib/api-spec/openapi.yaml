@@ -3640,6 +3640,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReconciliationSchedulerStatus"
 
+  /reconciliation/runs/{id}/email-logs:
+    get:
+      operationId: getReconciliationRunEmailLogs
+      tags: [reconciliation]
+      summary: Get email delivery logs for a reconciliation run (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Email log list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReconciliationEmailLog"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /reconciliation/runs/{id}/email-logs/resend:
+    post:
+      operationId: resendReconciliationReportEmail
+      tags: [reconciliation]
+      summary: Re-send the reconciliation report email for a run (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Resend result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /reconciliation/items/{id}/resolve:
     patch:
       operationId: resolveReconciliationItem
@@ -6361,6 +6417,22 @@ components:
         total: { type: integer }
         page: { type: integer }
         limit: { type: integer }
+
+    ReconciliationEmailLog:
+      type: object
+      required: [id, runId, emailType, recipients, status, sentAt]
+      properties:
+        id: { type: integer }
+        runId: { type: integer }
+        emailType: { type: string }
+        recipients: { type: string }
+        status: { type: string }
+        errorMessage:
+          type: string
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
 
     ExpiryCheckResult:
       type: object
