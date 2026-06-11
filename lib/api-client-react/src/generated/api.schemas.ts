@@ -2169,6 +2169,15 @@ export interface ReconciliationScheduleConfig {
   enabled: boolean;
 }
 
+export interface StorageCleanupResult {
+  /** Number of uploaded_objects rows examined. */
+  totalScanned: number;
+  /** Number of orphaned rows successfully deleted (GCS object + DB row). */
+  deleted: number;
+  /** Number of orphaned rows that could not be deleted due to errors. */
+  errors: number;
+}
+
 export interface QrCleanupConfig {
   /**
      * Days to retain expired/used QR codes before auto-deleting them. Set to 0 to disable automatic cleanup.

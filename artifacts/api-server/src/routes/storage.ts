@@ -1,15 +1,15 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import rateLimit from "express-rate-limit";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { db, uploadedObjectsTable } from "@workspace/db";
+import { db, uploadedObjectsTable, merchantsTable, providersTable } from "@workspace/db";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { recordUploadIntent } from "../lib/uploadIntentStore";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -130,16 +130,15 @@ router.post("/storage/uploads/request-url", requireAuth, uploadUrlLimiter, async
     // relying on any client-supplied value at confirmation time.
     recordUploadIntent(objectPath, contentType, uploaderId);
 
-    // Persist the content hash so subsequent uploads of the same file can be
-    // deduplicated without issuing a new presigned URL.
-    if (contentHash) {
-      await db.insert(uploadedObjectsTable).values({
-        merchantId: uploaderId,
-        contentHash,
-        objectPath,
-        contentType,
-      });
-    }
+    // Always record the presigned upload so the orphan-cleanup job can track
+    // every issued URL, not just deduplicated ones.  When contentHash is
+    // provided it also enables future deduplication (see check above).
+    await db.insert(uploadedObjectsTable).values({
+      merchantId: uploaderId,
+      contentHash: contentHash ?? null,
+      objectPath,
+      contentType,
+    });
 
     res.json(
       RequestUploadUrlResponse.parse({
@@ -222,6 +221,96 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     }
     req.log.error({ err: error }, "Error serving object");
     res.status(500).json({ error: "Failed to serve object" });
+  }
+});
+
+/**
+ * Normalise any stored logo URL to its canonical `/objects/...` form.
+ *
+ * Logo URLs can be stored in several formats depending on when and how the
+ * upload was saved:
+ *   - canonical:  `/objects/uploads/<uuid>`         (object-path form)
+ *   - served:     `/api/storage/objects/uploads/<uuid>` (no base prefix)
+ *   - absolute:   `https://host/api/storage/objects/uploads/<uuid>`
+ *   - external:   any other URL that does not contain `/objects/`
+ *
+ * Returns the canonical form if the URL references an object-storage path, or
+ * `null` if it is an external/unrelated URL.
+ */
+function normalizeToObjectPath(logoUrl: string): string | null {
+  const idx = logoUrl.indexOf("/objects/");
+  if (idx === -1) return null;
+  // Strip any query string or fragment that could cause comparison mismatches.
+  const canonical = logoUrl.slice(idx);
+  const qIdx = canonical.search(/[?#]/);
+  return qIdx === -1 ? canonical : canonical.slice(0, qIdx);
+}
+
+/**
+ * POST /storage/cleanup-orphans
+ *
+ * Admin-only job: finds uploaded_objects rows whose objectPath is not
+ * referenced by any merchant's or provider's logoUrl, deletes the GCS
+ * object, and removes the DB row.  Safe to run repeatedly.
+ *
+ * Logo URLs are normalised to canonical `/objects/...` form before comparison
+ * so that served-path variants (e.g. `/api/storage/objects/...`) are correctly
+ * matched to their uploaded_objects row and never treated as orphans.
+ */
+router.post("/storage/cleanup-orphans", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    // Collect every canonical objectPath currently in active use.
+    const merchantLogos = await db
+      .select({ logoUrl: merchantsTable.logoUrl })
+      .from(merchantsTable)
+      .where(sql`${merchantsTable.logoUrl} is not null`);
+
+    const providerLogos = await db
+      .select({ logoUrl: providersTable.logoUrl })
+      .from(providersTable)
+      .where(sql`${providersTable.logoUrl} is not null`);
+
+    const usedPaths = new Set<string>(
+      [
+        ...merchantLogos.map((r) => normalizeToObjectPath(r.logoUrl as string)),
+        ...providerLogos.map((r) => normalizeToObjectPath(r.logoUrl as string)),
+      ].filter((p): p is string => p !== null)
+    );
+
+    // Load all tracked upload rows.
+    const allRows = await db
+      .select({ id: uploadedObjectsTable.id, objectPath: uploadedObjectsTable.objectPath })
+      .from(uploadedObjectsTable);
+
+    // An uploaded_objects row is orphaned when its canonical objectPath
+    // appears in no active logo reference.
+    const orphans = allRows.filter((r) => !usedPaths.has(r.objectPath));
+
+    let deleted = 0;
+    let errors = 0;
+
+    for (const orphan of orphans) {
+      try {
+        await objectStorageService.deleteObjectEntity(orphan.objectPath);
+        await db
+          .delete(uploadedObjectsTable)
+          .where(eq(uploadedObjectsTable.id, orphan.id));
+        deleted++;
+      } catch (err) {
+        req.log.error({ err, objectPath: orphan.objectPath }, "Failed to delete orphaned storage object");
+        errors++;
+      }
+    }
+
+    req.log.info(
+      { totalScanned: allRows.length, deleted, errors },
+      "Storage orphan cleanup completed"
+    );
+
+    res.json({ totalScanned: allRows.length, deleted, errors });
+  } catch (err) {
+    req.log.error({ err }, "Storage cleanup job failed");
+    res.status(500).json({ error: "Storage cleanup failed" });
   }
 });
 

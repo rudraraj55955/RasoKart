@@ -4197,6 +4197,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /storage/cleanup-orphans:
+    post:
+      tags: [storage]
+      operationId: runStorageCleanup
+      summary: Delete orphaned uploaded_objects rows and their GCS objects (admin only)
+      description: >
+        Scans the uploaded_objects table for rows whose objectPath is not
+        referenced by any merchant's or provider's logoUrl, then deletes the
+        GCS object and removes the row. Safe to run repeatedly.
+      responses:
+        '200':
+          description: Cleanup completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageCleanupResult'
+        '500':
+          description: Cleanup failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /saved-filters:
     get:
       operationId: listSavedFilters
@@ -7032,6 +7055,20 @@ components:
         enabled:
           type: boolean
           description: Whether the scheduled auto-reconciliation is enabled
+
+    StorageCleanupResult:
+      type: object
+      required: [totalScanned, deleted, errors]
+      properties:
+        totalScanned:
+          type: integer
+          description: Number of uploaded_objects rows examined.
+        deleted:
+          type: integer
+          description: Number of orphaned rows successfully deleted (GCS object + DB row).
+        errors:
+          type: integer
+          description: Number of orphaned rows that could not be deleted due to errors.
 
     QrCleanupConfig:
       type: object

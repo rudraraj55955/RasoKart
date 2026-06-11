@@ -236,6 +236,7 @@ export * from './settlementStatus';
 export * from './simulatePaymentInput';
 export * from './simulatePaymentInputExpectedStatus';
 export * from './simulatePaymentInputSourceType';
+export * from './storageCleanupResult';
 export * from './toggleProductInput';
 export * from './transaction';
 export * from './transactionListResponse';

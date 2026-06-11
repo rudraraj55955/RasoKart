@@ -4074,6 +4074,18 @@ export const GetStorageObjectParams = zod.object({
 
 
 /**
+ * Scans the uploaded_objects table for rows whose objectPath is not referenced by any merchant's or provider's logoUrl, then deletes the GCS object and removes the row. Safe to run repeatedly.
+
+ * @summary Delete orphaned uploaded_objects rows and their GCS objects (admin only)
+ */
+export const RunStorageCleanupResponse = zod.object({
+  "totalScanned": zod.number().describe('Number of uploaded_objects rows examined.'),
+  "deleted": zod.number().describe('Number of orphaned rows successfully deleted (GCS object + DB row).'),
+  "errors": zod.number().describe('Number of orphaned rows that could not be deleted due to errors.')
+})
+
+
+/**
  * @summary List saved smart search filter presets for the current admin
  */
 export const ListSavedFiltersResponse = zod.object({

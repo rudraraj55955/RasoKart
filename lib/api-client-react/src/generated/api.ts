@@ -180,6 +180,7 @@ import type {
   SettlementMarkPaidInput,
   SettlementStats,
   SimulatePaymentInput,
+  StorageCleanupResult,
   ToggleProductInput,
   Transaction,
   TransactionListResponse,
@@ -13318,6 +13319,78 @@ export function useGetStorageObject<TData = Awaited<ReturnType<typeof getStorage
 
 
 
+
+export const getRunStorageCleanupUrl = () => {
+
+
+
+
+  return `/api/storage/cleanup-orphans`
+}
+
+/**
+ * Scans the uploaded_objects table for rows whose objectPath is not referenced by any merchant's or provider's logoUrl, then deletes the GCS object and removes the row. Safe to run repeatedly.
+
+ * @summary Delete orphaned uploaded_objects rows and their GCS objects (admin only)
+ */
+export const runStorageCleanup = async ( options?: RequestInit): Promise<StorageCleanupResult> => {
+
+  return customFetch<StorageCleanupResult>(getRunStorageCleanupUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunStorageCleanupMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runStorageCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runStorageCleanup>>, TError,void, TContext> => {
+
+const mutationKey = ['runStorageCleanup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runStorageCleanup>>, void> = () => {
+
+
+          return  runStorageCleanup(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunStorageCleanupMutationResult = NonNullable<Awaited<ReturnType<typeof runStorageCleanup>>>
+
+    export type RunStorageCleanupMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete orphaned uploaded_objects rows and their GCS objects (admin only)
+ */
+export const useRunStorageCleanup = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runStorageCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runStorageCleanup>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunStorageCleanupMutationOptions(options));
+    }
 
 export const getListSavedFiltersUrl = () => {
 

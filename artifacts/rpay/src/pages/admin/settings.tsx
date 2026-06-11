@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, type AdminAuditLog } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useRunStorageCleanup, type AdminAuditLog } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
@@ -336,6 +336,21 @@ export default function AdminSettings() {
       qc.invalidateQueries({ queryKey: ["/api/system-config/qr-cleanup"] });
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+
+  const [cleanupResult, setCleanupResult] = useState<{ totalScanned: number; deleted: number; errors: number } | null>(null);
+  const { mutate: runCleanup, isPending: runningCleanup } = useRunStorageCleanup({
+    mutation: {
+      onSuccess: (result) => {
+        setCleanupResult(result);
+        if (result.deleted === 0) {
+          toast.success("No orphaned files found — storage is already clean");
+        } else {
+          toast.success(`Deleted ${result.deleted} orphaned file${result.deleted !== 1 ? "s" : ""}`);
+        }
+      },
+      onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
+    },
   });
 
   const testEmailTrimmed = testEmailTo.trim();
@@ -1057,6 +1072,60 @@ export default function AdminSettings() {
                 Cancel
               </Button>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Storage Cleanup */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Storage Cleanup</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            Remove orphaned uploaded files that were never linked to any merchant or provider logo.
+            These accumulate when upload sessions are abandoned before the file is confirmed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            The cleanup job scans all tracked upload records, identifies any whose storage path
+            is not in active use, deletes them from object storage, and removes the corresponding
+            database rows. It is safe to run at any time.
+          </p>
+
+          {cleanupResult && (
+            <div className={`flex items-start gap-2 text-xs rounded-md px-3 py-2 border ${
+              cleanupResult.errors > 0
+                ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
+                : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+            }`}>
+              {cleanupResult.errors > 0
+                ? <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                : <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+              <span>
+                Scanned <strong>{cleanupResult.totalScanned}</strong> record{cleanupResult.totalScanned !== 1 ? "s" : ""} —{" "}
+                deleted <strong>{cleanupResult.deleted}</strong>{cleanupResult.deleted !== 1 ? "" : " file"}
+                {cleanupResult.errors > 0 && (
+                  <>, <span className="text-red-400">{cleanupResult.errors} failed</span></>
+                )}
+                {cleanupResult.deleted === 0 && cleanupResult.errors === 0 && " — storage is clean"}
+                .
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setCleanupResult(null); runCleanup(); }}
+              disabled={runningCleanup}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+              {runningCleanup ? "Running…" : "Run cleanup"}
+            </Button>
           </div>
         </CardContent>
       </Card>
