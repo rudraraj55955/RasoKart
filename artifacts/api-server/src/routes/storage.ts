@@ -6,6 +6,7 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { recordUploadIntent } from "../lib/uploadIntentStore";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -59,6 +60,13 @@ router.post("/storage/uploads/request-url", requireAuth, uploadUrlLimiter, async
   try {
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+    // Record the trusted declared content type keyed by objectPath so that
+    // later confirmation calls (e.g. PATCH /merchants/:id/branding) can
+    // validate the actual file bytes against what was declared here — without
+    // relying on any client-supplied value at confirmation time.
+    const uploaderId = (req as Request & { user?: { id: number } }).user?.id ?? 0;
+    recordUploadIntent(objectPath, contentType, uploaderId);
 
     res.json(
       RequestUploadUrlResponse.parse({

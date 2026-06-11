@@ -4,6 +4,10 @@ import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull } from "d
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 import { sendRejectionEmail } from "../helpers/rejectionEmail";
+import { ObjectStorageService, ObjectNotFoundError, InvalidImageError } from "../lib/objectStorage";
+import { consumeUploadIntent } from "../lib/uploadIntentStore";
+
+const objectStorageService = new ObjectStorageService();
 
 const router = Router();
 
@@ -154,6 +158,40 @@ router.patch("/:id/branding", async (req, res) => {
     return;
   }
   const { logoUrl, brandColor } = req.body;
+
+  // Validate magic bytes for newly uploaded object-storage logos before
+  // persisting the path.  External URLs and explicit null (removing logo) are
+  // left untouched.
+  // We look up the trusted declared content type from the server-side upload-
+  // intent record (stored when the presigned URL was issued) — not from any
+  // client-supplied value in this request.
+  if (logoUrl != null && typeof logoUrl === "string" && logoUrl.startsWith("/objects/")) {
+    const intent = consumeUploadIntent(logoUrl);
+    const trustedContentType = intent?.contentType;
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(logoUrl);
+      await objectStorageService.validateImageMagicBytes(objectFile, trustedContentType);
+    } catch (err) {
+      if (err instanceof InvalidImageError) {
+        // Best-effort cleanup — delete the malicious/invalid file from storage.
+        try {
+          await objectStorageService.deleteObjectEntity(logoUrl);
+        } catch (deleteErr) {
+          req.log.warn({ err: deleteErr }, "Failed to delete invalid logo object");
+        }
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      if (err instanceof ObjectNotFoundError) {
+        res.status(400).json({ error: "Logo file not found in storage" });
+        return;
+      }
+      req.log.error({ err }, "Unexpected error validating logo image");
+      res.status(500).json({ error: "Failed to validate logo file" });
+      return;
+    }
+  }
+
   const update: Record<string, unknown> = {};
   if (logoUrl !== undefined) update.logoUrl = logoUrl ?? null;
   if (brandColor !== undefined) update.brandColor = brandColor ?? null;

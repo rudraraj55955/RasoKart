@@ -2,6 +2,47 @@ import { Router } from "express";
 import { db, providersTable, providerVisibilityTable, merchantsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, asc, isNull, count } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { ObjectStorageService, ObjectNotFoundError, InvalidImageError } from "../lib/objectStorage";
+import { consumeUploadIntent } from "../lib/uploadIntentStore";
+
+const objectStorageService = new ObjectStorageService();
+
+/**
+ * Validate a logoUrl if it points to an uploaded object-storage path.
+ * Returns `{ error: string }` on a client-error failure (4xx), `{ serverError: true }` on an
+ * unexpected server-side failure (5xx), or null on success.
+ * Looks up the trusted declared content type from the server-side upload-intent
+ * record (stored when the presigned URL was issued) and validates bytes match it.
+ */
+async function validateAndCleanLogoUrl(
+  logoUrl: unknown,
+  log: { warn: (obj: object, msg: string) => void; error: (obj: object, msg: string) => void }
+): Promise<{ error: string } | { serverError: true } | null> {
+  if (logoUrl == null || typeof logoUrl !== "string" || !logoUrl.startsWith("/objects/")) {
+    return null;
+  }
+  const intent = consumeUploadIntent(logoUrl);
+  const trustedContentType = intent?.contentType;
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(logoUrl);
+    await objectStorageService.validateImageMagicBytes(objectFile, trustedContentType);
+    return null;
+  } catch (err) {
+    if (err instanceof InvalidImageError) {
+      try {
+        await objectStorageService.deleteObjectEntity(logoUrl);
+      } catch (deleteErr) {
+        log.warn({ err: deleteErr }, "Failed to delete invalid provider logo object");
+      }
+      return { error: (err as InvalidImageError).message };
+    }
+    if (err instanceof ObjectNotFoundError) {
+      return { error: "Logo file not found in storage" };
+    }
+    log.error({ err }, "Unexpected error validating provider logo image");
+    return { serverError: true };
+  }
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -133,6 +174,12 @@ router.post("/", requireAdmin, async (req, res, next) => {
     const { name, slug, category = "upi", status = "live", description, sortOrder = 0, logoUrl } = req.body;
     if (!name || !slug) { res.status(400).json({ error: "name and slug are required" }); return; }
 
+    const logoResult = await validateAndCleanLogoUrl(logoUrl, req.log);
+    if (logoResult !== null) {
+      if ("serverError" in logoResult) { res.status(500).json({ error: "Failed to validate logo file" }); return; }
+      res.status(400).json({ error: logoResult.error }); return;
+    }
+
     const [created] = await db.insert(providersTable).values({
       name: name.trim(),
       slug: slug.trim().toLowerCase(),
@@ -153,8 +200,17 @@ router.post("/", requireAdmin, async (req, res, next) => {
 // PUT /api/providers/:id (admin only)
 router.put("/:id", requireAdmin, async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params['id'] as string);
     const { name, slug, category, status, description, sortOrder, logoUrl } = req.body;
+
+    if (logoUrl !== undefined) {
+      const logoResult = await validateAndCleanLogoUrl(logoUrl, req.log);
+      if (logoResult !== null) {
+        if ("serverError" in logoResult) { res.status(500).json({ error: "Failed to validate logo file" }); return; }
+        res.status(400).json({ error: logoResult.error }); return;
+      }
+    }
+
     const update: Record<string, unknown> = { updatedAt: new Date() };
     if (name !== undefined) update.name = name.trim();
     if (slug !== undefined) update.slug = slug.trim().toLowerCase();
