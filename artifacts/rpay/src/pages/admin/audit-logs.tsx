@@ -28,7 +28,7 @@ import {
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
   Users, Loader2, QrCode, Landmark,
   Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle, Settings,
-  MonitorPlay, GitMerge,
+  MonitorPlay, GitMerge, RefreshCw,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
@@ -1141,6 +1141,7 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [retryingId, setRetryingId] = useState<number | null>(null);
+  const [retryingAll, setRetryingAll] = useState(false);
   const [page, setPage] = useState(1);
   const [accLogs, setAccLogs] = useState<any[]>([]);
 
@@ -1183,6 +1184,19 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
       toast.error("Retry failed. Check the mailer configuration.");
     } finally {
       setRetryingId(null);
+    }
+  }
+
+  async function handleRetryAll() {
+    setRetryingAll(true);
+    try {
+      await retrySend.mutateAsync({ id: scheduleId });
+      toast.success("All failed sends queued for re-delivery.");
+      await queryClient.invalidateQueries({ queryKey: getListAuditReportScheduleLogsQueryKey(scheduleId) });
+    } catch {
+      toast.error("Bulk retry failed. Check the mailer configuration.");
+    } finally {
+      setRetryingAll(false);
     }
   }
   const total = data?.total ?? 0;
@@ -1238,6 +1252,20 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
             className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
           >
             <X className="w-3 h-3" /> Clear
+          </button>
+        )}
+        {failureCount > 0 && (
+          <button
+            onClick={handleRetryAll}
+            disabled={retryingAll}
+            className="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-400 hover:bg-rose-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Retry all failed sends"
+          >
+            {retryingAll
+              ? <Loader2 className="w-3 h-3 animate-spin" />
+              : <RefreshCw className="w-3 h-3" />
+            }
+            {retryingAll ? "Retrying…" : `Retry all failed (${failureCount})`}
           </button>
         )}
       </div>
