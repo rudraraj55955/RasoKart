@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -459,11 +459,32 @@ function formatCountdown(targetMs: number, nowMs: number): string {
   return `${s}s`;
 }
 
-function ScheduleSettingsCard() {
+function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: () => void }) {
   const qc = useQueryClient();
   const { data: config, isLoading: configLoading } = useGetReconciliationScheduleConfig();
   const { data: nextRunData } = useGetReconciliationNextRun();
   const now = useNow(1000);
+
+  const firedForRef = useRef<string | null>(null);
+  const nextRunTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!nextRunData?.nextRunAt) return;
+    const targetMs = new Date(nextRunData.nextRunAt).getTime();
+    if (now >= targetMs && firedForRef.current !== nextRunData.nextRunAt) {
+      firedForRef.current = nextRunData.nextRunAt;
+      onScheduledRunFired?.();
+      if (nextRunTimerRef.current !== null) clearTimeout(nextRunTimerRef.current);
+      nextRunTimerRef.current = setTimeout(() => {
+        nextRunTimerRef.current = null;
+        qc.invalidateQueries({ queryKey: ["/api/system-config/reconciliation/next-run"] });
+      }, 5000);
+    }
+  }, [now, nextRunData?.nextRunAt, onScheduledRunFired, qc]);
+
+  useEffect(() => () => {
+    if (nextRunTimerRef.current !== null) clearTimeout(nextRunTimerRef.current);
+  }, []);
 
   const [editing, setEditing] = useState(false);
   const [localTimeStr, setLocalTimeStr] = useState("00:00");
@@ -838,6 +859,13 @@ export default function AdminReconciliation() {
     lastAutoRunStatus: string | null;
   } | undefined;
 
+  const handleScheduledRunFired = useCallback(() => {
+    toast.info("Reconciliation just ran — refreshing…", { duration: 4000 });
+    setHistoryPage(1);
+    qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs"] });
+    qc.invalidateQueries({ queryKey: ["/api/reconciliation/scheduler-status"] });
+  }, [qc]);
+
   function cronToHumanTime(cronExpression: string): string {
     const parts = cronExpression.split(" ");
     if (parts.length < 2) return cronExpression;
@@ -997,7 +1025,7 @@ export default function AdminReconciliation() {
       </Card>
 
       {/* Schedule Settings */}
-      <ScheduleSettingsCard />
+      <ScheduleSettingsCard onScheduledRunFired={handleScheduledRunFired} />
 
       {/* Run History */}
       <Card>
