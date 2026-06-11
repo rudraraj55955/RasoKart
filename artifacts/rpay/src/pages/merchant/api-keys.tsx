@@ -45,9 +45,11 @@ export default function MerchantApiKeys() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h1 className="text-3xl font-bold tracking-tight">API Keys</h1><p className="text-muted-foreground mt-1">Manage your integration credentials</p></div>
-        <Button onClick={handleGenerate} disabled={generateMutation.isPending}><Plus className="w-4 h-4 mr-2" />Generate Key</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleGenerate} disabled={generateMutation.isPending}><Plus className="w-4 h-4 mr-2" />Generate Key</Button>
+        </div>
       </div>
 
       <Alert className="border-amber-500/30 bg-amber-500/5">
@@ -57,7 +59,8 @@ export default function MerchantApiKeys() {
 
       <Card>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>API Key</TableHead>
@@ -87,6 +90,7 @@ export default function MerchantApiKeys() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

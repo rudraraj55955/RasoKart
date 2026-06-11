@@ -210,4 +210,30 @@
     color: hsl(var(--muted-foreground));
     pointer-events: none;
   }
+
+  /* Horizontal scroll container for wide tables on mobile */
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* iOS safe-area bottom padding (for bottom nav) */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Mobile touch-target improvements */
+@media (max-width: 767px) {
+  /* Ensure tap targets are at least 44px tall (Apple HIG / WCAG) */
+  button:not([data-no-touch-expand]),
+  [role="button"]:not([data-no-touch-expand]),
+  .btn {
+    min-height: 2.75rem;
+  }
+
+  /* Prevent horizontal page overflow */
+  body {
+    overflow-x: hidden;
+  }
 }

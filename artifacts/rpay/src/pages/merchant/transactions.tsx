@@ -900,9 +900,11 @@ export default function MerchantTransactions() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h1 className="text-3xl font-bold tracking-tight">Transactions</h1><p className="text-muted-foreground mt-1">Your payment history</p></div>
-        <Button variant="outline" size="sm" onClick={exportCsv}><Download className="w-4 h-4 mr-2" />Export CSV</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={exportCsv}><Download className="w-4 h-4 mr-2" />Export CSV</Button>
+        </div>
       </div>
 
       {/* Smart Search Bar */}
@@ -940,7 +942,7 @@ export default function MerchantTransactions() {
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
             <div className="relative flex-1">
               <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400" />
               <Input
@@ -1014,7 +1016,7 @@ export default function MerchantTransactions() {
       <Card>
         <CardContent className="pt-4 pb-4">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Search by UTR</p>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input className="pl-9 font-mono" placeholder="Enter UTR number..." value={utrInput} onChange={e => setUtrInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { setUtrSearch(utrInput); setPage(1); } }} />
@@ -1439,7 +1441,8 @@ export default function MerchantTransactions() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>UTR</TableHead>
@@ -1473,6 +1476,7 @@ export default function MerchantTransactions() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

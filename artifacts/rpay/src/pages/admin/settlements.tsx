@@ -500,7 +500,7 @@ export default function AdminSettlements() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Settlements</h1>
           <p className="text-muted-foreground mt-1">Review and process merchant settlement requests · refreshed {format(lastRefreshed, "HH:mm:ss")}</p>
@@ -906,7 +906,8 @@ export default function AdminSettlements() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">
@@ -1078,6 +1079,7 @@ export default function AdminSettlements() {
               })}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

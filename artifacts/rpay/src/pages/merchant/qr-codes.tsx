@@ -173,11 +173,11 @@ function InlineQrRow({ qr }: { qr: QrRow }) {
   return (
     <TableRow className="bg-muted/30 border-t-0">
       <TableCell colSpan={9} className="py-4 px-6">
-        <div className="flex gap-6 items-start">
-          <div id={`qr-inline-${qr.id}`} className="bg-white p-3 rounded-xl shrink-0">
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-start">
+          <div id={`qr-inline-${qr.id}`} className="bg-white p-3 rounded-xl shrink-0 mx-auto sm:mx-0">
             <QRCodeCanvas value={qr.payload} size={120} level="H" includeMargin />
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 w-full">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm mb-3">
               {qr.amount && (
                 <div>
@@ -212,11 +212,11 @@ function InlineQrRow({ qr }: { qr: QrRow }) {
                 </div>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={handleDownload} disabled={qr.status === "expired"} className="h-7 text-xs px-3">
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={handleDownload} disabled={qr.status === "expired"} className="h-7 text-xs px-3 flex-1 sm:flex-none">
                 <Download className="w-3.5 h-3.5 mr-1.5" />Download PNG
               </Button>
-              <Button size="sm" variant="outline" onClick={handleCopyLink} className="h-7 text-xs px-3">
+              <Button size="sm" variant="outline" onClick={handleCopyLink} className="h-7 text-xs px-3 flex-1 sm:flex-none">
                 <Link2 className="w-3.5 h-3.5 mr-1.5" />{copied ? "Copied!" : "Copy Link"}
               </Button>
             </div>
@@ -276,9 +276,9 @@ function DownloadModal({ qr, onClose }: { qr: QrRow; onClose: () => void }) {
             </div>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button onClick={handleDownload} disabled={qr.status === "expired"}>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">Close</Button>
+          <Button onClick={handleDownload} disabled={qr.status === "expired"} className="w-full sm:w-auto">
             <Download className="w-4 h-4 mr-1.5" />Download PNG
           </Button>
         </DialogFooter>
@@ -486,12 +486,12 @@ export default function MerchantQrCodes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dynamic QR</h1>
           <p className="text-muted-foreground mt-1">Generate and manage dynamic payment QR codes</p>
         </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
+        <Button size="sm" onClick={() => setShowCreate(true)} className="w-full sm:w-auto">
           <Plus className="w-4 h-4 mr-1.5" />Create QR
         </Button>
       </div>
@@ -551,59 +551,62 @@ export default function MerchantQrCodes() {
       <Card>
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap items-start sm:items-center">
-            <div className="relative flex-1 min-w-[160px]">
+            <div className="relative flex-1 min-w-[160px] w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Search order ID or reference..." value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <Select value={status} onValueChange={v => { setStatusAndPersist(v); setPage(1); setSelectedIds(new Set()); }}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
-                <SelectItem value="used">Used</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <Select value={status} onValueChange={v => { setStatusAndPersist(v); setPage(1); setSelectedIds(new Set()); }}>
+                <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="expired">Expired</SelectItem>
+                  <SelectItem value="used">Used</SelectItem>
+                </SelectContent>
+              </Select>
 
-            {/* Bulk action buttons */}
-            {selectedCount > 0 && (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={openBulkDeleteSelected}
-                className="shrink-0"
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Delete selected ({selectedCount})
-              </Button>
-            )}
-            {showDeleteAllExpired && selectedCount === 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => openBulkDeleteByStatus("expired")}
-                className="shrink-0 border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Delete all expired ({stats?.expired})
-              </Button>
-            )}
-            {showDeleteAllUsed && selectedCount === 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => openBulkDeleteByStatus("used")}
-                className="shrink-0 border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Delete all used ({stats?.used})
-              </Button>
-            )}
+              {/* Bulk action buttons */}
+              {selectedCount > 0 && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={openBulkDeleteSelected}
+                  className="shrink-0 flex-1 sm:flex-none"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete selected ({selectedCount})
+                </Button>
+              )}
+              {showDeleteAllExpired && selectedCount === 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openBulkDeleteByStatus("expired")}
+                  className="shrink-0 border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 flex-1 sm:flex-none"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete all expired ({stats?.expired})
+                </Button>
+              )}
+              {showDeleteAllUsed && selectedCount === 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openBulkDeleteByStatus("used")}
+                  className="shrink-0 border-blue-500/40 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 flex-1 sm:flex-none"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete all used ({stats?.used})
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8 pl-4">
@@ -707,6 +710,7 @@ export default function MerchantQrCodes() {
               })}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

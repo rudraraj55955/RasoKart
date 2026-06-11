@@ -6,11 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench } from "lucide-react";
-import { TestEmailHistoryPanel } from "@/components/test-email-history-panel";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useClearTestEmailHistory, useGetSignatureFailureAlertHistory, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, type AdminAuditLog } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
@@ -192,6 +191,10 @@ export default function AdminSettings() {
   const [retryDelay3, setRetryDelay3] = useState<number>(3600);
   const [retryInitialized, setRetryInitialized] = useState(false);
 
+  const [storageScheduleEnabled, setStorageScheduleEnabled] = useState(true);
+  const [storageScheduleHour, setStorageScheduleHour] = useState(3);
+  const [storageScheduleInitialized, setStorageScheduleInitialized] = useState(false);
+
   // SMTP config form state
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("587");
@@ -208,6 +211,7 @@ export default function AdminSettings() {
   const alertEnabled = me?.reconciliationAlertEmails ?? true;
   const planExpiryEnabled = me?.planExpiryAlertEmails ?? true;
   const settlementStateEnabled = me?.settlementStateEmails ?? true;
+  const signatureFailureEnabled = (me as any)?.signatureFailureAlertEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -489,26 +493,8 @@ export default function AdminSettings() {
   });
 
   const [cleanupResult, setCleanupResult] = useState<{ totalScanned: number; deleted: number; errors: number } | null>(null);
-
-  const CLEANUP_RUNS_PARAMS = { limit: 20 } as const;
-  const { data: cleanupRunsData, refetch: refetchCleanupRuns } = useListStorageCleanupRuns(CLEANUP_RUNS_PARAMS);
-  const cleanupRuns: StorageCleanupRun[] = cleanupRunsData?.data ?? [];
-
-  const { mutate: runCleanup, isPending: runningCleanup } = useRunStorageCleanup({
-    mutation: {
-      onSuccess: (result) => {
-        setCleanupResult(result);
-        void refetchCleanupRuns();
-        qc.invalidateQueries({ queryKey: getListStorageCleanupRunsQueryKey(CLEANUP_RUNS_PARAMS) });
-        if (result.deleted === 0) {
-          toast.success("No orphaned files found — storage is already clean");
-        } else {
-          toast.success(`Deleted ${result.deleted} orphaned file${result.deleted !== 1 ? "s" : ""}`);
-        }
-      },
-      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Cleanup failed")),
-    },
-  });
+  void cleanupResult;
+  void setCleanupResult;
 
 
   const testEmailTrimmed = testEmailTo.trim();

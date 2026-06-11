@@ -275,12 +275,12 @@ export default function AdminDeposits() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Deposits</h1>
           <p className="text-muted-foreground mt-1">Monitor all incoming deposits across merchants</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => exportCsv(data?.data ?? [])}>
+        <Button variant="outline" size="sm" onClick={() => exportCsv(data?.data ?? [])} className="w-full sm:w-auto">
           Export CSV
         </Button>
       </div>
@@ -382,7 +382,7 @@ export default function AdminDeposits() {
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
             <div className="relative flex-1">
               <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400" />
               <Input
@@ -602,7 +602,8 @@ export default function AdminDeposits() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
@@ -653,6 +654,7 @@ export default function AdminDeposits() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

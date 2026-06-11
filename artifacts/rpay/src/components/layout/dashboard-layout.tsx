@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys } from "@workspace/api-client-react";
-import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter } from "@/components/ui/sidebar";
+import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
 import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, X } from "lucide-react";
@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { NotificationBell } from "@/components/notification-bell";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { Card, CardContent } from "@/components/ui/card";
+import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 
 const CALLBACK_BANNER_SESSION_KEY = "rasokart_callback_banner_dismissed";
 
@@ -58,9 +59,9 @@ function CallbackSecretBanner() {
     <>
       {showNotConfigured && (
         <Card className="border-orange-500/40 bg-orange-950/20 rounded-lg mb-6">
-          <CardContent className="py-3 flex items-center gap-3">
-            <ShieldAlert className="w-5 h-5 text-orange-400 shrink-0" />
-            <div className="flex-1">
+          <CardContent className="py-3 flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
               <p className="text-sm text-orange-400 font-medium">Callback Secret Not Configured</p>
               <p className="text-xs text-orange-400/70">
                 You have an active API key but no callback signing secret. Without it, payment notifications on{" "}
@@ -69,7 +70,7 @@ function CallbackSecretBanner() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Link href="/merchant/webhook">
-                <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10">
+                <Button size="sm" variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hidden sm:flex">
                   Set Up Secret
                 </Button>
               </Link>
@@ -88,9 +89,9 @@ function CallbackSecretBanner() {
       )}
       {showRotationReminder && (
         <Card className="border-amber-500/40 bg-amber-950/20 rounded-lg mb-6">
-          <CardContent className="py-3 flex items-center gap-3">
-            <Lock className="w-5 h-5 text-amber-400 shrink-0" />
-            <div className="flex-1">
+          <CardContent className="py-3 flex items-start gap-3">
+            <Lock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
               <p className="text-sm text-amber-400 font-medium">Callback Secret Rotation Due</p>
               <p className="text-xs text-amber-400/70">
                 Your callback signing secret{callbackSecret?.lastRotatedAt ? ` was last rotated on ${format(new Date(callbackSecret.lastRotatedAt), "dd MMM yyyy")}` : " has not been rotated recently"}.
@@ -99,7 +100,7 @@ function CallbackSecretBanner() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Link href="/merchant/webhook">
-                <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10">
+                <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hidden sm:flex">
                   Rotate Secret
                 </Button>
               </Link>
@@ -374,12 +375,26 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
         </Sidebar>
 
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-6 lg:p-8">
+          {/* Mobile top header — hamburger + branding + optional notification bell */}
+          <header className="md:hidden sticky top-0 z-40 flex items-center gap-3 h-14 px-3 border-b border-border/50 bg-background/95 backdrop-blur shrink-0">
+            <SidebarTrigger className="h-10 w-10 shrink-0" />
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <RasoKartLogo size={22} className="shrink-0" />
+              <span className="font-semibold text-sm truncate">{portalLabel}</span>
+            </div>
+            {!publicMode && !isAdmin && user && <NotificationBell />}
+          </header>
+
+          {/* Page content */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
             {!publicMode && !isAdmin && <CallbackSecretBanner />}
             {children}
           </div>
         </main>
       </div>
+
+      {/* Mobile bottom navigation — hidden on md+ */}
+      <MobileBottomNav />
     </SidebarProvider>
   );
 }

@@ -1009,17 +1009,17 @@ export default function AdminTransactions() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
           <p className="text-muted-foreground mt-1">Complete transaction history · refreshed {format(lastRefreshed, "HH:mm:ss")}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing} className="flex-1 sm:flex-initial">
             <RefreshCw className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`} /> Refresh
           </Button>
           <ExportCsvButton onExport={exportCsv} />
-          <Button size="sm" onClick={() => setRecordDialogOpen(true)}>
+          <Button size="sm" onClick={() => setRecordDialogOpen(true)} className="flex-1 sm:flex-initial">
             <Plus className="w-4 h-4 mr-1.5" /> Record Payment
           </Button>
         </div>
@@ -1127,7 +1127,7 @@ export default function AdminTransactions() {
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
             <div className="relative flex-1">
               <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400" />
               <Input
@@ -1402,7 +1402,8 @@ export default function AdminTransactions() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>UTR</TableHead>
@@ -1450,6 +1451,7 @@ export default function AdminTransactions() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

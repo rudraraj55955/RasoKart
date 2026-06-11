@@ -56,9 +56,9 @@ export default function AdminWithdrawals() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h1 className="text-3xl font-bold tracking-tight">Withdrawals</h1><p className="text-muted-foreground mt-1">Manage withdrawal requests</p></div>
-        <Button variant="outline" size="sm" onClick={exportCsv}>Export CSV</Button>
+        <Button variant="outline" size="sm" onClick={exportCsv} className="w-full sm:w-auto">Export CSV</Button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -129,7 +129,8 @@ export default function AdminWithdrawals() {
           </Select>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Merchant</TableHead>
@@ -170,6 +171,7 @@ export default function AdminWithdrawals() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

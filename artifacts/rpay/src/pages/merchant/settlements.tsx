@@ -262,12 +262,12 @@ export default function MerchantSettlements() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Settlements</h1>
           <p className="text-muted-foreground mt-1">Request and track your settlement payouts</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" size="sm" onClick={exportCsv}>Export CSV</Button>
           <Button
             size="sm"
@@ -330,7 +330,7 @@ export default function MerchantSettlements() {
       <Card>
         <CardHeader className="pb-4">
           <div className="space-y-2">
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 items-center">
               <span className="text-xs text-muted-foreground font-medium mr-1">Date range:</span>
               {DATE_PRESETS.map(preset => (
                 <Button
@@ -458,7 +458,8 @@ export default function MerchantSettlements() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8" />
@@ -530,6 +531,7 @@ export default function MerchantSettlements() {
               })}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCallbackLogs, useGetWebhookRetryPolicy } from "@workspace/api-client-react";
+import { useListCallbackLogs } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,8 +55,6 @@ export default function AdminWebhookLogs() {
     limit: 20,
   } as any);
 
-  const { data: retryPolicy } = useGetWebhookRetryPolicy();
-
   const items = (data as any)?.data ?? [];
   const total = (data as any)?.total ?? 0;
   const successCount = items.filter((c: any) => c.status === "success").length;
@@ -70,7 +68,7 @@ export default function AdminWebhookLogs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Webhook Logs</h1>
           <p className="text-muted-foreground mt-1">Monitor webhook delivery attempts and failures</p>
@@ -78,52 +76,7 @@ export default function AdminWebhookLogs() {
         <Button variant="outline" size="sm" onClick={() => exportCsv(items)}>Export CSV</Button>
       </div>
 
-      {retryPolicy && (
-        <TooltipProvider>
-          <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5">
-            <Info className="w-4 h-4 text-blue-400 shrink-0" />
-            <div className="flex items-center gap-2 flex-wrap min-w-0">
-              <span className="text-xs font-medium text-blue-300 shrink-0">Active retry policy:</span>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 text-xs font-mono font-semibold border border-blue-500/20 cursor-default">
-                      Attempt 1
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">Initial delivery</TooltipContent>
-                </Tooltip>
-                {retryPolicy.delays.map((d) => (
-                  <div key={d.attempt} className="flex items-center gap-1.5">
-                    <ArrowRight className="w-3 h-3 text-blue-400/50 shrink-0" />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300/80 text-xs font-mono border border-blue-500/15 cursor-default">
-                          +{d.label}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="text-xs">
-                        Retry #{d.attempt} — waits {d.label} after previous failure
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 text-xs font-mono font-semibold border border-blue-500/20 cursor-default">
-                          Attempt {d.attempt + 1}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="text-xs">Retry #{d.attempt} of {retryPolicy.retries}</TooltipContent>
-                    </Tooltip>
-                  </div>
-                ))}
-              </div>
-              <span className="text-xs text-blue-400/60 shrink-0">· max {retryPolicy.maxAttempts} attempts total</span>
-            </div>
-          </div>
-        </TooltipProvider>
-      )}
-
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">
@@ -197,7 +150,8 @@ export default function AdminWebhookLogs() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
@@ -253,6 +207,7 @@ export default function AdminWebhookLogs() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

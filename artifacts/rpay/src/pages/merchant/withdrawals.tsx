@@ -56,9 +56,9 @@ export default function MerchantWithdrawals() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h1 className="text-3xl font-bold tracking-tight">Withdrawals</h1><p className="text-muted-foreground mt-1">Request and track your withdrawals</p></div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={exportCsv}>Export CSV</Button>
           <Button onClick={() => setOpen(true)} disabled={isAtLimit}><Plus className="w-4 h-4 mr-2" />New Request</Button>
         </div>
@@ -108,7 +108,8 @@ export default function MerchantWithdrawals() {
 
       <Card>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="text-right">Amount</TableHead>
@@ -139,6 +140,7 @@ export default function MerchantWithdrawals() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

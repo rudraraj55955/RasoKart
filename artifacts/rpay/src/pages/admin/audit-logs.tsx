@@ -1601,7 +1601,8 @@ function SecurityEventsPanel() {
       </CardHeader>
 
       <CardContent className="p-0">
-        <Table>
+        <div className="overflow-x-auto">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Merchant</TableHead>
@@ -1661,6 +1662,7 @@ function SecurityEventsPanel() {
             ))}
           </TableBody>
         </Table>
+        </div>
       </CardContent>
 
       {total > 20 && (
@@ -1771,7 +1773,7 @@ export default function AdminAuditLogs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Audit Logs</h1>
           <p className="text-muted-foreground mt-1">Track all admin actions and security events</p>
@@ -1820,8 +1822,8 @@ export default function AdminAuditLogs() {
           <Card>
             <CardHeader className="pb-4">
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   className="pl-9"
@@ -1849,7 +1851,7 @@ export default function AdminAuditLogs() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
               <div className="flex items-center gap-2 flex-1">
                 <CalendarIcon className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div className="flex items-center gap-2 flex-1">
@@ -2029,7 +2031,8 @@ export default function AdminAuditLogs() {
         )}
 
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Admin</TableHead>
@@ -2116,6 +2119,7 @@ export default function AdminAuditLogs() {
               })}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

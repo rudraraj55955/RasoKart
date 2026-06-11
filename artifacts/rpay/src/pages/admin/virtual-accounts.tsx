@@ -451,7 +451,7 @@ export default function AdminVirtualAccounts() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Virtual Accounts</h1>
           <p className="text-muted-foreground mt-1">Monitor all merchant virtual accounts · refreshed {format(lastRefreshed, "HH:mm:ss")}</p>
@@ -523,7 +523,7 @@ export default function AdminVirtualAccounts() {
                   </Select>
                 </div>
                 {/* Row 2: date range */}
-                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <div className="flex flex-col sm:flex-row gap-3 items-center flex-wrap">
                   <div className="flex items-center gap-2 flex-1">
                     <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
                     <Input
@@ -549,7 +549,8 @@ export default function AdminVirtualAccounts() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
+              <div className="overflow-x-auto">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8" />
@@ -630,6 +631,7 @@ export default function AdminVirtualAccounts() {
                   })}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
 
@@ -689,7 +691,7 @@ export default function AdminVirtualAccounts() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <div className="flex flex-col sm:flex-row gap-3 items-center flex-wrap">
                   <div className="flex items-center gap-2 flex-1">
                     <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
                     <Input
@@ -737,7 +739,8 @@ export default function AdminVirtualAccounts() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
+              <div className="overflow-x-auto">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Account Number</TableHead>
@@ -864,6 +867,7 @@ export default function AdminVirtualAccounts() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
 

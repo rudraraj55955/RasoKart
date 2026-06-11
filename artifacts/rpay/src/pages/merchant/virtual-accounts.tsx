@@ -227,16 +227,16 @@ export default function MerchantVirtualAccounts() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Virtual Accounts</h1>
           <p className="text-muted-foreground mt-1">Manage your virtual bank accounts and track payments</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={exportCsv}>
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <Button variant="outline" size="sm" onClick={exportCsv} className="flex-1 sm:flex-none">
             <Download className="w-4 h-4 mr-1.5" />Export CSV
           </Button>
-          <Button size="sm" onClick={() => { setCreateError(null); setShowCreate(true); }}>
+          <Button size="sm" onClick={() => { setCreateError(null); setShowCreate(true); }} className="flex-1 sm:flex-none">
             <Plus className="w-4 h-4 mr-1.5" />Create Account
           </Button>
         </div>
@@ -288,14 +288,14 @@ export default function MerchantVirtualAccounts() {
       {/* Table */}
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[160px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Search account number, holder..." value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
             <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
@@ -305,8 +305,85 @@ export default function MerchantVirtualAccounts() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-3 p-4">
+            {isLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i} className="bg-muted/20 border-border/50">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="h-4 bg-muted/50 rounded animate-pulse w-1/2" />
+                    <div className="h-3 bg-muted/50 rounded animate-pulse w-3/4" />
+                    <div className="h-8 bg-muted/50 rounded animate-pulse w-full" />
+                  </CardContent>
+                </Card>
+              ))
+            ) : !data?.data?.length ? (
+              <div className="text-center text-muted-foreground py-10">
+                <p className="text-sm">No virtual accounts found</p>
+              </div>
+            ) : (
+              data.data.map(va => (
+                <Card key={va.id} className="bg-muted/20 border-border/50 hover:bg-muted/30 transition-colors" onClick={() => { setSelectedVa(va as any); setDrawerTab("transactions"); }}>
+                  <CardContent className="p-4 space-y-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm truncate">{va.accountHolder}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{va.bankName}</p>
+                      </div>
+                      <Badge variant={va.status === "active" ? "default" : "secondary"} className="text-[10px] h-5 px-1.5 shrink-0">
+                        {va.status}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs font-mono bg-background/50 rounded-md px-2 py-1.5">
+                      <span className="text-muted-foreground">**** {va.accountNumber.slice(-4)}</span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 text-muted-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(va.accountNumber).then(() => toast.success("Account number copied"));
+                        }}
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] uppercase text-muted-foreground font-semibold">Balance</p>
+                        <p className="text-sm font-mono font-bold text-emerald-400">
+                          ₹{parseFloat(va.balance || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setSelectedVa(va as any); setDrawerTab("transactions"); }}>
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-violet-400" onClick={() => openAdjustBalance(va as any)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className={va.status === "active" ? "text-amber-500" : "text-emerald-500"}
+                          onClick={() => handleToggleStatus(va.id, va.status)}
+                        >
+                          {va.status === "active" ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
               <TableRow>
                 <TableHead>Account Holder</TableHead>
                 <TableHead>Bank Name</TableHead>
@@ -390,6 +467,7 @@ export default function MerchantVirtualAccounts() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

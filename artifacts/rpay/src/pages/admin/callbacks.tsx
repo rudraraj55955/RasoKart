@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, useGetWebhookRetryPolicy, ListCallbackLogsEventType } from "@workspace/api-client-react";
+import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, ListCallbackLogsEventType } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EventTypeBadge, EVENT_TYPE_COLORS } from "@/components/ui/event-type-badge";
 import { Badge } from "@/components/ui/badge";
@@ -244,8 +244,6 @@ export default function AdminCallbacks() {
   });
 
   const { data: adminStats } = useGetAdminCallbackStats();
-  const { data: retryPolicy } = useGetWebhookRetryPolicy();
-
   const hasFailures = (adminStats?.signatureFailures24h ?? 0) > 0;
 
   function filterToSignatureFailures() {
@@ -256,11 +254,9 @@ export default function AdminCallbacks() {
 
   return (
     <div className="space-y-6">
-      <div><h1 className="text-3xl font-bold tracking-tight">Callback Logs</h1><p className="text-muted-foreground mt-1">Webhook delivery history with automatic retry</p></div>
-
-      {retryPolicy && (
-        <RetryScheduleBanner maxAttempts={retryPolicy.maxAttempts} delays={retryPolicy.delays} />
-      )}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div><h1 className="text-3xl font-bold tracking-tight">Callback Logs</h1><p className="text-muted-foreground mt-1">Webhook delivery history with automatic retry</p></div>
+      </div>
 
       {hasFailures && (
         <button
@@ -361,7 +357,8 @@ export default function AdminCallbacks() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8"></TableHead>
@@ -384,6 +381,7 @@ export default function AdminCallbacks() {
               ) : data?.data?.map(log => <CallbackRow key={log.id} log={log} />)}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

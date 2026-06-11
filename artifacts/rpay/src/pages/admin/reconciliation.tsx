@@ -884,7 +884,7 @@ export default function AdminReconciliation() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <GitMerge className="w-6 h-6 text-primary" />
@@ -1036,7 +1036,8 @@ export default function AdminReconciliation() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {isLoading ? (
+          <div className="overflow-x-auto">
+            {isLoading ? (
             <div className="py-12 text-center text-muted-foreground text-sm">Loading…</div>
           ) : runs.length === 0 && historyPage === 1 ? (
             <div className="py-12 text-center text-muted-foreground text-sm">
@@ -1234,7 +1235,8 @@ export default function AdminReconciliation() {
               )}
             </>
           )}
-        </CardContent>
+        </div>
+      </CardContent>
       </Card>
 
       {/* Detail Dialog */}

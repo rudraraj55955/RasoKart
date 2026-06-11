@@ -277,9 +277,11 @@ export default function MerchantCallbacks() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Callback Logs</h1>
-        <p className="text-muted-foreground mt-1">Webhook delivery history for your endpoint</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Callback Logs</h1>
+          <p className="text-muted-foreground mt-1">Webhook delivery history for your endpoint</p>
+        </div>
       </div>
 
       {showSigWarning && (
@@ -425,7 +427,8 @@ export default function MerchantCallbacks() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8"></TableHead>
@@ -455,6 +458,7 @@ export default function MerchantCallbacks() {
               ) : data?.data?.map(log => <CallbackRow key={log.id} log={log} />)}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
       {data && data.total > 20 && (

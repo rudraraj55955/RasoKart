@@ -405,7 +405,7 @@ export default function AdminQrCodes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">QR Management</h1>
           <p className="text-muted-foreground mt-1">Monitor all dynamic QR codes across merchants · refreshed {format(lastRefreshed, "HH:mm:ss")}</p>
@@ -533,7 +533,8 @@ export default function AdminQrCodes() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8"></TableHead>
@@ -627,6 +628,7 @@ export default function AdminQrCodes() {
               })}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
