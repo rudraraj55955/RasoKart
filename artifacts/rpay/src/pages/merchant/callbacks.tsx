@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, QrCode, ShieldAlert, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Loader2, QrCode, ShieldAlert, X } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -154,13 +154,25 @@ export default function MerchantCallbacks() {
 
   const sigFilter = sigVerified !== "all" ? sigVerified : undefined;
 
-  const { data, isLoading } = useListCallbackLogs({
-    status: status as any,
-    qrCodeId,
-    signatureVerified: sigFilter as any,
-    page,
-    limit: 20,
-  });
+  const { data, isLoading, isFetching } = useListCallbackLogs(
+    {
+      status: status as any,
+      qrCodeId,
+      signatureVerified: sigFilter as any,
+      page,
+      limit: 20,
+    },
+    {
+      query: {
+        refetchInterval: (query: any) => {
+          const logs = query.state.data?.data ?? [];
+          return logs.some((l: any) => l.status === "pending_retry") ? 3000 : false;
+        },
+      },
+    } as any
+  );
+
+  const hasPendingRetry = (data?.data ?? []).some(l => l.status === "pending_retry");
 
   const recentLogs = data?.data ?? [];
   const recentN = recentLogs.slice(0, SIG_WARN_THRESHOLD);
@@ -225,7 +237,19 @@ export default function MerchantCallbacks() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Callback Logs</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight">Callback Logs</h1>
+          {hasPendingRetry && (
+            <div className="flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
+              {isFetching ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block" />
+              )}
+              Live — retrying
+            </div>
+          )}
+        </div>
         <p className="text-muted-foreground mt-1">Webhook delivery history for your endpoint</p>
         {dismissalStatusLine && (
           <p className="text-xs text-muted-foreground/60 mt-1">{dismissalStatusLine}</p>
