@@ -59,7 +59,12 @@ export async function recordAttempt(callbackLogId: number, attemptNumber: number
   });
 }
 
-const MAX_ATTEMPTS = 4; // 1 initial + 3 retries
+const MAX_ATTEMPTS = 4; // 1 initial + 3 auto-retries for live deliveries
+
+// Test-delivery retry policy — kept here so the retry loop and the insert site
+// share a single source of truth.
+export const TEST_MAX_AUTO_RETRIES = 1;       // test deliveries get exactly one auto-retry
+export const TEST_RETRY_DELAY_SECONDS = 60;   // 60 s delay before that single retry
 
 function getNextRetryDelay(attempts: number): number {
   // attempts is the number of attempts already made (including the just-failed one)
@@ -165,9 +170,12 @@ export async function processPendingRetries(): Promise<void> {
         "Callback retry failed",
       );
 
-      // Test deliveries get exactly one automatic retry; finalize them immediately regardless
-      // of MAX_ATTEMPTS so they don't enter the full live-delivery backoff schedule.
-      if (log.isTest || newAttempts >= MAX_ATTEMPTS) {
+      // Test deliveries are capped at TEST_MAX_AUTO_RETRIES auto-retries; live deliveries
+      // follow the full backoff schedule up to MAX_ATTEMPTS.
+      const reachedCap = log.isTest
+        ? newAttempts > TEST_MAX_AUTO_RETRIES
+        : newAttempts >= MAX_ATTEMPTS;
+      if (reachedCap) {
         await db
           .update(callbackLogsTable)
           .set({

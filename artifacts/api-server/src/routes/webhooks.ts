@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, webhooksTable, callbackLogsTable, callbackLogAttemptsTable } from "@workspace/db";
 import { and, eq, isNull, lt, or, sql, asc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { fireCallback, recordAttempt } from "../helpers/callbackRetry";
+import { fireCallback, recordAttempt, TEST_RETRY_DELAY_SECONDS } from "../helpers/callbackRetry";
 import crypto from "crypto";
 import dns from "dns";
 import net from "net";
@@ -502,12 +502,11 @@ router.post("/test", async (req, res) => {
   const durationMs = Date.now() - start;
 
   // Insert a log row so test deliveries appear in Recent Deliveries with an isTest flag.
-  // If the delivery failed, schedule one automatic retry after 60 seconds so the developer
-  // experience mirrors live deliveries (which also queue for automatic retry).
-  const TEST_AUTO_RETRY_DELAY_SECONDS = 60;
+  // If the delivery failed, schedule one automatic retry after TEST_RETRY_DELAY_SECONDS so the
+  // developer experience mirrors live deliveries (which also queue for automatic retry).
   try {
     const deliveryStatus = delivered ? "success" : "pending_retry";
-    const nextRetryAt = delivered ? null : new Date(Date.now() + TEST_AUTO_RETRY_DELAY_SECONDS * 1000);
+    const nextRetryAt = delivered ? null : new Date(Date.now() + TEST_RETRY_DELAY_SECONDS * 1000);
     const [inserted] = await db.insert(callbackLogsTable).values({
       merchantId,
       url: targetUrl,
