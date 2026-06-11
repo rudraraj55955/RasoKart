@@ -2297,8 +2297,16 @@ function ScheduledReportsPanel() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [bulkToggling, setBulkToggling] = useState(false);
   const [preActivatedIds, setPreActivatedIds] = useState<number[] | null>(null);
+  const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "failing" | "never_sent">("all");
 
   const schedules = schedulesData?.data ?? [];
+
+  const filteredSchedules = schedules.filter((s: any) => {
+    if (healthFilter === "healthy") return s.lastSendStatus === "ok";
+    if (healthFilter === "failing") return s.lastSendStatus === "failed";
+    if (healthFilter === "never_sent") return s.sendCount === 0;
+    return true;
+  });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListAuditReportSchedulesQueryKey() });
 
@@ -2489,6 +2497,41 @@ function ScheduledReportsPanel() {
         </p>
       </CardHeader>
       <CardContent className="pt-0">
+        {!isLoading && schedules.length > 0 && (
+          <div className="flex items-center gap-1 mb-3 flex-wrap">
+            {(["all", "healthy", "failing", "never_sent"] as const).map((f) => {
+              const labels: Record<typeof f, string> = {
+                all: "All",
+                healthy: "Healthy",
+                failing: "Failing",
+                never_sent: "Never sent",
+              };
+              const counts: Record<typeof f, number> = {
+                all: schedules.length,
+                healthy: schedules.filter((s: any) => s.lastSendStatus === "ok").length,
+                failing: schedules.filter((s: any) => s.lastSendStatus === "failed").length,
+                never_sent: schedules.filter((s: any) => s.sendCount === 0).length,
+              };
+              const active = healthFilter === f;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setHealthFilter(f)}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    active
+                      ? "bg-violet-500/20 text-violet-300 border border-violet-500/40"
+                      : "bg-muted/30 text-muted-foreground border border-border/40 hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  {labels[f]}
+                  <span className={`rounded-full px-1.5 py-px text-[10px] font-semibold ${active ? "bg-violet-500/30 text-violet-200" : "bg-muted/50 text-muted-foreground"}`}>
+                    {counts[f]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2].map(i => <div key={i} className="h-14 bg-muted/30 rounded-lg animate-pulse" />)}
@@ -2499,9 +2542,14 @@ function ScheduledReportsPanel() {
             <p className="text-sm">No scheduled reports configured</p>
             <p className="text-xs opacity-60">Add a schedule to receive automatic audit log emails</p>
           </div>
+        ) : filteredSchedules.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+            <Mail className="w-6 h-6 opacity-30" />
+            <p className="text-sm">No schedules match this filter</p>
+          </div>
         ) : (
           <div className="space-y-2">
-            {schedules.map((s: any) => (
+            {filteredSchedules.map((s: any) => (
               <ScheduleRow
                 key={s.id}
                 s={s}
