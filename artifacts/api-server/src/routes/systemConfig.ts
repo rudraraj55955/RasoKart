@@ -7,6 +7,7 @@ import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
 import { loadStorageCleanupConfig, rescheduleStorageCleanupFromDb } from "../helpers/storageCleanupScheduler";
 import { loadWebhookSecretScheduleConfig, rescheduleWebhookSecretFromDb } from "../helpers/webhookSecretScheduler";
 import { loadWebhookRetryConfig } from "../helpers/callbackRetry";
+import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 import { sql } from "drizzle-orm";
 
 async function getSignatureFailureAlertConfig() {
@@ -556,6 +557,8 @@ router.put("/signature-failure-alert", async (req, res, next) => {
       details: JSON.stringify({ section: "signature_failure_alert", threshold, windowHours, rateLimitHours }),
       ipAddress: (req as any).ip ?? null,
     });
+
+    resetAlertRateLimit();
 
     req.log.info({ threshold, windowHours, rateLimitHours }, "Signature failure alert config updated");
 

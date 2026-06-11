@@ -87,6 +87,18 @@ let checkInFlight = false;
 let lastAlertSentAt: Date | null = null;
 
 /**
+ * Reset the in-memory rate-limit timestamp so the next alert can fire
+ * immediately regardless of when the last one was sent.
+ *
+ * Call this whenever the `rateLimitHours` config is saved so the new window
+ * takes effect right away rather than waiting for the old window to expire.
+ */
+export function resetAlertRateLimit(): void {
+  lastAlertSentAt = null;
+  logger.info("Signature failure alert rate-limit timer reset (config change)");
+}
+
+/**
  * Seed the in-memory rate-limit timestamp from the most recent DB record.
  * Call once at server startup so restarts don't bypass the cooldown window.
  */

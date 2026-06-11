@@ -1665,7 +1665,7 @@ export default function AdminSettings() {
                 <span className="text-sm text-muted-foreground">hours</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Minimum time between consecutive alert emails.
+                Minimum time between consecutive alert emails. Changes take effect immediately on save.
               </p>
             </div>
           </div>
