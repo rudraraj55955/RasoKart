@@ -63,6 +63,8 @@ tags:
     description: Admin-scoped saved smart search filter presets
   - name: github-sync
     description: GitHub repository sync status
+  - name: security
+    description: Merchant security event log
 paths:
   /healthz:
     get:
@@ -1365,6 +1367,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
+
+  /security/events:
+    get:
+      operationId: listSecurityEvents
+      tags: [security]
+      summary: List merchant security events
+      description: Returns a paginated list of security events for the authenticated merchant — logins, API key generation, API key revocation, and callback secret rotations. Merchant access only.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+        - name: eventType
+          in: query
+          schema:
+            type: string
+          description: Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated)
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+          description: "Filter events on or after this date (YYYY-MM-DD)"
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+          description: "Filter events on or before this date (YYYY-MM-DD)"
+      responses:
+        "200":
+          description: Paginated list of security events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEventListResponse"
+        "403":
+          description: Merchant access only
 
   /webhooks/logs:
     get:
@@ -5523,6 +5572,40 @@ components:
         actorEmail:
           type: ["string", "null"]
           description: Email of the actor who performed the action
+
+    SecurityEvent:
+      type: object
+      required: [id, eventType, actorEmail, occurredAt]
+      properties:
+        id:
+          type: integer
+        eventType:
+          type: string
+          enum: [merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated]
+        actorEmail:
+          type: string
+        keyPrefix:
+          type: ["string", "null"]
+        ipAddress:
+          type: ["string", "null"]
+        occurredAt:
+          type: string
+          format: date-time
+
+    SecurityEventListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SecurityEvent"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
 
     MerchantCredentialEvent:
       type: object

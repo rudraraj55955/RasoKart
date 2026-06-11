@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useListCallbackLogs, useListApiKeyHistory, useGetCallbackSecretHistory, useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useListMySecurityActivity } from "@workspace/api-client-react";
+import { useListCallbackLogs, useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useListMySecurityActivity, useListSecurityEvents } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,8 @@ import {
   ClipboardList,
   ChevronLeft,
   ChevronRight,
+  LogIn,
+  Monitor,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -129,57 +131,80 @@ function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }
   );
 }
 
-function buildCsvText(data: any[]): string {
-  const rows = [["ID", "Event Type", "Status", "HTTP Status", "Signature", "Attempts", "QR Code ID", "Transaction ID", "Date"]];
-  data.forEach(log =>
-    rows.push([
-      String(log.id),
-      log.eventType ?? "",
-      log.status,
-      log.httpStatus != null ? String(log.httpStatus) : "",
-      log.signatureVerified === true ? "verified" : log.signatureVerified === false ? "failed" : "no_secret",
-      String(log.attempts),
-      log.qrCodeId != null ? String(log.qrCodeId) : "",
-      log.transactionId != null ? String(log.transactionId) : "",
-      log.createdAt,
-    ])
-  );
+function buildCallbackCsvRows(data: any[]): string[][] {
+  return data.map(log => [
+    String(log.id),
+    "callback",
+    log.eventType ?? "",
+    log.status,
+    log.httpStatus != null ? String(log.httpStatus) : "",
+    log.signatureVerified === true ? "verified" : log.signatureVerified === false ? "failed" : "no_secret",
+    String(log.attempts),
+    log.qrCodeId != null ? String(log.qrCodeId) : "",
+    log.transactionId != null ? String(log.transactionId) : "",
+    log.createdAt,
+  ]);
+}
+
+function buildSecurityCsvRows(data: any[]): string[][] {
+  return data.map(ev => [
+    String(ev.id),
+    "security",
+    ev.eventType,
+    "",
+    "",
+    "",
+    "",
+    "",
+    ev.ipAddress ?? "",
+    ev.occurredAt,
+  ]);
+}
+
+function buildUnifiedCsvText(callbackData: any[], securityData: any[]): string {
+  const header = ["ID", "Source", "Event Type", "Status", "HTTP Status", "Signature", "Attempts", "QR Code ID", "IP / Transaction ID", "Date"];
+  const rows = [
+    header,
+    ...buildCallbackCsvRows(callbackData),
+    ...buildSecurityCsvRows(securityData),
+  ];
   return rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
 }
 
-// ─── Credential event helpers ─────────────────────────────────────────────────
+// ─── Security event helpers ───────────────────────────────────────────────────
 
-type CredentialEventType = "secret_rotated" | "api_key_created" | "api_key_revoked" | "api_key_generated" | "key_generated" | "key_revoked" | "callback_secret_rotated";
+type SecurityEventType = "merchant_login" | "api_key_generated" | "api_key_revoked" | "callback_secret_rotated";
 
-interface LocalCredEvent {
-  eventType: CredentialEventType;
-  occurredAt: string;
+interface LocalSecurityEvent {
+  id: number;
+  eventType: SecurityEventType;
+  actorEmail: string;
   keyPrefix?: string | null;
-  description?: string | null;
-  isRevoked?: boolean;
   ipAddress?: string | null;
-  actorEmail?: string | null;
+  occurredAt: string;
 }
 
-function credentialEventMeta(eventType: CredentialEventType) {
+function securityEventMeta(eventType: SecurityEventType) {
   switch (eventType) {
-    case "secret_rotated":
+    case "merchant_login":
+      return {
+        icon: <LogIn className="w-4 h-4" />,
+        label: "Login",
+        badgeClass: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+      };
     case "callback_secret_rotated":
       return {
         icon: <RotateCcw className="w-4 h-4" />,
         label: "Secret Rotated",
         badgeClass: "bg-amber-500/10 text-amber-400 border-amber-500/20",
       };
-    case "api_key_created":
     case "api_key_generated":
-    case "key_generated":
       return {
         icon: <KeyRound className="w-4 h-4" />,
         label: "Key Generated",
         badgeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
       };
     case "api_key_revoked":
-    case "key_revoked":
       return {
         icon: <KeyRound className="w-4 h-4" />,
         label: "Key Revoked",
@@ -187,15 +212,16 @@ function credentialEventMeta(eventType: CredentialEventType) {
       };
     default:
       return {
-        icon: null,
+        icon: <Monitor className="w-4 h-4" />,
         label: eventType,
         badgeClass: "bg-muted/10 text-muted-foreground border-border/50",
       };
   }
 }
 
-function CredentialEventRow({ event }: { event: LocalCredEvent }) {
-  const meta = credentialEventMeta(event.eventType as CredentialEventType);
+function SecurityEventRow({ event }: { event: LocalSecurityEvent }) {
+  const meta = securityEventMeta(event.eventType);
+  const isLogin = event.eventType === "merchant_login";
   return (
     <div className="flex items-start gap-4 py-4">
       <div className="flex flex-col items-center gap-1 shrink-0">
@@ -215,17 +241,22 @@ function CredentialEventRow({ event }: { event: LocalCredEvent }) {
             </code>
           )}
         </div>
-        <p className="text-sm text-muted-foreground">{event.description}</p>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 mt-1">
-          <p className="text-xs text-muted-foreground/50">
-            {format(new Date(event.occurredAt), "dd MMM yyyy 'at' HH:mm")}
+        {isLogin ? (
+          <p className="text-sm text-muted-foreground">
+            Signed in{event.ipAddress ? <> from <code className="text-xs font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded">{event.ipAddress}</code></> : null}
           </p>
-          {event.ipAddress && (
-            <p className="text-xs text-muted-foreground/50 font-mono">
-              IP: {event.ipAddress}
-            </p>
-          )}
-        </div>
+        ) : event.keyPrefix ? (
+          <p className="text-sm text-muted-foreground">
+            {event.eventType === "api_key_generated" ? "API key generated" : event.eventType === "api_key_revoked" ? "API key revoked" : "Callback secret rotated"} ({event.keyPrefix})
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {event.eventType === "callback_secret_rotated" ? "Callback signing secret rotated" : meta.label}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground/50 mt-1">
+          {format(new Date(event.occurredAt), "dd MMM yyyy 'at' HH:mm")}
+        </p>
       </div>
       <span className="text-xs text-muted-foreground/40 shrink-0 pt-0.5 hidden sm:block">
         {format(new Date(event.occurredAt), "dd MMM yyyy")}
@@ -417,11 +448,47 @@ export default function MerchantSecurity() {
     setPage(1);
   };
 
+  // Security events state
+  const [secEventType, setSecEventType] = useState("all");
+  const [secDateFrom, setSecDateFrom] = useState("");
+  const [secDateTo, setSecDateTo] = useState("");
+  const [secPage, setSecPage] = useState(1);
+  const SEC_PAGE_SIZE = 20;
+
+  const { data: secEventsData, isLoading: secEventsLoading } = useListSecurityEvents({
+    limit: 200,
+    page: 1,
+    eventType: secEventType === "all" ? undefined : (secEventType as any),
+  });
+
+  const allSecEvents = useMemo<LocalSecurityEvent[]>(() => {
+    return (secEventsData?.data ?? []) as LocalSecurityEvent[];
+  }, [secEventsData]);
+
+  const filteredSecEvents = useMemo(() => {
+    return allSecEvents.filter(ev => {
+      if (secDateFrom) {
+        const from = startOfDay(parseISO(secDateFrom));
+        if (isBefore(parseISO(ev.occurredAt), from)) return false;
+      }
+      if (secDateTo) {
+        const to = endOfDay(parseISO(secDateTo));
+        if (isAfter(parseISO(ev.occurredAt), to)) return false;
+      }
+      return true;
+    });
+  }, [allSecEvents, secDateFrom, secDateTo]);
+
+  const secTotalPages = Math.max(1, Math.ceil(filteredSecEvents.length / SEC_PAGE_SIZE));
+  const secPageSlice = filteredSecEvents.slice((secPage - 1) * SEC_PAGE_SIZE, secPage * SEC_PAGE_SIZE);
+
+  const anySecFilterActive = !!(secEventType !== "all" || secDateFrom || secDateTo);
+
   function handleExportCsv() {
-    if (!filteredLogs.length) return;
+    if (!filteredLogs.length && !filteredSecEvents.length) return;
     setExporting(true);
     try {
-      const csv = buildCsvText(filteredLogs);
+      const csv = buildUnifiedCsvText(filteredLogs, filteredSecEvents);
       const lines = csv.split("\n").filter(l => l.trim() !== "");
       const rowCount = Math.max(0, lines.length - 1);
       setLastExportCount(rowCount);
@@ -481,20 +548,6 @@ export default function MerchantSecurity() {
     return action.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   }
 
-  // Credential event history
-  const { data: secretHistory, isLoading: loadingSecret } = useGetCallbackSecretHistory();
-  const { data: apiKeyHistory, isLoading: loadingApiKeys } = useListApiKeyHistory();
-  const credEventsLoading = loadingSecret || loadingApiKeys;
-
-  const credentialEvents = useMemo<LocalCredEvent[]>(() => {
-    const all: LocalCredEvent[] = [
-      ...(secretHistory?.data ?? []),
-      ...(apiKeyHistory?.data ?? []),
-    ];
-    return all.sort(
-      (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
-    );
-  }, [secretHistory, apiKeyHistory]);
 
   return (
     <div className="space-y-6">
@@ -514,7 +567,7 @@ export default function MerchantSecurity() {
                 variant="outline"
                 size="sm"
                 onClick={handleExportCsv}
-                disabled={exporting || !filteredLogs.length}
+                disabled={exporting || (!filteredLogs.length && !filteredSecEvents.length)}
                 className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
               >
                 {exporting
@@ -949,32 +1002,92 @@ export default function MerchantSecurity() {
         )}
       </Card>
 
-      {/* Credential event history */}
+      {/* Security event history */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <KeyRound className="w-4 h-4 text-muted-foreground" />
-            Credential Event History
-          </CardTitle>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+            <CardTitle className="text-base flex items-center gap-2 flex-1">
+              <Shield className="w-4 h-4 text-muted-foreground" />
+              Auth &amp; Key Events
+            </CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={secEventType} onValueChange={v => { setSecEventType(v); setSecPage(1); }}>
+                <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue placeholder="Event type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Events</SelectItem>
+                  <SelectItem value="merchant_login">Login</SelectItem>
+                  <SelectItem value="api_key_generated">Key Generated</SelectItem>
+                  <SelectItem value="api_key_revoked">Key Revoked</SelectItem>
+                  <SelectItem value="callback_secret_rotated">Secret Rotated</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type="date"
+                className="w-[140px] h-8 text-xs [color-scheme:dark]"
+                value={secDateFrom}
+                onChange={e => { setSecDateFrom(e.target.value); setSecPage(1); }}
+                title="From date"
+              />
+              <span className="text-muted-foreground text-xs">to</span>
+              <Input
+                type="date"
+                className="w-[140px] h-8 text-xs [color-scheme:dark]"
+                value={secDateTo}
+                onChange={e => { setSecDateTo(e.target.value); setSecPage(1); }}
+                title="To date"
+              />
+              {anySecFilterActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                  onClick={() => { setSecEventType("all"); setSecDateFrom(""); setSecDateTo(""); setSecPage(1); }}
+                >
+                  <X className="w-3 h-3" />
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+          {anySecFilterActive && (
+            <p className="text-xs text-muted-foreground mt-2">
+              <span className="font-semibold text-foreground">{filteredSecEvents.length.toLocaleString()}</span> event{filteredSecEvents.length !== 1 ? "s" : ""} match your filters
+            </p>
+          )}
         </CardHeader>
         <CardContent>
-          {credEventsLoading ? (
+          {secEventsLoading ? (
             <CredentialEventSkeletonRows />
-          ) : credentialEvents.length === 0 ? (
+          ) : secPageSlice.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-              <AlertTriangle className="w-8 h-8 text-muted-foreground/30" />
+              <Shield className="w-8 h-8 text-muted-foreground/30" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">No credential events recorded yet</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {anySecFilterActive ? "No events match your filters" : "No security events recorded yet"}
+                </p>
                 <p className="text-xs text-muted-foreground/60 mt-1">
-                  Events appear here when you generate API keys or rotate your callback signing secret.
+                  {anySecFilterActive
+                    ? "Try clearing the filters to see all events."
+                    : "Login events, key generation, and secret rotations will appear here."}
                 </p>
               </div>
             </div>
           ) : (
             <div className="divide-y divide-border/40">
-              {credentialEvents.map((event, idx) => (
-                <CredentialEventRow key={`${event.eventType}-${event.occurredAt}-${idx}`} event={event} />
+              {secPageSlice.map(event => (
+                <SecurityEventRow key={event.id} event={event} />
               ))}
+            </div>
+          )}
+          {secTotalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/40">
+              <p className="text-xs text-muted-foreground">
+                Showing {((secPage - 1) * SEC_PAGE_SIZE) + 1}–{Math.min(secPage * SEC_PAGE_SIZE, filteredSecEvents.length)} of {filteredSecEvents.length}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSecPage(p => Math.max(1, p - 1))} disabled={secPage === 1}>Previous</Button>
+                <Button variant="outline" size="sm" onClick={() => setSecPage(p => Math.min(secTotalPages, p + 1))} disabled={secPage === secTotalPages}>Next</Button>
+              </div>
             </div>
           )}
         </CardContent>

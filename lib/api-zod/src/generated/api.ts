@@ -1364,6 +1364,40 @@ export const RevokeApiKeyResponse = zod.object({
 
 
 /**
+ * Returns a paginated list of security events for the authenticated merchant — logins, API key generation, API key revocation, and callback secret rotations. Merchant access only.
+ * @summary List merchant security events
+ */
+export const listSecurityEventsQueryPageDefault = 1;
+
+export const listSecurityEventsQueryLimitDefault = 50;
+export const listSecurityEventsQueryLimitMax = 200;
+
+
+
+export const ListSecurityEventsQueryParams = zod.object({
+  "page": zod.coerce.number().min(1).default(listSecurityEventsQueryPageDefault),
+  "limit": zod.coerce.number().min(1).max(listSecurityEventsQueryLimitMax).default(listSecurityEventsQueryLimitDefault),
+  "eventType": zod.coerce.string().optional().describe('Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated)'),
+  "dateFrom": zod.date().optional().describe('Filter events on or after this date (YYYY-MM-DD)'),
+  "dateTo": zod.date().optional().describe('Filter events on or before this date (YYYY-MM-DD)')
+})
+
+export const ListSecurityEventsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "eventType": zod.enum(['merchant_login', 'api_key_generated', 'api_key_revoked', 'callback_secret_rotated']),
+  "actorEmail": zod.string(),
+  "keyPrefix": zod.string().nullish(),
+  "ipAddress": zod.string().nullish(),
+  "occurredAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * Returns the last N callback log entries for the merchant's webhook, ordered newest first.
  * @summary Get recent webhook delivery logs for the authenticated merchant
  */

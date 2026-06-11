@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, merchantsTable } from "@workspace/db";
+import { db, usersTable, merchantsTable, credentialEventsTable } from "@workspace/db";
 import { dbRateLimitStore } from "../lib/rateLimitStore";
 import { eq } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
@@ -34,6 +34,23 @@ router.post("/login", loginLimiter, async (req, res, next) => {
       return;
     }
     const token = generateToken({ userId: user.id, role: user.role });
+
+    if (user.role === "merchant" && user.merchantId) {
+      const loginIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+        ?? req.socket.remoteAddress
+        ?? null;
+      db.insert(credentialEventsTable).values({
+        merchantId: user.merchantId,
+        eventType: "merchant_login",
+        actorId: user.id,
+        actorEmail: user.email,
+        keyPrefix: null,
+        ipAddress: loginIp,
+      }).catch((err: unknown) => {
+        req.log.warn({ err, merchantId: user.merchantId }, "Failed to record login event");
+      });
+    }
+
     res.json({
       token,
       user: {

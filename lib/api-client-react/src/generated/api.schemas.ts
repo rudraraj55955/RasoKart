@@ -569,6 +569,36 @@ export interface CallbackSecretStatus {
 
 export type MerchantListCredentialEventEventType = typeof MerchantListCredentialEventEventType[keyof typeof MerchantListCredentialEventEventType];
 
+export type SecurityEventEventType = typeof SecurityEventEventType[keyof typeof SecurityEventEventType];
+
+
+export const SecurityEventEventType = {
+  merchant_login: 'merchant_login',
+  api_key_generated: 'api_key_generated',
+  api_key_revoked: 'api_key_revoked',
+  callback_secret_rotated: 'callback_secret_rotated',
+} as const;
+
+export interface SecurityEvent {
+  id: number;
+  eventType: SecurityEventEventType;
+  actorEmail: string;
+  /** @nullable */
+  keyPrefix?: string | null;
+  /** @nullable */
+  ipAddress?: string | null;
+  occurredAt: string;
+}
+
+export interface SecurityEventListResponse {
+  data: SecurityEvent[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type CredentialEventEventType = typeof CredentialEventEventType[keyof typeof CredentialEventEventType];
+
 
 export const MerchantListCredentialEventEventType = {
   key_generated: 'key_generated',
@@ -2728,6 +2758,30 @@ export const ListWithdrawalsStatus = {
   rejected: 'rejected',
   all: 'all',
 } as const;
+
+export type ListSecurityEventsParams = {
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+/**
+ * Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated)
+ */
+eventType?: string;
+/**
+ * Filter events on or after this date (YYYY-MM-DD)
+ */
+dateFrom?: string;
+/**
+ * Filter events on or before this date (YYYY-MM-DD)
+ */
+dateTo?: string;
+};
 
 export type GetWebhookLogsParams = {
 /**

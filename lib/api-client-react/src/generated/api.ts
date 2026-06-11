@@ -114,6 +114,7 @@ import type {
   ListReconciliationRunItemsParams,
   ListReconciliationRunsParams,
   ListSavedFilters200,
+  ListSecurityEventsParams,
   ListSettlementsParams,
   ListStorageCleanupRuns200,
   ListStorageCleanupRunsParams,
@@ -192,6 +193,7 @@ import type {
   ScheduleRenewalInput,
   SearchByUtrParams,
   SecurityComplianceSummaryResponse,
+  SecurityEventListResponse,
   Settlement,
   SettlementActionInput,
   SettlementListResponse,
@@ -4253,6 +4255,91 @@ export const useRevokeApiKey = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRevokeApiKeyMutationOptions(options));
     }
+
+export const getListSecurityEventsUrl = (params?: ListSecurityEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/security/events?${stringifiedParams}` : `/api/security/events`
+}
+
+/**
+ * Returns a paginated list of security events for the authenticated merchant — logins, API key generation, API key revocation, and callback secret rotations. Merchant access only.
+ * @summary List merchant security events
+ */
+export const listSecurityEvents = async (params?: ListSecurityEventsParams, options?: RequestInit): Promise<SecurityEventListResponse> => {
+
+  return customFetch<SecurityEventListResponse>(getListSecurityEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSecurityEventsQueryKey = (params?: ListSecurityEventsParams,) => {
+    return [
+    `/api/security/events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSecurityEventsQueryOptions = <TData = Awaited<ReturnType<typeof listSecurityEvents>>, TError = ErrorType<void>>(params?: ListSecurityEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSecurityEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSecurityEventsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSecurityEvents>>> = ({ signal }) => listSecurityEvents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSecurityEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSecurityEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listSecurityEvents>>>
+export type ListSecurityEventsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List merchant security events
+ */
+
+export function useListSecurityEvents<TData = Awaited<ReturnType<typeof listSecurityEvents>>, TError = ErrorType<void>>(
+ params?: ListSecurityEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSecurityEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSecurityEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetWebhookLogsUrl = (params?: GetWebhookLogsParams,) => {
   const normalizedParams = new URLSearchParams();

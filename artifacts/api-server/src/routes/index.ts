@@ -30,6 +30,7 @@ import settingsRouter from "./settings";
 import storageRouter from "./storage";
 import savedFiltersRouter from "./savedFilters";
 import githubSyncRouter from "./githubSync";
+import securityRouter from "./security";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use("/settings", settingsRouter);
 router.use(storageRouter);
 router.use("/saved-filters", savedFiltersRouter);
 router.use("/github-sync", githubSyncRouter);
+router.use("/security", securityRouter);
 
 export default router;
