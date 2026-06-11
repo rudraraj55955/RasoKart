@@ -18,6 +18,21 @@ export interface WebhookConfigInput {
      * @maximum 5
      */
   maxRetries?: number;
+  /**
+     * Delay in seconds before the 1st retry. Null means use the system default.
+     * @nullable
+     */
+  retryDelay1?: number | null;
+  /**
+     * Delay in seconds before the 2nd retry. Null means use the system default.
+     * @nullable
+     */
+  retryDelay2?: number | null;
+  /**
+     * Delay in seconds before the 3rd and subsequent retries. Null means use the system default.
+     * @nullable
+     */
+  retryDelay3?: number | null;
   /** Whether to send an email alert when consecutive failures reach the threshold */
   failureAlertEnabled?: boolean;
   /**

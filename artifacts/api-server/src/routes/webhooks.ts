@@ -587,7 +587,7 @@ router.put("/", async (req, res) => {
     res.status(403).json({ error: "Merchants only" });
     return;
   }
-  const { url, isActive, events, secret, maxRetries, failureAlertEnabled, failureAlertThreshold } = req.body;
+  const { url, isActive, events, secret, maxRetries, retryDelay1, retryDelay2, retryDelay3, failureAlertEnabled, failureAlertThreshold } = req.body;
   if (!url || !Array.isArray(events)) {
     res.status(400).json({ error: "url and events required" });
     return;
@@ -599,6 +599,26 @@ router.put("/", async (req, res) => {
     return;
   }
 
+  const VALID_DELAYS_SEC = [30, 60, 300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400];
+
+  function parseOptionalDelay(raw: unknown, field: string): number | null {
+    if (raw == null) return null;
+    const n = parseInt(String(raw), 10);
+    if (!isFinite(n)) throw new Error(`${field} must be an integer`);
+    if (!VALID_DELAYS_SEC.includes(n)) throw new Error(`${field} must be one of the allowed delay values`);
+    return n;
+  }
+
+  let delay1: number | null, delay2: number | null, delay3: number | null;
+  try {
+    delay1 = parseOptionalDelay(retryDelay1, "retryDelay1");
+    delay2 = parseOptionalDelay(retryDelay2, "retryDelay2");
+    delay3 = parseOptionalDelay(retryDelay3, "retryDelay3");
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message ?? "Invalid delay value" });
+    return;
+  }
+
   const alertEnabled = failureAlertEnabled != null ? Boolean(failureAlertEnabled) : true;
   const alertThresholdNum = failureAlertThreshold != null ? parseInt(String(failureAlertThreshold), 10) : 3;
   if (!isFinite(alertThresholdNum) || alertThresholdNum < 1 || alertThresholdNum > 10) {
@@ -606,19 +626,32 @@ router.put("/", async (req, res) => {
     return;
   }
 
+  const fieldsToSet = {
+    url,
+    isActive: isActive ?? true,
+    events,
+    secret: secret ?? null,
+    maxRetries: maxRetriesNum,
+    retryDelay1: delay1,
+    retryDelay2: delay2,
+    retryDelay3: delay3,
+    failureAlertEnabled: alertEnabled,
+    failureAlertThreshold: alertThresholdNum,
+  };
+
   // Upsert
   const existing = await db.select().from(webhooksTable).where(eq(webhooksTable.merchantId, merchantId)).limit(1);
   let webhook;
   if (existing.length > 0) {
     [webhook] = await db
       .update(webhooksTable)
-      .set({ url, isActive: isActive ?? true, events, secret: secret ?? null, maxRetries: maxRetriesNum, failureAlertEnabled: alertEnabled, failureAlertThreshold: alertThresholdNum })
+      .set(fieldsToSet)
       .where(eq(webhooksTable.merchantId, merchantId))
       .returning();
   } else {
     [webhook] = await db
       .insert(webhooksTable)
-      .values({ merchantId, url, isActive: isActive ?? true, events, secret: secret ?? null, maxRetries: maxRetriesNum, failureAlertEnabled: alertEnabled, failureAlertThreshold: alertThresholdNum })
+      .values({ merchantId, ...fieldsToSet })
       .returning();
   }
   res.json(webhook);

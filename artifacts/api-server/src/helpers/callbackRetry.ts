@@ -228,19 +228,25 @@ function getNextRetryDelayFromConfig(attempts: number, config: WebhookRetryConfi
   return config.delaysMs[config.delaysMs.length - 1] ?? DEFAULT_DELAYS_SECONDS[DEFAULT_DELAYS_SECONDS.length - 1]! * 1000;
 }
 
-export async function scheduleCallbackRetry(logId: number, attempts: number, overrideMaxRetries?: number): Promise<void> {
+export interface MerchantRetryDelayOverrides {
+  delay1?: number | null;
+  delay2?: number | null;
+  delay3?: number | null;
+}
+
+export async function scheduleCallbackRetry(
+  logId: number,
+  attempts: number,
+  overrideMaxRetries?: number,
+  merchantDelayOverrides?: MerchantRetryDelayOverrides,
+): Promise<void> {
   // overrideMaxRetries = per-webhook number of retries (not total attempts); total cap = maxRetries + 1.
   // When no per-webhook override, fall back to the DB-configured global maxAttempts.
-  let maxTotalAttempts: number;
-  let config: WebhookRetryConfig;
+  const globalConfig = await loadWebhookRetryConfig();
 
-  if (overrideMaxRetries != null) {
-    maxTotalAttempts = overrideMaxRetries + 1;
-    config = await loadWebhookRetryConfig();
-  } else {
-    config = await loadWebhookRetryConfig();
-    maxTotalAttempts = config.maxAttempts;
-  }
+  const maxTotalAttempts = overrideMaxRetries != null
+    ? overrideMaxRetries + 1
+    : globalConfig.maxAttempts;
 
   if (attempts >= maxTotalAttempts) {
     await db
@@ -250,7 +256,19 @@ export async function scheduleCallbackRetry(logId: number, attempts: number, ove
     return;
   }
 
-  const delayMs = getNextRetryDelayFromConfig(attempts, config);
+  // Merge per-merchant delay overrides with global defaults.
+  const effectiveConfig: WebhookRetryConfig = merchantDelayOverrides
+    ? {
+        maxAttempts: globalConfig.maxAttempts,
+        delaysMs: [
+          (merchantDelayOverrides.delay1 != null ? merchantDelayOverrides.delay1 : globalConfig.delaysMs[0]! / 1000) * 1000,
+          (merchantDelayOverrides.delay2 != null ? merchantDelayOverrides.delay2 : globalConfig.delaysMs[1]! / 1000) * 1000,
+          (merchantDelayOverrides.delay3 != null ? merchantDelayOverrides.delay3 : globalConfig.delaysMs[2]! / 1000) * 1000,
+        ],
+      }
+    : globalConfig;
+
+  const delayMs = getNextRetryDelayFromConfig(attempts, effectiveConfig);
   const nextRetryAt = new Date(Date.now() + delayMs);
 
   await db
@@ -303,13 +321,19 @@ export async function processPendingRetries(): Promise<void> {
   // Load the global retry config (DB-configured) once for the whole batch.
   const globalConfig = await loadWebhookRetryConfig();
 
-  // Load per-merchant webhook maxRetries for all unique merchants in this batch.
+  // Load per-merchant webhook config (maxRetries + custom delay overrides) for all unique merchants in this batch.
   const merchantIds = [...new Set(pending.map(l => l.merchantId))];
   const webhookRows = await db
-    .select({ merchantId: webhooksTable.merchantId, maxRetries: webhooksTable.maxRetries })
+    .select({
+      merchantId: webhooksTable.merchantId,
+      maxRetries: webhooksTable.maxRetries,
+      retryDelay1: webhooksTable.retryDelay1,
+      retryDelay2: webhooksTable.retryDelay2,
+      retryDelay3: webhooksTable.retryDelay3,
+    })
     .from(webhooksTable)
     .where(inArray(webhooksTable.merchantId, merchantIds));
-  const webhookMaxRetriesMap = new Map(webhookRows.map(r => [r.merchantId, r.maxRetries]));
+  const webhookConfigMap = new Map(webhookRows.map(r => [r.merchantId, r]));
 
   for (const log of pending) {
     if (!log.requestBody) {
@@ -356,11 +380,12 @@ export async function processPendingRetries(): Promise<void> {
 
       // Live deliveries respect the per-webhook maxRetries (number of retries allowed).
       // Test deliveries and logs without a per-webhook config fall back to the DB-configured global maxAttempts.
+      const webhookCfg = webhookConfigMap.get(log.merchantId);
       let reachedCap: boolean;
       if (log.isTest) {
         reachedCap = newAttempts >= globalConfig.maxAttempts;
       } else {
-        const webhookMaxRetries = webhookMaxRetriesMap.get(log.merchantId);
+        const webhookMaxRetries = webhookCfg?.maxRetries;
         if (webhookMaxRetries != null) {
           // webhookMaxRetries = number of retries; total cap = maxRetries + 1
           reachedCap = newAttempts > webhookMaxRetries;
@@ -369,6 +394,18 @@ export async function processPendingRetries(): Promise<void> {
           reachedCap = newAttempts >= globalConfig.maxAttempts;
         }
       }
+
+      // Build a merged config: per-merchant delay overrides take priority over global config.
+      const mergedConfig: WebhookRetryConfig = log.isTest || !webhookCfg
+        ? globalConfig
+        : {
+            maxAttempts: globalConfig.maxAttempts,
+            delaysMs: [
+              (webhookCfg.retryDelay1 != null ? webhookCfg.retryDelay1 : globalConfig.delaysMs[0]! / 1000) * 1000,
+              (webhookCfg.retryDelay2 != null ? webhookCfg.retryDelay2 : globalConfig.delaysMs[1]! / 1000) * 1000,
+              (webhookCfg.retryDelay3 != null ? webhookCfg.retryDelay3 : globalConfig.delaysMs[2]! / 1000) * 1000,
+            ],
+          };
 
       if (reachedCap) {
         await db
@@ -398,7 +435,7 @@ export async function processPendingRetries(): Promise<void> {
           });
         }
       } else {
-        const delayMs = getNextRetryDelayFromConfig(newAttempts, globalConfig);
+        const delayMs = getNextRetryDelayFromConfig(newAttempts, mergedConfig);
         const nextRetryAt = new Date(Date.now() + delayMs);
 
         await db

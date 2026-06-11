@@ -755,6 +755,9 @@ export default function MerchantWebhook() {
   const [isActive, setIsActive] = useState(true);
   const [events, setEvents] = useState<string[]>([]);
   const [maxRetries, setMaxRetries] = useState(3);
+  const [retryDelay1, setRetryDelay1] = useState<number | null>(null);
+  const [retryDelay2, setRetryDelay2] = useState<number | null>(null);
+  const [retryDelay3, setRetryDelay3] = useState<number | null>(null);
   const [failureAlertEnabled, setFailureAlertEnabled] = useState(true);
   const [failureAlertThreshold, setFailureAlertThreshold] = useState(3);
   const [newSecret, setNewSecret] = useState<string | null>(null);
@@ -779,6 +782,9 @@ export default function MerchantWebhook() {
       setIsActive(config.isActive);
       setEvents(config.events || []);
       setMaxRetries(config.maxRetries ?? 3);
+      setRetryDelay1(config.retryDelay1 ?? null);
+      setRetryDelay2(config.retryDelay2 ?? null);
+      setRetryDelay3(config.retryDelay3 ?? null);
       setFailureAlertEnabled(config.failureAlertEnabled ?? true);
       setFailureAlertThreshold(config.failureAlertThreshold ?? 3);
     }
@@ -791,7 +797,7 @@ export default function MerchantWebhook() {
   const handleSave = () => {
     if (!url.trim()) { toast.error("Webhook URL is required"); return; }
     const hasSecret = !!secret.trim();
-    updateMutation.mutate({ data: { url: url.trim(), isActive, events, secret: secret || null, maxRetries, failureAlertEnabled, failureAlertThreshold } }, {
+    updateMutation.mutate({ data: { url: url.trim(), isActive, events, secret: secret || null, maxRetries, retryDelay1, retryDelay2, retryDelay3, failureAlertEnabled, failureAlertThreshold } }, {
       onSuccess: () => {
         toast.success("Webhook configuration saved");
         qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() });
@@ -921,6 +927,47 @@ onError: () => toast.error("Failed to send test event"),
               </SelectContent>
             </Select>
           </div>
+          {maxRetries > 0 && (
+            <div className="space-y-3 pl-1">
+              <div>
+                <Label className="text-xs">Retry delay schedule</Label>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-3">How long to wait before each retry attempt. Applies to both webhook and QR code callback retries. Leave as "System default" to use the platform-wide setting.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {([
+                    { label: "After 1st failure", value: retryDelay1, setValue: setRetryDelay1 },
+                    { label: "After 2nd failure", value: retryDelay2, setValue: setRetryDelay2 },
+                    { label: "After 3rd+ failure", value: retryDelay3, setValue: setRetryDelay3 },
+                  ] as const).map(({ label, value, setValue }) => (
+                    <div key={label}>
+                      <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                      <Select
+                        value={value == null ? "default" : String(value)}
+                        onValueChange={v => setValue(v === "default" ? null : parseInt(v, 10))}
+                      >
+                        <SelectTrigger className="w-full text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="default" className="text-xs text-muted-foreground">System default</SelectItem>
+                          <SelectItem value="30" className="text-xs">30 seconds</SelectItem>
+                          <SelectItem value="60" className="text-xs">1 minute</SelectItem>
+                          <SelectItem value="300" className="text-xs">5 minutes</SelectItem>
+                          <SelectItem value="900" className="text-xs">15 minutes</SelectItem>
+                          <SelectItem value="1800" className="text-xs">30 minutes</SelectItem>
+                          <SelectItem value="3600" className="text-xs">1 hour</SelectItem>
+                          <SelectItem value="7200" className="text-xs">2 hours</SelectItem>
+                          <SelectItem value="14400" className="text-xs">4 hours</SelectItem>
+                          <SelectItem value="21600" className="text-xs">6 hours</SelectItem>
+                          <SelectItem value="43200" className="text-xs">12 hours</SelectItem>
+                          <SelectItem value="86400" className="text-xs">24 hours</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="border-t border-border/50 pt-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">

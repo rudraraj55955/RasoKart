@@ -112,14 +112,23 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
     (async () => {
       const now = new Date();
 
-      // Look up the merchant's webhook maxRetries so the initial schedule
-      // respects the same cap used by processPendingRetries for later retries.
+      // Look up the merchant's webhook config so the initial schedule respects
+      // both the per-merchant max-retries cap and custom delay overrides —
+      // consistent with what processPendingRetries applies for later retries.
       const [webhookRow] = await db
-        .select({ maxRetries: webhooksTable.maxRetries })
+        .select({
+          maxRetries: webhooksTable.maxRetries,
+          retryDelay1: webhooksTable.retryDelay1,
+          retryDelay2: webhooksTable.retryDelay2,
+          retryDelay3: webhooksTable.retryDelay3,
+        })
         .from(webhooksTable)
         .where(eq(webhooksTable.merchantId, capturedQr.merchantId))
         .limit(1);
       const merchantMaxRetries = webhookRow?.maxRetries ?? undefined;
+      const merchantDelayOverrides = webhookRow
+        ? { delay1: webhookRow.retryDelay1, delay2: webhookRow.retryDelay2, delay3: webhookRow.retryDelay3 }
+        : undefined;
 
       const firedAt = new Date();
       const { ok, httpStatus, responseBody } = await fireCallback(capturedQr.callbackUrl!, bodyStr);
@@ -178,7 +187,7 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
             logger.warn({ err, callbackLogId: inserted.id }, "Failed to insert initial callback_log_attempt record");
           });
 
-          await scheduleCallbackRetry(inserted.id, 1, merchantMaxRetries);
+          await scheduleCallbackRetry(inserted.id, 1, merchantMaxRetries, merchantDelayOverrides);
         }
       }
     })().catch((err: unknown) => {
@@ -386,7 +395,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   }
 
   const [log] = await db
-    .select({ id: callbackLogsTable.id, status: callbackLogsTable.status })
+    .select({ id: callbackLogsTable.id, status: callbackLogsTable.status, merchantId: callbackLogsTable.merchantId })
     .from(callbackLogsTable)
     .where(eq(callbackLogsTable.id, id))
     .limit(1);
@@ -401,13 +410,29 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     return;
   }
 
+  // Look up per-merchant delay overrides so the re-scheduled retry respects them.
+  const [adminRetryWebhookRow] = await db
+    .select({
+      maxRetries: webhooksTable.maxRetries,
+      retryDelay1: webhooksTable.retryDelay1,
+      retryDelay2: webhooksTable.retryDelay2,
+      retryDelay3: webhooksTable.retryDelay3,
+    })
+    .from(webhooksTable)
+    .where(eq(webhooksTable.merchantId, log.merchantId))
+    .limit(1);
+  const adminRetryDelayOverrides = adminRetryWebhookRow
+    ? { delay1: adminRetryWebhookRow.retryDelay1, delay2: adminRetryWebhookRow.retryDelay2, delay3: adminRetryWebhookRow.retryDelay3 }
+    : undefined;
+  const adminRetryMaxRetries = adminRetryWebhookRow?.maxRetries;
+
   const now = new Date();
   await db
     .update(callbackLogsTable)
     .set({ status: "pending_retry", attempts: 0, nextRetryAt: now })
     .where(eq(callbackLogsTable.id, id));
 
-  await scheduleCallbackRetry(id, 0);
+  await scheduleCallbackRetry(id, 0, adminRetryMaxRetries, adminRetryDelayOverrides);
 
   req.log.info({ callbackLogId: id }, "Admin manually triggered callback retry");
 
