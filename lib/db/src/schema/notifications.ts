@@ -1,4 +1,5 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const notificationsTable = pgTable("notifications", {
   id: serial("id").primaryKey(),
@@ -15,6 +16,18 @@ export const notificationsTable = pgTable("notifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("notifications_user_idx").on(table.userId, table.isRead, table.createdAt),
+  // Dedup index: at most one provider_limit_warning and one provider_limit_reached
+  // per user, per provider, per billing month (monthKey = "YYYY-MM").
+  // onConflictDoNothing() in maybeNotifyProviderLimit() relies on this.
+  uniqueIndex("notifications_provider_limit_dedup_idx")
+    .on(table.userId, table.type, sql`((metadata->>'provider'))`, sql`((metadata->>'monthKey'))`)
+    .where(sql`type IN ('provider_limit_warning', 'provider_limit_reached')`),
+  // Dedup index: at most one provider_limit_reset per user, per provider, per
+  // current billing month (currentMonthKey = "YYYY-MM").
+  // onConflictDoNothing() in maybeNotifyProviderLimitReset() relies on this.
+  uniqueIndex("notifications_provider_limit_reset_dedup_idx")
+    .on(table.userId, table.type, sql`((metadata->>'provider'))`, sql`((metadata->>'currentMonthKey'))`)
+    .where(sql`type = 'provider_limit_reset'`),
 ]);
 
 export type Notification = typeof notificationsTable.$inferSelect;

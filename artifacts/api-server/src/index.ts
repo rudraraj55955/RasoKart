@@ -6,7 +6,7 @@ import cron from "node-cron";
 import { processPendingRetries } from "./helpers/callbackRetry";
 import { initReconciliationScheduler } from "./helpers/reconScheduler";
 import { initAuditReportScheduler } from "./helpers/auditReportScheduler";
-import { startProviderLimitAlertScheduler } from "./helpers/providerLimitScheduler";
+import { startProviderLimitAlertScheduler, runProviderLimitAlertScan } from "./helpers/providerLimitScheduler";
 import { initQrCleanupScheduler } from "./helpers/qrCleanupScheduler";
 import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 
@@ -59,6 +59,13 @@ async function main() {
   initQrCleanupScheduler();
   initPlanExpiryScheduler();
   scheduleCallbackRetryWorker();
+
+  // Startup sweep: immediately scan all active connections so merchants receive
+  // provider_limit_reset (and warning/reached) notifications even when the server
+  // was down at the start of the month. The dedup indexes make this idempotent.
+  runProviderLimitAlertScan().catch((err) => {
+    logger.warn({ err }, "Startup provider limit sweep failed");
+  });
 
   app.listen(port, (err) => {
     if (err) {

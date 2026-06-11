@@ -3,6 +3,7 @@ import { db, notificationsTable, usersTable, merchantsTable, merchantPlansTable,
 import { eq, and, desc, count, lt, gte, or, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createBulkNotifications, createNotification } from "../helpers/notifications";
+import { runProviderLimitAlertScan } from "../helpers/providerLimitScheduler";
 
 const router = Router();
 router.use(requireAuth);
@@ -220,6 +221,11 @@ router.get("/check-expiry", requireAdmin, async (req, res, next) => {
     if (notifications.length > 0) {
       await createBulkNotifications(notifications);
     }
+
+    // Also sweep provider limit resets for all active connections so this
+    // endpoint can serve as a single "catch-up" trigger for admins.
+    // The dedup indexes make this idempotent.
+    await runProviderLimitAlertScan();
 
     res.json({ message: "Expiry check complete", notificationsSent: notifications.length, expiringCount: activePlans.length, expiredCount: justExpired.length });
   } catch (err) {
