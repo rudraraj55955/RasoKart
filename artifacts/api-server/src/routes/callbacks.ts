@@ -287,37 +287,29 @@ router.get("/secret/history", async (req, res) => {
     return;
   }
 
-  const [merchant] = await db
+  const rows = await db
     .select({
-      callbackSecret: merchantsTable.callbackSecret,
-      callbackSecretUpdatedAt: merchantsTable.callbackSecretUpdatedAt,
+      eventType: credentialEventsTable.eventType,
+      occurredAt: credentialEventsTable.createdAt,
+      keyPrefix: credentialEventsTable.keyPrefix,
+      ipAddress: credentialEventsTable.ipAddress,
     })
-    .from(merchantsTable)
-    .where(eq(merchantsTable.id, user.merchantId))
-    .limit(1);
+    .from(credentialEventsTable)
+    .where(
+      and(
+        eq(credentialEventsTable.merchantId, user.merchantId),
+        eq(credentialEventsTable.eventType, "callback_secret_rotated"),
+      )
+    )
+    .orderBy(desc(credentialEventsTable.createdAt));
 
-  if (!merchant) {
-    res.status(404).json({ error: "Merchant not found" });
-    return;
-  }
-
-  const events: Array<{
-    type: string;
-    occurredAt: string;
-    keyPrefix: string | null;
-    description: string;
-    isRevoked: boolean;
-  }> = [];
-
-  if (merchant.callbackSecretUpdatedAt) {
-    events.push({
-      type: "secret_rotated",
-      occurredAt: merchant.callbackSecretUpdatedAt.toISOString(),
-      keyPrefix: merchant.callbackSecret ? merchant.callbackSecret.slice(0, 8) + "..." : null,
-      description: "Callback signing secret rotated",
-      isRevoked: false,
-    });
-  }
+  const events = rows.map(r => ({
+    eventType: "secret_rotated",
+    occurredAt: r.occurredAt.toISOString(),
+    keyPrefix: r.keyPrefix ?? null,
+    description: "Callback signing secret rotated",
+    isRevoked: false,
+  }));
 
   res.json({ data: events });
 });

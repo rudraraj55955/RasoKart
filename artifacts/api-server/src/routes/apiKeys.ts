@@ -58,16 +58,13 @@ router.get("/history", async (req, res) => {
     .orderBy(desc(credentialEventsTable.createdAt));
 
   const events = rows.map(r => ({
-    eventType: r.eventType,
+    eventType: r.eventType === "api_key_generated" ? "api_key_created" : "api_key_revoked",
     occurredAt: r.createdAt.toISOString(),
     keyPrefix: r.keyPrefix ?? null,
     description: r.eventType === "api_key_generated"
-      ? `API key generated (${r.keyPrefix})`
-      : r.eventType === "api_key_revoked"
-      ? `API key revoked (${r.keyPrefix})`
-      : r.eventType === "callback_secret_rotated"
-      ? "Callback signing secret rotated"
-      : r.eventType,
+      ? `API key generated (${r.keyPrefix ?? ""})`
+      : `API key revoked (${r.keyPrefix ?? ""})`,
+    isRevoked: r.eventType === "api_key_revoked",
     ipAddress: r.ipAddress ? maskIp(r.ipAddress) : null,
     actorEmail: r.actorEmail ?? null,
   }));
