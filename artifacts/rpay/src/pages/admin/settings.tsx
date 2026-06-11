@@ -197,8 +197,6 @@ export default function AdminSettings() {
   const [retryDelay3, setRetryDelay3] = useState<number>(3600);
   const [retryInitialized, setRetryInitialized] = useState(false);
 
-  const [storageScheduleInitialized, setStorageScheduleInitialized] = useState(false);
-
   // SMTP config form state
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("587");

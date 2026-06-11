@@ -358,8 +358,7 @@ export default function MerchantCallbacks() {
 
   const applyQrFilterById = (id: number) => {
     setQrCodeIdInput(String(id));
-    setQrCodeId(id);
-    setPage(1);
+    updateParams({ qr: String(id), page: "1" });
   };
 
   const applySigFailureFilter = () => {
