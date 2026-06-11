@@ -11,7 +11,7 @@ import { TestEmailHistoryPanel } from "@/components/test-email-history-panel";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, type AdminAuditLog, type StorageCleanupRun } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useClearTestEmailHistory, type AdminAuditLog, type StorageCleanupRun } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
@@ -271,6 +271,20 @@ export default function AdminSettings() {
     setTestHistoryFilter(f);
     setTestHistoryLimit(10);
   }
+
+  const [clearHistoryConfirm, setClearHistoryConfirm] = useState(false);
+
+  const { mutate: clearTestEmailHistory, isPending: clearingHistory } = useClearTestEmailHistory({
+    mutation: {
+      onSuccess: (res) => {
+        toast.success(`Cleared ${res.deleted} test email ${res.deleted === 1 ? "entry" : "entries"}`);
+        setClearHistoryConfirm(false);
+        qc.invalidateQueries({ queryKey: ["test-email-history"] });
+        qc.invalidateQueries({ queryKey: ["test-email-history-count"] });
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to clear history")),
+    },
+  });
 
   const [previewingEmail, setPreviewingEmail] = useState(false);
   const [previewingAlertEmail, setPreviewingAlertEmail] = useState(false);
@@ -741,6 +755,10 @@ export default function AdminSettings() {
               isLoading={historyLoading}
               filter={smtpHistoryFilter}
               onFilterChange={setSmtpHistoryFilter}
+              onClear={() => clearTestEmailHistory()}
+              clearing={clearingHistory}
+              clearConfirm={clearHistoryConfirm}
+              onClearConfirmChange={setClearHistoryConfirm}
             />
           </div>
         </CardContent>
@@ -1067,6 +1085,10 @@ export default function AdminSettings() {
               sendTestEmail(recipient);
             }}
             retrying={sendingTest}
+            onClear={() => clearTestEmailHistory()}
+            clearing={clearingHistory}
+            clearConfirm={clearHistoryConfirm}
+            onClearConfirmChange={setClearHistoryConfirm}
           />
 
           {/* Finance Report Email Log */}

@@ -74,6 +74,7 @@ export * from './callbackSecretStatus';
 export * from './callbackStatsResponse';
 export * from './callbackWindowInput';
 export * from './chartDataPoint';
+export * from './clearTestEmailHistory200';
 export * from './connectionsListPage';
 export * from './createMerchantFilterPresetInput';
 export * from './createMerchantFilterPresetInputPayload';

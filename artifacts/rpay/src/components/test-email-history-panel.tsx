@@ -1,4 +1,4 @@
-import { History, CheckCircle2, XCircle, RotateCcw } from "lucide-react";
+import { History, CheckCircle2, XCircle, RotateCcw, Trash2 } from "lucide-react";
 import type { AdminAuditLog } from "@workspace/api-client-react";
 
 type FilterType = "all" | "success" | "failed";
@@ -15,6 +15,10 @@ interface TestEmailHistoryPanelProps {
   failedCount?: number;
   onRetry?: (recipient: string) => void;
   retrying?: boolean;
+  onClear?: () => void;
+  clearing?: boolean;
+  clearConfirm?: boolean;
+  onClearConfirmChange?: (v: boolean) => void;
 }
 
 export function TestEmailHistoryPanel({
@@ -29,6 +33,10 @@ export function TestEmailHistoryPanel({
   failedCount,
   onRetry,
   retrying,
+  onClear,
+  clearing,
+  clearConfirm,
+  onClearConfirmChange,
 }: TestEmailHistoryPanelProps) {
   return (
     <div className="border-t border-border/50 pt-4 space-y-3">
@@ -37,6 +45,7 @@ export function TestEmailHistoryPanel({
           <History className="w-3.5 h-3.5 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">{title}</p>
         </div>
+        <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-1">
           {(["all", "success", "failed"] as const).map(f => {
             const badge =
@@ -69,6 +78,37 @@ export function TestEmailHistoryPanel({
               </button>
             );
           })}
+        </div>
+        {onClear && (clearConfirm ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onClear()}
+              disabled={clearing}
+              className="rounded px-2 py-0.5 text-xs font-medium text-red-400 border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+            >
+              {clearing ? "Clearing…" : "Confirm"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onClearConfirmChange?.(false)}
+              disabled={clearing}
+              className="rounded px-2 py-0.5 text-xs font-medium text-muted-foreground border border-transparent hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onClearConfirmChange?.(true)}
+            className="flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-muted-foreground border border-transparent hover:text-red-400 hover:border-red-500/30 transition-colors"
+            title="Delete all test email history entries"
+          >
+            <Trash2 className="w-3 h-3" />
+            Clear
+          </button>
+        ))}
         </div>
       </div>
 

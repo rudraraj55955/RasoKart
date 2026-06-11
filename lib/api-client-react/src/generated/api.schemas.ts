@@ -3165,6 +3165,11 @@ dateFrom?: string;
 dateTo?: string;
 };
 
+export type ClearTestEmailHistory200 = {
+  /** Number of rows deleted */
+  deleted: number;
+};
+
 export type ListAdminAuditLogsParams = {
 page?: number;
 limit?: number;

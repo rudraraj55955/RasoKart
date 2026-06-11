@@ -3429,6 +3429,26 @@ paths:
         "403":
           description: Forbidden
 
+  /audit-logs/test-email-history:
+    delete:
+      operationId: clearTestEmailHistory
+      tags: [dashboard]
+      summary: Delete all test_email_sent audit log entries
+      responses:
+        "200":
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: integer
+                    description: Number of rows deleted
+        "403":
+          description: Forbidden
+
   /audit-logs:
     get:
       operationId: listAdminAuditLogs

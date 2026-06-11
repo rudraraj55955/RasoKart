@@ -3263,6 +3263,14 @@ export const ExportAdminAuditLogsCsvQueryParams = zod.object({
 
 
 /**
+ * @summary Delete all test_email_sent audit log entries
+ */
+export const ClearTestEmailHistoryResponse = zod.object({
+  "deleted": zod.number().describe('Number of rows deleted')
+})
+
+
+/**
  * @summary List admin audit logs
  */
 export const ListAdminAuditLogsQueryParams = zod.object({

@@ -249,6 +249,15 @@ router.get("/export", async (req, res) => {
   res.send(csv);
 });
 
+router.delete("/test-email-history", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const deleted = await db
+    .delete(auditLogsTable)
+    .where(eq(auditLogsTable.action, "test_email_sent"))
+    .returning({ id: auditLogsTable.id });
+  res.json({ deleted: deleted.length });
+});
+
 router.post("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
   const user = (req as any).user;
