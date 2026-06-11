@@ -121,10 +121,11 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
         .limit(1);
       const merchantMaxRetries = webhookRow?.maxRetries ?? undefined;
 
+      const firedAt = new Date();
       const { ok, httpStatus, responseBody } = await fireCallback(capturedQr.callbackUrl!, bodyStr);
 
       if (ok) {
-        await db.insert(callbackLogsTable).values({
+        const [inserted] = await db.insert(callbackLogsTable).values({
           merchantId: capturedQr.merchantId,
           qrCodeId: capturedQr.id,
           transactionId: transactionId ?? null,
@@ -136,7 +137,19 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
           attempts: 1,
           lastAttemptAt: now,
           signatureVerified: capturedSignatureVerified,
-        });
+        }).returning({ id: callbackLogsTable.id });
+
+        if (inserted) {
+          db.insert(callbackLogAttemptsTable).values({
+            callbackLogId: inserted.id,
+            attemptNumber: 1,
+            firedAt,
+            httpStatus: httpStatus ?? null,
+            responseBody: responseBody ?? null,
+          }).catch((err: unknown) => {
+            logger.warn({ err, callbackLogId: inserted.id }, "Failed to insert initial callback_log_attempt record");
+          });
+        }
       } else {
         logger.warn({ httpStatus, url: capturedQr.callbackUrl }, "QR callbackUrl fire failed — scheduling retries");
 
@@ -155,6 +168,16 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
         }).returning({ id: callbackLogsTable.id });
 
         if (inserted) {
+          db.insert(callbackLogAttemptsTable).values({
+            callbackLogId: inserted.id,
+            attemptNumber: 1,
+            firedAt,
+            httpStatus: httpStatus ?? null,
+            responseBody: responseBody ?? null,
+          }).catch((err: unknown) => {
+            logger.warn({ err, callbackLogId: inserted.id }, "Failed to insert initial callback_log_attempt record");
+          });
+
           await scheduleCallbackRetry(inserted.id, 1, merchantMaxRetries);
         }
       }

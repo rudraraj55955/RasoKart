@@ -1,4 +1,4 @@
-import { db, callbackLogsTable, usersTable, notificationsTable, webhooksTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { db, callbackLogsTable, callbackLogAttemptsTable, usersTable, notificationsTable, webhooksTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
 import { eq, and, lte, sql, inArray, desc, ne } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { createNotification, createBulkNotifications } from "./notifications";
@@ -321,7 +321,18 @@ export async function processPendingRetries(): Promise<void> {
     }
 
     const newAttempts = log.attempts + 1;
+    const firedAt = new Date();
     const { ok, httpStatus, responseBody } = await fireCallback(log.url, log.requestBody);
+
+    db.insert(callbackLogAttemptsTable).values({
+      callbackLogId: log.id,
+      attemptNumber: newAttempts,
+      firedAt,
+      httpStatus: httpStatus ?? null,
+      responseBody: responseBody ?? null,
+    }).catch((err: unknown) => {
+      logger.warn({ err, logId: log.id, attemptNumber: newAttempts }, "Failed to insert callback_log_attempt record");
+    });
 
     if (ok) {
       await db

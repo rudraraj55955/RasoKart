@@ -60,7 +60,9 @@ function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) 
     <div className="px-2 pt-3">
       <div className="flex items-center gap-1.5 mb-2">
         <ListOrdered className="w-3.5 h-3.5 text-muted-foreground/60" />
-        <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">Attempt History</p>
+        <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">
+          Attempt History{attempts.length > 0 ? ` · ${attempts.length}` : ""}
+        </p>
       </div>
       {isLoading ? (
         <div className="flex items-center gap-2 px-1 py-2">
