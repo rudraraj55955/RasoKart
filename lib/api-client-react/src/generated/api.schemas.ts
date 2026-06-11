@@ -2893,6 +2893,18 @@ export const ListAuditReportScheduleLogsStatus = {
 export type ListMySecurityActivityParams = {
 page?: number;
 limit?: number;
+/**
+ * Filter by action type (e.g. plan_assigned, merchant_suspended)
+ */
+action?: string;
+/**
+ * Filter events on or after this date (ISO 8601, e.g. 2025-01-01)
+ */
+dateFrom?: string;
+/**
+ * Filter events on or before this date (ISO 8601, e.g. 2025-12-31)
+ */
+dateTo?: string;
 };
 
 export type ExportAdminAuditLogsCsvParams = {

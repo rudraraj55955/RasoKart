@@ -4,7 +4,9 @@ import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-co
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, KeyRound, Webhook, RotateCcw, CheckCircle2, AlertTriangle, Clock, Lock, Shield, ChevronLeft, ChevronRight, AlertCircle, UserCog, CreditCard, FileText, Sliders, Info } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ShieldCheck, KeyRound, Webhook, RotateCcw, CheckCircle2, AlertTriangle, Clock, Lock, Shield, ChevronLeft, ChevronRight, AlertCircle, UserCog, CreditCard, FileText, Sliders, Info, X } from "lucide-react";
 import { format, formatDistanceToNow, differenceInDays } from "date-fns";
 import { Link } from "wouter";
 
@@ -25,6 +27,11 @@ const ACTION_META: Record<string, { label: string; icon: React.ReactNode; color:
   settlement_paid:          { label: "Settlement Paid",         icon: <FileText className="w-4 h-4" />,    color: "text-emerald-400" },
   feature_toggle:           { label: "Feature Changed",         icon: <Sliders className="w-4 h-4" />,     color: "text-blue-400" },
 };
+
+const ACTION_CHIPS = [
+  { value: "all", label: "All" },
+  ...Object.entries(ACTION_META).map(([value, meta]) => ({ value, label: meta.label })),
+];
 
 function actionMeta(action: string) {
   return ACTION_META[action] ?? { label: formatAction(action), icon: <Shield className="w-4 h-4" />, color: "text-muted-foreground" };
@@ -126,12 +133,21 @@ function CredentialRow({
 
 export default function MerchantSecurity() {
   const [page, setPage] = useState(1);
+  const [actionFilter, setActionFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const LIMIT = 20;
 
   const { data: me, isLoading: meLoading } = useGetMe();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
   const { data: apiKeys, isLoading: keysLoading } = useListApiKeys();
-  const { data: activityData, isLoading: activityLoading } = useListMySecurityActivity({ page, limit: LIMIT });
+  const { data: activityData, isLoading: activityLoading } = useListMySecurityActivity({
+    page,
+    limit: LIMIT,
+    ...(actionFilter !== "all" ? { action: actionFilter } : {}),
+    ...(dateFrom ? { dateFrom } : {}),
+    ...(dateTo ? { dateTo } : {}),
+  });
 
   const allKeys = apiKeys ?? [];
   const activeKeys = allKeys.filter(k => k.isActive);
@@ -142,6 +158,30 @@ export default function MerchantSecurity() {
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
   const credentialsLoading = meLoading || secretLoading || keysLoading;
+
+  const hasActiveFilters = actionFilter !== "all" || dateFrom !== "" || dateTo !== "";
+
+  function handleActionFilter(value: string) {
+    setActionFilter(value);
+    setPage(1);
+  }
+
+  function handleDateFrom(value: string) {
+    setDateFrom(value);
+    setPage(1);
+  }
+
+  function handleDateTo(value: string) {
+    setDateTo(value);
+    setPage(1);
+  }
+
+  function clearFilters() {
+    setActionFilter("all");
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  }
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -351,6 +391,61 @@ export default function MerchantSecurity() {
           </CardContent>
         </Card>
 
+        {/* ── Filters ── */}
+        <div className="space-y-3 mb-4">
+          {/* Action type chips */}
+          <div className="flex flex-wrap gap-2">
+            {ACTION_CHIPS.map(chip => (
+              <button
+                key={chip.value}
+                onClick={() => handleActionFilter(chip.value)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  actionFilter === chip.value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border bg-transparent"
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date range */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">From</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={e => handleDateFrom(e.target.value)}
+                max={dateTo || undefined}
+                className="h-8 text-xs w-40 bg-background border-border/60"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">To</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={e => handleDateTo(e.target.value)}
+                min={dateFrom || undefined}
+                className="h-8 text-xs w-40 bg-background border-border/60"
+              />
+            </div>
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-8 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+              >
+                <X className="w-3.5 h-3.5" />
+                Clear filters
+              </Button>
+            )}
+          </div>
+        </div>
+
         <Card>
           <CardContent className="p-0">
             {activityLoading ? (
@@ -358,7 +453,14 @@ export default function MerchantSecurity() {
             ) : entries.length === 0 ? (
               <div className="py-16 flex flex-col items-center gap-3 text-muted-foreground">
                 <Shield className="w-10 h-10 opacity-20" />
-                <p className="text-sm">No admin activity on your account yet</p>
+                <p className="text-sm">
+                  {hasActiveFilters ? "No events match your filters" : "No admin activity on your account yet"}
+                </p>
+                {hasActiveFilters && (
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
               </div>
             ) : (
               <ul className="divide-y divide-border/50">

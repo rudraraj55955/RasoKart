@@ -35,12 +35,24 @@ router.get("/my-activity", async (req, res) => {
     return;
   }
 
-  const { page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { page = "1", limit = "20", action, dateFrom, dateTo } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
 
-  const where = eq(auditLogsTable.targetId, user.merchantId);
+  const conditions: any[] = [eq(auditLogsTable.targetId, user.merchantId)];
+  if (action && action !== "all") conditions.push(eq(auditLogsTable.action, action));
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    from.setUTCHours(0, 0, 0, 0);
+    if (!isNaN(from.getTime())) conditions.push(gte(auditLogsTable.createdAt, from));
+  }
+  if (dateTo) {
+    const to = new Date(dateTo);
+    to.setUTCHours(23, 59, 59, 999);
+    if (!isNaN(to.getTime())) conditions.push(lte(auditLogsTable.createdAt, to));
+  }
+  const where = and(...conditions);
 
   const [{ total }] = await db.select({ total: count() }).from(auditLogsTable).where(where);
 

@@ -3243,6 +3243,18 @@ paths:
         - name: limit
           in: query
           schema: { type: integer }
+        - name: action
+          in: query
+          description: "Filter by action type (e.g. plan_assigned, merchant_suspended)"
+          schema: { type: string }
+        - name: dateFrom
+          in: query
+          description: "Filter events on or after this date (ISO 8601, e.g. 2025-01-01)"
+          schema: { type: string, format: date }
+        - name: dateTo
+          in: query
+          description: "Filter events on or before this date (ISO 8601, e.g. 2025-12-31)"
+          schema: { type: string, format: date }
       responses:
         "200":
           description: Merchant security activity log
