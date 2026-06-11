@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useRunStorageCleanup, type AdminAuditLog } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useRunStorageCleanup, type AdminAuditLog } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
@@ -154,8 +154,6 @@ export default function AdminSettings() {
     smtpFrom !== (smtpConfig?.from ?? "") ||
     smtpPass.trim() !== "";
 
-  const TEST_EMAIL_HISTORY_PARAMS = { action: "test_email_sent", limit: 20 } as const;
-
   const { mutate: saveSmtp, isPending: savingSmtp } = useMutation({
     mutationFn: () =>
       apiPut("/settings/smtp", {
@@ -189,7 +187,8 @@ export default function AdminSettings() {
       setSmtpTestMessage(err.message);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: getListAdminAuditLogsQueryKey(TEST_EMAIL_HISTORY_PARAMS) });
+      qc.invalidateQueries({ queryKey: ["test-email-history"] });
+      qc.invalidateQueries({ queryKey: ["test-email-history-count"] });
     },
   });
 
@@ -221,10 +220,15 @@ export default function AdminSettings() {
 
   const [testHistoryFilter, setTestHistoryFilter] = useState<"all" | "success" | "failed">("all");
   const [smtpHistoryFilter, setSmtpHistoryFilter] = useState<"all" | "success" | "failed">("all");
+  const [testHistoryLimit, setTestHistoryLimit] = useState(10);
+
+  const testHistoryQueryUrl = testHistoryFilter === "all"
+    ? `/audit-logs?action=test_email_sent&limit=${testHistoryLimit}`
+    : `/audit-logs?action=test_email_sent&detailsSuccess=${testHistoryFilter === "success"}&limit=${testHistoryLimit}`;
 
   const { data: testEmailHistory, isLoading: historyLoading } = useQuery({
-    queryKey: getListAdminAuditLogsQueryKey(TEST_EMAIL_HISTORY_PARAMS),
-    queryFn: () => apiGet(`/audit-logs?action=test_email_sent&limit=20`),
+    queryKey: ["test-email-history", testHistoryFilter, testHistoryLimit],
+    queryFn: () => apiGet(testHistoryQueryUrl),
     staleTime: 0,
   });
 
@@ -243,6 +247,26 @@ export default function AdminSettings() {
     queryFn: () => apiGet("/settings/finance_report_email/logs"),
     staleTime: 30_000,
   });
+
+  const { data: testEmailSuccessCount } = useQuery({
+    queryKey: ["test-email-history-count", "success"],
+    queryFn: () => apiGet(`/audit-logs?action=test_email_sent&detailsSuccess=true&limit=1`),
+    staleTime: 30_000,
+  });
+
+  const { data: testEmailFailedCount } = useQuery({
+    queryKey: ["test-email-history-count", "failed"],
+    queryFn: () => apiGet(`/audit-logs?action=test_email_sent&detailsSuccess=false&limit=1`),
+    staleTime: 30_000,
+  });
+
+  const testHistorySuccessTotal: number = testEmailSuccessCount?.total ?? 0;
+  const testHistoryFailedTotal: number = testEmailFailedCount?.total ?? 0;
+
+  function handleTestHistoryFilter(f: "all" | "success" | "failed") {
+    setTestHistoryFilter(f);
+    setTestHistoryLimit(10);
+  }
 
   const [previewingEmail, setPreviewingEmail] = useState(false);
   const [previewingAlertEmail, setPreviewingAlertEmail] = useState(false);
@@ -299,7 +323,8 @@ export default function AdminSettings() {
     onSuccess: (res: { to: string }) => toast.success(`Test email sent to ${res.to} — check your inbox`),
     onError: (err: Error) => toast.error(`Test email failed: ${err.message}`),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: getListAdminAuditLogsQueryKey(TEST_EMAIL_HISTORY_PARAMS) });
+      qc.invalidateQueries({ queryKey: ["test-email-history"] });
+      qc.invalidateQueries({ queryKey: ["test-email-history-count"] });
     },
   });
 
@@ -1027,20 +1052,32 @@ export default function AdminSettings() {
                 <p className="text-sm font-medium text-foreground">Test email history</p>
               </div>
               <div className="flex items-center gap-1">
-                {(["all", "success", "failed"] as const).map(f => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setTestHistoryFilter(f)}
-                    className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-                      testHistoryFilter === f
-                        ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
-                        : "text-muted-foreground hover:text-foreground border border-transparent"
-                    }`}
-                  >
-                    {f.charAt(0).toUpperCase() + f.slice(1)}
-                  </button>
-                ))}
+                {(["all", "success", "failed"] as const).map(f => {
+                  const badge = f === "success" ? testHistorySuccessTotal : f === "failed" ? testHistoryFailedTotal : null;
+                  return (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => handleTestHistoryFilter(f)}
+                      className={`rounded px-2 py-0.5 text-xs font-medium transition-colors flex items-center gap-1 ${
+                        testHistoryFilter === f
+                          ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                          : "text-muted-foreground hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      {f.charAt(0).toUpperCase() + f.slice(1)}
+                      {badge != null && badge > 0 && (
+                        <span className={`inline-flex items-center justify-center rounded-full px-1 min-w-[1rem] h-4 text-[10px] font-semibold leading-none ${
+                          f === "failed"
+                            ? "bg-red-500/20 text-red-400"
+                            : "bg-emerald-500/20 text-emerald-400"
+                        }`}>
+                          {badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1049,16 +1086,10 @@ export default function AdminSettings() {
             )}
 
             {!historyLoading && (() => {
-              const allRows: AdminAuditLog[] = testEmailHistory?.data ?? [];
-              const filteredRows = allRows.filter((row: AdminAuditLog) => {
-                let parsed: { success?: boolean } = {};
-                try { parsed = JSON.parse(row.details ?? "{}"); } catch {}
-                if (testHistoryFilter === "success") return parsed.success === true;
-                if (testHistoryFilter === "failed") return parsed.success === false;
-                return true;
-              });
+              const rows: AdminAuditLog[] = testEmailHistory?.data ?? [];
+              const total: number = testEmailHistory?.total ?? 0;
 
-              if (filteredRows.length === 0) {
+              if (rows.length === 0) {
                 return (
                   <p className="text-xs text-muted-foreground italic">
                     {testHistoryFilter === "all"
@@ -1070,7 +1101,7 @@ export default function AdminSettings() {
 
               return (
                 <div className="space-y-1.5">
-                  {filteredRows.map((row: AdminAuditLog) => {
+                  {rows.map((row: AdminAuditLog) => {
                     let details: { recipients?: string[]; success?: boolean; error?: string } = {};
                     try { details = JSON.parse(row.details ?? "{}"); } catch {}
                     const success = details.success === true;
@@ -1136,6 +1167,15 @@ export default function AdminSettings() {
                       </div>
                     );
                   })}
+                  {total > rows.length && (
+                    <button
+                      type="button"
+                      onClick={() => setTestHistoryLimit(l => l + 10)}
+                      className="w-full rounded-md border border-border/50 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                    >
+                      Load more ({total - rows.length} remaining)
+                    </button>
+                  )}
                 </div>
               );
             })()}

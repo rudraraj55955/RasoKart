@@ -89,7 +89,7 @@ router.get("/stats", async (req, res) => {
 router.get("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
-  const { page = "1", limit = "20", action, targetType, search, dateFrom, dateTo, merchantId } = req.query as Record<string, string>;
+  const { page = "1", limit = "20", action, targetType, search, dateFrom, dateTo, merchantId, detailsSuccess } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -126,6 +126,11 @@ router.get("/", async (req, res) => {
         )!
       );
     }
+  }
+  if (detailsSuccess === "true") {
+    conditions.push(sql`${auditLogsTable.details}::jsonb->>'success' = 'true'`);
+  } else if (detailsSuccess === "false") {
+    conditions.push(sql`${auditLogsTable.details}::jsonb->>'success' = 'false'`);
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
