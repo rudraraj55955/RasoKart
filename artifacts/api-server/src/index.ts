@@ -16,6 +16,7 @@ import { initWebhookSecretScheduler } from "./helpers/webhookSecretScheduler";
 import { initStorageCleanupSchedulerFromDb } from "./helpers/storageCleanupScheduler";
 import { seedLastAlertSentAt } from "./helpers/signatureFailureAlert";
 import { initSignatureAlertLogCleanupScheduler, pruneOldAlertLogs } from "./helpers/signatureAlertLogCleanupScheduler";
+import { initTestEmailRetentionScheduler, runTestEmailRetentionCleanup } from "./helpers/testEmailRetentionScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -90,6 +91,12 @@ async function main() {
   // was down, before the first nightly run (03:00) fires.
   pruneOldAlertLogs().catch((err) => {
     logger.warn({ err }, "Startup alert log cleanup sweep failed");
+  });
+  initTestEmailRetentionScheduler();
+  // Startup sweep: prune test email history rows that aged out while the server
+  // was down, before the first nightly run (01:00) fires.
+  runTestEmailRetentionCleanup().catch((err) => {
+    logger.warn({ err }, "Startup test email retention cleanup sweep failed");
   });
   initWebhookSecretScheduler().catch((err) => {
     logger.warn({ err }, "Webhook secret scheduler init failed");

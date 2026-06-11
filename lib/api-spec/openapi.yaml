@@ -4761,6 +4761,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /system-config/test-email-retention:
+    get:
+      operationId: getTestEmailRetentionConfig
+      tags: [system-config]
+      summary: Get test email history auto-delete retention configuration (admin only)
+      responses:
+        "200":
+          description: Current test email retention config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestEmailRetentionConfig"
+    put:
+      operationId: updateTestEmailRetentionConfig
+      tags: [system-config]
+      summary: Update test email history auto-delete retention configuration (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestEmailRetentionConfig"
+      responses:
+        "200":
+          description: Updated test email retention config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestEmailRetentionConfig"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /system-config/signature-failure-alert:
     get:
       operationId: getSignatureFailureAlertConfig
@@ -8559,6 +8595,18 @@ components:
           maximum: 72
           description: >
             Minimum hours between consecutive alert emails (cooldown period).
+
+    TestEmailRetentionConfig:
+      type: object
+      required: [retentionDays]
+      properties:
+        retentionDays:
+          type: integer
+          minimum: 0
+          maximum: 365
+          description: >
+            Days to retain test_email_sent audit log rows.
+            Set to 0 to disable automatic cleanup.
 
     QrCleanupConfig:
       type: object

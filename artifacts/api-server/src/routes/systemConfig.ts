@@ -4,6 +4,7 @@ import { inArray, eq } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
+import { loadTestEmailRetentionDays } from "../helpers/testEmailRetentionScheduler";
 import { loadStorageCleanupConfig, rescheduleStorageCleanupFromDb } from "../helpers/storageCleanupScheduler";
 import { loadWebhookSecretScheduleConfig, rescheduleWebhookSecretFromDb } from "../helpers/webhookSecretScheduler";
 import { loadWebhookRetryConfig } from "../helpers/callbackRetry";
@@ -493,6 +494,66 @@ router.put("/qr-cleanup", async (req, res, next) => {
     });
 
     req.log.info({ retentionDays }, "QR cleanup retention config updated");
+
+    res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/test-email-retention
+router.get("/test-email-retention", async (req, res, next) => {
+  try {
+    const retentionDays = await loadTestEmailRetentionDays();
+    res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/test-email-retention
+router.put("/test-email-retention", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { retentionDays } = req.body;
+
+    if (typeof retentionDays !== "number" || !Number.isInteger(retentionDays)) {
+      res.status(400).json({ error: "retentionDays must be an integer" });
+      return;
+    }
+
+    if (retentionDays < 0 || retentionDays > 365) {
+      res.status(400).json({ error: "retentionDays must be between 0 and 365 (0 = disabled)" });
+      return;
+    }
+
+    await db
+      .insert(systemConfigTable)
+      .values({
+        key: SYSTEM_CONFIG_KEYS.TEST_EMAIL_HISTORY_RETENTION_DAYS,
+        value: String(retentionDays),
+        updatedByEmail: user.email,
+      })
+      .onConflictDoUpdate({
+        target: systemConfigTable.key,
+        set: {
+          value: String(retentionDays),
+          updatedByEmail: user.email,
+          updatedAt: sql`now()`,
+        },
+      });
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "test_email_retention", retentionDays }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ retentionDays }, "Test email history retention config updated");
 
     res.json({ retentionDays });
   } catch (err) {

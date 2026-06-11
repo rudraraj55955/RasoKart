@@ -20,6 +20,7 @@ interface TestEmailHistoryPanelProps {
   clearConfirm?: boolean;
   onClearConfirmChange?: (v: boolean) => void;
   clearCount?: number;
+  retentionDays?: number;
 }
 
 export function TestEmailHistoryPanel({
@@ -39,6 +40,7 @@ export function TestEmailHistoryPanel({
   clearConfirm,
   onClearConfirmChange,
   clearCount,
+  retentionDays,
 }: TestEmailHistoryPanelProps) {
   const hasClearCount = clearCount !== undefined;
   const showClearButton = onClear && (!hasClearCount || clearCount > 0);
@@ -214,6 +216,14 @@ export function TestEmailHistoryPanel({
           </div>
         );
       })()}
+
+      {retentionDays != null && (
+        <p className="text-xs text-muted-foreground">
+          {retentionDays === 0
+            ? "Auto-delete is disabled — entries are kept until manually cleared."
+            : `Entries older than ${retentionDays} days are removed automatically.`}
+        </p>
+      )}
     </div>
   );
 }

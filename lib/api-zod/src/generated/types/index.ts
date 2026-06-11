@@ -300,6 +300,7 @@ export * from './simulatePaymentInputExpectedStatus';
 export * from './simulatePaymentInputSourceType';
 export * from './storageCleanupResult';
 export * from './storageCleanupRun';
+export * from './testEmailRetentionConfig';
 export * from './toggleProductInput';
 export * from './transaction';
 export * from './transactionListResponse';

@@ -4544,6 +4544,41 @@ export const UpdateQrCleanupConfigResponse = zod.object({
 
 
 /**
+ * @summary Get test email history auto-delete retention configuration (admin only)
+ */
+export const getTestEmailRetentionConfigResponseRetentionDaysMin = 0;
+export const getTestEmailRetentionConfigResponseRetentionDaysMax = 365;
+
+
+
+export const GetTestEmailRetentionConfigResponse = zod.object({
+  "retentionDays": zod.number().min(getTestEmailRetentionConfigResponseRetentionDaysMin).max(getTestEmailRetentionConfigResponseRetentionDaysMax).describe('Days to retain test_email_sent audit log rows. Set to 0 to disable automatic cleanup.\n')
+})
+
+
+/**
+ * @summary Update test email history auto-delete retention configuration (admin only)
+ */
+export const updateTestEmailRetentionConfigBodyRetentionDaysMin = 0;
+export const updateTestEmailRetentionConfigBodyRetentionDaysMax = 365;
+
+
+
+export const UpdateTestEmailRetentionConfigBody = zod.object({
+  "retentionDays": zod.number().min(updateTestEmailRetentionConfigBodyRetentionDaysMin).max(updateTestEmailRetentionConfigBodyRetentionDaysMax).describe('Days to retain test_email_sent audit log rows. Set to 0 to disable automatic cleanup.\n')
+})
+
+export const updateTestEmailRetentionConfigResponseRetentionDaysMin = 0;
+export const updateTestEmailRetentionConfigResponseRetentionDaysMax = 365;
+
+
+
+export const UpdateTestEmailRetentionConfigResponse = zod.object({
+  "retentionDays": zod.number().min(updateTestEmailRetentionConfigResponseRetentionDaysMin).max(updateTestEmailRetentionConfigResponseRetentionDaysMax).describe('Days to retain test_email_sent audit log rows. Set to 0 to disable automatic cleanup.\n')
+})
+
+
+/**
  * @summary Get signature failure alert configuration (admin only)
  */
 export const getSignatureFailureAlertConfigResponseThresholdMax = 10000;

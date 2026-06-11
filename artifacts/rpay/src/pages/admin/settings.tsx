@@ -99,6 +99,8 @@ export default function AdminSettings() {
   const [initialized, setInitialized] = useState(false);
   const [retentionDays, setRetentionDays] = useState<number>(30);
   const [retentionInitialized, setRetentionInitialized] = useState(false);
+  const [testEmailRetentionDays, setTestEmailRetentionDays] = useState<number>(90);
+  const [testEmailRetentionInitialized, setTestEmailRetentionInitialized] = useState(false);
 
   // SMTP config form state
   const [smtpHost, setSmtpHost] = useState("");
@@ -437,6 +439,29 @@ export default function AdminSettings() {
       qc.invalidateQueries({ queryKey: ["/api/system-config/qr-cleanup"] });
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save QR cleanup retention")),
+  });
+
+  const { data: testEmailRetentionData, isLoading: testEmailRetentionLoading } = useQuery<{ retentionDays: number }>({
+    queryKey: ["/api/system-config/test-email-retention"],
+    queryFn: () => apiGet("/system-config/test-email-retention"),
+    onSuccess: (d: { retentionDays: number }) => {
+      if (!testEmailRetentionInitialized) {
+        setTestEmailRetentionDays(d.retentionDays);
+        setTestEmailRetentionInitialized(true);
+      }
+    },
+  } as any);
+
+  const currentTestEmailRetentionDays = testEmailRetentionData?.retentionDays ?? 90;
+  const testEmailRetentionUnchanged = testEmailRetentionDays === currentTestEmailRetentionDays;
+
+  const { mutate: saveTestEmailRetention, isPending: savingTestEmailRetention } = useMutation({
+    mutationFn: () => apiPut("/system-config/test-email-retention", { retentionDays: testEmailRetentionDays }),
+    onSuccess: () => {
+      toast.success("Test email retention setting saved");
+      qc.invalidateQueries({ queryKey: ["/api/system-config/test-email-retention"] });
+    },
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save test email retention")),
   });
 
   const [sigAlertThreshold, setSigAlertThreshold] = useState<number>(10);
@@ -872,6 +897,41 @@ export default function AdminSettings() {
               </p>
             )}
 
+            {/* Test email history retention control */}
+            <div className="border-t border-border/50 pt-4 space-y-2">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="space-y-0.5">
+                  <Label className="text-sm">History auto-delete</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically remove old test email history entries.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={testEmailRetentionDays}
+                    onChange={e => setTestEmailRetentionDays(Number(e.target.value))}
+                    disabled={testEmailRetentionLoading || savingTestEmailRetention}
+                    className="rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  >
+                    <option value={0}>Never auto-clear</option>
+                    <option value={30}>30 days</option>
+                    <option value={60}>60 days</option>
+                    <option value={90}>90 days</option>
+                    <option value={180}>180 days</option>
+                  </select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => saveTestEmailRetention()}
+                    disabled={savingTestEmailRetention || testEmailRetentionLoading || testEmailRetentionUnchanged}
+                  >
+                    <Save className="w-3.5 h-3.5 mr-1.5" />
+                    {savingTestEmailRetention ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             {/* Test-email send history */}
             <TestEmailHistoryPanel
               data={(() => {
@@ -893,6 +953,7 @@ export default function AdminSettings() {
               clearConfirm={clearHistoryConfirm}
               onClearConfirmChange={setClearHistoryConfirm}
               clearCount={testHistorySuccessTotal + testHistoryFailedTotal}
+              retentionDays={currentTestEmailRetentionDays}
             />
           </div>
         </CardContent>
@@ -1224,6 +1285,7 @@ export default function AdminSettings() {
             clearConfirm={clearHistoryConfirm}
             onClearConfirmChange={setClearHistoryConfirm}
             clearCount={testHistorySuccessTotal + testHistoryFailedTotal}
+            retentionDays={currentTestEmailRetentionDays}
           />
 
           {/* Finance Report Email Log */}
