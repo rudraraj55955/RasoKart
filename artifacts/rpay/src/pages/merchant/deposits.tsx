@@ -41,8 +41,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  RefreshCw,
 } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay, parseISO, isValid } from "date-fns";
+import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay, parseISO, isValid, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -725,7 +726,7 @@ export default function MerchantDeposits() {
   const [simExpected, setSimExpected] = useState<"success" | "failed" | "pending">("success");
   const [simProvider, setSimProvider] = useState("");
 
-  const { data, isLoading } = useListTransactions({
+  const { data, isLoading, isFetching, dataUpdatedAt } = useListTransactions({
     type: "deposit",
     status: activeStatus as any,
     search: search || undefined,
@@ -736,7 +737,13 @@ export default function MerchantDeposits() {
     ...(amountMax != null ? { amountMax } : {}),
     page,
     limit: 20,
-  });
+  }, { query: { refetchInterval: 30_000 } } as any);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 10_000);
+    return () => clearInterval(id);
+  }, []);
+  const lastUpdated = dataUpdatedAt > 0 ? new Date(dataUpdatedAt) : null;
 
   const { data: stats } = useGetDashboardStats();
   const { data: qrList } = useListQrCodes({ status: "active", limit: 100 });
@@ -820,7 +827,21 @@ export default function MerchantDeposits() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Deposits</h1>
-          <p className="text-muted-foreground mt-1">All incoming payments via QR and Virtual Accounts</p>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-muted-foreground">All incoming payments via QR and Virtual Accounts</p>
+            {lastUpdated != null && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground/60 shrink-0">
+                {isFetching && !isLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                {isFetching && !isLoading
+                  ? "Refreshing…"
+                  : `Updated ${formatDistanceToNow(lastUpdated, { addSuffix: true })}`}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <TooltipProvider>

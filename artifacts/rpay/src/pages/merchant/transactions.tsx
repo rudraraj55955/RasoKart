@@ -8,8 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2, CalendarRange, Layers, Pencil, ChevronLeft, ChevronRight, Check } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
+import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2, CalendarRange, Layers, Pencil, ChevronLeft, ChevronRight, Check, RefreshCw } from "lucide-react";
+import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay, formatDistanceToNow } from "date-fns";
 import { getToken } from "@/lib/auth";
 
 function highlightUtr(utr: string, search: string) {
@@ -644,7 +644,7 @@ export default function MerchantTransactions() {
   const activeStatus = smartFilter?.txStatus ?? status;
   const activeProvider = smartFilter?.txProvider ?? (provider !== "all" ? provider : undefined);
 
-  const { data, isLoading } = useListTransactions({
+  const { data, isLoading, isFetching, dataUpdatedAt } = useListTransactions({
     type: activeType as any,
     status: activeStatus as any,
     page,
@@ -655,7 +655,13 @@ export default function MerchantTransactions() {
     ...(amountMin != null ? { amountMin } : {}),
     ...(amountMax != null ? { amountMax } : {}),
     ...(activeProvider ? { connectionProvider: activeProvider as any } : {}),
-  });
+  }, { query: { refetchInterval: 30_000 } } as any);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 10_000);
+    return () => clearInterval(id);
+  }, []);
+  const lastUpdated = dataUpdatedAt > 0 ? new Date(dataUpdatedAt) : null;
   const { data: utrResult, isLoading: utrLoading, error: utrError } = useSearchByUtr(
     { utr: utrSearch || "" },
     { query: { enabled: !!utrSearch } as any }
@@ -1143,7 +1149,24 @@ export default function MerchantTransactions() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div><h1 className="text-3xl font-bold tracking-tight">Transactions</h1><p className="text-muted-foreground mt-1">Your payment history</p></div>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-muted-foreground">Your payment history</p>
+            {lastUpdated != null && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground/60 shrink-0">
+                {isFetching && !isLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                {isFetching && !isLoading
+                  ? "Refreshing…"
+                  : `Updated ${formatDistanceToNow(lastUpdated, { addSuffix: true })}`}
+              </span>
+            )}
+          </div>
+        </div>
         <Button variant="outline" size="sm" onClick={exportCsv}><Download className="w-4 h-4 mr-2" />Export CSV</Button>
       </div>
 
