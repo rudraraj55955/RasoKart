@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createNotification } from "../helpers/notifications";
 import { notifyAdminsOfSettlementStateChange } from "../helpers/adminNotifyEmail";
 import rateLimit from "express-rate-limit";
+import { safeIpKey } from "../helpers/makeRateLimiter";
 
 const settlementCreateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -12,7 +13,7 @@ const settlementCreateLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? safeIpKey(req)),
   message: { error: "Too many settlement requests. Please wait before submitting another." },
 });
 

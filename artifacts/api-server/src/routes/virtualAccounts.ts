@@ -4,6 +4,7 @@ import { db, virtualAccountsTable, merchantsTable, transactionsTable, vaBalanceH
 import { eq, and, ilike, count, or, desc, gte, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
+import { safeIpKey } from "../helpers/makeRateLimiter";
 
 const createVaLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -11,7 +12,7 @@ const createVaLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number } }).user?.merchantId ?? req.ip),
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number } }).user?.merchantId ?? safeIpKey(req)),
   message: { error: "Too many virtual account creation requests. Please try again later." },
 });
 
@@ -21,7 +22,7 @@ const deleteVaLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number } }).user?.merchantId ?? req.ip),
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number } }).user?.merchantId ?? safeIpKey(req)),
   message: { error: "Too many virtual account deletion requests. Please try again later." },
 });
 

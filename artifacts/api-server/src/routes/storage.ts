@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import rateLimit from "express-rate-limit";
+import { safeIpKey } from "../helpers/makeRateLimiter";
 import { and, eq } from "drizzle-orm";
 import {
   RequestUploadUrlBody,
@@ -20,7 +21,7 @@ const uploadUrlLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { id: number } }).user?.id ?? req.ip),
+  keyGenerator: (req: Request) => String((req as Request & { user?: { id: number } }).user?.id ?? safeIpKey(req)),
   message: { error: "Too many upload URL requests. Please try again later." },
 });
 

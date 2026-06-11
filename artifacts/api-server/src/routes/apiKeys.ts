@@ -5,6 +5,7 @@ import { requireAuth } from "../middlewares/auth";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
 import { sendApiKeyGeneratedEmail, sendApiKeyRevokedEmail } from "../helpers/apiKeyEmail";
+import { safeIpKey } from "../helpers/makeRateLimiter";
 
 const apiKeyCreateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -12,7 +13,7 @@ const apiKeyCreateLimiter = rateLimit({
   validate: { ip: false },
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? safeIpKey(req)),
   message: { error: "Too many API key generation requests. Please try again later." },
 });
 

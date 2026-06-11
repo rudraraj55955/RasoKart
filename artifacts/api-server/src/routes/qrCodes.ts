@@ -4,6 +4,7 @@ import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray, type SQL } fro
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 import rateLimit from "express-rate-limit";
+import { safeIpKey } from "../helpers/makeRateLimiter";
 
 const qrCodeCreateLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -11,7 +12,7 @@ const qrCodeCreateLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? safeIpKey(req)),
   message: { error: "Too many QR code creation requests. Please slow down and try again shortly." },
 });
 
@@ -21,7 +22,7 @@ const qrCodeUpdateLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   validate: { ip: false },
-  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? safeIpKey(req)),
   message: { error: "Too many QR code update requests. Please slow down and try again in a few minutes." },
 });
 

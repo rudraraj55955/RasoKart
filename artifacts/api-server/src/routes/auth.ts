@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import { db, usersTable, merchantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
+import { safeIpKey } from "../helpers/makeRateLimiter";
 
 const router = Router();
 
@@ -13,6 +14,7 @@ const loginLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   validate: { ip: false },
+  keyGenerator: (req) => safeIpKey(req),
   message: { error: "Too many login attempts. Please try again later." },
 });
 
