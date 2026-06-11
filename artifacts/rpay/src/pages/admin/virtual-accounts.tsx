@@ -27,9 +27,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode, History, TrendingUp, ShieldCheck } from "lucide-react";
+import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode, History, TrendingUp, ShieldCheck, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
@@ -557,8 +558,36 @@ export default function AdminVirtualAccounts() {
                     <TableHead>Merchant</TableHead>
                     <TableHead>Changed By</TableHead>
                     <TableHead>Role</TableHead>
-                    <TableHead>Balance Change</TableHead>
-                    <TableHead>Collection Change</TableHead>
+                    <TableHead>
+                      <TooltipProvider>
+                        <UITooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center gap-1 cursor-default">
+                              Balance Change
+                              <Info className="w-3 h-3 text-amber-500/70 shrink-0" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[220px] text-xs">
+                            <span className="text-amber-400 font-semibold italic">est.</span> means the value was estimated during a balance backfill and may not be exact.
+                          </TooltipContent>
+                        </UITooltip>
+                      </TooltipProvider>
+                    </TableHead>
+                    <TableHead>
+                      <TooltipProvider>
+                        <UITooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center gap-1 cursor-default">
+                              Collection Change
+                              <Info className="w-3 h-3 text-amber-500/70 shrink-0" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[220px] text-xs">
+                            <span className="text-amber-400 font-semibold italic">est.</span> means the value was estimated during a balance backfill and may not be exact.
+                          </TooltipContent>
+                        </UITooltip>
+                      </TooltipProvider>
+                    </TableHead>
                     <TableHead>Reason</TableHead>
                     <TableHead>Timestamp</TableHead>
                   </TableRow>
@@ -938,10 +967,29 @@ export default function AdminVirtualAccounts() {
                   balance: e.newBalance != null ? parseFloat(e.newBalance) : undefined,
                   totalCollection: e.newTotalCollection != null ? parseFloat(e.newTotalCollection) : undefined,
                 }));
+              const backfilledCount = balList.filter(e => e.backfilled).length;
               return (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">{balHistoryData?.total ?? balList.length} change{(balHistoryData?.total ?? balList.length) !== 1 ? "s" : ""}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground">{balHistoryData?.total ?? balList.length} change{(balHistoryData?.total ?? balList.length) !== 1 ? "s" : ""}</p>
+                      {backfilledCount > 0 && (
+                        <TooltipProvider>
+                          <UITooltip>
+                            <TooltipTrigger asChild>
+                              <span className="flex items-center gap-1 text-[10px] text-amber-500/80 italic cursor-default select-none">
+                                <Info className="w-3 h-3 shrink-0" />
+                                {backfilledCount} est.
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-[240px] text-xs">
+                              <p><span className="text-amber-400 font-semibold italic">est.</span> rows were estimated during a balance backfill — they reconstruct historical values from deposit records and may not be exact.</p>
+                              <p className="mt-1 text-muted-foreground">{backfilledCount} of {balHistoryData?.total ?? balList.length} rows in this view are estimated.</p>
+                            </TooltipContent>
+                          </UITooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
                     <div className="flex gap-2">
                       <ExportCsvButton label="Export This VA" onExport={exportBalanceHistoryCsv} />
                       {(selectedVa as any)?.merchantId && (
