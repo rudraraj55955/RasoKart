@@ -24,6 +24,10 @@ signatureVerified?: ListCallbackLogsSignatureVerified;
 
  */
 rejectionReason?: ListCallbackLogsRejectionReason;
+/**
+ * Admin only — filter logs by a specific merchant ID
+ */
+merchantId?: number;
 page?: number;
 limit?: number;
 };

@@ -155,6 +155,7 @@ export * from './merchantPlanWithDetails';
 export * from './merchantPlanWithDetailsStatus';
 export * from './merchantProduct';
 export * from './merchantRegisterInput';
+export * from './merchantSignatureFailure';
 export * from './merchantStatus';
 export * from './merchantVolume';
 export * from './merchantVolumeListResponse';

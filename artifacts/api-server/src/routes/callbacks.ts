@@ -212,9 +212,27 @@ router.get("/admin/stats", requireAdmin, async (req, res) => {
       )
     );
 
+  const breakdown = await db
+    .select({
+      merchantId: callbackLogsTable.merchantId,
+      merchantName: merchantsTable.businessName,
+      failures: count(),
+    })
+    .from(callbackLogsTable)
+    .leftJoin(merchantsTable, eq(callbackLogsTable.merchantId, merchantsTable.id))
+    .where(
+      and(
+        eq(callbackLogsTable.signatureVerified, false),
+        gte(callbackLogsTable.createdAt, since),
+      )
+    )
+    .groupBy(callbackLogsTable.merchantId, merchantsTable.businessName)
+    .orderBy(sql`count(*) DESC`);
+
   res.json({
     signatureFailures24h: row?.signatureFailures24h ?? 0,
     affectedMerchants: row?.affectedMerchants ?? 0,
+    merchantBreakdown: breakdown,
   });
 });
 
@@ -317,13 +335,17 @@ const REJECTION_REASON_PATTERNS: Record<string, string> = {
 // GET /api/callbacks
 router.get("/", async (req, res) => {
   const user = (req as any).user;
-  const { status, qrCodeId, signatureVerified, rejectionReason, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { status, qrCodeId, signatureVerified, rejectionReason, merchantId, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
 
   const conditions = [];
-  if (user.role !== "admin") conditions.push(eq(callbackLogsTable.merchantId, user.merchantId!));
+  if (user.role !== "admin") {
+    conditions.push(eq(callbackLogsTable.merchantId, user.merchantId!));
+  } else if (merchantId) {
+    conditions.push(eq(callbackLogsTable.merchantId, parseInt(merchantId)));
+  }
   if (status && status !== "all") conditions.push(eq(callbackLogsTable.status, status));
   if (qrCodeId) conditions.push(eq(callbackLogsTable.qrCodeId, parseInt(qrCodeId)));
   if (signatureVerified === "verified") conditions.push(eq(callbackLogsTable.signatureVerified, true));

@@ -1482,7 +1482,12 @@ export const GetCallbackStatsResponse = zod.object({
  */
 export const GetAdminCallbackStatsResponse = zod.object({
   "signatureFailures24h": zod.number().describe('Total signature verification failures across all merchants in the last 24 hours'),
-  "affectedMerchants": zod.number().describe('Number of distinct merchants with at least one signature failure in the last 24 hours')
+  "affectedMerchants": zod.number().describe('Number of distinct merchants with at least one signature failure in the last 24 hours'),
+  "merchantBreakdown": zod.array(zod.object({
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "failures": zod.number().describe('Number of signature failures in the last 24 hours for this merchant')
+})).describe('Per-merchant breakdown of signature failures in the last 24 hours, sorted by failure count descending')
 })
 
 
@@ -1530,6 +1535,7 @@ export const ListCallbackLogsQueryParams = zod.object({
   "qrCodeId": zod.coerce.number().optional().describe('Filter by QR code ID'),
   "signatureVerified": zod.enum(['all', 'verified', 'failed', 'none']).optional().describe('Filter by signature verification outcome. \"verified\" = passed, \"failed\" = rejected, \"none\" = no secret configured'),
   "rejectionReason": zod.enum(['stale_timestamp', 'replay_detected', 'bad_signature', 'missing_header']).optional().describe('Filter failed logs by the specific rejection reason stored in responseBody. \"stale_timestamp\" = X-Timestamp outside ±window, \"replay_detected\" = duplicate nonce, \"bad_signature\" = HMAC mismatch, \"missing_header\" = required header absent.\n'),
+  "merchantId": zod.coerce.number().optional().describe('Admin only — filter logs by a specific merchant ID'),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })

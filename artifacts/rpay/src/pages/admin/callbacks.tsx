@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, X } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -170,7 +170,10 @@ export default function AdminCallbacks() {
   const [status, setStatus] = useState("all");
   const [sigVerified, setSigVerified] = useState("all");
   const [rejectionReason, setRejectionReason] = useState("all");
+  const [merchantIdFilter, setMerchantIdFilter] = useState<number | undefined>(undefined);
+  const [merchantNameFilter, setMerchantNameFilter] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
+  const [breakdownExpanded, setBreakdownExpanded] = useState(false);
 
   const sigVerifiedParam = sigVerified === "all" ? undefined : (sigVerified as any);
   const rejectionReasonParam = rejectionReason === "all" ? undefined : (rejectionReason as any);
@@ -179,6 +182,7 @@ export default function AdminCallbacks() {
     status: status as any,
     signatureVerified: sigVerifiedParam,
     rejectionReason: rejectionReasonParam,
+    merchantId: merchantIdFilter,
     page,
     limit: 20,
   });
@@ -186,10 +190,27 @@ export default function AdminCallbacks() {
   const { data: adminStats } = useGetAdminCallbackStats();
 
   const hasFailures = (adminStats?.signatureFailures24h ?? 0) > 0;
+  const breakdown = adminStats?.merchantBreakdown ?? [];
 
   function filterToSignatureFailures() {
     setSigVerified("failed");
     setStatus("all");
+    setMerchantIdFilter(undefined);
+    setMerchantNameFilter(undefined);
+    setPage(1);
+  }
+
+  function filterToMerchant(merchantId: number, merchantName: string | null | undefined) {
+    setMerchantIdFilter(merchantId);
+    setMerchantNameFilter(merchantName ?? `Merchant #${merchantId}`);
+    setSigVerified("failed");
+    setStatus("all");
+    setPage(1);
+  }
+
+  function clearMerchantFilter() {
+    setMerchantIdFilter(undefined);
+    setMerchantNameFilter(undefined);
     setPage(1);
   }
 
@@ -198,23 +219,57 @@ export default function AdminCallbacks() {
       <div><h1 className="text-3xl font-bold tracking-tight">Callback Logs</h1><p className="text-muted-foreground mt-1">Webhook delivery history with automatic retry</p></div>
 
       {hasFailures && (
-        <button
-          onClick={filterToSignatureFailures}
-          className="w-full text-left rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 hover:bg-rose-500/20 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-rose-400">
-                {adminStats!.signatureFailures24h} signature {adminStats!.signatureFailures24h === 1 ? "failure" : "failures"} in the last 24 hours
-              </p>
-              <p className="text-xs text-rose-400/70 mt-0.5 flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                {adminStats!.affectedMerchants} {adminStats!.affectedMerchants === 1 ? "merchant" : "merchants"} affected — click to filter
-              </p>
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 overflow-hidden">
+          <button
+            onClick={() => setBreakdownExpanded(e => !e)}
+            className="w-full text-left px-4 py-3 hover:bg-rose-500/10 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-rose-400">
+                  {adminStats!.signatureFailures24h} signature {adminStats!.signatureFailures24h === 1 ? "failure" : "failures"} in the last 24 hours
+                </p>
+                <p className="text-xs text-rose-400/70 mt-0.5 flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {adminStats!.affectedMerchants} {adminStats!.affectedMerchants === 1 ? "merchant" : "merchants"} affected — {breakdownExpanded ? "click to collapse" : "click to see breakdown"}
+                </p>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-rose-400/70 transition-transform ${breakdownExpanded ? "rotate-180" : ""}`} />
             </div>
-          </div>
-        </button>
+          </button>
+
+          {breakdownExpanded && breakdown.length > 0 && (
+            <div className="border-t border-rose-500/20 px-4 py-3 space-y-1">
+              <p className="text-xs font-medium text-rose-400/60 uppercase tracking-wider mb-2">Per-merchant breakdown</p>
+              {breakdown.map(entry => (
+                <button
+                  key={entry.merchantId}
+                  onClick={() => filterToMerchant(entry.merchantId, entry.merchantName)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-rose-500/10 transition-colors group text-left"
+                >
+                  <span className="text-sm text-rose-300 group-hover:text-rose-200 font-medium truncate">
+                    {entry.merchantName ?? `Merchant #${entry.merchantId}`}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded">
+                      {entry.failures} {entry.failures === 1 ? "failure" : "failures"}
+                    </span>
+                    <ChevronRight className="w-3 h-3 text-rose-400/40 group-hover:text-rose-400" />
+                  </div>
+                </button>
+              ))}
+              <div className="pt-1">
+                <button
+                  onClick={filterToSignatureFailures}
+                  className="text-xs text-rose-400/60 hover:text-rose-400 transition-colors"
+                >
+                  Show all signature failures →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       <Card>
@@ -248,6 +303,14 @@ export default function AdminCallbacks() {
                 <SelectItem value="missing_header">Missing header</SelectItem>
               </SelectContent>
             </Select>
+            {merchantIdFilter != null && merchantNameFilter && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-sm text-rose-400">
+                <span className="font-medium">{merchantNameFilter}</span>
+                <button onClick={clearMerchantFilter} className="hover:text-rose-300 transition-colors ml-1" aria-label="Clear merchant filter">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">

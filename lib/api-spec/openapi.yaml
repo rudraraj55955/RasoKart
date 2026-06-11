@@ -1603,6 +1603,11 @@ paths:
             "replay_detected" = duplicate nonce,
             "bad_signature" = HMAC mismatch,
             "missing_header" = required header absent.
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+          description: Admin only — filter logs by a specific merchant ID
         - name: page
           in: query
           schema:
@@ -5158,9 +5163,21 @@ components:
           type: integer
           description: Number of signature verification failures in the last 24 hours for this merchant
 
+    MerchantSignatureFailure:
+      type: object
+      required: [merchantId, failures]
+      properties:
+        merchantId:
+          type: integer
+        merchantName:
+          type: ["string", "null"]
+        failures:
+          type: integer
+          description: Number of signature failures in the last 24 hours for this merchant
+
     AdminCallbackStatsResponse:
       type: object
-      required: [signatureFailures24h, affectedMerchants]
+      required: [signatureFailures24h, affectedMerchants, merchantBreakdown]
       properties:
         signatureFailures24h:
           type: integer
@@ -5168,6 +5185,11 @@ components:
         affectedMerchants:
           type: integer
           description: Number of distinct merchants with at least one signature failure in the last 24 hours
+        merchantBreakdown:
+          type: array
+          description: Per-merchant breakdown of signature failures in the last 24 hours, sorted by failure count descending
+          items:
+            $ref: "#/components/schemas/MerchantSignatureFailure"
 
     Settlement:
       type: object

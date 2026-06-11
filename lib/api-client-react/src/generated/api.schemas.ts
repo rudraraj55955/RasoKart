@@ -661,11 +661,21 @@ export interface CallbackStatsResponse {
   signatureFailures24h: number;
 }
 
+export interface MerchantSignatureFailure {
+  merchantId: number;
+  /** @nullable */
+  merchantName?: string | null;
+  /** Number of signature failures in the last 24 hours for this merchant */
+  failures: number;
+}
+
 export interface AdminCallbackStatsResponse {
   /** Total signature verification failures across all merchants in the last 24 hours */
   signatureFailures24h: number;
   /** Number of distinct merchants with at least one signature failure in the last 24 hours */
   affectedMerchants: number;
+  /** Per-merchant breakdown of signature failures in the last 24 hours, sorted by failure count descending */
+  merchantBreakdown: MerchantSignatureFailure[];
 }
 
 export type SettlementStatus = typeof SettlementStatus[keyof typeof SettlementStatus];
@@ -2451,6 +2461,10 @@ signatureVerified?: ListCallbackLogsSignatureVerified;
 
  */
 rejectionReason?: ListCallbackLogsRejectionReason;
+/**
+ * Admin only — filter logs by a specific merchant ID
+ */
+merchantId?: number;
 page?: number;
 limit?: number;
 };
