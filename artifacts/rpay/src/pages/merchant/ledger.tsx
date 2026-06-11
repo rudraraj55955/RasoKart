@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wallet, ArrowUpRight, ArrowDownRight, RefreshCw, ChevronRight } from "lucide-react";
-import { ExportCsvButton } from "@/components/ui/export-csv-button";
+import { Wallet, ArrowUpRight, ArrowDownRight, RefreshCw, ChevronRight, FileDown, Loader2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   deposit:    { label: "Deposit",    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
@@ -25,8 +25,7 @@ function fmtDate(s: string) {
   return new Date(s).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function buildAndDownloadLedgerCsv(entries: any[]) {
-  if (!entries.length) return;
+function buildLedgerCsvText(entries: any[]): string {
   const rows = [["ID", "Type", "Description", "Amount", "Balance Before", "Balance After", "Date"]];
   entries.forEach(e => rows.push([
     String(e.id),
@@ -37,11 +36,7 @@ function buildAndDownloadLedgerCsv(entries: any[]) {
     String(e.balanceAfter),
     e.createdAt,
   ]));
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  a.download = `ledger-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
+  return rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
 }
 
 function toDateStr(d: Date): string {
@@ -74,6 +69,8 @@ export default function MerchantLedger() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
+  const [lastExportCount, setLastExportCount] = useState<number | null>(null);
 
   function applyPreset(p: Preset) {
     setPreset(p);
@@ -102,6 +99,23 @@ export default function MerchantLedger() {
   const closingBalance = data?.closingBalance ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  function handleExportCsv() {
+    if (!entries.length) return;
+    setExporting(true);
+    try {
+      const csv = buildLedgerCsvText(entries);
+      const lines = csv.split("\n").filter(l => l.trim() !== "");
+      const rowCount = Math.max(0, lines.length - 1);
+      setLastExportCount(rowCount);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      a.download = `ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const PRESETS: { key: Preset; label: string }[] = [
     { key: "all",    label: "All Time" },
     { key: "mtd",    label: "This Month" },
@@ -118,10 +132,29 @@ export default function MerchantLedger() {
           <p className="text-sm text-muted-foreground mt-1">Full audit trail of every balance-affecting event</p>
         </div>
         <div className="flex gap-2">
-          <ExportCsvButton
-            onExport={() => buildAndDownloadLedgerCsv(entries)}
-            disabled={entries.length === 0}
-          />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCsv}
+                  disabled={exporting || entries.length === 0}
+                  className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
+                >
+                  {exporting
+                    ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    : <FileDown className="w-3.5 h-3.5 mr-1.5" />}
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </Button>
+              </TooltipTrigger>
+              {lastExportCount != null && !exporting && (
+                <TooltipContent side="bottom">
+                  Last export: {lastExportCount.toLocaleString()} row{lastExportCount !== 1 ? "s" : ""}
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
           <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
             <RefreshCw className="w-4 h-4" />
             Refresh

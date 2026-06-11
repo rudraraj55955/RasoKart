@@ -28,13 +28,14 @@ import {
   Building2,
   TrendingUp,
   Hash,
+  FileDown,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { ExportCsvButton } from "@/components/ui/export-csv-button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-function buildAndDownloadCsv(data: any[]) {
-  if (!data.length) return;
+function buildCsvText(data: any[]): string {
   const rows = [["ID", "Amount", "Currency", "UTR", "Reference", "Status", "Description", "Source", "Date"]];
   data.forEach(t => rows.push([
     String(t.id),
@@ -47,11 +48,7 @@ function buildAndDownloadCsv(data: any[]) {
     t.metadata ? (() => { try { const m = JSON.parse(t.metadata); return `${m.sourceType?.toUpperCase() ?? ""} #${m.sourceId ?? ""}`; } catch { return ""; } })() : "",
     t.createdAt,
   ]));
-  const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  a.download = `deposits-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
+  return rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
 }
 
 export default function MerchantDeposits() {
@@ -62,6 +59,8 @@ export default function MerchantDeposits() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [provider, setProvider] = useState("all");
+  const [exporting, setExporting] = useState(false);
+  const [lastExportCount, setLastExportCount] = useState<number | null>(null);
 
   // Simulate payment dialog state
   const [showSimulate, setShowSimulate] = useState(false);
@@ -121,6 +120,25 @@ export default function MerchantDeposits() {
     });
   };
 
+  function handleExportCsv() {
+    const rows = data?.data ?? [];
+    if (!rows.length) return;
+    setExporting(true);
+    try {
+      const csv = buildCsvText(rows);
+      const lines = csv.split("\n").filter(l => l.trim() !== "");
+      const rowCount = Math.max(0, lines.length - 1);
+      setLastExportCount(rowCount);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      a.download = `deposits-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    } finally {
+      setExporting(false);
+    }
+  }
+
+
   const successCount = data?.data?.filter(t => t.status === "success").length ?? 0;
   const pendingCount = data?.data?.filter(t => t.status === "pending").length ?? 0;
 
@@ -135,10 +153,29 @@ export default function MerchantDeposits() {
           <p className="text-muted-foreground mt-1">All incoming payments via QR and Virtual Accounts</p>
         </div>
         <div className="flex gap-2">
-          <ExportCsvButton
-            onExport={() => buildAndDownloadCsv(data?.data ?? [])}
-            disabled={!data?.data?.length}
-          />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCsv}
+                  disabled={exporting || !data?.data?.length}
+                  className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
+                >
+                  {exporting
+                    ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    : <FileDown className="w-3.5 h-3.5 mr-1.5" />}
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </Button>
+              </TooltipTrigger>
+              {lastExportCount != null && !exporting && (
+                <TooltipContent side="bottom">
+                  Last export: {lastExportCount.toLocaleString()} row{lastExportCount !== 1 ? "s" : ""}
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
           <Button size="sm" onClick={() => setShowSimulate(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Simulate Payment
