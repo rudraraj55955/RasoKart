@@ -1674,6 +1674,7 @@ export const ReceivePaymentCallbackResponse = zod.object({
  */
 export const ListCallbackLogsQueryParams = zod.object({
   "status": zod.enum(['success', 'failed', 'pending_retry', 'all']).optional(),
+  "merchantId": zod.coerce.number().optional().describe('Filter by merchant ID (admin only)'),
   "qrCodeId": zod.coerce.number().optional().describe('Filter by QR code ID'),
   "signatureVerified": zod.enum(['all', 'verified', 'failed', 'none']).optional().describe('Filter by signature verification outcome. \"verified\" = passed, \"failed\" = rejected, \"none\" = no secret configured'),
   "rejectionReason": zod.enum(['stale_timestamp', 'replay_detected', 'bad_signature', 'missing_header']).optional().describe('Filter failed logs by the specific rejection reason stored in responseBody. \"stale_timestamp\" = X-Timestamp outside ±window, \"replay_detected\" = duplicate nonce, \"bad_signature\" = HMAC mismatch, \"missing_header\" = required header absent.\n'),

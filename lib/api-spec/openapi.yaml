@@ -1694,6 +1694,11 @@ paths:
           schema:
             type: string
             enum: [success, failed, pending_retry, all]
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+          description: Filter by merchant ID (admin only)
         - name: qrCodeId
           in: query
           schema:

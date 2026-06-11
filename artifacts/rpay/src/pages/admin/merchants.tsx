@@ -13,6 +13,7 @@ import {
   useUpdateMerchantCallbackWindow,
   useScheduleMerchantPlanRenewal, useGetMerchant,
   useListMerchantCredentialEvents,
+  useListCallbackLogs, useRetryCallback, useGetWebhookLogAttempts,
   getListMerchantsQueryKey,
   listMerchants,
 } from "@workspace/api-client-react";
@@ -29,11 +30,148 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff } from "lucide-react";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff, Activity, ExternalLink, ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, differenceInSeconds } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
+
+function MerchantWebhookAttemptTimeline({ logId, totalAttempts, status, nextRetryAt }: {
+  logId: number;
+  totalAttempts: number;
+  status: string;
+  nextRetryAt?: string | null;
+}) {
+  const { data, isLoading } = useGetWebhookLogAttempts(logId);
+  const attempts = data?.data ?? [];
+
+  if (isLoading) {
+    return <div className="flex items-center gap-2 py-1"><div className="h-3 w-3 rounded-full bg-muted/50 animate-pulse" /><div className="h-3 w-40 rounded bg-muted/50 animate-pulse" /></div>;
+  }
+  if (attempts.length === 0) return null;
+
+  const sorted = [...attempts].sort((a, b) => a.attemptNumber - b.attemptNumber);
+  const isPendingRetry = status === "pending_retry";
+
+  return (
+    <TooltipProvider>
+      <div className="flex items-start gap-0 flex-wrap">
+        {sorted.map((attempt: any, idx: number) => {
+          const isSuccess = attempt.httpStatus != null && attempt.httpStatus >= 200 && attempt.httpStatus < 300;
+          const prev = sorted[idx - 1];
+          const delaySeconds = prev ? differenceInSeconds(new Date(attempt.firedAt), new Date(prev.firedAt)) : null;
+          return (
+            <div key={attempt.id} className="flex items-center gap-1.5">
+              {idx > 0 && delaySeconds != null && (
+                <div className="flex items-center gap-1 mx-1">
+                  <span className="text-muted-foreground/40 text-xs">→</span>
+                  <span className="text-xs text-muted-foreground/60 font-mono">+{delaySeconds < 60 ? `${delaySeconds}s` : `${Math.round(delaySeconds / 60)}m`}</span>
+                  <span className="text-muted-foreground/40 text-xs">→</span>
+                </div>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded border cursor-default text-xs ${isSuccess ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400" : "bg-rose-500/10 border-rose-500/25 text-rose-400"}`}>
+                    {isSuccess ? <CheckCircle2 className="w-3 h-3 shrink-0" /> : <XCircle className="w-3 h-3 shrink-0" />}
+                    <span className="font-semibold">#{attempt.attemptNumber}</span>
+                    {attempt.httpStatus != null && <span className="font-mono opacity-75">{attempt.httpStatus}</span>}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs space-y-1">
+                  <p className="font-semibold">Attempt {attempt.attemptNumber}</p>
+                  <p className="text-muted-foreground">{format(new Date(attempt.firedAt), "MMM d, yyyy HH:mm:ss")}</p>
+                  {attempt.httpStatus != null && <p>HTTP {attempt.httpStatus}</p>}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          );
+        })}
+        {isPendingRetry && nextRetryAt && (
+          <div className="flex items-center gap-1 mx-1">
+            <span className="text-muted-foreground/40 text-xs">→</span>
+            <span className="text-xs text-amber-400/70 font-mono">in {formatDistanceToNow(new Date(nextRetryAt))}</span>
+            <span className="text-muted-foreground/40 text-xs">→</span>
+            <div className="flex items-center gap-1 px-2 py-1 rounded border bg-amber-500/10 border-amber-500/25 text-amber-400 cursor-default">
+              <Clock className="w-3 h-3 shrink-0 animate-pulse" style={{ animationDuration: "2s" }} />
+              <span className="text-xs font-semibold">#{totalAttempts + 1}</span>
+              <span className="text-xs opacity-75">pending</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function MerchantWebhookRow({ log, onRetry, isRetrying }: { log: any; onRetry: (id: number) => void; isRetrying: boolean }) {
+  const [open, setOpen] = useState(false);
+  const isFailed = log.status === "failed";
+  const isPendingRetry = log.status === "pending_retry";
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <TableRow className="cursor-pointer" onClick={() => setOpen(!open)}>
+        <TableCell>{open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</TableCell>
+        <TableCell className="max-w-[220px] truncate text-sm font-mono" title={log.url}>{log.url}</TableCell>
+        <TableCell>
+          <div className="flex items-center gap-1.5">
+            <StatusBadge status={log.status} />
+            {isPendingRetry && <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" style={{ animationDuration: "3s" }} />}
+          </div>
+        </TableCell>
+        <TableCell><span className={`font-mono text-sm ${log.httpStatus === 200 ? "text-emerald-500" : "text-rose-500"}`}>{log.httpStatus ?? "—"}</span></TableCell>
+        <TableCell className="text-center">{log.attempts}</TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {log.lastAttemptAt ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="cursor-default">{formatDistanceToNow(new Date(log.lastAttemptAt), { addSuffix: true })}</span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">{format(new Date(log.lastAttemptAt), "MMM d, yyyy HH:mm:ss")}</TooltipContent>
+            </Tooltip>
+          ) : log.createdAt ? (
+            <span>{format(new Date(log.createdAt), "MMM d, HH:mm")}</span>
+          ) : "—"}
+        </TableCell>
+        <TableCell onClick={e => e.stopPropagation()}>
+          {isFailed && (
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1" disabled={isRetrying} onClick={() => onRetry(log.id)}>
+              <RotateCcw className={`w-3 h-3 ${isRetrying ? "animate-spin" : ""}`} /> Retry
+            </Button>
+          )}
+        </TableCell>
+      </TableRow>
+      <CollapsibleContent asChild>
+        <TableRow>
+          <TableCell colSpan={7} className="bg-muted/20 pb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2 pt-2">
+              <div className="md:col-span-2 p-3 rounded-lg bg-background/50 border border-border/50">
+                <p className="text-xs font-medium text-muted-foreground mb-2.5 uppercase tracking-wider">Attempt Timeline</p>
+                <MerchantWebhookAttemptTimeline logId={log.id} totalAttempts={log.attempts ?? 0} status={log.status} nextRetryAt={log.nextRetryAt} />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Request Body</p>
+                <pre className="text-xs bg-background/50 rounded p-3 overflow-x-auto border border-border/50 whitespace-pre-wrap max-h-40">{log.requestBody ? (() => { try { return JSON.stringify(JSON.parse(log.requestBody), null, 2); } catch { return log.requestBody; } })() : "—"}</pre>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Response Body</p>
+                <pre className="text-xs bg-background/50 rounded p-3 overflow-x-auto border border-border/50 whitespace-pre-wrap max-h-40">{log.responseBody ? (() => { try { return JSON.stringify(JSON.parse(log.responseBody), null, 2); } catch { return log.responseBody; } })() : "—"}</pre>
+              </div>
+              {log.eventType && (
+                <div className="md:col-span-2">
+                  <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Event Type</p>
+                  <span className="text-xs font-mono text-foreground">{log.eventType}</span>
+                </div>
+              )}
+            </div>
+          </TableCell>
+        </TableRow>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 const ACTION_COLOR: Record<string, string> = {
   assigned: "text-sky-400",
@@ -102,6 +240,9 @@ export default function AdminMerchants() {
   const [scheduleRenewalDate, setScheduleRenewalDate] = useState<string>("");
   const [confirmSecretReset, setConfirmSecretReset] = useState(false);
   const [credEventFilter, setCredEventFilter] = useState<"" | "key_generated" | "key_revoked" | "secret_rotated">("");
+  const [webhookLogsMerchant, setWebhookLogsMerchant] = useState<{ id: number; name: string } | null>(null);
+  const [webhookLogsStatus, setWebhookLogsStatus] = useState<"all" | "success" | "failed" | "pending_retry">("all");
+  const [webhookLogsPage, setWebhookLogsPage] = useState(1);
 
   // Parse ?open=<merchantId> once on mount (e.g. linked from QR/VA detail panels)
   const [deepLinkId] = useState<number | null>(() => {
@@ -180,6 +321,25 @@ export default function AdminMerchants() {
     deepLinkId ?? 0,
     { query: { enabled: deepLinkId != null } as any }
   );
+  const { data: webhookLogsData, isLoading: webhookLogsLoading } = useListCallbackLogs(
+    webhookLogsMerchant ? {
+      merchantId: webhookLogsMerchant.id,
+      status: webhookLogsStatus === "all" ? undefined : webhookLogsStatus as any,
+      page: webhookLogsPage,
+      limit: 20,
+    } : undefined,
+    { query: { enabled: !!webhookLogsMerchant, queryKey: ["listCallbackLogs", "merchant", webhookLogsMerchant?.id ?? 0, webhookLogsStatus, webhookLogsPage] } }
+  );
+  const { mutate: retryWebhookLog, isPending: isRetryingWebhookLog } = useRetryCallback({
+    mutation: {
+      onSuccess: () => {
+        toast.success("Callback queued for retry");
+        qc.invalidateQueries({ queryKey: ["listCallbackLogs", "merchant", webhookLogsMerchant?.id ?? 0] });
+      },
+      onError: () => toast.error("Failed to queue retry"),
+    },
+  });
+
   const resetCallbackSecretMutation = useResetAdminMerchantCallbackSecret();
   const updateCallbackWindowMutation = useUpdateMerchantCallbackWindow();
   const updateBrandingMutation = useUpdateMerchantBranding();
@@ -1193,6 +1353,9 @@ export default function AdminMerchants() {
                       <Button size="sm" variant="ghost" className="text-violet-400 hover:bg-violet-500/10" onClick={() => openBranding(merchant)}>
                         <Paintbrush className="w-4 h-4 mr-1" /> Branding
                       </Button>
+                      <Button size="sm" variant="ghost" className="text-sky-400 hover:bg-sky-500/10" onClick={() => { setWebhookLogsMerchant({ id: merchant.id, name: merchant.businessName }); setWebhookLogsStatus("all"); setWebhookLogsPage(1); }}>
+                        <Activity className="w-4 h-4 mr-1" /> Webhooks
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1417,6 +1580,111 @@ export default function AdminMerchants() {
             <Button onClick={handleSaveBranding} disabled={updateBrandingMutation.isPending}>
               {updateBrandingMutation.isPending ? "Saving…" : "Save Branding"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Webhook Logs Dialog */}
+      <Dialog open={!!webhookLogsMerchant} onOpenChange={open => { if (!open) setWebhookLogsMerchant(null); }}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-sky-400" />
+              Webhook Deliveries — {webhookLogsMerchant?.name}
+            </DialogTitle>
+            <DialogDescription className="flex items-center gap-2">
+              Callback log history for this merchant.{" "}
+              <a
+                href={`/admin/callbacks`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
+              >
+                View all in Callback Logs <ExternalLink className="w-3 h-3" />
+              </a>
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Status filter */}
+          <div className="flex gap-1 flex-wrap shrink-0">
+            {(["all", "failed", "pending_retry", "success"] as const).map(s => {
+              const label = s === "all" ? "All" : s === "pending_retry" ? "Pending Retry" : s.charAt(0).toUpperCase() + s.slice(1);
+              const activeClass = s === "all"
+                ? "bg-primary text-primary-foreground border-primary"
+                : s === "failed"
+                  ? "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                  : s === "pending_retry"
+                    ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                    : "bg-emerald-500/20 text-emerald-400 border-emerald-500/40";
+              const isActive = webhookLogsStatus === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => { setWebhookLogsStatus(s); setWebhookLogsPage(1); }}
+                  className={`px-3 py-1.5 rounded-md text-xs transition-colors border ${isActive ? activeClass : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Table */}
+          <div className="flex-1 overflow-auto min-h-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8" />
+                  <TableHead>URL</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>HTTP</TableHead>
+                  <TableHead className="text-center">Attempts</TableHead>
+                  <TableHead>Last Attempt</TableHead>
+                  <TableHead className="w-20" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {webhookLogsLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 7 }).map((_, j) => (
+                        <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : !webhookLogsData?.data?.length ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                      No webhook deliveries found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  webhookLogsData.data.map(log => (
+                    <MerchantWebhookRow
+                      key={log.id}
+                      log={log}
+                      onRetry={(id) => retryWebhookLog({ id })}
+                      isRetrying={isRetryingWebhookLog}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination */}
+          {(webhookLogsData?.total ?? 0) > 20 && (
+            <div className="flex justify-between items-center shrink-0 pt-2 border-t border-border/40">
+              <span className="text-xs text-muted-foreground">{webhookLogsData!.total} total</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setWebhookLogsPage(p => Math.max(1, p - 1))} disabled={webhookLogsPage === 1}>Previous</Button>
+                <Button variant="outline" size="sm" onClick={() => setWebhookLogsPage(p => p + 1)} disabled={webhookLogsPage * 20 >= (webhookLogsData?.total ?? 0)}>Next</Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="shrink-0">
+            <Button variant="outline" onClick={() => setWebhookLogsMerchant(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1766,6 +2034,18 @@ export default function AdminMerchants() {
                   <KeyRound className="w-4 h-4 text-muted-foreground shrink-0" />
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Callback Signing Secret</p>
                 </div>
+                <button
+                  type="button"
+                  className="text-xs text-sky-400 hover:underline flex items-center gap-1 shrink-0"
+                  onClick={() => {
+                    if (!assignPlanMerchant) return;
+                    setWebhookLogsMerchant({ id: assignPlanMerchant.id, name: assignPlanMerchant.name });
+                    setWebhookLogsStatus("all");
+                    setWebhookLogsPage(1);
+                  }}
+                >
+                  <Activity className="w-3 h-3" /> View Webhook Logs →
+                </button>
               </div>
               {callbackSecretStatus == null ? (
                 <div className="animate-pulse h-5 bg-muted/30 rounded w-32" />

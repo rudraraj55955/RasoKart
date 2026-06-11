@@ -458,13 +458,18 @@ router.get("/:id/attempts", async (req, res) => {
 // GET /api/callbacks
 router.get("/", async (req, res) => {
   const user = (req as any).user;
-  const { status, qrCodeId, signatureVerified, rejectionReason, eventType, dateFrom, dateTo, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { status, merchantId, qrCodeId, signatureVerified, rejectionReason, eventType, dateFrom, dateTo, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
 
   const conditions = [];
-  if (user.role !== "admin") conditions.push(eq(callbackLogsTable.merchantId, user.merchantId!));
+  if (user.role !== "admin") {
+    conditions.push(eq(callbackLogsTable.merchantId, user.merchantId!));
+  } else if (merchantId) {
+    const parsedMerchantId = parseInt(merchantId);
+    if (!isNaN(parsedMerchantId)) conditions.push(eq(callbackLogsTable.merchantId, parsedMerchantId));
+  }
   if (status && status !== "all") conditions.push(eq(callbackLogsTable.status, status));
   if (qrCodeId) conditions.push(eq(callbackLogsTable.qrCodeId, parseInt(qrCodeId)));
   if (signatureVerified === "verified") conditions.push(eq(callbackLogsTable.signatureVerified, true));
