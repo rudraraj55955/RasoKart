@@ -44,11 +44,39 @@ function ProviderBadge({ provider }: { provider: string }) {
   );
 }
 
+const FILTER_KEY = "rasokart_qr_providers_filters";
+const VALID_STATUSES = new Set(["all", "active", "inactive"]);
+
+function readFilters() {
+  try {
+    const raw = localStorage.getItem(FILTER_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const { provider, status } = parsed as Record<string, unknown>;
+        const validProvider = typeof provider === "string" && QR_PROVIDERS.some(p => p.value === provider) ? provider : "all";
+        const validStatus = typeof status === "string" && VALID_STATUSES.has(status) ? status : "all";
+        return { provider: validProvider, status: validStatus };
+      }
+    }
+  } catch {}
+  return { provider: "all", status: "all" };
+}
+
+function saveFilters(provider: string, status: string) {
+  try { localStorage.setItem(FILTER_KEY, JSON.stringify({ provider, status })); } catch {}
+}
+
+function clearFilters() {
+  try { localStorage.removeItem(FILTER_KEY); } catch {}
+}
+
 export default function AdminQrProviders() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [providerFilter, setProviderFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [{ provider: _initProvider, status: _initStatus }] = useState(readFilters);
+  const [providerFilter, setProviderFilter] = useState(_initProvider);
+  const [statusFilter, setStatusFilter] = useState(_initStatus);
   const [page, setPage] = useState(1);
   const [dialog, setDialog] = useState<"create" | "edit" | "delete" | null>(null);
   const [editing, setEditing] = useState<any | null>(null);
@@ -144,14 +172,14 @@ export default function AdminQrProviders() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Search merchants..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
-            <Select value={providerFilter} onValueChange={v => { setProviderFilter(v); setPage(1); }}>
+            <Select value={providerFilter} onValueChange={v => { setProviderFilter(v); saveFilters(v, statusFilter); setPage(1); }}>
               <SelectTrigger className="w-[180px]"><SelectValue placeholder="All providers" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Providers</SelectItem>
                 {QR_PROVIDERS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); saveFilters(providerFilter, v); setPage(1); }}>
               <SelectTrigger className="w-[180px]"><SelectValue placeholder="All statuses" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
@@ -167,7 +195,7 @@ export default function AdminQrProviders() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setSearch(""); setProviderFilter("all"); setStatusFilter("all"); setPage(1); }}
+                onClick={() => { setSearch(""); setProviderFilter("all"); setStatusFilter("all"); clearFilters(); setPage(1); }}
                 className="text-muted-foreground hover:text-foreground shrink-0"
               >
                 <X className="w-3.5 h-3.5 mr-1.5" />
