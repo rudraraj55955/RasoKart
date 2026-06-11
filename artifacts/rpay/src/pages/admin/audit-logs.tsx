@@ -512,12 +512,14 @@ function BulkActionDetails({ log }: { log: any }) {
     failed?: number;
     planId?: number;
     planName?: string;
+    results?: { id: number; name: string; success: boolean; reason: string | null }[];
   } = {};
   try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
 
   const action = log.action as string;
-  const count = parsed.count ?? parsed.merchantIds?.length ?? 0;
+  const succeeded = parsed.count ?? 0;
   const failed = parsed.failed ?? 0;
+  const total = succeeded + failed;
 
   const isApprove = action === "bulk_approve";
   const isSuspend = action === "bulk_suspend";
@@ -533,36 +535,76 @@ function BulkActionDetails({ log }: { log: any }) {
     ? "bg-emerald-500/10 border-emerald-500/20"
     : "bg-blue-500/10 border-blue-500/20";
 
-  const title = isApprove
-    ? `Bulk approved ${count} merchant${count !== 1 ? "s" : ""}`
-    : isSuspend
-    ? `Bulk suspended ${count} merchant${count !== 1 ? "s" : ""}`
-    : isReinstate
-    ? `Bulk reinstated ${count} merchant${count !== 1 ? "s" : ""}`
-    : `Bulk assigned plan to ${count} merchant${count !== 1 ? "s" : ""}`;
+  const verb = isApprove ? "approved" : isSuspend ? "suspended" : isReinstate ? "reinstated" : "assigned";
+  const summaryParts: string[] = [];
+  if (succeeded > 0) summaryParts.push(`${succeeded} ${verb}`);
+  if (failed > 0) summaryParts.push(`${failed} failed`);
+  const title = summaryParts.length > 0 ? summaryParts.join(", ") : `${total} merchant${total !== 1 ? "s" : ""}`;
 
   const subtitle = isPlanAssign && parsed.planName ? `Plan: ${parsed.planName}` : undefined;
+
+  const results = parsed.results ?? [];
+  const hasResults = results.length > 0;
+
+  const fallbackIds = !hasResults && parsed.merchantIds && parsed.merchantIds.length > 0
+    ? parsed.merchantIds
+    : null;
 
   return (
     <div className="space-y-3">
       <SummaryCard
         icon={<Users className={`w-5 h-5 ${iconColor}`} />}
-        title={title}
+        title={title.charAt(0).toUpperCase() + title.slice(1)}
         subtitle={subtitle}
         colorClass={cardColor}
       />
-      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
-        <DetailRow label="Merchants affected" value={count} />
-        {failed > 0 && <DetailRow label="Failed" value={<span className="text-rose-400">{failed}</span>} />}
-        {isPlanAssign && parsed.planName && <DetailRow label="Plan" value={parsed.planName} />}
-        {isPlanAssign && parsed.planId != null && <DetailRow label="Plan ID" value={<span className="font-mono">#{parsed.planId}</span>} />}
-        {parsed.merchantIds && parsed.merchantIds.length > 0 && (
+
+      {isPlanAssign && parsed.planName && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+          <DetailRow label="Plan" value={parsed.planName} />
+          {parsed.planId != null && (
+            <DetailRow label="Plan ID" value={<span className="font-mono">#{parsed.planId}</span>} />
+          )}
+        </div>
+      )}
+
+      {hasResults && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-1">
+          <p className="text-xs text-muted-foreground mb-2">
+            {succeeded > 0 && failed > 0
+              ? `${succeeded} succeeded · ${failed} failed`
+              : succeeded > 0
+              ? `All ${succeeded} succeeded`
+              : `All ${failed} failed`}
+          </p>
+          {results.map((r) => (
+            <div key={r.id} className="flex items-center justify-between gap-2 py-1 border-b border-border/30 last:border-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                {r.success
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  : <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                }
+                <span className="text-xs truncate">{r.name}</span>
+                <span className="text-xs text-muted-foreground font-mono shrink-0">#{r.id}</span>
+              </div>
+              {!r.success && r.reason && (
+                <span className="text-xs text-rose-400 shrink-0">{r.reason}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!hasResults && fallbackIds && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+          <DetailRow label="Merchants affected" value={total || fallbackIds.length} />
+          {failed > 0 && <DetailRow label="Failed" value={<span className="text-rose-400">{failed}</span>} />}
           <div>
             <span className="text-xs text-muted-foreground">Merchant IDs: </span>
-            <span className="text-xs font-mono">{parsed.merchantIds.map(id => `#${id}`).join(", ")}</span>
+            <span className="text-xs font-mono">{fallbackIds.map(id => `#${id}`).join(", ")}</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

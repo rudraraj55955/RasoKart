@@ -447,7 +447,7 @@ router.post("/bulk-approve", requireAdmin, async (req, res) => {
   await db.insert(auditLogsTable).values({
     adminId: user.id, adminEmail: user.email, action: "bulk_approve",
     targetType: "merchant", targetId: null,
-    details: JSON.stringify({ merchantIds, count: updated, failed }),
+    details: JSON.stringify({ merchantIds, count: updated, failed, results }),
     ipAddress: (req as any).ip ?? null,
   });
 
@@ -504,7 +504,7 @@ router.post("/bulk-suspend", requireAdmin, async (req, res) => {
     adminId: user.id, adminEmail: user.email,
     action: action === "suspend" ? "bulk_suspend" : "bulk_reinstate",
     targetType: "merchant", targetId: null,
-    details: JSON.stringify({ merchantIds, count: updated, failed }),
+    details: JSON.stringify({ merchantIds, count: updated, failed, results }),
     ipAddress: (req as any).ip ?? null,
   });
 
@@ -571,7 +571,7 @@ router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
   await db.insert(auditLogsTable).values({
     adminId: user.id, adminEmail: user.email, action: "bulk_assign_plan",
     targetType: "merchant", targetId: null,
-    details: JSON.stringify({ merchantIds, planId, planName: plan.name, count: updated, failed }),
+    details: JSON.stringify({ merchantIds, planId, planName: plan.name, count: updated, failed, results }),
     ipAddress: (req as any).ip ?? null,
   });
 
