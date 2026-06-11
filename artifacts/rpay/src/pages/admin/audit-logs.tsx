@@ -1090,10 +1090,23 @@ function ScheduleRow({
               {FREQUENCY_LABELS[s.frequency] ?? s.frequency}
             </span>
             {!s.isActive && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400">
-                <Ban className="w-2.5 h-2.5" />
-                Paused
-              </span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400 cursor-default">
+                      <Ban className="w-2.5 h-2.5" />
+                      {s.consecutiveFailures > 0
+                        ? `Auto-paused after ${s.consecutiveFailures} failure${s.consecutiveFailures !== 1 ? "s" : ""}`
+                        : "Paused"}
+                    </span>
+                  </TooltipTrigger>
+                  {s.consecutiveFailures > 0 && (
+                    <TooltipContent side="top" className="max-w-xs">
+                      This schedule was automatically paused after {s.consecutiveFailures} consecutive delivery failure{s.consecutiveFailures !== 1 ? "s" : ""}. Fix the email address, then re-enable it.
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             )}
             {s.lastSendStatus === "failed" && !s.retryInProgress && (
               <TooltipProvider>

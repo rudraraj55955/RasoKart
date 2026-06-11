@@ -1803,6 +1803,10 @@ export interface AuditReportSchedule {
      * @nullable
      */
   nextRetryAt: string | null;
+  /** Number of consecutive delivery failures since the last successful send (reset to 0 on success). */
+  consecutiveFailures: number;
+  /** The schedule is automatically set to inactive (paused) when consecutiveFailures reaches this threshold. */
+  autoPauseAfterFailures: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -3112,6 +3116,13 @@ merchantId?: number;
 eventType?: string;
 };
 
+export type GetSecurityComplianceSummaryParams = {
+/**
+ * Filter by compliance status: all | exported | never
+ */
+status?: string;
+};
+
 export type ListMySecurityActivityParams = {
 page?: number;
 limit?: number;
@@ -3123,13 +3134,6 @@ dateFrom?: string;
  * Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)
  */
 dateTo?: string;
-};
-
-export type GetSecurityComplianceSummaryParams = {
-/**
- * Filter by compliance status: all | exported | never
- */
-status?: string;
 };
 
 export type ExportAdminAuditLogsCsvParams = {

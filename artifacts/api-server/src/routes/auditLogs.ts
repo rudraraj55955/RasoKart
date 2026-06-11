@@ -405,6 +405,8 @@ function serializeSchedule(s: typeof scheduledAuditReportsTable.$inferSelect) {
     lastSentAt: s.lastSentAt ? s.lastSentAt.toISOString() : null,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
+    consecutiveFailures: s.consecutiveFailures,
+    autoPauseAfterFailures: s.autoPauseAfterFailures,
   };
 }
 

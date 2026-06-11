@@ -35,6 +35,10 @@ export interface AuditReportSchedule {
      * @nullable
      */
   nextRetryAt: string | null;
+  /** Number of consecutive delivery failures since the last successful send (reset to 0 on success). */
+  consecutiveFailures: number;
+  /** The schedule is automatically set to inactive (paused) when consecutiveFailures reaches this threshold. */
+  autoPauseAfterFailures: number;
   createdAt: string;
   updatedAt: string;
 }

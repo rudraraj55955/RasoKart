@@ -7092,6 +7092,12 @@ components:
         nextRetryAt:
           type: ["string", "null"]
           description: ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.
+        consecutiveFailures:
+          type: integer
+          description: Number of consecutive delivery failures since the last successful send (reset to 0 on success).
+        autoPauseAfterFailures:
+          type: integer
+          description: The schedule is automatically set to inactive (paused) when consecutiveFailures reaches this threshold.
         createdAt:
           type: string
         updatedAt:

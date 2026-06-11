@@ -127,6 +127,29 @@ export function getRetryDelayMs(retryAttempt: number): number {
   return RETRY_DELAYS_MS[retryAttempt] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]!;
 }
 
+async function notifyAdminsOfAutoPause(schedule: typeof scheduledAuditReportsTable.$inferSelect): Promise<void> {
+  try {
+    const admins = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+    if (admins.length > 0) {
+      const freqLabel = schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1);
+      await createBulkNotifications(admins.map(admin => ({
+        userId: admin.id,
+        type: "scheduled_report_auto_paused" as const,
+        title: "Scheduled Report Auto-Paused",
+        body: `The ${freqLabel} scheduled report to ${schedule.recipientEmail} was automatically paused after ${schedule.autoPauseAfterFailures} consecutive delivery failures. Re-enable it after fixing the email address.`,
+        metadata: { scheduleId: schedule.id, frequency: schedule.frequency, recipientEmail: schedule.recipientEmail, consecutiveFailures: schedule.autoPauseAfterFailures },
+      })));
+      logger.info({ scheduleId: schedule.id, adminCount: admins.length }, "Admin notifications sent for scheduled report auto-pause");
+    }
+  } catch (notifyErr) {
+    logger.error({ err: notifyErr, scheduleId: schedule.id }, "Failed to send admin notifications for scheduled report auto-pause");
+  }
+}
+
 export async function sendScheduledReport(
   schedule: typeof scheduledAuditReportsTable.$inferSelect,
   isRetry = false,
@@ -199,7 +222,7 @@ export async function sendScheduledReport(
   if (sent) {
     await db
       .update(scheduledAuditReportsTable)
-      .set({ lastSentAt: sentAt, updatedAt: new Date() })
+      .set({ lastSentAt: sentAt, consecutiveFailures: 0, updatedAt: new Date() })
       .where(eq(scheduledAuditReportsTable.id, schedule.id));
     logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length, isRetry, retryAttempt }, "Scheduled audit report sent");
 
@@ -228,6 +251,27 @@ export async function sendScheduledReport(
     }
   } else {
     logger.warn({ scheduleId: schedule.id, errorMessage, isRetry, retryAttempt }, "Scheduled audit report send failed");
+
+    const newConsecutiveFailures = schedule.consecutiveFailures + 1;
+    const shouldAutoPause = newConsecutiveFailures >= schedule.autoPauseAfterFailures;
+
+    if (shouldAutoPause) {
+      await db
+        .update(scheduledAuditReportsTable)
+        .set({ consecutiveFailures: newConsecutiveFailures, isActive: false, updatedAt: new Date() })
+        .where(eq(scheduledAuditReportsTable.id, schedule.id));
+      logger.warn(
+        { scheduleId: schedule.id, consecutiveFailures: newConsecutiveFailures, autoPauseAfterFailures: schedule.autoPauseAfterFailures },
+        "Scheduled audit report auto-paused after repeated delivery failures",
+      );
+      await notifyAdminsOfAutoPause({ ...schedule, consecutiveFailures: newConsecutiveFailures });
+    } else {
+      await db
+        .update(scheduledAuditReportsTable)
+        .set({ consecutiveFailures: newConsecutiveFailures, updatedAt: new Date() })
+        .where(eq(scheduledAuditReportsTable.id, schedule.id));
+    }
+
     throw new Error(errorMessage ?? "Send failed");
   }
   return sent;

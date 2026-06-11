@@ -3094,6 +3094,8 @@ export const ListAuditReportSchedulesResponse = zod.object({
   "retryInProgress": zod.boolean().describe('True when the last delivery failed and automatic retries are still pending (currentRetryAttempt < maxRetryAttempts).'),
   "currentRetryAttempt": zod.number().describe('The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.).'),
   "nextRetryAt": zod.string().nullable().describe('ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.'),
+  "consecutiveFailures": zod.number().describe('Number of consecutive delivery failures since the last successful send (reset to 0 on success).'),
+  "autoPauseAfterFailures": zod.number().describe('The schedule is automatically set to inactive (paused) when consecutiveFailures reaches this threshold.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }))
@@ -3131,6 +3133,8 @@ export const SendAuditReportNowResponse = zod.object({
   "retryInProgress": zod.boolean().describe('True when the last delivery failed and automatic retries are still pending (currentRetryAttempt < maxRetryAttempts).'),
   "currentRetryAttempt": zod.number().describe('The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.).'),
   "nextRetryAt": zod.string().nullable().describe('ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.'),
+  "consecutiveFailures": zod.number().describe('Number of consecutive delivery failures since the last successful send (reset to 0 on success).'),
+  "autoPauseAfterFailures": zod.number().describe('The schedule is automatically set to inactive (paused) when consecutiveFailures reaches this threshold.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -3216,6 +3220,8 @@ export const UpdateAuditReportScheduleResponse = zod.object({
   "retryInProgress": zod.boolean().describe('True when the last delivery failed and automatic retries are still pending (currentRetryAttempt < maxRetryAttempts).'),
   "currentRetryAttempt": zod.number().describe('The retry attempt number of the most recent log entry (0 = initial send, 1 = first retry, etc.).'),
   "nextRetryAt": zod.string().nullable().describe('ISO timestamp of the next scheduled retry attempt (lastLogSentAt + retryBackoffMinutes). Null when no retry is pending.'),
+  "consecutiveFailures": zod.number().describe('Number of consecutive delivery failures since the last successful send (reset to 0 on success).'),
+  "autoPauseAfterFailures": zod.number().describe('The schedule is automatically set to inactive (paused) when consecutiveFailures reaches this threshold.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
