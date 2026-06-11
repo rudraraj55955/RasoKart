@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2 } from "lucide-react";
+import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2, CalendarRange } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { getToken } from "@/lib/auth";
 
@@ -158,6 +158,29 @@ function loadSavedFilters(): SavedFilter[] {
 
 function storeSavedFilters(filters: SavedFilter[]): void {
   localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(filters));
+}
+
+interface CustomDatePreset {
+  id: string;
+  name: string;
+  from: string;
+  to: string;
+}
+
+const CUSTOM_DATE_PRESETS_KEY = "rasokart_custom_date_presets";
+
+function loadCustomDatePresets(): CustomDatePreset[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_DATE_PRESETS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as CustomDatePreset[];
+  } catch {
+    return [];
+  }
+}
+
+function storeCustomDatePresets(presets: CustomDatePreset[]): void {
+  localStorage.setItem(CUSTOM_DATE_PRESETS_KEY, JSON.stringify(presets));
 }
 
 function parseSmartQuery(raw: string): SmartFilter | null {
@@ -437,11 +460,24 @@ export default function MerchantTransactions() {
   const [saveFilterNameError, setSaveFilterNameError] = useState("");
   const saveNameInputRef = useRef<HTMLInputElement>(null);
 
+  // Custom date preset state
+  const [customDatePresets, setCustomDatePresets] = useState<CustomDatePreset[]>(() => loadCustomDatePresets());
+  const [showSaveDatePreset, setShowSaveDatePreset] = useState(false);
+  const [saveDatePresetName, setSaveDatePresetName] = useState("");
+  const [saveDatePresetNameError, setSaveDatePresetNameError] = useState("");
+  const saveDatePresetNameRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (showSaveInput) {
       setTimeout(() => saveNameInputRef.current?.focus(), 50);
     }
   }, [showSaveInput]);
+
+  useEffect(() => {
+    if (showSaveDatePreset) {
+      setTimeout(() => saveDatePresetNameRef.current?.focus(), 50);
+    }
+  }, [showSaveDatePreset]);
 
   const amountMin = smartFilter?.amountMin;
   const amountMax = smartFilter?.amountMax;
@@ -582,6 +618,68 @@ export default function MerchantTransactions() {
     storeSavedFilters(updated);
   };
 
+  // Custom date preset handlers
+  const applyCustomDatePreset = (preset: CustomDatePreset) => {
+    setDateFrom(preset.from);
+    setDateTo(preset.to);
+    setPage(1);
+    if (smartFilter?.dateFrom || smartFilter?.dateTo) {
+      setSmartFilter(null);
+      setSmartInput("");
+    }
+    setShowSaveDatePreset(false);
+  };
+
+  const isCustomDatePresetActive = (preset: CustomDatePreset) =>
+    activeDateFrom === preset.from && activeDateTo === preset.to;
+
+  const openSaveDatePreset = () => {
+    setSaveDatePresetName("");
+    setSaveDatePresetNameError("");
+    setShowSaveDatePreset(true);
+  };
+
+  const confirmSaveDatePreset = () => {
+    const trimmed = saveDatePresetName.trim();
+    if (!trimmed) {
+      setSaveDatePresetNameError("Please enter a name for this preset.");
+      saveDatePresetNameRef.current?.focus();
+      return;
+    }
+    const alreadyExists = customDatePresets.some(
+      p => p.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (alreadyExists) {
+      setSaveDatePresetNameError("A preset with this name already exists.");
+      saveDatePresetNameRef.current?.focus();
+      return;
+    }
+    const newPreset: CustomDatePreset = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: trimmed,
+      from: dateFrom,
+      to: dateTo,
+    };
+    const updated = [...customDatePresets, newPreset];
+    setCustomDatePresets(updated);
+    storeCustomDatePresets(updated);
+    setShowSaveDatePreset(false);
+    setSaveDatePresetName("");
+    setSaveDatePresetNameError("");
+  };
+
+  const cancelSaveDatePreset = () => {
+    setShowSaveDatePreset(false);
+    setSaveDatePresetName("");
+    setSaveDatePresetNameError("");
+  };
+
+  const deleteCustomDatePreset = (id: string) => {
+    const updated = customDatePresets.filter(p => p.id !== id);
+    setCustomDatePresets(updated);
+    storeCustomDatePresets(updated);
+  };
+
   const exportCsv = async () => {
     const params = new URLSearchParams();
     if (type && type !== "all") params.set("type", type);
@@ -618,6 +716,15 @@ export default function MerchantTransactions() {
   const isCurrentFilterSaved = hasSmartFilter && savedFilters.some(
     f => f.rawInput === smartInput && JSON.stringify(f.filter) === JSON.stringify(smartFilter)
   );
+
+  // Custom date preset derived state
+  const isCustomDateRangeEntered = !!(dateFrom && dateTo && !smartFilter?.dateFrom && !smartFilter?.dateTo);
+  const isBuiltInPresetActive = DATE_PRESETS.some(p => {
+    const { from, to } = p.getRange();
+    return dateFrom === from && dateTo === to;
+  });
+  const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
+  const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
 
   return (
     <div className="space-y-6">
@@ -883,60 +990,140 @@ export default function MerchantTransactions() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-xs text-muted-foreground font-medium mr-1">Date range:</span>
-              {DATE_PRESETS.map(preset => (
-                <Button
-                  key={preset.label}
-                  variant={isPresetActive(preset) ? "secondary" : "outline"}
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => applyPreset(preset)}
-                >
-                  {preset.label}
-                </Button>
-              ))}
-              <div className="flex items-center gap-2 ml-1">
-                <Input
-                  type="date"
-                  className="w-[150px] h-8 text-xs [color-scheme:dark]"
-                  value={smartFilter?.dateFrom ?? dateFrom}
-                  onChange={e => {
-                    if (smartFilter?.dateFrom) return;
-                    setDateFrom(e.target.value);
-                    setPage(1);
-                  }}
-                  title="From date"
-                  readOnly={!!smartFilter?.dateFrom}
-                />
-                <span className="text-muted-foreground text-sm">to</span>
-                <Input
-                  type="date"
-                  className="w-[150px] h-8 text-xs [color-scheme:dark]"
-                  value={smartFilter?.dateTo ?? dateTo}
-                  onChange={e => {
-                    if (smartFilter?.dateTo) return;
-                    setDateTo(e.target.value);
-                    setPage(1);
-                  }}
-                  title="To date"
-                  readOnly={!!smartFilter?.dateTo}
-                />
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-muted-foreground font-medium mr-1">Date range:</span>
+                {DATE_PRESETS.map(preset => (
+                  <Button
+                    key={preset.label}
+                    variant={isPresetActive(preset) ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => applyPreset(preset)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+                {customDatePresets.map(preset => (
+                  <span
+                    key={preset.id}
+                    className={`group inline-flex items-center gap-1 rounded-md border text-xs font-medium transition-colors ${
+                      isCustomDatePresetActive(preset)
+                        ? "border-primary/60 bg-primary/15 text-primary"
+                        : "border-sky-500/30 bg-sky-500/8 text-sky-300 hover:border-sky-500/60"
+                    }`}
+                  >
+                    <button
+                      onClick={() => applyCustomDatePreset(preset)}
+                      className="flex items-center gap-1 h-8 px-2.5 hover:text-sky-100 transition-colors"
+                      title={`${preset.from} – ${preset.to}`}
+                    >
+                      <CalendarRange className="w-3 h-3 shrink-0" />
+                      {preset.name}
+                    </button>
+                    <button
+                      onClick={() => deleteCustomDatePreset(preset.id)}
+                      className="pr-1.5 rounded-r-md text-sky-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100 h-8 flex items-center"
+                      aria-label={`Remove preset "${preset.name}"`}
+                      title="Remove this preset"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <div className="flex items-center gap-2 ml-1">
+                  <Input
+                    type="date"
+                    className="w-[150px] h-8 text-xs [color-scheme:dark]"
+                    value={smartFilter?.dateFrom ?? dateFrom}
+                    onChange={e => {
+                      if (smartFilter?.dateFrom) return;
+                      setDateFrom(e.target.value);
+                      setPage(1);
+                      setShowSaveDatePreset(false);
+                    }}
+                    title="From date"
+                    readOnly={!!smartFilter?.dateFrom}
+                  />
+                  <span className="text-muted-foreground text-sm">to</span>
+                  <Input
+                    type="date"
+                    className="w-[150px] h-8 text-xs [color-scheme:dark]"
+                    value={smartFilter?.dateTo ?? dateTo}
+                    onChange={e => {
+                      if (smartFilter?.dateTo) return;
+                      setDateTo(e.target.value);
+                      setPage(1);
+                      setShowSaveDatePreset(false);
+                    }}
+                    title="To date"
+                    readOnly={!!smartFilter?.dateTo}
+                  />
+                  {canSaveDatePreset && !showSaveDatePreset && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs border-sky-500/40 text-sky-300 hover:bg-sky-500/10 hover:text-sky-200"
+                      onClick={openSaveDatePreset}
+                      title="Save this date range as a quick-access preset"
+                    >
+                      <CalendarRange className="w-3 h-3 mr-1.5" />
+                      Save as preset
+                    </Button>
+                  )}
+                  {isCustomDateRangeEntered && isCustomDateAlreadySaved && (
+                    <span className="inline-flex items-center gap-1 h-8 px-2.5 text-xs text-sky-400/60 border border-sky-500/20 rounded-md">
+                      <CalendarRange className="w-3 h-3" />
+                      Saved
+                    </span>
+                  )}
+                </div>
+                {(dateFrom || dateTo || smartFilter?.dateFrom || smartFilter?.dateTo) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground h-8 px-2"
+                    onClick={() => {
+                      setDateFrom("");
+                      setDateTo("");
+                      setShowSaveDatePreset(false);
+                      if (smartFilter?.dateFrom || smartFilter?.dateTo) clearSmartFilter();
+                      setPage(1);
+                    }}
+                  >
+                    <X className="w-3 h-3 mr-1" />Clear
+                  </Button>
+                )}
               </div>
-              {(dateFrom || dateTo || smartFilter?.dateFrom || smartFilter?.dateTo) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground h-8 px-2"
-                  onClick={() => {
-                    setDateFrom("");
-                    setDateTo("");
-                    if (smartFilter?.dateFrom || smartFilter?.dateTo) clearSmartFilter();
-                    setPage(1);
-                  }}
-                >
-                  <X className="w-3 h-3 mr-1" />Clear
-                </Button>
+              {showSaveDatePreset && (
+                <div className="flex items-start gap-2 pl-1">
+                  <div className="flex-shrink-0 pt-1">
+                    <CalendarRange className="w-3.5 h-3.5 text-sky-400" />
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      ref={saveDatePresetNameRef}
+                      className="h-8 text-sm max-w-[260px]"
+                      placeholder="Name this preset (e.g. Q1 2025)"
+                      value={saveDatePresetName}
+                      onChange={e => { setSaveDatePresetName(e.target.value); setSaveDatePresetNameError(""); }}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") confirmSaveDatePreset();
+                        if (e.key === "Escape") cancelSaveDatePreset();
+                      }}
+                      maxLength={40}
+                    />
+                    {saveDatePresetNameError && (
+                      <p className="mt-1 text-xs text-rose-400">{saveDatePresetNameError}</p>
+                    )}
+                  </div>
+                  <Button size="sm" onClick={confirmSaveDatePreset} className="h-8 shrink-0">
+                    Save
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={cancelSaveDatePreset} className="h-8 shrink-0 px-2">
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
               )}
             </div>
           </div>
