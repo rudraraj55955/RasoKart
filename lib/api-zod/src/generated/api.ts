@@ -1527,9 +1527,16 @@ export const GetCallbackStatsResponse = zod.object({
  * Admin-only. Returns the total signature verification failures and number of affected merchants in the last 24 hours across the entire platform.
  * @summary Get aggregate callback signature failure stats across all merchants
  */
+
+export const getAdminCallbackStatsResponseAlertWindowHoursMin = 0.25;
+
+
+
 export const GetAdminCallbackStatsResponse = zod.object({
   "signatureFailures24h": zod.number().describe('Total signature verification failures across all merchants in the last 24 hours'),
-  "affectedMerchants": zod.number().describe('Number of distinct merchants with at least one signature failure in the last 24 hours')
+  "affectedMerchants": zod.number().describe('Number of distinct merchants with at least one signature failure in the last 24 hours'),
+  "alertThreshold": zod.number().min(1).describe('Number of signature failures within the window that triggers an alert email'),
+  "alertWindowHours": zod.number().min(getAdminCallbackStatsResponseAlertWindowHoursMin).describe('Rolling time window in hours over which failures are counted for alert purposes')
 })
 
 

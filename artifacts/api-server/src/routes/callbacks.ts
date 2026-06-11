@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, webhooksTable, callbackLogAttemptsTable } from "@workspace/db";
+import { db, callbackLogsTable, qrCodesTable, apiKeysTable, merchantsTable, transactionsTable, qrPaymentEventsTable, webhooksTable, callbackLogAttemptsTable, systemSettingsTable } from "@workspace/db";
 import { eq, and, count, countDistinct, sql, gte, lte, isNull, like, asc, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireApiKey, verifyCallbackSignature } from "../middlewares/callbackAuth";
@@ -192,22 +192,42 @@ router.get("/stats", async (req, res) => {
 router.get("/admin/stats", requireAdmin, async (req, res) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [row] = await db
-    .select({
-      signatureFailures24h: count(),
-      affectedMerchants: countDistinct(callbackLogsTable.merchantId),
-    })
-    .from(callbackLogsTable)
-    .where(
-      and(
-        eq(callbackLogsTable.signatureVerified, false),
-        gte(callbackLogsTable.createdAt, since),
+  const [row, thresholdRow, windowRow] = await Promise.all([
+    db
+      .select({
+        signatureFailures24h: count(),
+        affectedMerchants: countDistinct(callbackLogsTable.merchantId),
+      })
+      .from(callbackLogsTable)
+      .where(
+        and(
+          eq(callbackLogsTable.signatureVerified, false),
+          gte(callbackLogsTable.createdAt, since),
+        )
       )
-    );
+      .then(r => r[0]),
+    db
+      .select({ value: systemSettingsTable.value })
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, "signature_failure_alert_threshold"))
+      .limit(1)
+      .then(r => r[0]),
+    db
+      .select({ value: systemSettingsTable.value })
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, "signature_failure_alert_window_hours"))
+      .limit(1)
+      .then(r => r[0]),
+  ]);
+
+  const alertThreshold = thresholdRow?.value ? parseInt(thresholdRow.value, 10) : 10;
+  const alertWindowHours = windowRow?.value ? parseFloat(windowRow.value) : 1;
 
   res.json({
     signatureFailures24h: row?.signatureFailures24h ?? 0,
     affectedMerchants: row?.affectedMerchants ?? 0,
+    alertThreshold: isNaN(alertThreshold) ? 10 : alertThreshold,
+    alertWindowHours: isNaN(alertWindowHours) ? 1 : alertWindowHours,
   });
 });
 

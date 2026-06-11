@@ -686,6 +686,16 @@ export interface AdminCallbackStatsResponse {
   signatureFailures24h: number;
   /** Number of distinct merchants with at least one signature failure in the last 24 hours */
   affectedMerchants: number;
+  /**
+     * Number of signature failures within the window that triggers an alert email
+     * @minimum 1
+     */
+  alertThreshold: number;
+  /**
+     * Rolling time window in hours over which failures are counted for alert purposes
+     * @minimum 0.25
+     */
+  alertWindowHours: number;
 }
 
 export type SettlementStatus = typeof SettlementStatus[keyof typeof SettlementStatus];

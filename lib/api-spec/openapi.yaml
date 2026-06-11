@@ -5170,7 +5170,7 @@ components:
 
     AdminCallbackStatsResponse:
       type: object
-      required: [signatureFailures24h, affectedMerchants]
+      required: [signatureFailures24h, affectedMerchants, alertThreshold, alertWindowHours]
       properties:
         signatureFailures24h:
           type: integer
@@ -5178,6 +5178,14 @@ components:
         affectedMerchants:
           type: integer
           description: Number of distinct merchants with at least one signature failure in the last 24 hours
+        alertThreshold:
+          type: integer
+          description: Number of signature failures within the window that triggers an alert email
+          minimum: 1
+        alertWindowHours:
+          type: number
+          description: Rolling time window in hours over which failures are counted for alert purposes
+          minimum: 0.25
 
     Settlement:
       type: object

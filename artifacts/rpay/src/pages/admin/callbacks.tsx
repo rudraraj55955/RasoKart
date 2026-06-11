@@ -225,6 +225,14 @@ export default function AdminCallbacks() {
                 {adminStats!.affectedMerchants} {adminStats!.affectedMerchants === 1 ? "merchant" : "merchants"} affected — click to filter
               </p>
             </div>
+            <a
+              href="/admin/settings#signature-failure-alert"
+              onClick={e => e.stopPropagation()}
+              className="shrink-0 text-xs text-rose-400/80 hover:text-rose-300 border border-rose-500/30 hover:border-rose-500/60 rounded px-2 py-1 transition-colors whitespace-nowrap"
+              title="Go to Signature Failure Alert settings"
+            >
+              Threshold: {adminStats!.alertThreshold} {adminStats!.alertThreshold === 1 ? "failure" : "failures"} / {adminStats!.alertWindowHours === 1 ? "1 hour" : `${adminStats!.alertWindowHours}h`}
+            </a>
           </div>
         </button>
       )}
