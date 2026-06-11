@@ -2812,6 +2812,77 @@ export const useUpdateAdminMerchantWebhookUrl = <TError = ErrorType<ErrorRespons
       return useMutation(getUpdateAdminMerchantWebhookUrlMutationOptions(options));
     }
 
+export const getDeleteAdminMerchantWebhookUrlUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/webhook-url`
+}
+
+/**
+ * Clears the merchant's webhook callback URL and marks it inactive. An email notification is sent to the merchant.
+ * @summary Remove the webhook URL for a merchant (admin only)
+ */
+export const deleteAdminMerchantWebhookUrl = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteAdminMerchantWebhookUrlUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAdminMerchantWebhookUrlMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAdminMerchantWebhookUrl>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAdminMerchantWebhookUrl>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteAdminMerchantWebhookUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAdminMerchantWebhookUrl>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAdminMerchantWebhookUrl(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAdminMerchantWebhookUrlMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAdminMerchantWebhookUrl>>>
+
+    export type DeleteAdminMerchantWebhookUrlMutationError = ErrorType<void>
+
+    /**
+ * @summary Remove the webhook URL for a merchant (admin only)
+ */
+export const useDeleteAdminMerchantWebhookUrl = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAdminMerchantWebhookUrl>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAdminMerchantWebhookUrl>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAdminMerchantWebhookUrlMutationOptions(options));
+    }
+
 export const getListMerchantInvoicesUrl = (id: number,) => {
 
 

@@ -890,6 +890,24 @@ paths:
           description: Admin access only
         "404":
           description: Merchant not found
+    delete:
+      operationId: deleteAdminMerchantWebhookUrl
+      tags: [merchants]
+      summary: Remove the webhook URL for a merchant (admin only)
+      description: Clears the merchant's webhook callback URL and marks it inactive. An email notification is sent to the merchant.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Webhook URL removed
+        "403":
+          description: Admin access only
+        "404":
+          description: Merchant not found
 
   /merchants/{id}/invoices:
     get:

@@ -5,7 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 import { sendRejectionEmail } from "../helpers/rejectionEmail";
 import { sendCallbackSecretResetEmail } from "../helpers/callbackSecretResetEmail";
-import { sendCallbackUrlChangedEmail } from "../helpers/callbackUrlChangedEmail";
+import { sendCallbackUrlChangedEmail, sendCallbackUrlRemovedEmail } from "../helpers/callbackUrlChangedEmail";
 import { ObjectStorageService, ObjectNotFoundError, InvalidImageError } from "../lib/objectStorage";
 import { consumeUploadIntent } from "../lib/uploadIntentStore";
 
@@ -927,6 +927,38 @@ router.patch("/:id/webhook-url", requireAdmin, async (req, res) => {
   }).catch((err) => req.log.error({ err, merchantId: id }, "Failed to send callback URL changed email"));
 
   res.json({ url: webhook!.url });
+});
+
+// DELETE /api/merchants/:id/webhook-url  (admin only)
+router.delete("/:id/webhook-url", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
+
+  const [merchant] = await db.select().from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+  await db.delete(webhooksTable).where(eq(webhooksTable.merchantId, id));
+
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "webhook_url_removed",
+    targetType: "merchant",
+    targetId: merchant.id,
+    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email }),
+    ipAddress: req.ip ?? null,
+  });
+
+  req.log.info({ adminId: admin.id, merchantId: id }, "Admin removed merchant webhook URL");
+
+  sendCallbackUrlRemovedEmail({
+    to: merchant.email,
+    businessName: merchant.businessName,
+    adminEmail: admin.email,
+    removedAt: new Date(),
+  }).catch((err) => req.log.error({ err, merchantId: id }, "Failed to send callback URL removed email"));
+
+  res.status(204).end();
 });
 
 // GET /api/merchants/:id/invoices (admin only)

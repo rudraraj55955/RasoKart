@@ -11,7 +11,7 @@ import {
   useUpdateMerchantBranding, useGetMerchantPlanUsageAdmin,
   useGetAdminMerchantCallbackSecret, useResetAdminMerchantCallbackSecret,
   useUpdateMerchantCallbackWindow,
-  useGetAdminMerchantWebhookUrl, useUpdateAdminMerchantWebhookUrl,
+  useGetAdminMerchantWebhookUrl, useUpdateAdminMerchantWebhookUrl, useDeleteAdminMerchantWebhookUrl,
   getGetAdminMerchantWebhookUrlQueryKey,
   useScheduleMerchantPlanRenewal, useGetMerchant,
   useSendSecurityReminder,
@@ -32,7 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff, Bell, Globe, Pencil, Webhook, ExternalLink } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff, Bell, Globe, Pencil, Webhook, ExternalLink, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -195,6 +195,7 @@ export default function AdminMerchants() {
   const resetCallbackSecretMutation = useResetAdminMerchantCallbackSecret();
   const updateCallbackWindowMutation = useUpdateMerchantCallbackWindow();
   const updateWebhookUrlMutation = useUpdateAdminMerchantWebhookUrl();
+  const deleteWebhookUrlMutation = useDeleteAdminMerchantWebhookUrl();
   const updateBrandingMutation = useUpdateMerchantBranding();
   const approveMutation = useApproveMerchant();
   const rejectMutation = useRejectMerchant();
@@ -2052,18 +2053,45 @@ export default function AdminMerchants() {
                       <span className="text-xs text-muted-foreground">Not configured</span>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0"
-                    onClick={() => {
-                      setWebhookUrlInput(merchantWebhookUrl?.url ?? "");
-                      setWebhookUrlEditMode(true);
-                    }}
-                  >
-                    <Pencil className="w-3.5 h-3.5 mr-1" />
-                    {merchantWebhookUrl?.url ? "Edit" : "Set URL"}
-                  </Button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {merchantWebhookUrl?.url && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                        disabled={deleteWebhookUrlMutation.isPending}
+                        onClick={() => {
+                          if (!assignPlanMerchant) return;
+                          deleteWebhookUrlMutation.mutate(
+                            { id: assignPlanMerchant.id },
+                            {
+                              onSuccess: () => {
+                                toast.success("Webhook URL removed — merchant notified by email");
+                                refetchWebhookUrl();
+                              },
+                              onError: (err: unknown) => {
+                                toast.error(getApiErrorMessage(err, "Failed to remove webhook URL"));
+                              },
+                            }
+                          );
+                        }}
+                      >
+                        {deleteWebhookUrlMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 mr-1" />}
+                        Remove
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setWebhookUrlInput(merchantWebhookUrl?.url ?? "");
+                        setWebhookUrlEditMode(true);
+                      }}
+                    >
+                      <Pencil className="w-3.5 h-3.5 mr-1" />
+                      {merchantWebhookUrl?.url ? "Edit" : "Set URL"}
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">

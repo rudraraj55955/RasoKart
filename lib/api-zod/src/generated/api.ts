@@ -879,6 +879,15 @@ export const UpdateAdminMerchantWebhookUrlResponse = zod.object({
 
 
 /**
+ * Clears the merchant's webhook callback URL and marks it inactive. An email notification is sent to the merchant.
+ * @summary Remove the webhook URL for a merchant (admin only)
+ */
+export const DeleteAdminMerchantWebhookUrlParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
  * @summary List invoices for a specific merchant (admin only)
  */
 export const ListMerchantInvoicesParams = zod.object({
