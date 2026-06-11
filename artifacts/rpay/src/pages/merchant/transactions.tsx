@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2, CalendarRange } from "lucide-react";
+import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2, CalendarRange, Layers } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { getToken } from "@/lib/auth";
 
@@ -195,6 +195,32 @@ function loadCustomDatePresets(): CustomDatePreset[] {
 
 function storeCustomDatePresets(presets: CustomDatePreset[]): void {
   localStorage.setItem(CUSTOM_DATE_PRESETS_KEY, JSON.stringify(presets));
+}
+
+interface CombinedPreset {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  provider: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+const COMBINED_PRESETS_KEY = "rasokart_combined_presets";
+
+function loadCombinedPresets(): CombinedPreset[] {
+  try {
+    const raw = localStorage.getItem(COMBINED_PRESETS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as CombinedPreset[];
+  } catch {
+    return [];
+  }
+}
+
+function storeCombinedPresets(presets: CombinedPreset[]): void {
+  localStorage.setItem(COMBINED_PRESETS_KEY, JSON.stringify(presets));
 }
 
 function parseSmartQuery(raw: string): SmartFilter | null {
@@ -493,6 +519,13 @@ export default function MerchantTransactions() {
   const [saveDatePresetNameError, setSaveDatePresetNameError] = useState("");
   const saveDatePresetNameRef = useRef<HTMLInputElement>(null);
 
+  // Combined preset state
+  const [combinedPresets, setCombinedPresets] = useState<CombinedPreset[]>(() => loadCombinedPresets());
+  const [showSaveCombinedPreset, setShowSaveCombinedPreset] = useState(false);
+  const [saveCombinedPresetName, setSaveCombinedPresetName] = useState("");
+  const [saveCombinedPresetNameError, setSaveCombinedPresetNameError] = useState("");
+  const saveCombinedPresetNameRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (showSaveInput) {
       setTimeout(() => saveNameInputRef.current?.focus(), 50);
@@ -504,6 +537,12 @@ export default function MerchantTransactions() {
       setTimeout(() => saveDatePresetNameRef.current?.focus(), 50);
     }
   }, [showSaveDatePreset]);
+
+  useEffect(() => {
+    if (showSaveCombinedPreset) {
+      setTimeout(() => saveCombinedPresetNameRef.current?.focus(), 50);
+    }
+  }, [showSaveCombinedPreset]);
 
   const amountMin = smartFilter?.amountMin;
   const amountMax = smartFilter?.amountMax;
@@ -707,6 +746,72 @@ export default function MerchantTransactions() {
     storeCustomDatePresets(updated);
   };
 
+  // Combined preset handlers
+  const applyCombinedPreset = (preset: CombinedPreset) => {
+    setType(preset.type);
+    setStatus(preset.status);
+    setProvider(preset.provider);
+    setDateFrom(preset.dateFrom);
+    setDateTo(preset.dateTo);
+    if (smartFilter) {
+      setSmartFilter(null);
+      setSmartInput("");
+      setSmartError("");
+    }
+    setShowSaveCombinedPreset(false);
+    setPage(1);
+  };
+
+  const openSaveCombinedPreset = () => {
+    setSaveCombinedPresetName("");
+    setSaveCombinedPresetNameError("");
+    setShowSaveCombinedPreset(true);
+  };
+
+  const confirmSaveCombinedPreset = () => {
+    const trimmed = saveCombinedPresetName.trim();
+    if (!trimmed) {
+      setSaveCombinedPresetNameError("Please enter a name for this preset.");
+      saveCombinedPresetNameRef.current?.focus();
+      return;
+    }
+    const alreadyExists = combinedPresets.some(
+      p => p.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (alreadyExists) {
+      setSaveCombinedPresetNameError("A preset with this name already exists.");
+      saveCombinedPresetNameRef.current?.focus();
+      return;
+    }
+    const newPreset: CombinedPreset = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: trimmed,
+      type,
+      status,
+      provider,
+      dateFrom,
+      dateTo,
+    };
+    const updated = [...combinedPresets, newPreset];
+    setCombinedPresets(updated);
+    storeCombinedPresets(updated);
+    setShowSaveCombinedPreset(false);
+    setSaveCombinedPresetName("");
+    setSaveCombinedPresetNameError("");
+  };
+
+  const cancelSaveCombinedPreset = () => {
+    setShowSaveCombinedPreset(false);
+    setSaveCombinedPresetName("");
+    setSaveCombinedPresetNameError("");
+  };
+
+  const deleteCombinedPreset = (id: string) => {
+    const updated = combinedPresets.filter(p => p.id !== id);
+    setCombinedPresets(updated);
+    storeCombinedPresets(updated);
+  };
+
   const exportCsv = async () => {
     const params = new URLSearchParams();
     if (activeType && activeType !== "all") params.set("type", activeType);
@@ -737,7 +842,8 @@ export default function MerchantTransactions() {
   const hasStatusFilter = status !== "all";
   const hasProviderFilter = provider !== "all";
   const hasDateFilter = !!(activeDateFrom || activeDateTo);
-  const anyFilterActive = hasSmartFilter || hasUtrSearch || hasTypeFilter || hasStatusFilter || hasProviderFilter || hasDateFilter || !!smartFilter?.txProvider;
+  const hasSmartProviderFilter = smartFilter != null && !!smartFilter.txProvider;
+  const anyFilterActive = hasSmartFilter || hasUtrSearch || hasTypeFilter || hasStatusFilter || hasProviderFilter || hasDateFilter || hasSmartProviderFilter;
 
   // Check if the current active smart filter is already saved
   const isCurrentFilterSaved = hasSmartFilter && savedFilters.some(
@@ -752,6 +858,30 @@ export default function MerchantTransactions() {
   });
   const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
   const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
+
+  // Combined preset derived state
+  const isCombinedPresetAlreadySaved = combinedPresets.some(
+    p => p.type === type && p.status === status && p.provider === provider &&
+      p.dateFrom === dateFrom && p.dateTo === dateTo
+  );
+  const canSaveCombinedPreset =
+    !smartFilter &&
+    (hasTypeFilter || hasStatusFilter || hasProviderFilter) &&
+    !!(dateFrom && dateTo) &&
+    !isCombinedPresetAlreadySaved;
+
+  const buildCombinedPresetLabel = (preset: CombinedPreset): string => {
+    const parts: string[] = [];
+    if (preset.type !== "all") parts.push(preset.type.charAt(0).toUpperCase() + preset.type.slice(1) + "s");
+    if (preset.status !== "all") parts.push(preset.status.charAt(0).toUpperCase() + preset.status.slice(1));
+    if (preset.provider !== "all") parts.push(formatProvider(preset.provider));
+    parts.push(`${preset.dateFrom} – ${preset.dateTo}`);
+    return parts.join(" · ");
+  };
+
+  const isCombinedPresetActive = (preset: CombinedPreset) =>
+    type === preset.type && status === preset.status && provider === preset.provider &&
+    dateFrom === preset.dateFrom && dateTo === preset.dateTo;
 
   return (
     <div className="space-y-6">
@@ -990,6 +1120,41 @@ export default function MerchantTransactions() {
       <Card>
         <CardHeader className="pb-4">
           <div className="space-y-3">
+            {/* Combined preset chips */}
+            {combinedPresets.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                  <Layers className="w-3 h-3" />Presets:
+                </span>
+                {combinedPresets.map(preset => (
+                  <span
+                    key={preset.id}
+                    className={`group inline-flex items-center gap-1 rounded-full border text-xs font-medium transition-colors ${
+                      isCombinedPresetActive(preset)
+                        ? "border-teal-500/60 bg-teal-500/15 text-teal-200"
+                        : "border-teal-500/30 bg-teal-500/8 text-teal-300 hover:border-teal-500/60"
+                    }`}
+                  >
+                    <button
+                      onClick={() => applyCombinedPreset(preset)}
+                      className="flex items-center gap-1 px-2.5 py-1 hover:text-teal-100 transition-colors"
+                      title={buildCombinedPresetLabel(preset)}
+                    >
+                      <Layers className="w-3 h-3 shrink-0" />
+                      {preset.name}
+                    </button>
+                    <button
+                      onClick={() => deleteCombinedPreset(preset.id)}
+                      className="pr-1.5 text-teal-400/50 hover:text-rose-400 hover:bg-rose-500/10 rounded-full transition-colors opacity-0 group-hover:opacity-100 py-1 flex items-center"
+                      aria-label={`Remove preset "${preset.name}"`}
+                      title="Remove this preset"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-3 items-center">
               <Select value={type} onValueChange={v => { setType(v); setPage(1); }}>
                 <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
@@ -1154,6 +1319,59 @@ export default function MerchantTransactions() {
                 </div>
               )}
             </div>
+            {/* Combined preset save button */}
+            {(canSaveCombinedPreset || (isCombinedPresetAlreadySaved && !smartFilter && (hasTypeFilter || hasStatusFilter || hasProviderFilter) && !!(dateFrom && dateTo))) && (
+              <div className="flex items-center gap-2">
+                {canSaveCombinedPreset && !showSaveCombinedPreset && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs border-teal-500/40 text-teal-300 hover:bg-teal-500/10 hover:text-teal-200"
+                    onClick={openSaveCombinedPreset}
+                    title="Save this combination of filters as a one-click preset"
+                  >
+                    <Layers className="w-3 h-3 mr-1.5" />
+                    Save as preset
+                  </Button>
+                )}
+                {isCombinedPresetAlreadySaved && !smartFilter && (hasTypeFilter || hasStatusFilter || hasProviderFilter) && !!(dateFrom && dateTo) && !showSaveCombinedPreset && (
+                  <span className="inline-flex items-center gap-1 h-8 px-2.5 text-xs text-teal-400/60 border border-teal-500/20 rounded-md">
+                    <Layers className="w-3 h-3" />
+                    Saved
+                  </span>
+                )}
+              </div>
+            )}
+            {showSaveCombinedPreset && (
+              <div className="flex items-start gap-2 pl-1">
+                <div className="flex-shrink-0 pt-1">
+                  <Layers className="w-3.5 h-3.5 text-teal-400" />
+                </div>
+                <div className="flex-1">
+                  <Input
+                    ref={saveCombinedPresetNameRef}
+                    className="h-8 text-sm max-w-[300px]"
+                    placeholder="Name this preset (e.g. Pending deposits Jan 2025)"
+                    value={saveCombinedPresetName}
+                    onChange={e => { setSaveCombinedPresetName(e.target.value); setSaveCombinedPresetNameError(""); }}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") confirmSaveCombinedPreset();
+                      if (e.key === "Escape") cancelSaveCombinedPreset();
+                    }}
+                    maxLength={40}
+                  />
+                  {saveCombinedPresetNameError && (
+                    <p className="mt-1 text-xs text-rose-400">{saveCombinedPresetNameError}</p>
+                  )}
+                </div>
+                <Button size="sm" onClick={confirmSaveCombinedPreset} className="h-8 shrink-0">
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={cancelSaveCombinedPreset} className="h-8 shrink-0 px-2">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
