@@ -1,16 +1,14 @@
 /**
  * PM2 Ecosystem Config — RasoKart API Server
  *
- * SETUP:
- *   1. Copy this file to /var/www/rasokart/ecosystem.config.cjs
- *   2. Fill in DATABASE_URL and SESSION_SECRET with your actual values
- *   3. Run: pm2 start ecosystem.config.cjs && pm2 save
- *
- * Generate SESSION_SECRET:
- *   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
- *
- * DATABASE_URL format:
- *   postgres://rasokart_user:YOUR_PASSWORD@localhost:5432/rasokart
+ * SETUP ON VPS:
+ *   1. After git pull, edit this file and fill in DATABASE_URL + SESSION_SECRET
+ *   2. If your DB password contains special chars (e.g. @), URL-encode them:
+ *        @ → %40   # → %23   % → %25   : → %3A   / → %2F
+ *      Example: postgresql://rasokart:Pass%40word@localhost:5432/rasokart
+ *   3. Generate SESSION_SECRET:
+ *        node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+ *   4. Run: pm2 start ecosystem.config.cjs && pm2 save
  */
 
 module.exports = {
@@ -23,8 +21,8 @@ module.exports = {
       interpreter_args: "--enable-source-maps",
       env: {
         NODE_ENV: "production",
-        PORT: 8080,
-        DATABASE_URL: "postgres://rasokart_user:CHANGE_THIS@localhost:5432/rasokart",
+        PORT: 3000,
+        DATABASE_URL: "postgresql://rasokart:CHANGE_THIS@localhost:5432/rasokart",
         SESSION_SECRET: "REPLACE_WITH_64_CHAR_HEX_FROM_CRYPTO_RANDOM",
       },
       instances: 1,
