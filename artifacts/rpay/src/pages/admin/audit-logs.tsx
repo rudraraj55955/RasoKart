@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearch, useLocation } from "wouter";
 import {
   useListAdminAuditLogs, useGetAdminAuditLogStats,
   useListAuditReportSchedules, useCreateAuditReportSchedule,
@@ -28,7 +29,7 @@ import {
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
   Users, Loader2, QrCode, Landmark,
   Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle, Settings,
-  MonitorPlay, GitMerge, RefreshCw,
+  MonitorPlay, GitMerge, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
@@ -1142,16 +1143,36 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
   const [dateTo, setDateTo] = useState("");
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
-  const [page, setPage] = useState(1);
-  const [accLogs, setAccLogs] = useState<any[]>([]);
+  const [goToInput, setGoToInput] = useState("");
 
-  // Reset accumulated logs and page when filters change
+  const search = useSearch();
+  const [location, navigate] = useLocation();
+
+  const paramKey = `hist_${scheduleId}`;
+
+  const page = (() => {
+    const sp = new URLSearchParams(search);
+    const v = parseInt(sp.get(paramKey) ?? "1", 10);
+    return isNaN(v) || v < 1 ? 1 : v;
+  })();
+
+  const setPage = useCallback((nextPage: number) => {
+    const sp = new URLSearchParams(search);
+    if (nextPage <= 1) {
+      sp.delete(paramKey);
+    } else {
+      sp.set(paramKey, String(nextPage));
+    }
+    const qs = sp.toString();
+    navigate(`${location}${qs ? `?${qs}` : ""}`, { replace: true });
+  }, [search, location, navigate, paramKey]);
+
+  // Reset to page 1 when filters change
   const filterKey = `${statusFilter}|${dateFrom}|${dateTo}`;
   const prevFilterKey = useRef(filterKey);
   if (prevFilterKey.current !== filterKey) {
     prevFilterKey.current = filterKey;
     setPage(1);
-    setAccLogs([]);
   }
 
   const params: ListAuditReportScheduleLogsParams = { limit: PAGE_SIZE, page };
@@ -1163,16 +1184,6 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
   const retrySend = useSendAuditReportNow();
 
   const { data, isLoading, isFetching } = useListAuditReportScheduleLogs(scheduleId, params);
-
-  useEffect(() => {
-    if (!data?.data) return;
-    if (page === 1) {
-      setAccLogs(data.data);
-    } else {
-      setAccLogs(prev => [...prev, ...data.data]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
 
   async function handleRetry(logId: number) {
     setRetryingId(logId);
@@ -1202,9 +1213,19 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
   const total = data?.total ?? 0;
   const failureCount = data?.failureCount ?? 0;
   const filteredTotal = data?.filteredTotal ?? 0;
-  const hasMore = accLogs.length < filteredTotal;
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
+  const logs = data?.data ?? [];
 
   const hasFilters = statusFilter !== "all" || dateFrom !== "" || dateTo !== "";
+
+  function handleGoTo(e: React.FormEvent) {
+    e.preventDefault();
+    const n = parseInt(goToInput, 10);
+    if (!isNaN(n) && n >= 1 && n <= totalPages) {
+      setPage(n);
+      setGoToInput("");
+    }
+  }
 
   return (
     <div>
@@ -1293,7 +1314,7 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
         <div className="space-y-1.5 px-2 py-2">
           {[1, 2, 3].map(i => <div key={i} className="h-8 bg-muted/20 rounded animate-pulse" />)}
         </div>
-      ) : accLogs.length === 0 ? (
+      ) : logs.length === 0 ? (
         <div className="flex items-center gap-2 px-3 py-3 text-muted-foreground">
           <History className="w-4 h-4 opacity-40" />
           <span className="text-xs">
@@ -1304,7 +1325,7 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
         </div>
       ) : (
         <div className="divide-y divide-border/30">
-          {accLogs.map((log: any) => (
+          {logs.map((log: any) => (
             <div key={log.id} className={`flex items-start gap-3 px-4 py-2.5 ${!log.success ? "bg-rose-500/5" : ""}`}>
               <div className="mt-0.5 shrink-0">
                 {log.success
@@ -1382,25 +1403,88 @@ function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: nu
               )}
             </div>
           ))}
-          {hasMore && (
-            <div className="px-4 py-2.5 flex items-center justify-between border-t border-border/30">
+
+          {/* Pagination controls */}
+          {filteredTotal > 0 && (
+            <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 border-t border-border/30 bg-muted/5">
+              {/* Left: record count + page info */}
               <span className="text-[11px] text-muted-foreground">
-                Showing {accLogs.length} of {filteredTotal}
+                {filteredTotal === 0
+                  ? "No results"
+                  : (() => {
+                      const from = (page - 1) * PAGE_SIZE + 1;
+                      const to = Math.min(page * PAGE_SIZE, filteredTotal);
+                      return `${from}–${to} of ${filteredTotal}`;
+                    })()
+                }
               </span>
-              <button
-                onClick={() => setPage(p => p + 1)}
-                disabled={isFetching}
-                className="text-[11px] text-violet-400 hover:text-violet-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
-              >
-                {isFetching ? (
-                  <>
-                    <span className="w-3 h-3 border border-violet-400/50 border-t-violet-400 rounded-full animate-spin" />
-                    Loading…
-                  </>
-                ) : (
-                  "Load more"
-                )}
-              </button>
+
+              {/* Center: prev / page indicator / next */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(1)}
+                  disabled={page <= 1 || isFetching}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="First page"
+                >
+                  <ChevronsLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setPage(page - 1)}
+                  disabled={page <= 1 || isFetching}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Previous page"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+
+                <span className="px-2 text-[11px] text-foreground font-medium tabular-nums select-none">
+                  {isFetching
+                    ? <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 border border-violet-400/50 border-t-violet-400 rounded-full animate-spin inline-block" /></span>
+                    : `${page} / ${totalPages}`
+                  }
+                </span>
+
+                <button
+                  onClick={() => setPage(page + 1)}
+                  disabled={page >= totalPages || isFetching}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Next page"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setPage(totalPages)}
+                  disabled={page >= totalPages || isFetching}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="Last page"
+                >
+                  <ChevronsRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Right: go-to-page */}
+              {totalPages > 2 && (
+                <form onSubmit={handleGoTo} className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground">Go to</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={goToInput}
+                    onChange={e => setGoToInput(e.target.value)}
+                    className="w-12 h-6 rounded border border-border/40 bg-muted/10 px-1.5 text-[11px] text-center focus:outline-none focus:border-violet-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    placeholder="—"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!goToInput || isFetching}
+                    className="text-[10px] text-violet-400 hover:text-violet-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Go
+                  </button>
+                </form>
+              )}
             </div>
           )}
         </div>
