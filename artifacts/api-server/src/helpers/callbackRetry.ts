@@ -165,7 +165,9 @@ export async function processPendingRetries(): Promise<void> {
         "Callback retry failed",
       );
 
-      if (newAttempts >= MAX_ATTEMPTS) {
+      // Test deliveries get exactly one automatic retry; finalize them immediately regardless
+      // of MAX_ATTEMPTS so they don't enter the full live-delivery backoff schedule.
+      if (log.isTest || newAttempts >= MAX_ATTEMPTS) {
         await db
           .update(callbackLogsTable)
           .set({
@@ -178,9 +180,11 @@ export async function processPendingRetries(): Promise<void> {
           })
           .where(eq(callbackLogsTable.id, log.id));
 
-        await notifyWebhookFailure(log.merchantId, log.url, newAttempts, log.qrCodeId ?? null).catch((err) => {
-          logger.error({ err, logId: log.id }, "Failed to send webhook failure notification");
-        });
+        if (!log.isTest) {
+          await notifyWebhookFailure(log.merchantId, log.url, newAttempts, log.qrCodeId ?? null).catch((err) => {
+            logger.error({ err, logId: log.id }, "Failed to send webhook failure notification");
+          });
+        }
       } else {
         const delayMs = getNextRetryDelay(newAttempts);
         const nextRetryAt = new Date(Date.now() + delayMs);
