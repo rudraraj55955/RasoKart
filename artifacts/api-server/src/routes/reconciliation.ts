@@ -439,6 +439,28 @@ router.get("/runs/:id/export.csv", async (req, res, next) => {
       if (batch.length < BATCH_SIZE) break;
     }
 
+    // Trailing email-log section — blank row + section header + one row per email send
+    const emailLogs = await db
+      .select()
+      .from(reconciliationEmailLogsTable)
+      .where(eq(reconciliationEmailLogsTable.runId, runId))
+      .orderBy(reconciliationEmailLogsTable.sentAt);
+
+    res.write("\n");
+    const emailHeaders = ["Email Type", "Recipients", "Status", "Sent At", "Error"];
+    res.write(emailHeaders.join(",") + "\n");
+
+    for (const log of emailLogs) {
+      const row = [
+        escapeCsv(log.emailType),
+        escapeCsv(log.recipients),
+        escapeCsv(log.status),
+        escapeCsv(new Date(log.sentAt).toISOString()),
+        escapeCsv(log.errorMessage ?? ""),
+      ].join(",");
+      res.write(row + "\n");
+    }
+
     res.end();
   } catch (err) {
     if (res.headersSent) {
