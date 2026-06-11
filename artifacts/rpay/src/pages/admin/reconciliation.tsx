@@ -707,6 +707,7 @@ export default function AdminReconciliation() {
   const [isExporting, setIsExporting] = useState(false);
   const [emailLogOpen, setEmailLogOpen] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
+  const [emailFailureBannerDismissed, setEmailFailureBannerDismissed] = useState(false);
   const HISTORY_PAGE_SIZE = 15;
 
   const schedulerQuery = useQuery({
@@ -755,6 +756,7 @@ export default function AdminReconciliation() {
 
   const runs = data?.data ?? [];
   const historyTotal: number = data?.total ?? 0;
+  const failedEmailRuns: any[] = runs.filter((r: any) => r.lastEmail?.status === "failed");
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const selectedRun = detailQuery.data?.run;
   const allItems: any[] = detailQuery.data?.data ?? [];
@@ -860,6 +862,32 @@ export default function AdminReconciliation() {
           );
         })()}
       </div>
+
+      {/* Failed email delivery banner */}
+      {failedEmailRuns.length > 0 && !emailFailureBannerDismissed && (
+        <div className="flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm">
+          <MailX className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-red-300 mb-0.5">
+              Report email delivery failed
+            </p>
+            <p className="text-red-300/70 text-xs">
+              {failedEmailRuns.length === 1
+                ? `Run #${failedEmailRuns[0].id} (${failedEmailRuns[0].dateFrom} to ${failedEmailRuns[0].dateTo}) could not deliver its report email to the configured recipients.`
+                : `${failedEmailRuns.length} recent runs could not deliver their report emails (runs ${failedEmailRuns.map((r: any) => `#${r.id}`).join(", ")}).`
+              }
+              {" "}Open the run to view the email log and resend.
+            </p>
+          </div>
+          <button
+            onClick={() => setEmailFailureBannerDismissed(true)}
+            className="text-red-400/60 hover:text-red-300 transition-colors shrink-0 mt-0.5"
+            aria-label="Dismiss"
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Run Trigger */}
       <Card>

@@ -8,7 +8,8 @@ export type NotificationType =
   | "plan_expired"
   | "limit_exceeded"
   | "system_notice"
-  | "webhook_failure";
+  | "webhook_failure"
+  | "reconciliation_email_failure";
 
 export interface CreateNotificationInput {
   userId: number;

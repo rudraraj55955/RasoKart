@@ -2,6 +2,7 @@ import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTabl
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
+import { createBulkNotifications } from "./notifications";
 
 function escapeCsv(val: string | number | null | undefined): string {
   if (val === null || val === undefined) return "";
@@ -350,6 +351,27 @@ export async function sendReconciliationReportEmail(runId: number): Promise<void
       });
 
       logger.error({ err: sendErr, runId }, "Failed to send reconciliation report email");
+
+      try {
+        const admins = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+        if (admins.length > 0) {
+          await createBulkNotifications(admins.map(a => ({
+            userId: a.id,
+            type: "reconciliation_email_failure" as const,
+            title: "Reconciliation Report Email Failed",
+            body: `The report email for reconciliation run #${runId} (${run.dateFrom} to ${run.dateTo}) could not be delivered to the configured recipients. Check the email logs for details.`,
+            metadata: { runId, recipients: recipients.join(", "), error: String(sendErr) },
+          })));
+
+          logger.info({ runId, adminCount: admins.length }, "Admin notifications sent for reconciliation report email failure");
+        }
+      } catch (notifyErr) {
+        logger.error({ err: notifyErr, runId }, "Failed to insert admin notifications for reconciliation report email failure");
+      }
     }
   } catch (err) {
     logger.error({ err, runId }, "Failed to send reconciliation report email");
