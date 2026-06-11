@@ -862,6 +862,30 @@ function SmtpSettingUpdatedDetails({ log }: { log: any }) {
   );
 }
 
+const SETTING_KEY_LABELS: Record<string, string> = {
+  finance_report_email: "Finance Report Email",
+  reconciliation_schedule: "Reconciliation Schedule",
+};
+
+const SETTING_VALUE_LABELS: Record<string, Record<string, string>> = {
+  reconciliation_schedule: {
+    daily: "Daily",
+    weekly: "Weekly",
+    off: "Off",
+  },
+};
+
+function formatSettingValue(key: string | undefined, value: string | null | undefined): React.ReactNode {
+  if (value == null || value === "") {
+    return <span className="italic text-muted-foreground">Not set</span>;
+  }
+  const label = key ? (SETTING_VALUE_LABELS[key]?.[value] ?? null) : null;
+  if (label) {
+    return <span className="capitalize">{label}</span>;
+  }
+  return <span className="font-mono break-all">{value}</span>;
+}
+
 function SettingUpdatedDetails({ log }: { log: any }) {
   let parsed: { settingType?: string; key?: string; oldValue?: string | null; newValue?: string | null } = {};
   try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
@@ -870,19 +894,15 @@ function SettingUpdatedDetails({ log }: { log: any }) {
     return <SmtpSettingUpdatedDetails log={log} />;
   }
 
-  const keyLabels: Record<string, string> = {
-    finance_report_email: "Finance Report Email",
-    reconciliation_schedule: "Reconciliation Schedule",
-  };
+  const keyLabel = parsed.key ? (SETTING_KEY_LABELS[parsed.key] ?? humanizeKey(parsed.key)) : "System setting";
 
-  const keyLabel = parsed.key ? (keyLabels[parsed.key] ?? parsed.key) : "System setting";
-  const wasCleared = parsed.newValue === null || parsed.newValue === "";
-  const wasSet = parsed.oldValue === null || parsed.oldValue === "";
+  const oldEmpty = parsed.oldValue == null || parsed.oldValue === "";
+  const newEmpty = parsed.newValue == null || parsed.newValue === "";
 
-  const subtitle = wasCleared
-    ? "Recipient list cleared"
-    : wasSet
-    ? "Value configured for the first time"
+  const subtitle = newEmpty
+    ? "Setting cleared"
+    : oldEmpty
+    ? "Configured for the first time"
     : "Value changed";
 
   return (
@@ -893,24 +913,24 @@ function SettingUpdatedDetails({ log }: { log: any }) {
         subtitle={subtitle}
         colorClass="bg-amber-500/10 border-amber-500/20"
       />
-      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
-        <DetailRow label="Setting" value={keyLabel} />
-        <DetailRow
-          label="Previous value"
-          value={
-            parsed.oldValue != null && parsed.oldValue !== ""
-              ? <span className="font-mono break-all">{parsed.oldValue}</span>
-              : <span className="text-muted-foreground italic">Not set</span>
-          }
-        />
-        <DetailRow
-          label="New value"
-          value={
-            parsed.newValue != null && parsed.newValue !== ""
-              ? <span className="font-mono break-all">{parsed.newValue}</span>
-              : <span className="text-muted-foreground italic">Cleared</span>
-          }
-        />
+      <div className="rounded-lg bg-muted/20 overflow-hidden">
+        <div className="grid grid-cols-2 divide-x divide-border/40">
+          <div className="p-3 space-y-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Before</p>
+            <div className={`text-xs ${oldEmpty ? "" : "text-rose-300"}`}>
+              {formatSettingValue(parsed.key, parsed.oldValue)}
+            </div>
+          </div>
+          <div className="p-3 space-y-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">After</p>
+            <div className={`text-xs ${newEmpty ? "" : "text-emerald-300"}`}>
+              {formatSettingValue(parsed.key, parsed.newValue)}
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-border/40 px-3 py-2">
+          <DetailRow label="Setting key" value={<span className="font-mono text-muted-foreground">{parsed.key ?? "—"}</span>} />
+        </div>
       </div>
     </div>
   );
