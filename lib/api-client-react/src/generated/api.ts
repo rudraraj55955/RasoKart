@@ -66,6 +66,7 @@ import type {
   CreateSavedFilterInput,
   CreateSettlementInput,
   CredentialEvent,
+  CredentialEventList,
   CredentialEventListResponse,
   DashboardStats,
   DeleteAccountDetail200,
@@ -4089,6 +4090,84 @@ export const useGenerateApiKey = <TError = ErrorType<unknown>,
       return useMutation(getGenerateApiKeyMutationOptions(options));
     }
 
+export const getListApiKeyHistoryUrl = () => {
+
+
+
+
+  return `/api/api-keys/history`
+}
+
+/**
+ * Returns a list of credential events derived from the merchant's API keys (creations and revocations). Merchant access only.
+ * @summary Get credential event history for API keys
+ */
+export const listApiKeyHistory = async ( options?: RequestInit): Promise<CredentialEventList> => {
+
+  return customFetch<CredentialEventList>(getListApiKeyHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListApiKeyHistoryQueryKey = () => {
+    return [
+    `/api/api-keys/history`
+    ] as const;
+    }
+
+
+export const getListApiKeyHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listApiKeyHistory>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listApiKeyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListApiKeyHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listApiKeyHistory>>> = ({ signal }) => listApiKeyHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listApiKeyHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListApiKeyHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof listApiKeyHistory>>>
+export type ListApiKeyHistoryQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get credential event history for API keys
+ */
+
+export function useListApiKeyHistory<TData = Awaited<ReturnType<typeof listApiKeyHistory>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listApiKeyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListApiKeyHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getRevokeApiKeyUrl = (id: number,) => {
 
 
@@ -5161,6 +5240,84 @@ export function useGetCallbackSecret<TData = Awaited<ReturnType<typeof getCallba
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCallbackSecretQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetCallbackSecretHistoryUrl = () => {
+
+
+
+
+  return `/api/callbacks/secret/history`
+}
+
+/**
+ * Returns a list of credential events derived from the merchant's callback signing secret (rotations). Merchant access only.
+ * @summary Get credential event history for callback signing secret
+ */
+export const getCallbackSecretHistory = async ( options?: RequestInit): Promise<CredentialEventList> => {
+
+  return customFetch<CredentialEventList>(getGetCallbackSecretHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCallbackSecretHistoryQueryKey = () => {
+    return [
+    `/api/callbacks/secret/history`
+    ] as const;
+    }
+
+
+export const getGetCallbackSecretHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getCallbackSecretHistory>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCallbackSecretHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCallbackSecretHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCallbackSecretHistory>>> = ({ signal }) => getCallbackSecretHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCallbackSecretHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCallbackSecretHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getCallbackSecretHistory>>>
+export type GetCallbackSecretHistoryQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get credential event history for callback signing secret
+ */
+
+export function useGetCallbackSecretHistory<TData = Awaited<ReturnType<typeof getCallbackSecretHistory>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCallbackSecretHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCallbackSecretHistoryQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

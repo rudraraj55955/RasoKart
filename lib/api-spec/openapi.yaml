@@ -1321,6 +1321,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiKeyWithSecret"
 
+  /api-keys/history:
+    get:
+      operationId: listApiKeyHistory
+      tags: [api-keys]
+      summary: Get credential event history for API keys
+      description: Returns a list of credential events derived from the merchant's API keys (creations and revocations). Merchant access only.
+      responses:
+        "200":
+          description: List of credential events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialEventList"
+        "403":
+          description: Merchant access only
+
   /api-keys/{id}:
     delete:
       operationId: revokeApiKey
@@ -1693,6 +1709,24 @@ paths:
                 $ref: "#/components/schemas/CallbackSecretStatus"
         "403":
           description: Merchant access only
+
+  /callbacks/secret/history:
+    get:
+      operationId: getCallbackSecretHistory
+      tags: [callbacks]
+      summary: Get credential event history for callback signing secret
+      description: Returns a list of credential events derived from the merchant's callback signing secret (rotations). Merchant access only.
+      responses:
+        "200":
+          description: List of credential events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialEventList"
+        "403":
+          description: Merchant access only
+        "404":
+          description: Merchant not found
 
   /callbacks/secret/rotate:
     post:
@@ -5065,6 +5099,32 @@ components:
           type: ["string", "null"]
           format: date-time
           description: ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.
+
+    CredentialEvent:
+      type: object
+      required: [type, occurredAt, description, isRevoked]
+      properties:
+        type:
+          type: string
+          enum: [secret_rotated, api_key_created, api_key_revoked]
+        occurredAt:
+          type: string
+          format: date-time
+        keyPrefix:
+          type: ["string", "null"]
+        description:
+          type: string
+        isRevoked:
+          type: boolean
+
+    CredentialEventList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CredentialEvent"
 
     CallbackSecretRotateResponse:
       type: object

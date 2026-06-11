@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { db, apiKeysTable, merchantsTable, credentialEventsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
@@ -33,6 +33,38 @@ router.get("/", async (req, res) => {
     createdAt: apiKeysTable.createdAt,
   }).from(apiKeysTable).where(where);
   res.json(keys);
+});
+
+// GET /api/api-keys/history — credential event history derived from API keys
+router.get("/history", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "merchant") {
+    res.status(403).json({ error: "Merchant access only" });
+    return;
+  }
+
+  const keys = await db
+    .select({
+      id: apiKeysTable.id,
+      keyPrefix: apiKeysTable.keyPrefix,
+      isActive: apiKeysTable.isActive,
+      createdAt: apiKeysTable.createdAt,
+    })
+    .from(apiKeysTable)
+    .where(eq(apiKeysTable.merchantId, user.merchantId))
+    .orderBy(desc(apiKeysTable.createdAt));
+
+  const events = keys.map(k => ({
+    type: k.isActive ? "api_key_created" : "api_key_revoked",
+    occurredAt: k.createdAt.toISOString(),
+    keyPrefix: k.keyPrefix,
+    description: k.isActive
+      ? `API key generated (${k.keyPrefix})`
+      : `API key revoked (${k.keyPrefix})`,
+    isRevoked: !k.isActive,
+  }));
+
+  res.json({ data: events });
 });
 
 // POST /api/api-keys

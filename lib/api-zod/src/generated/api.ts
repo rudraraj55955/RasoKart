@@ -1317,6 +1317,21 @@ export const ListApiKeysResponse = zod.array(ListApiKeysResponseItem)
 
 
 /**
+ * Returns a list of credential events derived from the merchant's API keys (creations and revocations). Merchant access only.
+ * @summary Get credential event history for API keys
+ */
+export const ListApiKeyHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "type": zod.enum(['secret_rotated', 'api_key_created', 'api_key_revoked']),
+  "occurredAt": zod.coerce.date(),
+  "keyPrefix": zod.string().nullish(),
+  "description": zod.string(),
+  "isRevoked": zod.boolean()
+}))
+})
+
+
+/**
  * @summary Revoke API key
  */
 export const RevokeApiKeyParams = zod.object({
@@ -1637,6 +1652,21 @@ export const GetCallbackSecretResponse = zod.object({
   "isSet": zod.boolean().describe('Whether a callback signing secret has been configured'),
   "secretPrefix": zod.string().nullish().describe('First 8 characters of the secret followed by \"...\" — null when no secret is set'),
   "lastRotatedAt": zod.coerce.date().nullish().describe('ISO timestamp of when the secret was last rotated (or first set). Null if no secret has ever been set.')
+})
+
+
+/**
+ * Returns a list of credential events derived from the merchant's callback signing secret (rotations). Merchant access only.
+ * @summary Get credential event history for callback signing secret
+ */
+export const GetCallbackSecretHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "type": zod.enum(['secret_rotated', 'api_key_created', 'api_key_revoked']),
+  "occurredAt": zod.coerce.date(),
+  "keyPrefix": zod.string().nullish(),
+  "description": zod.string(),
+  "isRevoked": zod.boolean()
+}))
 })
 
 

@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect } from "react";
-import { useListCallbackLogs } from "@workspace/api-client-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useListCallbackLogs, useListApiKeyHistory, useGetCallbackSecretHistory } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Shield,
   Search,
@@ -20,12 +21,17 @@ import {
   ShieldX,
   ShieldOff,
   Hash,
+  KeyRound,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, parseISO, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+// ─── Date presets ────────────────────────────────────────────────────────────
 
 const DATE_PRESETS = [
   {
@@ -89,6 +95,8 @@ function storeCustomDatePresets(presets: CustomDatePreset[]): void {
   localStorage.setItem(CUSTOM_DATE_PRESETS_KEY, JSON.stringify(presets));
 }
 
+// ─── Callback log helpers ────────────────────────────────────────────────────
+
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
   if (value === true) {
     return (
@@ -132,7 +140,97 @@ function buildCsvText(data: any[]): string {
   return rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
 }
 
+// ─── Credential event helpers ─────────────────────────────────────────────────
+
+type CredentialEventType = "secret_rotated" | "api_key_created" | "api_key_revoked";
+
+interface CredentialEvent {
+  type: CredentialEventType;
+  occurredAt: string;
+  keyPrefix?: string | null;
+  description: string;
+  isRevoked: boolean;
+}
+
+function credentialEventMeta(type: CredentialEventType) {
+  switch (type) {
+    case "secret_rotated":
+      return {
+        icon: <RotateCcw className="w-4 h-4" />,
+        label: "Secret Rotated",
+        badgeClass: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+      };
+    case "api_key_created":
+      return {
+        icon: <KeyRound className="w-4 h-4" />,
+        label: "Key Generated",
+        badgeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+      };
+    case "api_key_revoked":
+      return {
+        icon: <KeyRound className="w-4 h-4" />,
+        label: "Key Revoked",
+        badgeClass: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+      };
+  }
+}
+
+function CredentialEventRow({ event }: { event: CredentialEvent }) {
+  const meta = credentialEventMeta(event.type);
+  return (
+    <div className="flex items-start gap-4 py-4">
+      <div className="flex flex-col items-center gap-1 shrink-0">
+        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-border/50 bg-muted/30 text-muted-foreground">
+          {meta.icon}
+        </span>
+        <span className="w-px flex-1 min-h-[1.5rem]" style={{ background: "var(--border)" }} />
+      </div>
+      <div className="flex-1 min-w-0 pb-1">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <Badge variant="outline" className={`text-xs font-medium ${meta.badgeClass}`}>
+            {meta.label}
+          </Badge>
+          {event.keyPrefix && (
+            <code className="text-xs font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
+              {event.keyPrefix}
+            </code>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">{event.description}</p>
+        <p className="text-xs text-muted-foreground/50 mt-1">
+          {format(new Date(event.occurredAt), "dd MMM yyyy 'at' HH:mm")}
+        </p>
+      </div>
+      <span className="text-xs text-muted-foreground/40 shrink-0 pt-0.5 hidden sm:block">
+        {format(new Date(event.occurredAt), "dd MMM yyyy")}
+      </span>
+    </div>
+  );
+}
+
+function CredentialEventSkeletonRows() {
+  return (
+    <>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-start gap-4 py-4">
+          <div className="flex flex-col items-center gap-1 shrink-0">
+            <Skeleton className="w-8 h-8 rounded-full" />
+          </div>
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="h-3 w-28" />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function MerchantSecurity() {
+  // Callback log state
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [sigFilter, setSigFilter] = useState("all");
@@ -232,7 +330,7 @@ export default function MerchantSecurity() {
   const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
   const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
 
-  const { data: rawData, isLoading } = useListCallbackLogs({
+  const { data: rawData, isLoading: logsLoading } = useListCallbackLogs({
     status: status === "all" ? undefined : (status as any),
     signatureVerified: sigFilter === "all" ? undefined : (sigFilter as any),
     limit: 200,
@@ -301,6 +399,21 @@ export default function MerchantSecurity() {
     }
   }
 
+  // Credential event history
+  const { data: secretHistory, isLoading: loadingSecret } = useGetCallbackSecretHistory();
+  const { data: apiKeyHistory, isLoading: loadingApiKeys } = useListApiKeyHistory();
+  const credEventsLoading = loadingSecret || loadingApiKeys;
+
+  const credentialEvents = useMemo<CredentialEvent[]>(() => {
+    const all: CredentialEvent[] = [
+      ...(secretHistory?.data ?? []),
+      ...(apiKeyHistory?.data ?? []),
+    ];
+    return all.sort(
+      (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+    );
+  }, [secretHistory, apiKeyHistory]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -310,7 +423,7 @@ export default function MerchantSecurity() {
             <Shield className="w-7 h-7 text-violet-400" />
             Security Activity
           </h1>
-          <p className="text-muted-foreground mt-1">Incoming callback events, signature verification, and delivery status</p>
+          <p className="text-muted-foreground mt-1">Incoming callback events, signature verification, delivery status, and credential changes</p>
         </div>
         <TooltipProvider>
           <Tooltip>
@@ -382,7 +495,7 @@ export default function MerchantSecurity() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Callback logs filter + table */}
       <Card>
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
@@ -521,7 +634,7 @@ export default function MerchantSecurity() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {logsLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
                     {Array.from({ length: 8 }).map((_, j) => (
@@ -606,6 +719,37 @@ export default function MerchantSecurity() {
           </div>
         </div>
       )}
+
+      {/* Credential event history */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-muted-foreground" />
+            Credential Event History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {credEventsLoading ? (
+            <CredentialEventSkeletonRows />
+          ) : credentialEvents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+              <AlertTriangle className="w-8 h-8 text-muted-foreground/30" />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">No credential events recorded yet</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  Events appear here when you generate API keys or rotate your callback signing secret.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/40">
+              {credentialEvents.map((event, idx) => (
+                <CredentialEventRow key={`${event.type}-${event.occurredAt}-${idx}`} event={event} />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Save preset dialog */}
       <Dialog open={showSaveDatePreset} onOpenChange={open => { if (!open) cancelSaveDatePreset(); }}>

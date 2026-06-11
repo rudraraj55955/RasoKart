@@ -272,6 +272,49 @@ router.get("/secret", async (req, res) => {
   });
 });
 
+// GET /api/callbacks/secret/history — credential event history for callback secret
+router.get("/secret/history", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "merchant") {
+    res.status(403).json({ error: "Merchant access only" });
+    return;
+  }
+
+  const [merchant] = await db
+    .select({
+      callbackSecret: merchantsTable.callbackSecret,
+      callbackSecretUpdatedAt: merchantsTable.callbackSecretUpdatedAt,
+    })
+    .from(merchantsTable)
+    .where(eq(merchantsTable.id, user.merchantId))
+    .limit(1);
+
+  if (!merchant) {
+    res.status(404).json({ error: "Merchant not found" });
+    return;
+  }
+
+  const events: Array<{
+    type: string;
+    occurredAt: string;
+    keyPrefix: string | null;
+    description: string;
+    isRevoked: boolean;
+  }> = [];
+
+  if (merchant.callbackSecretUpdatedAt) {
+    events.push({
+      type: "secret_rotated",
+      occurredAt: merchant.callbackSecretUpdatedAt.toISOString(),
+      keyPrefix: merchant.callbackSecret ? merchant.callbackSecret.slice(0, 8) + "..." : null,
+      description: "Callback signing secret rotated",
+      isRevoked: false,
+    });
+  }
+
+  res.json({ data: events });
+});
+
 // POST /api/callbacks/secret/rotate — generate and store a new callback secret
 router.post("/secret/rotate", async (req, res) => {
   const user = (req as any).user;

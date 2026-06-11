@@ -522,6 +522,28 @@ export interface CallbackSecretStatus {
   lastRotatedAt?: string | null;
 }
 
+export type CredentialEventType = typeof CredentialEventType[keyof typeof CredentialEventType];
+
+
+export const CredentialEventType = {
+  secret_rotated: 'secret_rotated',
+  api_key_created: 'api_key_created',
+  api_key_revoked: 'api_key_revoked',
+} as const;
+
+export interface CredentialEvent {
+  type: CredentialEventType;
+  occurredAt: string;
+  /** @nullable */
+  keyPrefix?: string | null;
+  description: string;
+  isRevoked: boolean;
+}
+
+export interface CredentialEventList {
+  data: CredentialEvent[];
+}
+
 export interface CallbackSecretRotateResponse {
   /** The newly generated 64-character hex signing secret. Shown only once — store it immediately. */
   secret: string;
