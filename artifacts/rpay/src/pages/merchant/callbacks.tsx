@@ -206,34 +206,41 @@ export default function MerchantCallbacks() {
       )}
 
       {failureCount > 0 && (
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={sigFilter === "failed" ? clearSigFilter : applySigFailureFilter}
-          className="w-full text-left"
-        >
-          <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); (sigFilter === "failed" ? clearSigFilter : applySigFailureFilter)(); } }}
+          className={`flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors cursor-pointer ${
             sigFilter === "failed"
               ? "border-rose-500/50 bg-rose-500/15"
               : "border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/15"
-          }`}>
-            <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-rose-400">
-                {failureCount} signature verification {failureCount === 1 ? "failure" : "failures"} in the last 24 hours
-              </p>
-              <p className="text-xs text-rose-400/70 mt-0.5">
-                {sigFilter === "failed"
-                  ? "Showing filtered results — click to clear filter"
-                  : "Your callback secret may be misconfigured — click to filter these logs"}
-              </p>
-            </div>
-            {sigFilter === "failed" ? (
-              <X className="w-4 h-4 text-rose-400 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-rose-400/70 shrink-0" />
-            )}
+          }`}
+        >
+          <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-rose-400">
+              {failureCount} signature verification {failureCount === 1 ? "failure" : "failures"} in the last 24 hours
+            </p>
+            <p className="text-xs text-rose-400/70 mt-0.5">
+              {sigFilter === "failed"
+                ? "Showing filtered results — click to clear filter"
+                : "Your callback secret may be misconfigured — click to filter these logs"}{" "}
+              <Link
+                href="/merchant/webhook"
+                onClick={e => e.stopPropagation()}
+                className="underline text-rose-400 hover:text-rose-300 transition-colors"
+              >
+                Check webhook settings →
+              </Link>
+            </p>
           </div>
-        </button>
+          {sigFilter === "failed" ? (
+            <X className="w-4 h-4 text-rose-400 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-rose-400/70 shrink-0" />
+          )}
+        </div>
       )}
 
       <Card>
