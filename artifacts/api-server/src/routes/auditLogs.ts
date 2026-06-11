@@ -489,6 +489,7 @@ router.get("/schedules", async (req, res) => {
           nextRetryAt = new Date(lastFailedAt + delayMs).toISOString();
         }
       }
+      const retriesExhausted = r.lastSuccess === false && currentRetryAttempt >= MAX_RETRY_ATTEMPTS;
       return {
         ...serializeSchedule(r),
         lastSendStatus: deriveLastSendStatus(r.lastSuccess),
@@ -496,8 +497,10 @@ router.get("/schedules", async (req, res) => {
         sendCount: Number(r.sendCount),
         successCount: Number(r.successCount),
         currentRetryAttempt,
+        maxRetryAttempts: MAX_RETRY_ATTEMPTS,
         retryInProgress,
         nextRetryAt,
+        retriesExhausted,
       };
     }),
   });
@@ -574,7 +577,7 @@ router.post("/schedules", async (req, res) => {
     isActive: true,
   }).returning();
 
-  res.status(201).json({ ...serializeSchedule(schedule), sendCount: 0, successCount: 0, retryInProgress: false, currentRetryAttempt: 0, nextRetryAt: null });
+  res.status(201).json({ ...serializeSchedule(schedule), sendCount: 0, successCount: 0, retryInProgress: false, currentRetryAttempt: 0, maxRetryAttempts: MAX_RETRY_ATTEMPTS, nextRetryAt: null, retriesExhausted: false });
 });
 
 router.patch("/schedules/bulk-toggle", async (req, res) => {
@@ -634,7 +637,9 @@ router.patch("/schedules/bulk-toggle", async (req, res) => {
       successCount: 0,
       retryInProgress: false,
       currentRetryAttempt: 0,
+      maxRetryAttempts: MAX_RETRY_ATTEMPTS,
       nextRetryAt: null,
+      retriesExhausted: false,
     })),
   });
 });
@@ -702,8 +707,10 @@ router.patch("/schedules/:id", async (req, res) => {
     sendCount: Number(sendCount),
     successCount: Number(successCount),
     currentRetryAttempt: 0,
+    maxRetryAttempts: MAX_RETRY_ATTEMPTS,
     retryInProgress: false,
     nextRetryAt: null,
+    retriesExhausted: false,
   });
 });
 

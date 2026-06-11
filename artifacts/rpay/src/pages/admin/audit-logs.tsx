@@ -1214,7 +1214,24 @@ function ScheduleRow({
                 </Tooltip>
               </TooltipProvider>
             )}
-            {s.lastSendStatus === "failed" && !s.retryInProgress && !s.failureAcknowledgedAt && (
+            {s.retriesExhausted && !s.failureAcknowledgedAt && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-red-600/50 bg-red-600/15 px-2 py-0.5 text-xs font-medium text-red-400 cursor-default">
+                      <XCircle className="w-2.5 h-2.5" />
+                      Failed after {s.currentRetryAttempt} retr{s.currentRetryAttempt === 1 ? "y" : "ies"}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    {s.lastErrorMessage
+                      ? `All ${s.currentRetryAttempt} retr${s.currentRetryAttempt === 1 ? "y" : "ies"} exhausted. Final error: ${s.lastErrorMessage}`
+                      : `All automatic retries (${s.currentRetryAttempt}) were exhausted and delivery still failed.`}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {s.lastSendStatus === "failed" && !s.retryInProgress && !s.retriesExhausted && !s.failureAcknowledgedAt && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
