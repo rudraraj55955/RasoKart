@@ -470,6 +470,20 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
 
   const firedForRef = useRef<string | null>(null);
   const nextRunTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverTimeBaseRef = useRef<{ serverSeconds: number; fetchedAtMs: number } | null>(null);
+
+  useEffect(() => {
+    if (nextRunData?.serverTime) {
+      const parts = nextRunData.serverTime.split(":").map(Number);
+      const h = parts[0] ?? 0;
+      const m = parts[1] ?? 0;
+      const s = parts[2] ?? 0;
+      serverTimeBaseRef.current = {
+        serverSeconds: h * 3600 + m * 60 + s,
+        fetchedAtMs: Date.now(),
+      };
+    }
+  }, [nextRunData?.serverTime]);
 
   useEffect(() => {
     if (!nextRunData?.nextRunAt) return;
@@ -608,6 +622,17 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
       ? ""
       : " server time";
 
+  const liveServerTime = (() => {
+    if (!serverTimeBaseRef.current) return null;
+    const { serverSeconds, fetchedAtMs } = serverTimeBaseRef.current;
+    const elapsed = Math.floor((now - fetchedAtMs) / 1000);
+    const total = (serverSeconds + elapsed) % 86400;
+    const h = Math.floor(total / 3600);
+    const mv = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return `${padTwo(h)}:${padTwo(mv)}:${padTwo(s)}`;
+  })();
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -675,6 +700,18 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
                           month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
                         })} local)
                       </span>
+                    </span>
+                  </div>
+                )}
+                {liveServerTime && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
+                    <Clock className="w-3 h-3 shrink-0" />
+                    <span>
+                      Now:{" "}
+                      <span className="font-mono tabular-nums text-muted-foreground/80">{liveServerTime}</span>
+                      {serverTz && (
+                        <span className="ml-1">server time{tzDiffers ? ` (${serverTz})` : ""}</span>
+                      )}
                     </span>
                   </div>
                 )}
