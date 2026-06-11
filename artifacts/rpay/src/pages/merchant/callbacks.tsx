@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { useListCallbackLogs, useGetCallbackStats } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useListCallbackLogs, useGetCallbackStats, useRetryWebhookLog } from "@workspace/api-client-react";
+import { getListCallbackLogsQueryKey } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Loader2, QrCode, ShieldAlert, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Loader2, QrCode, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -25,6 +27,24 @@ function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }
 
 function CallbackRow({ log }: { log: any }) {
   const [open, setOpen] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const { mutate: retryWebhook, isPending: isRetrying } = useRetryWebhookLog({
+    mutation: {
+      onSuccess: () => {
+        setRetryError(null);
+        queryClient.invalidateQueries({ queryKey: getListCallbackLogsQueryKey() });
+      },
+      onError: (err: any) => {
+        const msg = err?.response?.data?.error ?? err?.message ?? "Retry failed";
+        setRetryError(msg);
+      },
+    },
+  });
+
+  const canRetry = log.status === "failed" || log.status === "pending_retry";
+
   const tryParse = (s: string | null) => {
     if (!s) return null;
     try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
@@ -59,6 +79,27 @@ function CallbackRow({ log }: { log: any }) {
                 <pre className="text-xs bg-background/50 rounded p-3 overflow-x-auto border border-border/50 whitespace-pre-wrap">{tryParse(log.responseBody) || "—"}</pre>
               </div>
             </div>
+            {canRetry && (
+              <div className="flex items-center gap-3 mt-3 px-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/60"
+                  disabled={isRetrying}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setRetryError(null);
+                    retryWebhook({ id: log.id });
+                  }}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRetrying ? "animate-spin" : ""}`} />
+                  {isRetrying ? "Retrying…" : "Retry now"}
+                </Button>
+                {retryError && (
+                  <span className="text-xs text-rose-400">{retryError}</span>
+                )}
+              </div>
+            )}
           </TableCell>
         </TableRow>
       </CollapsibleContent>
