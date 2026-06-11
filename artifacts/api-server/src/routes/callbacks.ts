@@ -111,6 +111,16 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
 
     (async () => {
       const now = new Date();
+
+      // Look up the merchant's webhook maxRetries so the initial schedule
+      // respects the same cap used by processPendingRetries for later retries.
+      const [webhookRow] = await db
+        .select({ maxRetries: webhooksTable.maxRetries })
+        .from(webhooksTable)
+        .where(eq(webhooksTable.merchantId, capturedQr.merchantId))
+        .limit(1);
+      const merchantMaxRetries = webhookRow?.maxRetries ?? undefined;
+
       const { ok, httpStatus, responseBody } = await fireCallback(capturedQr.callbackUrl!, bodyStr);
 
       if (ok) {
@@ -145,7 +155,7 @@ router.post("/", requireApiKey, verifyCallbackSignature, async (req, res) => {
         }).returning({ id: callbackLogsTable.id });
 
         if (inserted) {
-          await scheduleCallbackRetry(inserted.id, 1);
+          await scheduleCallbackRetry(inserted.id, 1, merchantMaxRetries);
         }
       }
     })().catch((err: unknown) => {

@@ -216,7 +216,7 @@ export async function processPendingRetries(): Promise<void> {
           // webhookMaxRetries = number of retries; total cap = maxRetries + 1
           reachedCap = newAttempts > webhookMaxRetries;
         } else {
-          // No webhook config (e.g. QR code callback) — use default
+          // No webhook config found for this merchant — use default
           reachedCap = newAttempts >= MAX_ATTEMPTS;
         }
       }
