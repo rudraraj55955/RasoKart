@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X, BarChart2 } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 import { SIG_VERIFIED_KEY } from "./callbacks";
 
@@ -530,6 +530,7 @@ export default function MerchantWebhook() {
   const [sigVerifiedFromCallbacks, setSigVerifiedFromCallbacks] = useState<boolean>(() => {
     try { return !!localStorage.getItem(SIG_VERIFIED_KEY); } catch { return false; }
   });
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -811,6 +812,68 @@ onError: () => toast.error("Failed to send test event"),
             })}
           </div>
 
+
+          {/* Event Breakdown */}
+          {logStatsData && logStatsData.data.length > 0 && (
+            <div className="mb-4">
+              <button
+                onClick={() => setBreakdownOpen(o => !o)}
+                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors mb-2 group"
+              >
+                <BarChart2 className="w-3.5 h-3.5" />
+                Event Breakdown
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${breakdownOpen ? "rotate-180" : ""}`} />
+              </button>
+              {breakdownOpen && (
+                <div className="rounded-lg border border-border/50 overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/50 bg-muted/30">
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">Event type</th>
+                        <th className="text-right px-3 py-2 font-medium text-muted-foreground">Total</th>
+                        <th className="text-right px-3 py-2 font-medium text-muted-foreground">Success</th>
+                        <th className="text-right px-3 py-2 font-medium text-muted-foreground">Failed</th>
+                        <th className="text-right px-3 py-2 font-medium text-muted-foreground">Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40">
+                      {logStatsData.data.map(stat => {
+                        const rate = stat.total > 0 ? Math.round((stat.success / stat.total) * 100) : 0;
+                        const isHighFailure = stat.total > 0 && stat.failed > 0 && rate < 80;
+                        return (
+                          <tr
+                            key={stat.eventType}
+                            onClick={() => setEventTypeFilter(eventTypeFilter === stat.eventType ? null : stat.eventType)}
+                            className={`cursor-pointer transition-colors ${
+                              isHighFailure
+                                ? "bg-rose-500/5 hover:bg-rose-500/10"
+                                : "hover:bg-muted/30"
+                            } ${eventTypeFilter === stat.eventType ? "ring-1 ring-inset ring-primary/30" : ""}`}
+                          >
+                            <td className="px-3 py-2">
+                              <EventTypeBadge eventType={stat.eventType} />
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-muted-foreground">{stat.total}</td>
+                            <td className="px-3 py-2 text-right font-mono text-emerald-400">{stat.success}</td>
+                            <td className={`px-3 py-2 text-right font-mono ${stat.failed > 0 ? "text-rose-400" : "text-muted-foreground/50"}`}>
+                              {stat.failed}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <span className={`inline-block font-semibold tabular-nums ${
+                                rate >= 95 ? "text-emerald-400" : rate >= 80 ? "text-amber-400" : "text-rose-400"
+                              }`}>
+                                {rate}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {logsLoading ? (
             <div className="space-y-2">
