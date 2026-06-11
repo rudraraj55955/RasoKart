@@ -914,7 +914,10 @@ onError: () => toast.error("Failed to send test event"),
           </div>
           <div>
             <Label>Max retries</Label>
-            <p className="text-xs text-muted-foreground mt-0.5 mb-2">Number of automatic retry attempts when delivery fails (0 = no retries)</p>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+              Number of automatic retry attempts when delivery fails (0 = no retries).
+              When set, this overrides the platform-wide default configured by the admin.
+            </p>
             <Select value={String(maxRetries)} onValueChange={v => setMaxRetries(parseInt(v, 10))}>
               <SelectTrigger className="w-48">
                 <SelectValue />
@@ -926,6 +929,11 @@ onError: () => toast.error("Failed to send test event"),
                 <SelectItem value="3">3 retries (default)</SelectItem>
                 <SelectItem value="4">4 retries</SelectItem>
                 <SelectItem value="5">5 retries</SelectItem>
+                <SelectItem value="6">6 retries</SelectItem>
+                <SelectItem value="7">7 retries</SelectItem>
+                <SelectItem value="8">8 retries</SelectItem>
+                <SelectItem value="9">9 retries</SelectItem>
+                <SelectItem value="10">10 retries</SelectItem>
               </SelectContent>
             </Select>
           </div>
