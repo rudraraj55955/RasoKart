@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useCallback } from "react";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListCallbackLogs, useGetCallbackStats, useGetWebhookLogAttempts, useRetryWebhookLog, getListCallbackLogsQueryKey } from "@workspace/api-client-react";
 import type { CallbackLogAttempt } from "@workspace/api-client-react";
@@ -227,15 +227,37 @@ function writeSigWarnDismissal() {
 }
 
 export default function MerchantCallbacks() {
-  const [status, setStatus] = useState("all");
-  const [sigVerified, setSigVerified] = useState("all");
-  const [qrCodeIdInput, setQrCodeIdInput] = useState("");
-  const [qrCodeId, setQrCodeId] = useState<number | undefined>(undefined);
-  const [page, setPage] = useState(1);
+  const search = useSearch();
+  const [, setLocation] = useLocation();
+
+  const params = new URLSearchParams(search);
+  const status = params.get("status") ?? "all";
+  const sigVerified = params.get("sig") ?? "all";
+  const qrCodeId = (() => { const v = params.get("qr"); const n = v ? parseInt(v) : NaN; return !isNaN(n) && n > 0 ? n : undefined; })();
+  const page = (() => { const v = params.get("page"); const n = v ? parseInt(v) : NaN; return !isNaN(n) && n > 0 ? n : 1; })();
+
+  const [qrCodeIdInput, setQrCodeIdInput] = useState(() => qrCodeId != null ? String(qrCodeId) : "");
   const [sigWarnDismissed, setSigWarnDismissed] = useState(() => {
     const d = readSigWarnDismissal();
     return d != null && Date.now() < d.dismissedUntil;
   });
+
+  const updateParams = useCallback((patch: Record<string, string | undefined>) => {
+    const next = new URLSearchParams(search);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v == null || v === "" || (k === "status" && v === "all") || (k === "sig" && v === "all") || (k === "page" && v === "1")) {
+        next.delete(k);
+      } else {
+        next.set(k, v);
+      }
+    }
+    const qs = next.toString();
+    setLocation(qs ? `?${qs}` : "?", { replace: true });
+  }, [search, setLocation]);
+
+  const setStatus = (v: string) => updateParams({ status: v, page: "1" });
+  const setSigVerified = (v: string) => updateParams({ sig: v, page: "1" });
+  const setPage = (fn: (p: number) => number) => updateParams({ page: String(fn(page)) });
 
   const { data: stats } = useGetCallbackStats();
   const failureCount = stats?.signatureFailures24h ?? 0;
@@ -281,17 +303,15 @@ export default function MerchantCallbacks() {
   const applyQrFilter = () => {
     const parsed = parseInt(qrCodeIdInput.trim());
     if (!qrCodeIdInput.trim()) {
-      setQrCodeId(undefined);
+      updateParams({ qr: undefined, page: "1" });
     } else if (!isNaN(parsed) && parsed > 0) {
-      setQrCodeId(parsed);
+      updateParams({ qr: String(parsed), page: "1" });
     }
-    setPage(1);
   };
 
   const clearQrFilter = () => {
     setQrCodeIdInput("");
-    setQrCodeId(undefined);
-    setPage(1);
+    updateParams({ qr: undefined, page: "1" });
   };
 
   const applyQrFilterById = (id: number) => {
@@ -301,13 +321,11 @@ export default function MerchantCallbacks() {
   };
 
   const applySigFailureFilter = () => {
-    setSigVerified("failed");
-    setPage(1);
+    updateParams({ sig: "failed", page: "1" });
   };
 
   const clearSigFilter = () => {
-    setSigVerified("all");
-    setPage(1);
+    updateParams({ sig: undefined, page: "1" });
   };
 
   return (
@@ -388,7 +406,7 @@ export default function MerchantCallbacks() {
       <Card>
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+            <Select value={status} onValueChange={v => setStatus(v)}>
               <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
@@ -396,7 +414,7 @@ export default function MerchantCallbacks() {
                 <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={sigVerified} onValueChange={v => { setSigVerified(v); setPage(1); }}>
+            <Select value={sigVerified} onValueChange={v => setSigVerified(v)}>
               <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Signatures</SelectItem>
