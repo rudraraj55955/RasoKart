@@ -92,13 +92,25 @@ router.put("/smtp", async (req, res, next) => {
       }
     }
 
+    // Fetch current SMTP values before saving so we can detect which fields changed
+    const existingRows = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(inArray(systemSettingsTable.key, [...SMTP_KEYS]));
+    const existingMap = Object.fromEntries(existingRows.map(r => [r.key, r.value ?? null]));
+
     const now = new Date();
     const upserts: Array<{ key: string; value: string | null }> = [];
 
-    upserts.push({ key: "smtp_host", value: host?.trim() || null });
-    upserts.push({ key: "smtp_port", value: port !== undefined && port !== null && port !== "" ? String(port) : null });
-    upserts.push({ key: "smtp_user", value: (smtpUser as string)?.trim() || null });
-    upserts.push({ key: "smtp_from", value: (from as string)?.trim() || null });
+    const normalizedHost = host?.trim() || null;
+    const normalizedPort = port !== undefined && port !== null && port !== "" ? String(port) : null;
+    const normalizedUser = (smtpUser as string)?.trim() || null;
+    const normalizedFrom = (from as string)?.trim() || null;
+
+    upserts.push({ key: "smtp_host", value: normalizedHost });
+    upserts.push({ key: "smtp_port", value: normalizedPort });
+    upserts.push({ key: "smtp_user", value: normalizedUser });
+    upserts.push({ key: "smtp_from", value: normalizedFrom });
 
     if (pass !== undefined && pass !== null && (pass as string).trim() !== "") {
       upserts.push({ key: "smtp_pass", value: (pass as string).trim() });
@@ -112,6 +124,30 @@ router.put("/smtp", async (req, res, next) => {
           target: systemSettingsTable.key,
           set: { value, updatedBy: user.id, updatedAt: now },
         });
+    }
+
+    // Determine which fields actually changed (never log the password value itself)
+    const changedFields: string[] = [];
+    if (normalizedHost !== (existingMap["smtp_host"] ?? null)) changedFields.push("host");
+    if (normalizedPort !== (existingMap["smtp_port"] ?? null)) changedFields.push("port");
+    if (normalizedUser !== (existingMap["smtp_user"] ?? null)) changedFields.push("user");
+    if (normalizedFrom !== (existingMap["smtp_from"] ?? null)) changedFields.push("from");
+    if (pass !== undefined && pass !== null && (pass as string).trim() !== "") changedFields.push("password");
+
+    if (changedFields.length > 0) {
+      try {
+        await db.insert(auditLogsTable).values({
+          adminId: user.id,
+          adminEmail: user.email,
+          action: "setting_updated",
+          targetType: "system_config",
+          targetId: null,
+          details: JSON.stringify({ settingType: "smtp", fieldsChanged: changedFields }),
+          ipAddress: req.ip ?? null,
+        });
+      } catch (auditErr) {
+        req.log.error({ err: auditErr }, "Failed to write audit log for smtp setting_updated");
+      }
     }
 
     res.json({ ok: true });

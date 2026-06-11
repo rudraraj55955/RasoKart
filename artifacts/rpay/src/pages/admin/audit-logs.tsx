@@ -815,9 +815,54 @@ function TestEmailSentDetails({ log }: { log: any }) {
   );
 }
 
-function SettingUpdatedDetails({ log }: { log: any }) {
-  let parsed: { key?: string; oldValue?: string | null; newValue?: string | null } = {};
+const SMTP_FIELD_LABELS: Record<string, string> = {
+  host: "Host",
+  port: "Port",
+  user: "Username",
+  from: "From Address",
+  password: "Password",
+};
+
+function SmtpSettingUpdatedDetails({ log }: { log: any }) {
+  let parsed: { settingType?: string; fieldsChanged?: string[] } = {};
   try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const fields = parsed.fieldsChanged ?? [];
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<Mail className="w-5 h-5 text-amber-400" />}
+        title="SMTP configuration updated"
+        subtitle={fields.length > 0 ? `${fields.length} field${fields.length !== 1 ? "s" : ""} changed` : "No fields changed"}
+        colorClass="bg-amber-500/10 border-amber-500/20"
+      />
+      {fields.length > 0 && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-2">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Fields changed</p>
+          <div className="flex flex-wrap gap-1.5">
+            {fields.map((f: string) => (
+              <span key={f} className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                {SMTP_FIELD_LABELS[f] ?? f}
+              </span>
+            ))}
+          </div>
+          {fields.includes("password") && (
+            <p className="text-xs text-muted-foreground italic">Password value is not logged for security.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingUpdatedDetails({ log }: { log: any }) {
+  let parsed: { settingType?: string; key?: string; oldValue?: string | null; newValue?: string | null } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  if (parsed.settingType === "smtp") {
+    return <SmtpSettingUpdatedDetails log={log} />;
+  }
 
   const keyLabels: Record<string, string> = {
     finance_report_email: "Finance Report Email",
