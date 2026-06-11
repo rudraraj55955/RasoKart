@@ -415,11 +415,12 @@ export default function MerchantWebhook() {
         }
       },
       onError: () => toast.error("Failed to send test event"),
+      onSettled: () => qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() }),
     });
   };
 
   const handleRetryTest = () => {
-    testMutation.mutate(undefined, {
+    testMutation.mutate({}, {
       onSuccess: (data) => {
         setTestResult(data);
         if (data.delivered) {
@@ -429,6 +430,7 @@ export default function MerchantWebhook() {
         }
       },
       onError: () => toast.error("Failed to send test event"),
+      onSettled: () => qc.invalidateQueries({ queryKey: getGetWebhookLogsQueryKey() }),
     });
   };
 
