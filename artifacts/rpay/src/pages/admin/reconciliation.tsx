@@ -560,7 +560,7 @@ function ScheduleSettingsCard() {
                   <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 min-w-[160px]">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Scheduled Time</p>
                     <p className={`text-sm font-medium font-mono ${!currentEnabled ? "text-muted-foreground/60" : ""}`}>{padTwo(currentHour)}:{padTwo(currentMinute)}</p>
-                    <p className="text-[10px] text-muted-foreground/60">server time (24h)</p>
+                    {tz && <p className="text-[10px] text-muted-foreground/60">{tz}</p>}
                     {localEquivalent && tzDiffers && (
                       <p className="text-[10px] text-primary/70 mt-0.5">= {localEquivalent} your time</p>
                     )}
