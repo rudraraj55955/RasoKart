@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, systemSettingsTable } from "@workspace/db";
+import { db, systemSettingsTable, auditLogsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMail } from "../helpers/mailer";
@@ -94,6 +94,24 @@ router.get("/smtp-status", (_req, res) => {
 
 // POST /api/settings/test-email
 router.post("/test-email", async (req, res, next) => {
+  const user = (req as any).user;
+
+  async function writeAuditLog(details: { recipients: string[]; success: boolean; error?: string }) {
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "test_email_sent",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify(details),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for test_email_sent");
+    }
+  }
+
   try {
     const overrideTo: string | undefined = typeof req.body?.to === "string" && req.body.to.trim() ? req.body.to.trim() : undefined;
 
@@ -108,15 +126,19 @@ router.post("/test-email", async (req, res, next) => {
     }
 
     if (!email) {
+      await writeAuditLog({ recipients: [], success: false, error: "no_recipient" });
       res.status(400).json({ error: "No recipient address — enter one in the 'Send to' field or save a finance report email first" });
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (overrideTo && !emailRegex.test(overrideTo)) {
+      await writeAuditLog({ recipients: [overrideTo], success: false, error: "invalid_email" });
       res.status(400).json({ error: "Invalid email address in 'Send to' field" });
       return;
     }
+
+    const recipients = email.split(",").map(e => e.trim()).filter(e => e.length > 0);
 
     const sent = await sendMail({
       to: email,
@@ -136,10 +158,12 @@ router.post("/test-email", async (req, res, next) => {
     });
 
     if (!sent) {
+      await writeAuditLog({ recipients, success: false, error: "smtp_send_failed" });
       res.status(502).json({ error: "SMTP is not configured or failed to send — check SMTP_HOST, SMTP_USER, SMTP_PASS" });
       return;
     }
 
+    await writeAuditLog({ recipients, success: true });
     res.json({ ok: true, to: email });
   } catch (err) {
     next(err);

@@ -53,6 +53,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   virtual_account_created:  { label: "VA Created",            color: "bg-primary/10 text-primary border-primary/20" },
   virtual_account_updated:  { label: "VA Updated",            color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   virtual_account_deleted:  { label: "VA Deleted",            color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
+  test_email_sent:          { label: "Test Email Sent",       color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
@@ -713,6 +714,58 @@ function VirtualAccountDeletedDetails({ log }: { log: any }) {
   );
 }
 
+function TestEmailSentDetails({ log }: { log: any }) {
+  let parsed: { recipients?: string[]; success?: boolean; error?: string } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const success = parsed.success !== false;
+  const recipients = parsed.recipients ?? [];
+  const recipientLabel = recipients.length > 0 ? recipients.join(", ") : undefined;
+
+  const errorMessages: Record<string, string> = {
+    no_recipient: "No recipient configured",
+    invalid_email: "Invalid email address",
+    smtp_send_failed: "SMTP not configured or send failed",
+  };
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={
+          success
+            ? <Mail className="w-5 h-5 text-violet-400" />
+            : <XCircle className="w-5 h-5 text-rose-400" />
+        }
+        title={success ? "Test email delivered successfully" : "Test email failed to send"}
+        subtitle={recipientLabel}
+        colorClass={success ? "bg-violet-500/10 border-violet-500/20" : "bg-rose-500/10 border-rose-500/20"}
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {recipients.length > 0 && (
+          <DetailRow
+            label={recipients.length === 1 ? "Recipient" : "Recipients"}
+            value={recipientLabel!}
+          />
+        )}
+        {recipients.length === 0 && (
+          <DetailRow label="Recipients" value={<span className="text-muted-foreground">None configured</span>} />
+        )}
+        <DetailRow label="Outcome" value={
+          success
+            ? <span className="text-emerald-400">Sent</span>
+            : <span className="text-rose-400">Failed</span>
+        } />
+        {!success && parsed.error && (
+          <DetailRow
+            label="Reason"
+            value={<span className="text-rose-400">{errorMessages[parsed.error] ?? parsed.error}</span>}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RawJsonDetails({ log }: { log: any }) {
   return (
     <div className="rounded-lg bg-muted/20 p-3">
@@ -774,6 +827,8 @@ function ActionDetails({ log }: { log: any }) {
       return <VirtualAccountUpdatedDetails log={log} />;
     case "virtual_account_deleted":
       return <VirtualAccountDeletedDetails log={log} />;
+    case "test_email_sent":
+      return <TestEmailSentDetails log={log} />;
     default:
       return <RawJsonDetails log={log} />;
   }
