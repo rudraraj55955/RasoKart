@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   useListVirtualAccounts,
   useUpdateVirtualAccount,
@@ -30,7 +30,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode, History, TrendingUp, ShieldCheck, Info } from "lucide-react";
+import { Search, XCircle, Trash2, X, Eye, Download, Calendar, RefreshCw, Pencil, AlertCircle, Copy, QrCode, History, TrendingUp, ShieldCheck, Info, Building2, ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
@@ -38,6 +38,7 @@ import { buildUpiId, buildUpiUrl } from "@/lib/upi";
 
 type VaRow = {
   id: number;
+  merchantId?: number | null;
   accountNumber: string;
   ifsc: string;
   bankName: string;
@@ -49,6 +50,180 @@ type VaRow = {
   createdAt: string;
   merchantName?: string | null;
 };
+
+function AdminInlineVaRow({ va }: { va: VaRow }) {
+  const [copied, setCopied] = useState<"account" | "upi" | null>(null);
+
+  const { data: txData, isLoading: txLoading } = useGetVirtualAccountTransactions(
+    va.id,
+    { query: { enabled: true } as any }
+  );
+
+  const recentTx = (txData?.data ?? []).slice(0, 5);
+
+  const handleCopyAccountNumber = useCallback(() => {
+    navigator.clipboard.writeText(va.accountNumber).then(() => {
+      setCopied("account");
+      toast.success("Account number copied");
+      setTimeout(() => setCopied(null), 2000);
+    });
+  }, [va.accountNumber]);
+
+  const handleCopyUpiId = useCallback(() => {
+    const upiId = buildUpiId(va.accountNumber, va.ifsc);
+    navigator.clipboard.writeText(upiId).then(() => {
+      setCopied("upi");
+      toast.success("UPI ID copied");
+      setTimeout(() => setCopied(null), 2000);
+    });
+  }, [va.accountNumber, va.ifsc]);
+
+  const handleDownloadQr = useCallback(() => {
+    const canvas = document.querySelector(`#admin-va-inline-qr-${va.id} canvas`) as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `va-qr-${va.accountNumber}.png`;
+    a.click();
+    toast.success("QR code downloaded");
+  }, [va.accountNumber, va.id]);
+
+  return (
+    <TableRow className="bg-muted/20 border-t-0 hover:bg-muted/20">
+      <TableCell colSpan={11} className="py-4 px-6">
+        <div className="flex gap-6 items-start">
+          {/* UPI QR */}
+          <div id={`admin-va-inline-qr-${va.id}`} className="bg-white p-3 rounded-xl shrink-0">
+            <QRCodeCanvas
+              value={buildUpiUrl(va.accountNumber, va.ifsc, va.accountHolder)}
+              size={120}
+              level="H"
+              includeMargin
+            />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {/* Merchant context */}
+            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border/50">
+              <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div>
+                <span className="text-xs text-muted-foreground">Merchant · </span>
+                <span className="text-sm font-semibold">{va.merchantName ?? "Unknown"}</span>
+                {va.merchantId != null && (
+                  <span className="text-xs text-muted-foreground ml-2">ID #{va.merchantId}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Account metadata grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-sm mb-3">
+              <div>
+                <span className="text-xs text-muted-foreground block">Account Number</span>
+                <span className="font-mono text-xs">{va.accountNumber}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Bank</span>
+                <span className="text-xs">{va.bankName}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">IFSC</span>
+                <span className="font-mono text-xs">{va.ifsc}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Status</span>
+                <Badge variant={va.status === "active" ? "default" : "secondary"} className="text-xs capitalize">
+                  {va.status}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Balance</span>
+                <span className="font-mono text-xs font-semibold text-emerald-400">
+                  ₹{parseFloat(va.balance || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Total Collection</span>
+                <span className="font-mono text-xs font-semibold text-blue-400">
+                  ₹{parseFloat(va.totalCollection || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">UPI ID</span>
+                <span className="font-mono text-xs text-muted-foreground">{buildUpiId(va.accountNumber, va.ifsc)}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Created</span>
+                <span className="text-xs">{format(new Date(va.createdAt), "MMM d, yyyy")}</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 mb-4">
+              <Button size="sm" variant="outline" onClick={handleCopyAccountNumber} className="h-7 text-xs px-3">
+                <Copy className="w-3.5 h-3.5 mr-1.5" />
+                {copied === "account" ? "Copied!" : "Copy Account No."}
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleCopyUpiId} className="h-7 text-xs px-3">
+                <Copy className="w-3.5 h-3.5 mr-1.5" />
+                {copied === "upi" ? "Copied!" : "Copy UPI ID"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleDownloadQr} className="h-7 text-xs px-3">
+                <Download className="w-3.5 h-3.5 mr-1.5" />Download QR
+              </Button>
+            </div>
+
+            {/* Recent transactions */}
+            <div className="border-t border-border/50 pt-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Recent Transactions
+              </p>
+              {txLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-9 bg-muted/40 rounded-md animate-pulse" />
+                  ))}
+                </div>
+              ) : recentTx.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">No transactions yet</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {recentTx.map(tx => (
+                    <div key={tx.id} className="flex items-center gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+                      <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                        <span className="font-mono text-xs font-semibold">
+                          ₹{parseFloat(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </span>
+                        <Badge
+                          variant={tx.status === "success" ? "default" : tx.status === "failed" ? "destructive" : "secondary"}
+                          className="text-[10px] capitalize px-1.5 py-0"
+                        >
+                          {tx.status}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] capitalize px-1.5 py-0">{tx.type}</Badge>
+                        {tx.utr && (
+                          <span className="font-mono text-[10px] text-muted-foreground">UTR: {tx.utr}</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {format(new Date(tx.createdAt), "MMM d, HH:mm")}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {(txData?.data?.length ?? 0) > 5 && (
+                    <p className="text-[10px] text-muted-foreground text-right pt-1">
+                      +{(txData?.data?.length ?? 0) - 5} more — open full view for complete history
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 type PageTab = "accounts" | "audit";
 
@@ -68,6 +243,7 @@ export default function AdminVirtualAccounts() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  const [expandedVaId, setExpandedVaId] = useState<number | null>(null);
   const [selectedVa, setSelectedVa] = useState<VaRow | null>(null);
   const [drawerTab, setDrawerTab] = useState<"transactions" | "history">("transactions");
   const [editVa, setEditVa] = useState<VaRow | null>(null);
@@ -376,6 +552,7 @@ export default function AdminVirtualAccounts() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8" />
                     <TableHead>Merchant</TableHead>
                     <TableHead>Account Holder</TableHead>
                     <TableHead>Account Number</TableHead>
@@ -391,57 +568,66 @@ export default function AdminVirtualAccounts() {
                 <TableBody>
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>{Array.from({ length: 10 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
+                      <TableRow key={i}>{Array.from({ length: 11 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
                     ))
                   ) : !data?.data?.length ? (
-                    <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-10">No virtual accounts found</TableCell></TableRow>
-                  ) : (data.data as VaRow[]).map(va => (
-                    <TableRow key={va.id} className="cursor-pointer hover:bg-muted/30" onClick={() => { setSelectedVa(va); setDrawerTab("transactions"); }}>
-                      <TableCell className="font-medium text-sm">{va.merchantName ?? "—"}</TableCell>
-                      <TableCell className="text-sm">{va.accountHolder}</TableCell>
-                      <TableCell className="font-mono text-xs">{va.accountNumber}</TableCell>
-                      <TableCell className="text-sm">{va.bankName}</TableCell>
-                      <TableCell className="font-mono text-xs">{va.ifsc}</TableCell>
-                      <TableCell onClick={e => e.stopPropagation()}>
-                        <Badge variant={va.status === "active" ? "default" : "secondary"} className="text-xs">
-                          {va.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm text-emerald-400">
-                        ₹{parseFloat(va.balance || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm text-blue-400">
-                        ₹{parseFloat(va.totalCollection || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{format(new Date(va.createdAt), "MMM d, yyyy")}</TableCell>
-                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          <Button size="icon" variant="ghost" className="h-8 w-8" title="View Transactions"
-                            onClick={() => { setSelectedVa(va); setDrawerTab("transactions"); }}>
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                            title="Balance History" onClick={() => { setSelectedVa(va); setDrawerTab("history"); }}>
-                            <History className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
-                            title="Adjust Balance" onClick={() => openAdjustBalance(va)}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          {va.status === "active" && (
-                            <Button size="sm" variant="ghost" className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 h-8 text-xs"
-                              onClick={() => handleClose(va.id)}>
-                              <XCircle className="w-3.5 h-3.5 mr-1" />Close
+                    <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-10">No virtual accounts found</TableCell></TableRow>
+                  ) : (data.data as VaRow[]).flatMap(va => {
+                    const isExpanded = expandedVaId === va.id;
+                    return [
+                      <TableRow
+                        key={va.id}
+                        className={`cursor-pointer hover:bg-muted/30 ${isExpanded ? "bg-muted/20" : ""}`}
+                        onClick={() => setExpandedVaId(prev => prev === va.id ? null : va.id)}
+                      >
+                        <TableCell className="w-5 pr-0">
+                          {isExpanded
+                            ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                            : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                        </TableCell>
+                        <TableCell className="font-medium text-sm">{va.merchantName ?? "—"}</TableCell>
+                        <TableCell className="text-sm">{va.accountHolder}</TableCell>
+                        <TableCell className="font-mono text-xs">{va.accountNumber}</TableCell>
+                        <TableCell className="text-sm">{va.bankName}</TableCell>
+                        <TableCell className="font-mono text-xs">{va.ifsc}</TableCell>
+                        <TableCell onClick={e => e.stopPropagation()}>
+                          <Badge variant={va.status === "active" ? "default" : "secondary"} className="text-xs">
+                            {va.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-emerald-400">
+                          ₹{parseFloat(va.balance || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-blue-400">
+                          ₹{parseFloat(va.totalCollection || "0").toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{format(new Date(va.createdAt), "MMM d, yyyy")}</TableCell>
+                        <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                              title="Balance History" onClick={() => { setSelectedVa(va); setDrawerTab("history"); }}>
+                              <History className="w-3.5 h-3.5" />
                             </Button>
-                          )}
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500 hover:text-rose-400"
-                            onClick={() => handleDelete(va.id)}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
+                              title="Adjust Balance" onClick={() => openAdjustBalance(va)}>
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            {va.status === "active" && (
+                              <Button size="sm" variant="ghost" className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 h-8 text-xs"
+                                onClick={() => handleClose(va.id)}>
+                                <XCircle className="w-3.5 h-3.5 mr-1" />Close
+                              </Button>
+                            )}
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500 hover:text-rose-400"
+                              onClick={() => handleDelete(va.id)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>,
+                      ...(isExpanded ? [<AdminInlineVaRow key={`inline-${va.id}`} va={va} />] : []),
+                    ];
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
