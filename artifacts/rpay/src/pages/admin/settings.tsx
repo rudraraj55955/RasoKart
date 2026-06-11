@@ -10,7 +10,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetCleanupStats, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, getGetEkqrConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetCleanupStats, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, getGetEkqrConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -661,6 +661,21 @@ export default function AdminSettings() {
         toast.success("Signature failure alert history cleared");
         qc.invalidateQueries({ queryKey: getGetSignatureFailureAlertHistoryQueryKey() });
         void refetchSigFailureHistory();
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to clear history")),
+    },
+  });
+
+  const { data: webhookAlertHistoryData, refetch: refetchWebhookAlertHistory } = useGetWebhookFailureAlertHistory();
+  const webhookAlertHistory: WebhookFailureAlertLogEntry[] = webhookAlertHistoryData?.data ?? [];
+  const webhookAlertHistoryCount = webhookAlertHistoryData?.total ?? 0;
+
+  const { mutate: clearWebhookAlertHistory, isPending: clearingWebhookAlertHistory } = useClearWebhookFailureAlertHistory({
+    mutation: {
+      onSuccess: () => {
+        toast.success("Webhook failure alert history cleared");
+        qc.invalidateQueries({ queryKey: getGetWebhookFailureAlertHistoryQueryKey() });
+        void refetchWebhookAlertHistory();
       },
       onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to clear history")),
     },
@@ -1982,6 +1997,61 @@ export default function AdminSettings() {
                   <p className="text-xs text-muted-foreground">
                     Window: {entry.windowHours}h · Threshold: {entry.threshold} · Sent to: {entry.recipientEmails.join(", ")}
                   </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Webhook Failure Alert History */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Wifi className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-base">Webhook Failure Alert History</CardTitle>
+            </div>
+            {webhookAlertHistoryCount > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive border-destructive/40 hover:bg-destructive/10"
+                onClick={() => clearWebhookAlertHistory()}
+                disabled={clearingWebhookAlertHistory}
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                {clearingWebhookAlertHistory ? "Clearing…" : `Clear (${webhookAlertHistoryCount})`}
+              </Button>
+            )}
+          </div>
+          <CardDescription className="text-sm">
+            A record of every webhook permanent failure alert email dispatched to admins. Tracks which merchant's webhook failed, the URL, attempt count, and which admins were notified.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {webhookAlertHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">No webhook failure alert emails have been sent yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {webhookAlertHistory.map((entry) => (
+                <div key={entry.id} className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {new Date(entry.sentAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                    </span>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>Merchant #{entry.merchantId}</span>
+                      <span>{entry.attemptCount} attempt{entry.attemptCount !== 1 ? "s" : ""}</span>
+                      <span>{entry.recipientCount} recipient{entry.recipientCount !== 1 ? "s" : ""}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-mono break-all">{entry.failedUrl}</p>
+                  {entry.recipientEmails.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Sent to: {entry.recipientEmails.join(", ")}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

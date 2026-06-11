@@ -1,4 +1,4 @@
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, webhookFailureAlertLogsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
@@ -317,6 +317,14 @@ export async function notifyAdminsOfWebhookFailureEmail(opts: {
 
     const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
     const failed = results.length - sent;
+
+    await db.insert(webhookFailureAlertLogsTable).values({
+      merchantId: opts.merchantId,
+      failedUrl: opts.url,
+      attemptCount: opts.attempts,
+      recipientCount: sent,
+      recipientEmails: recipients,
+    });
 
     logger.info(
       { merchantId: opts.merchantId, totalAdmins: recipients.length, sent, failed },

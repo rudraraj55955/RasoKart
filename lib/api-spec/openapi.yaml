@@ -4800,6 +4800,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/StorageCleanupRunResult"
 
+  /system-config/webhook-failure-alert-history:
+    get:
+      operationId: getWebhookFailureAlertHistory
+      tags: [system-config]
+      summary: Get webhook failure alert email send history (admin only)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: List of webhook failure alert log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookFailureAlertHistoryResponse"
+    delete:
+      operationId: clearWebhookFailureAlertHistory
+      tags: [system-config]
+      summary: Clear all webhook failure alert history entries (admin only)
+      responses:
+        "200":
+          description: History cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cleared]
+                properties:
+                  cleared:
+                    type: boolean
+
   /system-config/signature-failure-alert-history:
     get:
       operationId: getSignatureFailureAlertHistory
@@ -8588,6 +8624,44 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SignatureFailureAlertLogEntry"
+        total:
+          type: integer
+
+    WebhookFailureAlertLogEntry:
+      type: object
+      required: [id, sentAt, merchantId, failedUrl, attemptCount, recipientCount, recipientEmails]
+      properties:
+        id:
+          type: integer
+        sentAt:
+          type: string
+          format: date-time
+        merchantId:
+          type: integer
+          description: The merchant whose webhook permanently failed
+        failedUrl:
+          type: string
+          description: The webhook URL that failed
+        attemptCount:
+          type: integer
+          description: Total delivery attempts made before the webhook was marked permanently failed
+        recipientCount:
+          type: integer
+          description: Number of admin emails the alert was successfully delivered to
+        recipientEmails:
+          type: array
+          items:
+            type: string
+          description: List of admin email addresses the alert was sent to
+
+    WebhookFailureAlertHistoryResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookFailureAlertLogEntry"
         total:
           type: integer
 

@@ -838,7 +838,7 @@ export async function seed() {
         schedule_id,
         sent_at,
         gen_random_uuid()::text AS cycle_id
-      FROM ${scheduledAuditReportLogsTable}
+      FROM "scheduled_audit_report_logs"
       WHERE delivery_cycle_id IS NULL
         AND is_retry = false
     ),
@@ -858,7 +858,7 @@ export async function seed() {
           -- Fall back to an already-assigned non-retry row in the same schedule
           (
             SELECT existing.delivery_cycle_id
-            FROM ${scheduledAuditReportLogsTable} existing
+            FROM "scheduled_audit_report_logs" existing
             WHERE existing.schedule_id = r.schedule_id
               AND existing.is_retry = false
               AND existing.delivery_cycle_id IS NOT NULL
@@ -869,7 +869,7 @@ export async function seed() {
           -- Last resort: give the orphan retry its own fresh UUID
           gen_random_uuid()::text
         ) AS cycle_id
-      FROM ${scheduledAuditReportLogsTable} r
+      FROM "scheduled_audit_report_logs" r
       WHERE r.delivery_cycle_id IS NULL
         AND r.is_retry = true
     ),
@@ -878,10 +878,10 @@ export async function seed() {
       UNION ALL
       SELECT id, cycle_id FROM retry_assignments
     )
-    UPDATE ${scheduledAuditReportLogsTable}
+    UPDATE "scheduled_audit_report_logs"
     SET delivery_cycle_id = all_assignments.cycle_id
     FROM all_assignments
-    WHERE ${scheduledAuditReportLogsTable}.id = all_assignments.id
+    WHERE "scheduled_audit_report_logs".id = all_assignments.id
   `);
   console.log("Delivery cycle ID backfill complete.");
 

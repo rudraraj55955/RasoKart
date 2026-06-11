@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable } from "@workspace/db";
+import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable } from "@workspace/db";
 import { ekqrCreateOrder, ekqrClientTxnId } from "../helpers/ekqr";
 import { inArray, desc, count, sql, eq } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -586,6 +586,51 @@ router.get("/webhook-retry-policy", async (req, res, next) => {
     }));
 
     res.json({ maxAttempts, initialAttempt: 1, retries, delays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/webhook-failure-alert-history
+router.get("/webhook-failure-alert-history", async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt((req.query['limit'] as string) || "50") || 50, 200);
+
+    const [rows, [{ total }]] = await Promise.all([
+      db
+        .select()
+        .from(webhookFailureAlertLogsTable)
+        .orderBy(desc(webhookFailureAlertLogsTable.sentAt))
+        .limit(limit),
+      db.select({ total: count() }).from(webhookFailureAlertLogsTable),
+    ]);
+
+    res.json({ data: rows, total });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/system-config/webhook-failure-alert-history
+router.delete("/webhook-failure-alert-history", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+
+    await db.delete(webhookFailureAlertLogsTable);
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "webhook_failure_alert_history", action: "cleared" }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info("Webhook failure alert history cleared");
+
+    res.json({ cleared: true });
   } catch (err) {
     next(err);
   }

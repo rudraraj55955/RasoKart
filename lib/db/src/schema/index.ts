@@ -37,4 +37,5 @@ export * from "./savedFilters";
 export * from "./credentialEvents";
 export * from "./rateLimitHits";
 export * from "./signatureFailureAlertLogs";
+export * from "./webhookFailureAlertLogs";
 export * from "./storageCleanupRuns";

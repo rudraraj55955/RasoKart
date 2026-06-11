@@ -4732,6 +4732,40 @@ export const RunStorageCleanupResponse = zod.object({
 
 
 /**
+ * @summary Get webhook failure alert email send history (admin only)
+ */
+export const getWebhookFailureAlertHistoryQueryLimitDefault = 50;
+export const getWebhookFailureAlertHistoryQueryLimitMax = 200;
+
+
+
+export const GetWebhookFailureAlertHistoryQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getWebhookFailureAlertHistoryQueryLimitMax).default(getWebhookFailureAlertHistoryQueryLimitDefault)
+})
+
+export const GetWebhookFailureAlertHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "sentAt": zod.coerce.date(),
+  "merchantId": zod.number().describe('The merchant whose webhook permanently failed'),
+  "failedUrl": zod.string().describe('The webhook URL that failed'),
+  "attemptCount": zod.number().describe('Total delivery attempts made before the webhook was marked permanently failed'),
+  "recipientCount": zod.number().describe('Number of admin emails the alert was successfully delivered to'),
+  "recipientEmails": zod.array(zod.string()).describe('List of admin email addresses the alert was sent to')
+})),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary Clear all webhook failure alert history entries (admin only)
+ */
+export const ClearWebhookFailureAlertHistoryResponse = zod.object({
+  "cleared": zod.boolean()
+})
+
+
+/**
  * @summary Get signature failure alert send history (admin only)
  */
 export const getSignatureFailureAlertHistoryQueryLimitDefault = 50;

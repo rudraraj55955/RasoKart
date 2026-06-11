@@ -67,6 +67,7 @@ import type {
   CleanupStats,
   ClearSignatureFailureAlertHistory200,
   ClearTestEmailHistory200,
+  ClearWebhookFailureAlertHistory200,
   CreateSavedFilterInput,
   CreateSettlementInput,
   CredentialEventList,
@@ -89,6 +90,7 @@ import type {
   GetSecurityComplianceSummaryParams,
   GetSignatureFailureAlertHistoryParams,
   GetVirtualAccountBalanceHistoryParams,
+  GetWebhookFailureAlertHistoryParams,
   GetWebhookLogAttempts200,
   GetWebhookLogsParams,
   GithubSyncConfig,
@@ -236,6 +238,7 @@ import type {
   VisibilityRuleUpdateInput,
   WebhookConfig,
   WebhookConfigInput,
+  WebhookFailureAlertHistoryResponse,
   WebhookHealthSummary,
   WebhookLogStatsResponse,
   WebhookRetriesConfig,
@@ -15516,6 +15519,160 @@ export const useRunStorageCleanup = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRunStorageCleanupMutationOptions(options));
+    }
+
+export const getGetWebhookFailureAlertHistoryUrl = (params?: GetWebhookFailureAlertHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/system-config/webhook-failure-alert-history?${stringifiedParams}` : `/api/system-config/webhook-failure-alert-history`
+}
+
+/**
+ * @summary Get webhook failure alert email send history (admin only)
+ */
+export const getWebhookFailureAlertHistory = async (params?: GetWebhookFailureAlertHistoryParams, options?: RequestInit): Promise<WebhookFailureAlertHistoryResponse> => {
+
+  return customFetch<WebhookFailureAlertHistoryResponse>(getGetWebhookFailureAlertHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebhookFailureAlertHistoryQueryKey = (params?: GetWebhookFailureAlertHistoryParams,) => {
+    return [
+    `/api/system-config/webhook-failure-alert-history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWebhookFailureAlertHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookFailureAlertHistory>>, TError = ErrorType<unknown>>(params?: GetWebhookFailureAlertHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookFailureAlertHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebhookFailureAlertHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookFailureAlertHistory>>> = ({ signal }) => getWebhookFailureAlertHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebhookFailureAlertHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebhookFailureAlertHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getWebhookFailureAlertHistory>>>
+export type GetWebhookFailureAlertHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get webhook failure alert email send history (admin only)
+ */
+
+export function useGetWebhookFailureAlertHistory<TData = Awaited<ReturnType<typeof getWebhookFailureAlertHistory>>, TError = ErrorType<unknown>>(
+ params?: GetWebhookFailureAlertHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookFailureAlertHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebhookFailureAlertHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getClearWebhookFailureAlertHistoryUrl = () => {
+
+
+
+
+  return `/api/system-config/webhook-failure-alert-history`
+}
+
+/**
+ * @summary Clear all webhook failure alert history entries (admin only)
+ */
+export const clearWebhookFailureAlertHistory = async ( options?: RequestInit): Promise<ClearWebhookFailureAlertHistory200> => {
+
+  return customFetch<ClearWebhookFailureAlertHistory200>(getClearWebhookFailureAlertHistoryUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getClearWebhookFailureAlertHistoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearWebhookFailureAlertHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearWebhookFailureAlertHistory>>, TError,void, TContext> => {
+
+const mutationKey = ['clearWebhookFailureAlertHistory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearWebhookFailureAlertHistory>>, void> = () => {
+
+
+          return  clearWebhookFailureAlertHistory(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearWebhookFailureAlertHistoryMutationResult = NonNullable<Awaited<ReturnType<typeof clearWebhookFailureAlertHistory>>>
+
+    export type ClearWebhookFailureAlertHistoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear all webhook failure alert history entries (admin only)
+ */
+export const useClearWebhookFailureAlertHistory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearWebhookFailureAlertHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearWebhookFailureAlertHistory>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClearWebhookFailureAlertHistoryMutationOptions(options));
     }
 
 export const getGetSignatureFailureAlertHistoryUrl = (params?: GetSignatureFailureAlertHistoryParams,) => {

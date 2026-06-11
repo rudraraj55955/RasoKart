@@ -2660,6 +2660,26 @@ export interface SignatureFailureAlertHistoryResponse {
   total: number;
 }
 
+export interface WebhookFailureAlertLogEntry {
+  id: number;
+  sentAt: string;
+  /** The merchant whose webhook permanently failed */
+  merchantId: number;
+  /** The webhook URL that failed */
+  failedUrl: string;
+  /** Total delivery attempts made before the webhook was marked permanently failed */
+  attemptCount: number;
+  /** Number of admin emails the alert was successfully delivered to */
+  recipientCount: number;
+  /** List of admin email addresses the alert was sent to */
+  recipientEmails: string[];
+}
+
+export interface WebhookFailureAlertHistoryResponse {
+  data: WebhookFailureAlertLogEntry[];
+  total: number;
+}
+
 export interface WebhookRetriesConfig {
   /**
      * Total maximum delivery attempts (1 initial + retries). Default is 4 (1 initial + 3 retries).
@@ -3427,6 +3447,18 @@ limit?: number;
 export type ListStorageCleanupRuns200 = {
   data: StorageCleanupRun[];
   total: number;
+};
+
+export type GetWebhookFailureAlertHistoryParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
+
+export type ClearWebhookFailureAlertHistory200 = {
+  cleared: boolean;
 };
 
 export type GetSignatureFailureAlertHistoryParams = {
