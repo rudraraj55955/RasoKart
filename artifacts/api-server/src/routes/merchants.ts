@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable, credentialEventsTable } from "@workspace/db";
+import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable, credentialEventsTable, webhooksTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull, inArray } from "drizzle-orm";
 import { maskIp } from "../helpers/apiKeyEmail";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
@@ -286,6 +286,54 @@ router.patch("/:id/callback-window", requireAdmin, async (req, res) => {
   });
   req.log.info({ adminId: admin.id, merchantId: id, windowSeconds: merchant.callbackTimestampWindowSeconds }, "Admin updated callback timestamp window");
   res.json(serializeMerchant(merchant));
+});
+
+// GET /api/merchants/:id/webhook-config  (admin only)
+router.get("/:id/webhook-config", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const [webhook] = await db
+    .select()
+    .from(webhooksTable)
+    .where(eq(webhooksTable.merchantId, id));
+  if (!webhook) { res.status(404).json({ error: "Webhook config not found for this merchant" }); return; }
+  res.json(webhook);
+});
+
+// PATCH /api/merchants/:id/webhook-max-retries  (admin only)
+router.patch("/:id/webhook-max-retries", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
+  const { maxRetries } = req.body as { maxRetries?: number };
+
+  if (!Number.isInteger(maxRetries) || (maxRetries as number) < 1 || (maxRetries as number) > 10) {
+    res.status(400).json({ error: "maxRetries must be an integer between 1 and 10" });
+    return;
+  }
+
+  const [merchant] = await db
+    .select({ id: merchantsTable.id, businessName: merchantsTable.businessName, email: merchantsTable.email })
+    .from(merchantsTable)
+    .where(eq(merchantsTable.id, id));
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+  const [webhook] = await db
+    .update(webhooksTable)
+    .set({ maxRetries, updatedAt: new Date() })
+    .where(eq(webhooksTable.merchantId, id))
+    .returning();
+  if (!webhook) { res.status(404).json({ error: "Webhook config not found for this merchant" }); return; }
+
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "webhook_max_retries_updated",
+    targetType: "merchant",
+    targetId: merchant.id,
+    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email, maxRetries }),
+    ipAddress: req.ip ?? null,
+  });
+  req.log.info({ adminId: admin.id, merchantId: id, maxRetries }, "Admin updated webhook max retries");
+  res.json(webhook);
 });
 
 // POST /api/merchants/:id/approve

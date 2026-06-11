@@ -594,8 +594,8 @@ router.put("/", async (req, res) => {
   }
 
   const maxRetriesNum = maxRetries != null ? parseInt(String(maxRetries), 10) : 3;
-  if (!isFinite(maxRetriesNum) || maxRetriesNum < 0 || maxRetriesNum > 5) {
-    res.status(400).json({ error: "maxRetries must be an integer between 0 and 5" });
+  if (!isFinite(maxRetriesNum) || maxRetriesNum < 0 || maxRetriesNum > 10) {
+    res.status(400).json({ error: "maxRetries must be an integer between 0 and 10" });
     return;
   }
 

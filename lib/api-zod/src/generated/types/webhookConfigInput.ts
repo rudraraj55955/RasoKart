@@ -15,7 +15,7 @@ export interface WebhookConfigInput {
   /**
      * Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
      * @minimum 0
-     * @maximum 5
+     * @maximum 10
      */
   maxRetries?: number;
   /**

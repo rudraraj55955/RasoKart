@@ -851,6 +851,72 @@ export const UpdateMerchantCallbackWindowResponse = zod.object({
 
 
 /**
+ * Returns the webhook configuration row for a merchant, including the current maxRetries setting.
+ * @summary Get webhook configuration for a merchant (admin only)
+ */
+export const GetAdminMerchantWebhookConfigParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const getAdminMerchantWebhookConfigResponseMaxRetriesMin = 0;
+export const getAdminMerchantWebhookConfigResponseMaxRetriesMax = 10;
+
+export const getAdminMerchantWebhookConfigResponseFailureAlertThresholdMax = 10;
+
+
+
+export const GetAdminMerchantWebhookConfigResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "url": zod.string(),
+  "isActive": zod.boolean(),
+  "events": zod.array(zod.string()),
+  "secret": zod.string().nullish(),
+  "maxRetries": zod.number().min(getAdminMerchantWebhookConfigResponseMaxRetriesMin).max(getAdminMerchantWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "failureAlertEnabled": zod.boolean().describe('Whether to send an email alert when consecutive failures reach the threshold'),
+  "failureAlertThreshold": zod.number().min(1).max(getAdminMerchantWebhookConfigResponseFailureAlertThresholdMax).describe('Number of consecutive delivery failures that triggers an email alert (default 3)'),
+  "createdAt": zod.string().optional()
+})
+
+
+/**
+ * Sets the maximum number of automatic delivery retries for a merchant's webhook (1–10).
+ * @summary Update per-merchant webhook max-retry limit (admin only)
+ */
+export const UpdateMerchantWebhookMaxRetriesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateMerchantWebhookMaxRetriesBodyMaxRetriesMax = 10;
+
+
+
+export const UpdateMerchantWebhookMaxRetriesBody = zod.object({
+  "maxRetries": zod.number().min(1).max(updateMerchantWebhookMaxRetriesBodyMaxRetriesMax).describe('Maximum number of automatic delivery retries (1–10).')
+})
+
+export const updateMerchantWebhookMaxRetriesResponseMaxRetriesMin = 0;
+export const updateMerchantWebhookMaxRetriesResponseMaxRetriesMax = 10;
+
+export const updateMerchantWebhookMaxRetriesResponseFailureAlertThresholdMax = 10;
+
+
+
+export const UpdateMerchantWebhookMaxRetriesResponse = zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "url": zod.string(),
+  "isActive": zod.boolean(),
+  "events": zod.array(zod.string()),
+  "secret": zod.string().nullish(),
+  "maxRetries": zod.number().min(updateMerchantWebhookMaxRetriesResponseMaxRetriesMin).max(updateMerchantWebhookMaxRetriesResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "failureAlertEnabled": zod.boolean().describe('Whether to send an email alert when consecutive failures reach the threshold'),
+  "failureAlertThreshold": zod.number().min(1).max(updateMerchantWebhookMaxRetriesResponseFailureAlertThresholdMax).describe('Number of consecutive delivery failures that triggers an email alert (default 3)'),
+  "createdAt": zod.string().optional()
+})
+
+
+/**
  * Returns key_generated, key_revoked, and secret_rotated events for a merchant, newest first. Optionally filter by eventType.
  * @summary List credential events for a merchant (admin only)
  */
@@ -1546,7 +1612,7 @@ export const SendWebhookTestResponse = zod.object({
  * @summary Get webhook configuration
  */
 export const getWebhookConfigResponseMaxRetriesMin = 0;
-export const getWebhookConfigResponseMaxRetriesMax = 5;
+export const getWebhookConfigResponseMaxRetriesMax = 10;
 
 export const getWebhookConfigResponseFailureAlertThresholdMax = 10;
 
@@ -1573,7 +1639,7 @@ export const GetWebhookConfigResponse = zod.object({
  * @summary Update webhook configuration
  */
 export const updateWebhookConfigBodyMaxRetriesMin = 0;
-export const updateWebhookConfigBodyMaxRetriesMax = 5;
+export const updateWebhookConfigBodyMaxRetriesMax = 10;
 
 export const updateWebhookConfigBodyFailureAlertThresholdMax = 10;
 
@@ -1593,7 +1659,7 @@ export const UpdateWebhookConfigBody = zod.object({
 })
 
 export const updateWebhookConfigResponseMaxRetriesMin = 0;
-export const updateWebhookConfigResponseMaxRetriesMax = 5;
+export const updateWebhookConfigResponseMaxRetriesMax = 10;
 
 export const updateWebhookConfigResponseFailureAlertThresholdMax = 10;
 

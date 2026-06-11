@@ -147,6 +147,7 @@ import type {
   MerchantProduct,
   MerchantRegisterInput,
   MerchantVolumeListResponse,
+  MerchantWebhookMaxRetriesInput,
   MessageResponse,
   Notification,
   NotificationListResponse,
@@ -2674,6 +2675,157 @@ export const useUpdateMerchantCallbackWindow = <TError = ErrorType<ErrorResponse
         TContext
       > => {
       return useMutation(getUpdateMerchantCallbackWindowMutationOptions(options));
+    }
+
+export const getGetAdminMerchantWebhookConfigUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/webhook-config`
+}
+
+/**
+ * Returns the webhook configuration row for a merchant, including the current maxRetries setting.
+ * @summary Get webhook configuration for a merchant (admin only)
+ */
+export const getAdminMerchantWebhookConfig = async (id: number, options?: RequestInit): Promise<WebhookConfig> => {
+
+  return customFetch<WebhookConfig>(getGetAdminMerchantWebhookConfigUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminMerchantWebhookConfigQueryKey = (id: number,) => {
+    return [
+    `/api/merchants/${id}/webhook-config`
+    ] as const;
+    }
+
+
+export const getGetAdminMerchantWebhookConfigQueryOptions = <TData = Awaited<ReturnType<typeof getAdminMerchantWebhookConfig>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantWebhookConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminMerchantWebhookConfigQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminMerchantWebhookConfig>>> = ({ signal }) => getAdminMerchantWebhookConfig(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantWebhookConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminMerchantWebhookConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminMerchantWebhookConfig>>>
+export type GetAdminMerchantWebhookConfigQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get webhook configuration for a merchant (admin only)
+ */
+
+export function useGetAdminMerchantWebhookConfig<TData = Awaited<ReturnType<typeof getAdminMerchantWebhookConfig>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantWebhookConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminMerchantWebhookConfigQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateMerchantWebhookMaxRetriesUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/webhook-max-retries`
+}
+
+/**
+ * Sets the maximum number of automatic delivery retries for a merchant's webhook (1–10).
+ * @summary Update per-merchant webhook max-retry limit (admin only)
+ */
+export const updateMerchantWebhookMaxRetries = async (id: number,
+    merchantWebhookMaxRetriesInput: MerchantWebhookMaxRetriesInput, options?: RequestInit): Promise<WebhookConfig> => {
+
+  return customFetch<WebhookConfig>(getUpdateMerchantWebhookMaxRetriesUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      merchantWebhookMaxRetriesInput,)
+  }
+);}
+
+
+
+
+export const getUpdateMerchantWebhookMaxRetriesMutationOptions = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMerchantWebhookMaxRetries>>, TError,{id: number;data: BodyType<MerchantWebhookMaxRetriesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMerchantWebhookMaxRetries>>, TError,{id: number;data: BodyType<MerchantWebhookMaxRetriesInput>}, TContext> => {
+
+const mutationKey = ['updateMerchantWebhookMaxRetries'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMerchantWebhookMaxRetries>>, {id: number;data: BodyType<MerchantWebhookMaxRetriesInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMerchantWebhookMaxRetries(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMerchantWebhookMaxRetriesMutationResult = NonNullable<Awaited<ReturnType<typeof updateMerchantWebhookMaxRetries>>>
+    export type UpdateMerchantWebhookMaxRetriesMutationBody = BodyType<MerchantWebhookMaxRetriesInput>
+    export type UpdateMerchantWebhookMaxRetriesMutationError = ErrorType<ErrorResponse | void>
+
+    /**
+ * @summary Update per-merchant webhook max-retry limit (admin only)
+ */
+export const useUpdateMerchantWebhookMaxRetries = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMerchantWebhookMaxRetries>>, TError,{id: number;data: BodyType<MerchantWebhookMaxRetriesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMerchantWebhookMaxRetries>>,
+        TError,
+        {id: number;data: BodyType<MerchantWebhookMaxRetriesInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateMerchantWebhookMaxRetriesMutationOptions(options));
     }
 
 export const getListMerchantCredentialEventsUrl = (id: number,

@@ -842,6 +842,66 @@ paths:
         "404":
           description: Merchant not found
 
+  /merchants/{id}/webhook-config:
+    get:
+      operationId: getAdminMerchantWebhookConfig
+      tags: [merchants]
+      summary: Get webhook configuration for a merchant (admin only)
+      description: Returns the webhook configuration row for a merchant, including the current maxRetries setting.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Merchant webhook configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookConfig"
+        "403":
+          description: Admin access only
+        "404":
+          description: Merchant or webhook config not found
+
+  /merchants/{id}/webhook-max-retries:
+    patch:
+      operationId: updateMerchantWebhookMaxRetries
+      tags: [merchants]
+      summary: Update per-merchant webhook max-retry limit (admin only)
+      description: Sets the maximum number of automatic delivery retries for a merchant's webhook (1–10).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MerchantWebhookMaxRetriesInput"
+      responses:
+        "200":
+          description: Updated webhook configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookConfig"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Admin access only
+        "404":
+          description: Merchant or webhook config not found
+
   /merchants/{id}/credential-events:
     get:
       operationId: listMerchantCredentialEvents
@@ -5382,6 +5442,16 @@ components:
         limit:
           type: integer
 
+    MerchantWebhookMaxRetriesInput:
+      type: object
+      required: [maxRetries]
+      properties:
+        maxRetries:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Maximum number of automatic delivery retries (1–10).
+
     CallbackWindowInput:
       type: object
       properties:
@@ -5754,7 +5824,7 @@ components:
         maxRetries:
           type: integer
           minimum: 0
-          maximum: 5
+          maximum: 10
           description: Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
         retryDelay1:
           type: ["integer", "null"]
@@ -5836,7 +5906,7 @@ components:
         maxRetries:
           type: integer
           minimum: 0
-          maximum: 5
+          maximum: 10
           description: Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
         retryDelay1:
           type: ["integer", "null"]

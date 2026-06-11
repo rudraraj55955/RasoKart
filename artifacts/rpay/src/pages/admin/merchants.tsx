@@ -14,6 +14,8 @@ import {
   useScheduleMerchantPlanRenewal, useGetMerchant,
   useListMerchantCredentialEvents,
   useListCallbackLogs, useRetryCallback, useGetWebhookLogAttempts,
+  useGetAdminMerchantWebhookConfig,
+  useUpdateMerchantWebhookMaxRetries,
   getListMerchantsQueryKey,
   listMerchants,
 } from "@workspace/api-client-react";
@@ -227,6 +229,8 @@ export default function AdminMerchants() {
   const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string; callbackTimestampWindowSeconds?: number | null } | null>(null);
   const [windowEditMode, setWindowEditMode] = useState(false);
   const [windowInput, setWindowInput] = useState("");
+  const [retriesEditMode, setRetriesEditMode] = useState(false);
+  const [retriesInput, setRetriesInput] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [expiresAt, setExpiresAt] = useState<string>("");
   const [assignNotes, setAssignNotes] = useState<string>("");
@@ -311,6 +315,10 @@ export default function AdminMerchants() {
     assignPlanMerchant?.id ?? 0,
     { query: { enabled: !!assignPlanMerchant, queryKey: ["getAdminMerchantCallbackSecret", assignPlanMerchant?.id ?? 0] } }
   );
+  const { data: merchantWebhookConfig, isLoading: webhookConfigLoading, isError: webhookConfigError, refetch: refetchWebhookConfig } = useGetAdminMerchantWebhookConfig(
+    assignPlanMerchant?.id ?? 0,
+    { query: { enabled: !!assignPlanMerchant, queryKey: ["getAdminMerchantWebhookConfig", assignPlanMerchant?.id ?? 0], retry: false } }
+  );
   const { data: credentialEvents, isLoading: credEventsLoading } = useListMerchantCredentialEvents(
     assignPlanMerchant?.id ?? 0,
     credEventFilter ? { eventType: credEventFilter } : undefined,
@@ -342,6 +350,7 @@ export default function AdminMerchants() {
 
   const resetCallbackSecretMutation = useResetAdminMerchantCallbackSecret();
   const updateCallbackWindowMutation = useUpdateMerchantCallbackWindow();
+  const updateWebhookMaxRetriesMutation = useUpdateMerchantWebhookMaxRetries();
   const updateBrandingMutation = useUpdateMerchantBranding();
   const approveMutation = useApproveMerchant();
   const rejectMutation = useRejectMerchant();
@@ -2270,6 +2279,93 @@ export default function AdminMerchants() {
                         Reset to default
                       </Button>
                     )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Webhook Max Retries */}
+            <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-muted-foreground shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Max Delivery Retries</p>
+              </div>
+              {webhookConfigLoading ? (
+                <div className="animate-pulse h-5 bg-muted/30 rounded w-24" />
+              ) : webhookConfigError || merchantWebhookConfig == null ? (
+                <p className="text-xs text-muted-foreground italic">No webhook configured for this merchant.</p>
+              ) : !retriesEditMode ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-foreground font-mono">{merchantWebhookConfig.maxRetries}</span>
+                    <span className="text-xs text-muted-foreground">{merchantWebhookConfig.maxRetries === 1 ? "retry" : "retries"}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs gap-1.5 h-7 px-2"
+                    onClick={() => {
+                      setRetriesInput(String(merchantWebhookConfig.maxRetries));
+                      setRetriesEditMode(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Set how many times a failed webhook delivery is automatically retried (1–10).
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={retriesInput}
+                      onChange={e => setRetriesInput(e.target.value)}
+                      placeholder="3"
+                      className="h-7 text-xs w-20 font-mono"
+                    />
+                    <span className="text-xs text-muted-foreground">retries</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-3 text-xs"
+                      disabled={updateWebhookMaxRetriesMutation.isPending}
+                      onClick={() => { setRetriesEditMode(false); setRetriesInput(""); }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-7 px-3 text-xs gap-1.5"
+                      disabled={updateWebhookMaxRetriesMutation.isPending}
+                      onClick={() => {
+                        if (!assignPlanMerchant) return;
+                        const parsed = parseInt(retriesInput.trim(), 10);
+                        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) {
+                          toast.error("Retries must be between 1 and 10");
+                          return;
+                        }
+                        updateWebhookMaxRetriesMutation.mutate(
+                          { id: assignPlanMerchant.id, data: { maxRetries: parsed } },
+                          {
+                            onSuccess: () => {
+                              refetchWebhookConfig();
+                              setRetriesEditMode(false);
+                              setRetriesInput("");
+                              toast.success(`Max retries set to ${parsed}`);
+                            },
+                            onError: () => toast.error("Failed to update max retries"),
+                          }
+                        );
+                      }}
+                    >
+                      {updateWebhookMaxRetriesMutation.isPending ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</> : "Save"}
+                    </Button>
                   </div>
                 </div>
               )}

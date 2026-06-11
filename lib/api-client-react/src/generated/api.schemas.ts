@@ -179,6 +179,15 @@ export interface MerchantListResponse {
   limit: number;
 }
 
+export interface MerchantWebhookMaxRetriesInput {
+  /**
+     * Maximum number of automatic delivery retries (1–10).
+     * @minimum 1
+     * @maximum 10
+     */
+  maxRetries: number;
+}
+
 export interface CallbackWindowInput {
   /**
      * Replay-protection window in seconds (1–86400), or null to reset to global default.
@@ -480,7 +489,7 @@ export interface WebhookConfig {
   /**
      * Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
      * @minimum 0
-     * @maximum 5
+     * @maximum 10
      */
   maxRetries: number;
   /**
@@ -563,7 +572,7 @@ export interface WebhookConfigInput {
   /**
      * Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
      * @minimum 0
-     * @maximum 5
+     * @maximum 10
      */
   maxRetries?: number;
   /**

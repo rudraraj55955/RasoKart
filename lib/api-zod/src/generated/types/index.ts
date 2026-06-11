@@ -186,6 +186,7 @@ export * from './merchantRegisterInput';
 export * from './merchantStatus';
 export * from './merchantVolume';
 export * from './merchantVolumeListResponse';
+export * from './merchantWebhookMaxRetriesInput';
 export * from './messageResponse';
 export * from './notification';
 export * from './notificationListResponse';
