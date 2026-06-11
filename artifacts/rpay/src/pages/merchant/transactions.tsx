@@ -303,7 +303,7 @@ function formatProvider(p: string | null | undefined): string {
 }
 
 function ProviderBadge({ provider }: { provider: string | null | undefined }) {
-  if (!provider) return <span className="text-muted-foreground text-xs">—</span>;
+  if (!provider) return null;
   return (
     <Badge variant="outline" className="text-xs gap-1 border-violet-500/30 text-violet-300 bg-violet-500/10">
       <Zap className="w-3 h-3" />
