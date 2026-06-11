@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck } from "lucide-react";
+import { GitMerge, Play, ArrowRightLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw, ChevronRight, ChevronLeft, Link2, Zap, User, ShieldCheck, XCircle, Download, ChevronDown, Settings2, CalendarClock, PauseCircle, Loader2, Mail, MailX, MailCheck } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -629,6 +629,8 @@ export default function AdminReconciliation() {
   const [csvExportFilter, setCsvExportFilter] = useState<"all" | "matched" | "unmatched">("all");
   const [isExporting, setIsExporting] = useState(false);
   const [emailLogOpen, setEmailLogOpen] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 15;
 
   const schedulerQuery = useQuery({
     queryKey: ["/api/reconciliation/scheduler-status"],
@@ -637,8 +639,8 @@ export default function AdminReconciliation() {
   });
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["/api/reconciliation/runs"],
-    queryFn: () => apiGet("/reconciliation/runs?limit=20"),
+    queryKey: ["/api/reconciliation/runs", historyPage, HISTORY_PAGE_SIZE],
+    queryFn: () => apiGet(`/reconciliation/runs?page=${historyPage}&limit=${HISTORY_PAGE_SIZE}`),
     refetchInterval: 5000,
   });
 
@@ -658,6 +660,7 @@ export default function AdminReconciliation() {
     mutationFn: () => apiPost("/reconciliation/run", { dateFrom, dateTo }),
     onSuccess: () => {
       toast.success("Reconciliation run complete");
+      setHistoryPage(1);
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs"] });
       refetch();
     },
@@ -665,6 +668,8 @@ export default function AdminReconciliation() {
   });
 
   const runs = data?.data ?? [];
+  const historyTotal: number = data?.total ?? 0;
+  const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const selectedRun = detailQuery.data?.run;
   const allItems: any[] = detailQuery.data?.data ?? [];
 
@@ -823,7 +828,12 @@ export default function AdminReconciliation() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center justify-between">
-            Run History
+            <span className="flex items-center gap-2">
+              Run History
+              {historyTotal > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 h-4">{historyTotal}</Badge>
+              )}
+            </span>
             <Button variant="ghost" size="sm" onClick={() => refetch()} className="h-7 gap-1.5 text-muted-foreground">
               <RefreshCw className="w-3.5 h-3.5" /> Refresh
             </Button>
@@ -832,101 +842,172 @@ export default function AdminReconciliation() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="py-12 text-center text-muted-foreground text-sm">Loading…</div>
-          ) : runs.length === 0 ? (
+          ) : runs.length === 0 && historyPage === 1 ? (
             <div className="py-12 text-center text-muted-foreground text-sm">
               No reconciliation runs yet. Run one above.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border/50">
-                    <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Run</th>
-                    <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Period</th>
-                    <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Deposits</th>
-                    <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Matched</th>
-                    <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Unmatched</th>
-                    <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Matched Amt</th>
-                    <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Unmatched Amt</th>
-                    <th className="text-center px-4 py-2.5 text-xs text-muted-foreground font-medium">Status</th>
-                    <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Last Emailed</th>
-                    <th className="px-4 py-2.5"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/30">
-                  {runs.map((run: any) => {
-                    const meta = STATUS_META[run.status] ?? STATUS_META.complete;
-                    const lastEmail = run.lastEmail as { sentAt: string; status: string; recipients: string } | null;
-                    return (
-                      <tr key={run.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5 font-medium">
-                            #{run.id}
-                            {run.triggeredBy === "auto" ? (
-                              <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-violet-500/10 text-violet-400 border-violet-500/30 gap-1">
-                                <Zap className="w-2.5 h-2.5" /> Auto
-                              </Badge>
-                            ) : (
-                              <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-sky-500/10 text-sky-400 border-sky-500/30 gap-1">
-                                <User className="w-2.5 h-2.5" /> Manual
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(run.createdAt), { addSuffix: true })}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                          {run.dateFrom} → {run.dateTo}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-xs">{run.totalDeposits}</td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-emerald-400">{run.totalMatched}</td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-orange-400">{run.totalUnmatched}</td>
-                        <td className="px-4 py-3 text-right font-mono text-xs">{formatCurrency(run.matchedAmount)}</td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-orange-400/80">{formatCurrency(run.unmatchedAmount)}</td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge className={`text-[10px] px-1.5 py-0 h-5 gap-1 border ${meta.className}`}>
-                            {meta.icon}
-                            {meta.label}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          {lastEmail ? (
-                            <div className="flex items-center gap-1.5">
-                              {lastEmail.status === "sent" ? (
-                                <MailCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50">
+                      <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Run</th>
+                      <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Period</th>
+                      <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Deposits</th>
+                      <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Matched</th>
+                      <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Unmatched</th>
+                      <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Matched Amt</th>
+                      <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Unmatched Amt</th>
+                      <th className="text-center px-4 py-2.5 text-xs text-muted-foreground font-medium">Status</th>
+                      <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Last Emailed</th>
+                      <th className="px-4 py-2.5"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/30">
+                    {runs.map((run: any) => {
+                      const meta = STATUS_META[run.status] ?? STATUS_META.complete;
+                      const lastEmail = run.lastEmail as { sentAt: string; status: string; recipients: string } | null;
+                      return (
+                        <tr key={run.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5 font-medium">
+                              #{run.id}
+                              {run.triggeredBy === "auto" ? (
+                                <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-violet-500/10 text-violet-400 border-violet-500/30 gap-1">
+                                  <Zap className="w-2.5 h-2.5" /> Auto
+                                </Badge>
                               ) : (
-                                <MailX className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                                <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-sky-500/10 text-sky-400 border-sky-500/30 gap-1">
+                                  <User className="w-2.5 h-2.5" /> Manual
+                                </Badge>
                               )}
-                              <div>
-                                <p className={`text-xs font-medium ${lastEmail.status === "sent" ? "text-emerald-400" : "text-red-400"}`}>
-                                  {lastEmail.status === "sent" ? "Sent" : "Failed"}
-                                </p>
-                                <p className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
-                                  {formatDistanceToNow(new Date(lastEmail.sentAt), { addSuffix: true })}
-                                </p>
-                              </div>
                             </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground/40">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1 text-xs"
-                            onClick={() => setSelectedRunId(run.id)}
-                          >
-                            Details <ChevronRight className="w-3 h-3" />
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatDistanceToNow(new Date(run.createdAt), { addSuffix: true })}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                            {run.dateFrom} → {run.dateTo}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-xs">{run.totalDeposits}</td>
+                          <td className="px-4 py-3 text-right font-mono text-xs text-emerald-400">{run.totalMatched}</td>
+                          <td className="px-4 py-3 text-right font-mono text-xs text-orange-400">{run.totalUnmatched}</td>
+                          <td className="px-4 py-3 text-right font-mono text-xs">{formatCurrency(run.matchedAmount)}</td>
+                          <td className="px-4 py-3 text-right font-mono text-xs text-orange-400/80">{formatCurrency(run.unmatchedAmount)}</td>
+                          <td className="px-4 py-3 text-center">
+                            <Badge className={`text-[10px] px-1.5 py-0 h-5 gap-1 border ${meta.className}`}>
+                              {meta.icon}
+                              {meta.label}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            {lastEmail ? (
+                              <div className="flex items-center gap-1.5">
+                                {lastEmail.status === "sent" ? (
+                                  <MailCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                ) : (
+                                  <MailX className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                                )}
+                                <div>
+                                  <p className={`text-xs font-medium ${lastEmail.status === "sent" ? "text-emerald-400" : "text-red-400"}`}>
+                                    {lastEmail.status === "sent" ? "Sent" : "Failed"}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+                                    {formatDistanceToNow(new Date(lastEmail.sentAt), { addSuffix: true })}
+                                  </p>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/40">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => setSelectedRunId(run.id)}
+                            >
+                              Details <ChevronRight className="w-3 h-3" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {historyTotalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border/50">
+                  <p className="text-xs text-muted-foreground">
+                    Page {historyPage} of {historyTotalPages}
+                    <span className="ml-1 text-muted-foreground/60">
+                      ({historyTotal} total run{historyTotal !== 1 ? "s" : ""})
+                    </span>
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                      disabled={historyPage === 1 || isLoading}
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </Button>
+                    {Array.from({ length: Math.min(historyTotalPages, 7) }, (_, i) => {
+                      let page: number;
+                      if (historyTotalPages <= 7) {
+                        page = i + 1;
+                      } else if (historyPage <= 4) {
+                        page = i + 1;
+                        if (i === 6) page = historyTotalPages;
+                        if (i === 5) page = -1;
+                      } else if (historyPage >= historyTotalPages - 3) {
+                        if (i === 0) page = 1;
+                        else if (i === 1) page = -1;
+                        else page = historyTotalPages - (6 - i);
+                      } else {
+                        if (i === 0) page = 1;
+                        else if (i === 1) page = -1;
+                        else if (i === 5) page = -2;
+                        else if (i === 6) page = historyTotalPages;
+                        else page = historyPage + (i - 3);
+                      }
+                      if (page < 0) {
+                        return (
+                          <span key={`ellipsis-${i}`} className="px-1 text-muted-foreground/40 text-xs select-none">…</span>
+                        );
+                      }
+                      return (
+                        <Button
+                          key={page}
+                          variant={historyPage === page ? "default" : "outline"}
+                          size="sm"
+                          className="h-7 w-7 p-0 text-xs"
+                          onClick={() => setHistoryPage(page)}
+                          disabled={isLoading}
+                        >
+                          {page}
+                        </Button>
+                      );
+                    })}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => setHistoryPage(p => Math.min(historyTotalPages, p + 1))}
+                      disabled={historyPage === historyTotalPages || isLoading}
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
