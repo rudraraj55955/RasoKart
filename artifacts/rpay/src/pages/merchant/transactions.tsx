@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2, CalendarRange, Layers } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { getToken } from "@/lib/auth";
 
@@ -1158,14 +1159,40 @@ export default function MerchantTransactions() {
                         : "border-teal-500/30 bg-teal-500/8 text-teal-300 hover:border-teal-500/60"
                     }`}
                   >
-                    <button
-                      onClick={() => applyCombinedPreset(preset)}
-                      className="flex items-center gap-1 px-2.5 py-1 hover:text-teal-100 transition-colors"
-                      title={buildCombinedPresetLabel(preset)}
-                    >
-                      <Layers className="w-3 h-3 shrink-0" />
-                      {preset.name}
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => applyCombinedPreset(preset)}
+                          className="flex items-center gap-1 px-2.5 py-1 hover:text-teal-100 transition-colors"
+                        >
+                          <Layers className="w-3 h-3 shrink-0" />
+                          {preset.name}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 p-0 overflow-hidden">
+                        <div className="px-3 py-1.5 border-b border-zinc-700">
+                          <p className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Filter preview</p>
+                        </div>
+                        <div className="px-3 py-2 space-y-1">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-zinc-500 w-14 shrink-0">Type</span>
+                            <span className="text-zinc-200">{preset.type === "all" ? "All Types" : preset.type.charAt(0).toUpperCase() + preset.type.slice(1)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-zinc-500 w-14 shrink-0">Status</span>
+                            <span className="text-zinc-200">{preset.status === "all" ? "All Statuses" : preset.status.charAt(0).toUpperCase() + preset.status.slice(1)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-zinc-500 w-14 shrink-0">Provider</span>
+                            <span className="text-zinc-200">{preset.provider === "all" ? "All Providers" : formatProvider(preset.provider)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-zinc-500 w-14 shrink-0">Date</span>
+                            <span className="text-zinc-200">{preset.dateFrom} – {preset.dateTo}</span>
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                     <button
                       onClick={() => deleteCombinedPreset(preset.id)}
                       className="pr-1.5 text-teal-400/50 hover:text-rose-400 hover:bg-rose-500/10 rounded-full transition-colors opacity-0 group-hover:opacity-100 py-1 flex items-center"
@@ -1229,14 +1256,28 @@ export default function MerchantTransactions() {
                         : "border-sky-500/30 bg-sky-500/8 text-sky-300 hover:border-sky-500/60"
                     }`}
                   >
-                    <button
-                      onClick={() => applyCustomDatePreset(preset)}
-                      className="flex items-center gap-1 h-8 px-2.5 hover:text-sky-100 transition-colors"
-                      title={`${preset.from} – ${preset.to}`}
-                    >
-                      <CalendarRange className="w-3 h-3 shrink-0" />
-                      {preset.name}
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => applyCustomDatePreset(preset)}
+                          className="flex items-center gap-1 h-8 px-2.5 hover:text-sky-100 transition-colors"
+                        >
+                          <CalendarRange className="w-3 h-3 shrink-0" />
+                          {preset.name}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="bg-zinc-900 border-zinc-700 p-0 overflow-hidden">
+                        <div className="px-3 py-1.5 border-b border-zinc-700">
+                          <p className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Filter preview</p>
+                        </div>
+                        <div className="px-3 py-2">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-zinc-500 w-14 shrink-0">Date</span>
+                            <span className="text-zinc-200">{preset.from} – {preset.to}</span>
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                     <button
                       onClick={() => deleteCustomDatePreset(preset.id)}
                       className="pr-1.5 rounded-r-md text-sky-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100 h-8 flex items-center"
