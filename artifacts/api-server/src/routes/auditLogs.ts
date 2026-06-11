@@ -719,8 +719,19 @@ router.post("/schedules/:id/send", async (req, res) => {
 
   if (!schedule) { res.status(404).json({ error: "Schedule not found" }); return; }
 
-  const sent = await sendScheduledReport(schedule);
-  if (!sent) {
+  const [latestLog] = await db
+    .select()
+    .from(scheduledAuditReportLogsTable)
+    .where(eq(scheduledAuditReportLogsTable.scheduleId, id))
+    .orderBy(desc(scheduledAuditReportLogsTable.sentAt))
+    .limit(1);
+
+  const isRetry = latestLog != null && !latestLog.success;
+  const retryAttempt = isRetry ? latestLog.retryAttempt + 1 : 0;
+
+  try {
+    await sendScheduledReport(schedule, isRetry, retryAttempt);
+  } catch {
     res.status(502).json({ error: "Email delivery failed. Check mailer configuration." });
     return;
   }
