@@ -258,6 +258,7 @@ interface CombinedPreset {
   provider: string;
   dateFrom: string;
   dateTo: string;
+  source?: string;
 }
 
 const COMBINED_PRESETS_KEY = "rasokart_combined_presets";
@@ -521,7 +522,6 @@ export default function MerchantDeposits() {
   };
 
   const applyCombinedPreset = (preset: CombinedPreset) => {
-    if (preset.type !== "deposit") return;
     setStatus(preset.status);
     setProvider(preset.provider);
     setDateFrom(preset.dateFrom);
@@ -559,6 +559,7 @@ export default function MerchantDeposits() {
       provider,
       dateFrom,
       dateTo,
+      source: "deposits",
     };
     const updated = [...allCombinedPresets, newPreset];
     setAllCombinedPresets(updated);
@@ -1080,6 +1081,9 @@ export default function MerchantDeposits() {
                     >
                       <Layers className="w-3 h-3 shrink-0" />
                       {preset.name}
+                      {preset.source === "transactions" && (
+                        <span className="text-[10px] opacity-50 font-normal">(Transactions)</span>
+                      )}
                     </button>
                     <button
                       onClick={() => deleteCombinedPreset(preset.id)}

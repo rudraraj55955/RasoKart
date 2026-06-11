@@ -208,6 +208,7 @@ interface CombinedPreset {
   provider: string;
   dateFrom: string;
   dateTo: string;
+  source?: string;
 }
 
 const COMBINED_PRESETS_KEY = "rasokart_combined_presets";
@@ -565,7 +566,7 @@ export default function MerchantTransactions() {
         const pl = p.payload as { from: string; to: string };
         date.push({ id: String(p.id), serverId: p.id, name: p.name, from: pl.from, to: pl.to });
       } else if (p.presetType === "combined") {
-        const pl = p.payload as { type: string; status: string; provider: string; dateFrom: string; dateTo: string };
+        const pl = p.payload as { type: string; status: string; provider: string; dateFrom: string; dateTo: string; source?: string };
         combined.push({ id: String(p.id), serverId: p.id, name: p.name, ...pl });
       }
     }
@@ -879,13 +880,13 @@ export default function MerchantTransactions() {
       saveCombinedPresetNameRef.current?.focus();
       return;
     }
-    const payload = { type, status, provider, dateFrom, dateTo };
+    const payload = { type, status, provider, dateFrom, dateTo, source: "transactions" };
     const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     createPresetMutation.mutate(
       { data: { name: trimmed, presetType: "combined", payload } },
       {
         onSuccess: (created) => {
-          const pl = created.payload as { type: string; status: string; provider: string; dateFrom: string; dateTo: string };
+          const pl = created.payload as { type: string; status: string; provider: string; dateFrom: string; dateTo: string; source?: string };
           const newPreset: CombinedPreset = { id: String(created.id), serverId: created.id, name: created.name, ...pl };
           setCombinedPresets(prev => {
             const updated = [...prev.filter(p => p.id !== localId), newPreset];
@@ -894,7 +895,7 @@ export default function MerchantTransactions() {
           });
         },
         onError: () => {
-          const newPreset: CombinedPreset = { id: localId, name: trimmed, type, status, provider, dateFrom, dateTo };
+          const newPreset: CombinedPreset = { id: localId, name: trimmed, type, status, provider, dateFrom, dateTo, source: "transactions" };
           setCombinedPresets(prev => {
             const updated = [...prev, newPreset];
             storeCombinedPresets(updated);
@@ -903,7 +904,7 @@ export default function MerchantTransactions() {
         },
       }
     );
-    const optimistic: CombinedPreset = { id: localId, name: trimmed, type, status, provider, dateFrom, dateTo };
+    const optimistic: CombinedPreset = { id: localId, name: trimmed, type, status, provider, dateFrom, dateTo, source: "transactions" };
     setCombinedPresets(prev => {
       const updated = [...prev, optimistic];
       storeCombinedPresets(updated);
@@ -1358,6 +1359,9 @@ export default function MerchantTransactions() {
                     >
                       <Layers className="w-3 h-3 shrink-0" />
                       {preset.name}
+                      {preset.source === "deposits" && (
+                        <span className="text-[10px] opacity-50 font-normal">(Deposits)</span>
+                      )}
                     </button>
                     <button
                       onClick={() => deleteCombinedPreset(preset.id)}
