@@ -41,11 +41,15 @@ function exportCsv(data: any[]) {
 export default function AdminWebhookLogs() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [sigVerified, setSigVerified] = useState("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any | null>(null);
 
+  const sigVerifiedParam = sigVerified === "all" ? undefined : (sigVerified as any);
+
   const { data, isLoading } = useListCallbackLogs({
     status: status === "all" ? undefined : (status as any),
+    signatureVerified: sigVerifiedParam,
     page,
     limit: 20,
   } as any);
@@ -131,6 +135,15 @@ export default function AdminWebhookLogs() {
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="success">Success</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sigVerified} onValueChange={v => { setSigVerified(v); setPage(1); }}>
+              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Signatures</SelectItem>
+                <SelectItem value="verified">Sig. Verified</SelectItem>
+                <SelectItem value="failed">Sig. Failed</SelectItem>
+                <SelectItem value="none">No Signature</SelectItem>
               </SelectContent>
             </Select>
           </div>
