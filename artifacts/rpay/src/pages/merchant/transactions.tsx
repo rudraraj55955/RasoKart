@@ -544,6 +544,21 @@ export default function MerchantTransactions() {
     }
   }, [showSaveCombinedPreset]);
 
+  // Sync preset lists in real time when another tab writes to the same localStorage keys
+  useEffect(() => {
+    function handleStorage(e: StorageEvent) {
+      if (e.key === SAVED_FILTERS_KEY) {
+        setSavedFilters(loadSavedFilters());
+      } else if (e.key === CUSTOM_DATE_PRESETS_KEY) {
+        setCustomDatePresets(loadCustomDatePresets());
+      } else if (e.key === COMBINED_PRESETS_KEY) {
+        setCombinedPresets(loadCombinedPresets());
+      }
+    }
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   const amountMin = smartFilter?.amountMin;
   const amountMax = smartFilter?.amountMax;
   const smartDateFrom = smartFilter?.dateFrom;
