@@ -31,7 +31,8 @@ import { ChevronDown, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock
 import { format, parseISO, isValid } from "date-fns";
 import { toast } from "sonner";
 import { SmartFilterBase, parseSmartQuery } from "@/lib/smart-search";
-import { getApiErrorMessage } from "@/lib/utils";
+import { getApiErrorMessage, isRateLimitError } from "@/lib/utils";
+import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
 
 type ActionType = "process" | "approve" | "reject" | "hold" | "mark-paid";
 
@@ -82,6 +83,8 @@ function storeSavedFilters(filters: SavedFilter[]): void {
 
 export default function AdminSettlements() {
   const qc = useQueryClient();
+  const actionRateLimit = useRateLimit();
+  const bulkRateLimit = useRateLimit();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [search, setSearch] = useState("");
@@ -139,6 +142,7 @@ export default function AdminSettlements() {
   };
 
   const onError = (err: unknown) => {
+    if (isRateLimitError(err)) actionRateLimit.trigger();
     setActionError(getApiErrorMessage(err, "Action failed"));
   };
 
@@ -306,7 +310,10 @@ export default function AdminSettlements() {
         (bulkAction === "approve"
           ? approveMut.mutateAsync({ id, data: { remark: bulkRemark } })
           : rejectMut.mutateAsync({ id, data: { remark: bulkRemark } })
-        ).then(() => { succeeded++; }).catch(() => { failed++; })
+        ).then(() => { succeeded++; }).catch((err: unknown) => {
+          if (isRateLimitError(err)) bulkRateLimit.trigger();
+          failed++;
+        })
       )
     );
 
@@ -1034,7 +1041,7 @@ export default function AdminSettlements() {
       )}
 
       {/* Single-row action modal */}
-      <Dialog open={!!actionModal} onOpenChange={open => { if (!open) { setActionModal(null); setRemark(""); setRefNumber(""); setActionError(""); } }}>
+      <Dialog open={!!actionModal} onOpenChange={open => { if (!open) { setActionModal(null); setRemark(""); setRefNumber(""); setActionError(""); actionRateLimit.clear(); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{actionModal ? actionLabels[actionModal.type] : ""}</DialogTitle>
@@ -1103,11 +1110,13 @@ export default function AdminSettlements() {
               <p className="text-sm text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-md px-3 py-2">{actionError}</p>
             )}
 
+            <RateLimitBanner secondsLeft={actionRateLimit.secondsLeft} />
+
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" onClick={() => setActionModal(null)}>Cancel</Button>
               <Button
                 onClick={handleAction}
-                disabled={isPending}
+                disabled={isPending || actionRateLimit.isRateLimited}
                 className={actionModal ? actionColors[actionModal.type]?.replace("text-", "hover:bg-").replace("400", "500/20") : ""}
               >
                 {isPending ? "Processing..." : actionModal ? actionLabels[actionModal.type] : "Confirm"}
@@ -1118,7 +1127,7 @@ export default function AdminSettlements() {
       </Dialog>
 
       {/* Bulk action modal */}
-      <Dialog open={!!bulkAction} onOpenChange={open => { if (!open) { setBulkAction(null); setBulkRemark(""); setBulkError(""); } }}>
+      <Dialog open={!!bulkAction} onOpenChange={open => { if (!open) { setBulkAction(null); setBulkRemark(""); setBulkError(""); bulkRateLimit.clear(); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -1143,11 +1152,12 @@ export default function AdminSettlements() {
             {bulkError && (
               <p className="text-sm text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-md px-3 py-2">{bulkError}</p>
             )}
+            <RateLimitBanner secondsLeft={bulkRateLimit.secondsLeft} />
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" onClick={() => setBulkAction(null)}>Cancel</Button>
               <Button
                 onClick={handleBulkAction}
-                disabled={isPending}
+                disabled={isPending || bulkRateLimit.isRateLimited}
                 className={bulkAction === "approve" ? "text-emerald-400 hover:bg-emerald-500/20" : "text-rose-400 hover:bg-rose-500/20"}
               >
                 {isPending ? "Processing..." : bulkAction === "approve" ? `Approve ${selected.size}` : `Reject ${selected.size}`}
