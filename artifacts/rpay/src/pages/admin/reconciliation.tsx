@@ -87,25 +87,69 @@ function padTwo(n: number) {
  */
 function serverTimeToLocalDisplay(hour: number, minute: number, serverTz: string): string | null {
   try {
+    const hm = serverTimeToLocalHM(hour, minute, serverTz);
+    if (!hm) return null;
     const now = new Date();
-    // Get today's date in server timezone (YYYY-MM-DD)
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hm.hour, hm.minute);
+    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Converts server-time hour/minute (in serverTz) to the browser's local hour/minute.
+ * Returns null on failure.
+ */
+function serverTimeToLocalHM(hour: number, minute: number, serverTz: string): { hour: number; minute: number } | null {
+  try {
+    const now = new Date();
     const todayInServerTz = new Intl.DateTimeFormat("en-CA", { timeZone: serverTz }).format(now);
-    // Treat the scheduled time naively as UTC to get a starting point
     const naiveUTC = new Date(`${todayInServerTz}T${padTwo(hour)}:${padTwo(minute)}:00Z`);
-    // Find what hour/minute that UTC instant corresponds to in the server timezone
-    const parts = new Intl.DateTimeFormat("en-US", {
+    const serverParts = new Intl.DateTimeFormat("en-US", {
       timeZone: serverTz,
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     }).formatToParts(naiveUTC);
-    const actualServerHour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0");
-    const actualServerMinute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0");
-    // Compute drift and correct
+    const actualServerHour = parseInt(serverParts.find((p) => p.type === "hour")?.value ?? "0");
+    const actualServerMinute = parseInt(serverParts.find((p) => p.type === "minute")?.value ?? "0");
     const intendedMs = (hour * 60 + minute) * 60000;
     const actualMs = (actualServerHour * 60 + actualServerMinute) * 60000;
     const correctedUTC = new Date(naiveUTC.getTime() + (intendedMs - actualMs));
-    return correctedUTC.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const localParts = new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(correctedUTC);
+    return {
+      hour: parseInt(localParts.find((p) => p.type === "hour")?.value ?? "0") % 24,
+      minute: parseInt(localParts.find((p) => p.type === "minute")?.value ?? "0"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Converts local-time hour/minute (browser timezone) to the server's IANA timezone hour/minute.
+ * Returns null on failure.
+ */
+function localTimeToServerHM(localHour: number, localMinute: number, serverTz: string): { hour: number; minute: number } | null {
+  try {
+    const now = new Date();
+    const localDateStr = `${now.getFullYear()}-${padTwo(now.getMonth() + 1)}-${padTwo(now.getDate())}T${padTwo(localHour)}:${padTwo(localMinute)}:00`;
+    const d = new Date(localDateStr);
+    const serverParts = new Intl.DateTimeFormat("en-US", {
+      timeZone: serverTz,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    return {
+      hour: parseInt(serverParts.find((p) => p.type === "hour")?.value ?? "0") % 24,
+      minute: parseInt(serverParts.find((p) => p.type === "minute")?.value ?? "0"),
+    };
   } catch {
     return null;
   }
@@ -390,19 +434,24 @@ function ScheduleSettingsCard() {
   const { data: nextRunData } = useGetReconciliationNextRun();
 
   const [editing, setEditing] = useState(false);
-  const [hour, setHour] = useState(0);
-  const [minute, setMinute] = useState(0);
+  const [localTimeStr, setLocalTimeStr] = useState("00:00");
   const [lookbackDays, setLookbackDays] = useState(1);
   const [enabled, setEnabled] = useState(true);
 
+  const tz = nextRunData?.serverTimezone ?? null;
+
   useEffect(() => {
     if (config) {
-      setHour(config.hour);
-      setMinute(config.minute);
+      if (tz) {
+        const local = serverTimeToLocalHM(config.hour, config.minute, tz);
+        setLocalTimeStr(local ? `${padTwo(local.hour)}:${padTwo(local.minute)}` : `${padTwo(config.hour)}:${padTwo(config.minute)}`);
+      } else {
+        setLocalTimeStr(`${padTwo(config.hour)}:${padTwo(config.minute)}`);
+      }
       setLookbackDays(config.lookbackDays);
       setEnabled(config.enabled);
     }
-  }, [config]);
+  }, [config, tz]);
 
   const { mutate: saveConfig, isPending: saving } = useUpdateReconciliationScheduleConfig({
     mutation: {
@@ -423,9 +472,19 @@ function ScheduleSettingsCard() {
   const currentLookback = config?.lookbackDays ?? 1;
   const currentEnabled = config?.enabled ?? true;
 
-  const serverTz = nextRunData?.serverTimezone ?? null;
+  const serverTz = tz;
   const localEquivalent = serverTz ? serverTimeToLocalDisplay(currentHour, currentMinute, serverTz) : null;
   const tzDiffers = serverTz !== null && serverTz !== Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const editLocalTimeParts = localTimeStr.split(":").map(Number);
+  const editLocalHour = editLocalTimeParts[0] ?? 0;
+  const editLocalMinute = editLocalTimeParts[1] ?? 0;
+  const editServerEquivalent = (() => {
+    if (!serverTz || !localTimeStr) return null;
+    const s = localTimeToServerHM(editLocalHour, editLocalMinute, serverTz);
+    return s ? { hour: s.hour, minute: s.minute } : null;
+  })();
+  const editTzDiffers = serverTz !== null && serverTz !== Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const scheduleLabel = `Daily at ${padTwo(currentHour)}:${padTwo(currentMinute)} server time`;
   const windowLabel = currentLookback === 1
@@ -541,26 +600,22 @@ function ScheduleSettingsCard() {
             </div>
             <div className="flex flex-wrap gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Run Hour <span className="text-muted-foreground/50">(0–23)</span></Label>
+                <Label className="text-xs text-muted-foreground">Run Time <span className="text-muted-foreground/50">(your local time)</span></Label>
                 <Input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={hour}
-                  onChange={e => setHour(Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))}
-                  className="w-24"
+                  type="time"
+                  value={localTimeStr}
+                  onChange={e => setLocalTimeStr(e.target.value)}
+                  className="w-32"
+                  disabled={saving}
                 />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Run Minute <span className="text-muted-foreground/50">(0–59)</span></Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={59}
-                  value={minute}
-                  onChange={e => setMinute(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                  className="w-24"
-                />
+                {editTzDiffers && editServerEquivalent && (
+                  <p className="text-[10px] text-primary/70">
+                    = {padTwo(editServerEquivalent.hour)}:{padTwo(editServerEquivalent.minute)} server time ({serverTz})
+                  </p>
+                )}
+                {!editTzDiffers && serverTz && (
+                  <p className="text-[10px] text-muted-foreground/50">server timezone matches yours</p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Lookback Days <span className="text-muted-foreground/50">(1–90)</span></Label>
@@ -571,12 +626,21 @@ function ScheduleSettingsCard() {
                   value={lookbackDays}
                   onChange={e => setLookbackDays(Math.min(90, Math.max(1, parseInt(e.target.value) || 1)))}
                   className="w-24"
+                  disabled={saving}
                 />
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
               {enabled
-                ? <>New schedule: <span className="text-foreground font-medium font-mono">{padTwo(hour)}:{padTwo(minute)}</span> daily, covering the previous <span className="text-foreground font-medium">{lookbackDays} {lookbackDays === 1 ? "day" : "days"}</span>. Changes take effect on the next scheduled run — no restart required.</>
+                ? <>
+                    New schedule: daily at{" "}
+                    <span className="text-foreground font-medium font-mono">{localTimeStr}</span>
+                    {" "}your local time
+                    {editTzDiffers && editServerEquivalent && (
+                      <> (<span className="text-primary/70 font-mono">{padTwo(editServerEquivalent.hour)}:{padTwo(editServerEquivalent.minute)}</span> server time)</>
+                    )}
+                    , covering the previous <span className="text-foreground font-medium">{lookbackDays} {lookbackDays === 1 ? "day" : "days"}</span>. Changes take effect on the next scheduled run.
+                  </>
                 : "The scheduler is paused. Scheduled runs will be skipped until re-enabled."}
             </p>
             <div className="flex gap-2 pt-1">
@@ -586,8 +650,13 @@ function ScheduleSettingsCard() {
                 onClick={() => {
                   setEditing(false);
                   if (config) {
-                    setHour(config.hour);
-                    setMinute(config.minute);
+                    const tzLocal = tz;
+                    if (tzLocal) {
+                      const local = serverTimeToLocalHM(config.hour, config.minute, tzLocal);
+                      setLocalTimeStr(local ? `${padTwo(local.hour)}:${padTwo(local.minute)}` : `${padTwo(config.hour)}:${padTwo(config.minute)}`);
+                    } else {
+                      setLocalTimeStr(`${padTwo(config.hour)}:${padTwo(config.minute)}`);
+                    }
                     setLookbackDays(config.lookbackDays);
                     setEnabled(config.enabled);
                   }
@@ -599,8 +668,16 @@ function ScheduleSettingsCard() {
               <Button
                 size="sm"
                 className="gap-1.5"
-                disabled={saving}
-                onClick={() => saveConfig({ data: { hour, minute, lookbackDays, enabled } })}
+                disabled={saving || !localTimeStr}
+                onClick={() => {
+                  const [lh, lm] = localTimeStr.split(":").map(Number);
+                  let serverH = lh, serverM = lm;
+                  if (serverTz) {
+                    const converted = localTimeToServerHM(lh, lm, serverTz);
+                    if (converted) { serverH = converted.hour; serverM = converted.minute; }
+                  }
+                  saveConfig({ data: { hour: serverH, minute: serverM, lookbackDays, enabled } });
+                }}
               >
                 {saving ? (
                   <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving…</>
