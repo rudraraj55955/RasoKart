@@ -526,7 +526,7 @@ router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
   const expiresAtDate = expiresAt ? new Date(expiresAt) : null;
   let updated = 0;
   let failed = 0;
-  const results: { id: number; name: string; success: boolean; reason: string | null }[] = [];
+  const results: { id: number; name: string; success: boolean; reason: string | null; previousPlanId: number | null }[] = [];
 
   for (const merchantId of merchantIds as number[]) {
     const [merchantRow] = await db.select({ id: merchantsTable.id, businessName: merchantsTable.businessName })
@@ -534,7 +534,7 @@ router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
     const name = merchantRow?.businessName ?? `Merchant #${merchantId}`;
     try {
       if (!merchantRow) {
-        results.push({ id: merchantId, name, success: false, reason: "Not found" });
+        results.push({ id: merchantId, name, success: false, reason: "Not found", previousPlanId: null });
         failed++;
         continue;
       }
@@ -560,10 +560,10 @@ router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
         details: JSON.stringify({ planName: plan.name, fromPlanId, toPlanId: planId, bulk: true }),
         ipAddress: (req as any).ip ?? null,
       });
-      results.push({ id: merchantId, name, success: true, reason: null });
+      results.push({ id: merchantId, name, success: true, reason: null, previousPlanId: fromPlanId });
       updated++;
     } catch {
-      results.push({ id: merchantId, name, success: false, reason: "Unexpected error" });
+      results.push({ id: merchantId, name, success: false, reason: "Unexpected error", previousPlanId: null });
       failed++;
     }
   }
@@ -572,6 +572,62 @@ router.post("/bulk-assign-plan", requireAdmin, async (req, res) => {
     adminId: user.id, adminEmail: user.email, action: "bulk_assign_plan",
     targetType: "merchant", targetId: null,
     details: JSON.stringify({ merchantIds, planId, planName: plan.name, count: updated, failed, results }),
+    ipAddress: (req as any).ip ?? null,
+  });
+
+  res.json({ updated, failed, results });
+});
+
+// POST /api/merchants/bulk-unassign-plan
+router.post("/bulk-unassign-plan", requireAdmin, async (req, res) => {
+  const user = (req as any).user;
+  const { merchantIds } = req.body;
+  if (!Array.isArray(merchantIds) || merchantIds.length === 0) {
+    res.status(400).json({ error: "merchantIds[] required" });
+    return;
+  }
+
+  let updated = 0;
+  let failed = 0;
+  const results: { id: number; name: string; success: boolean; reason: string | null; previousPlanId: number | null }[] = [];
+
+  for (const merchantId of merchantIds as number[]) {
+    const [merchantRow] = await db.select({ id: merchantsTable.id, businessName: merchantsTable.businessName })
+      .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);
+    const name = merchantRow?.businessName ?? `Merchant #${merchantId}`;
+    try {
+      if (!merchantRow) {
+        results.push({ id: merchantId, name, success: false, reason: "Not found", previousPlanId: null });
+        failed++;
+        continue;
+      }
+      const [existing] = await db.select().from(merchantPlansTable).where(eq(merchantPlansTable.merchantId, merchantId)).limit(1);
+      if (!existing) {
+        results.push({ id: merchantId, name, success: false, reason: "No plan assigned", previousPlanId: null });
+        failed++;
+        continue;
+      }
+      const previousPlanId = existing.planId;
+      await db.delete(merchantPlansTable).where(eq(merchantPlansTable.merchantId, merchantId));
+      await logPlanHistory({ merchantId, fromPlanId: previousPlanId, toPlanId: null, action: "removed", adminId: user.id, adminEmail: user.email });
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email, action: "plan_removed",
+        targetType: "merchant", targetId: merchantId,
+        details: JSON.stringify({ fromPlanId: previousPlanId, bulk: true }),
+        ipAddress: (req as any).ip ?? null,
+      });
+      results.push({ id: merchantId, name, success: true, reason: null, previousPlanId });
+      updated++;
+    } catch {
+      results.push({ id: merchantId, name, success: false, reason: "Unexpected error", previousPlanId: null });
+      failed++;
+    }
+  }
+
+  await db.insert(auditLogsTable).values({
+    adminId: user.id, adminEmail: user.email, action: "bulk_unassign_plan",
+    targetType: "merchant", targetId: null,
+    details: JSON.stringify({ merchantIds, count: updated, failed }),
     ipAddress: (req as any).ip ?? null,
   });
 

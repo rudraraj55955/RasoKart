@@ -6,7 +6,7 @@ import {
   useSuspendMerchant, useUnsuspendMerchant,
   useListPlans, useAssignMerchantPlan, useGetMerchantPlan, useGetMerchantPlanHistory,
   useUpgradeMerchantPlan, useDowngradeMerchantPlan, useSuspendMerchantPlan,
-  useReinstateMerchantPlan, useRenewMerchantPlan, useBulkAssignMerchantPlan,
+  useReinstateMerchantPlan, useRenewMerchantPlan, useBulkAssignMerchantPlan, useBulkUnassignMerchantPlan,
   useBulkApproveMerchants, useBulkSuspendMerchants, useBulkRejectMerchants,
   useUpdateMerchantBranding, useGetMerchantPlanUsageAdmin,
   useGetAdminMerchantCallbackSecret, useResetAdminMerchantCallbackSecret,
@@ -123,12 +123,12 @@ export default function AdminMerchants() {
     timestamp: string;
   } | null>(null);
 
-  // Undo state — tracks reverse action for bulk approve/suspend within 10-second window
-  const [bulkUndoState, setBulkUndoState] = useState<{
-    action: "approve" | "suspend" | "reinstate";
-    ids: number[];
-    deadline: number;
-  } | null>(null);
+  // Undo state — tracks reverse action for bulk approve/suspend/plan-assign within 10-second window
+  const [bulkUndoState, setBulkUndoState] = useState<
+    | { action: "approve" | "suspend" | "reinstate"; ids: number[]; deadline: number }
+    | { action: "plan-assign"; items: { id: number; previousPlanId: number | null }[]; deadline: number }
+    | null
+  >(null);
   const [bulkUndoSecondsLeft, setBulkUndoSecondsLeft] = useState(0);
   const [bulkUndoUsed, setBulkUndoUsed] = useState(false);
 
@@ -164,6 +164,7 @@ export default function AdminMerchants() {
   const renewMutation = useRenewMerchantPlan();
   const scheduleRenewalMutation = useScheduleMerchantPlanRenewal();
   const bulkAssignMutation = useBulkAssignMerchantPlan();
+  const bulkUnassignMutation = useBulkUnassignMerchantPlan();
   const bulkApproveMutation = useBulkApproveMerchants();
   const bulkSuspendMutation = useBulkSuspendMerchants();
   const bulkRejectMutation = useBulkRejectMerchants();
@@ -183,6 +184,55 @@ export default function AdminMerchants() {
   const handleBulkUndo = () => {
     if (!bulkUndoState || bulkUndoUsed || bulkUndoSecondsLeft === 0) return;
     setBulkUndoUsed(true);
+
+    if (bulkUndoState.action === "plan-assign") {
+      const { items } = bulkUndoState;
+      // Split into: merchants with a prior plan (reassign) vs first-time assignments (unassign/remove)
+      const reassignGroups = new Map<number, number[]>();
+      const unassignIds: number[] = [];
+      for (const item of items) {
+        if (item.previousPlanId != null) {
+          const group = reassignGroups.get(item.previousPlanId) ?? [];
+          group.push(item.id);
+          reassignGroups.set(item.previousPlanId, group);
+        } else {
+          unassignIds.push(item.id);
+        }
+      }
+      const allResults: { id: number; name: string; success: boolean; reason?: string | null }[] = [];
+      let totalUpdated = 0;
+      const promises: Promise<void>[] = [];
+      for (const [previousPlanId, ids] of reassignGroups.entries()) {
+        promises.push(
+          bulkAssignMutation.mutateAsync({ data: { merchantIds: ids, planId: previousPlanId, expiresAt: null, notes: null } })
+            .then(result => {
+              totalUpdated += result.updated;
+              allResults.push(...(result.results ?? []));
+            })
+        );
+      }
+      if (unassignIds.length > 0) {
+        promises.push(
+          bulkUnassignMutation.mutateAsync({ data: { merchantIds: unassignIds } })
+            .then(result => {
+              totalUpdated += result.updated;
+              allResults.push(...(result.results ?? []));
+            })
+        );
+      }
+      Promise.all(promises).then(() => {
+        qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+        setBulkResultTitle("Undo — Plan Assignment");
+        setBulkResultItems(allResults);
+        setBulkUndoState(null);
+        toast.success(`Undo: restored ${totalUpdated} merchant${totalUpdated !== 1 ? "s" : ""}`);
+      }).catch(() => {
+        setBulkUndoUsed(false);
+        toast.error("Undo failed");
+      });
+      return;
+    }
+
     const { action, ids } = bulkUndoState;
 
     if (action === "approve") {
@@ -410,6 +460,15 @@ export default function AdminMerchants() {
         setBulkResultItems(results ?? []);
         setBulkRetryContext({ type: "assign", planId, planName, expiresAt, notes });
         setBulkResultOpen(true);
+        const undoItems = (results ?? [])
+          .filter(r => r.success)
+          .map(r => ({ id: r.id, previousPlanId: r.previousPlanId ?? null }));
+        if (undoItems.length > 0) {
+          setBulkUndoState({ action: "plan-assign", items: undoItems, deadline: Date.now() + 10000 });
+          setBulkUndoUsed(false);
+        } else {
+          setBulkUndoState(null);
+        }
         const label = `Bulk assigned plan to ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
         if (failed === 0) {
           toast.success(label);
@@ -1976,7 +2035,7 @@ export default function AdminMerchants() {
                 <Button
                   variant="outline"
                   className="text-amber-400 border-amber-500/30 hover:bg-amber-500/10 gap-1.5"
-                  disabled={bulkUndoSecondsLeft === 0 || bulkApproveMutation.isPending || bulkSuspendMutation.isPending}
+                  disabled={bulkUndoSecondsLeft === 0 || bulkApproveMutation.isPending || bulkSuspendMutation.isPending || bulkAssignMutation.isPending || bulkUnassignMutation.isPending}
                   onClick={handleBulkUndo}
                 >
                   <RotateCcw className="w-4 h-4" />
@@ -1986,11 +2045,13 @@ export default function AdminMerchants() {
                     : <span className="text-muted-foreground">(expired)</span>}
                 </Button>
                 <span className="text-xs text-muted-foreground">
-                  Reverses the {bulkUndoState.ids.length} successful change{bulkUndoState.ids.length !== 1 ? "s" : ""}
+                  {bulkUndoState.action === "plan-assign"
+                    ? `Restores previous plan for ${bulkUndoState.items.length} merchant${bulkUndoState.items.length !== 1 ? "s" : ""}`
+                    : `Reverses the ${bulkUndoState.ids.length} successful change${bulkUndoState.ids.length !== 1 ? "s" : ""}`}
                 </span>
               </div>
             )}
-            {bulkUndoUsed && (bulkApproveMutation.isPending || bulkSuspendMutation.isPending) && (
+            {bulkUndoUsed && (bulkApproveMutation.isPending || bulkSuspendMutation.isPending || bulkAssignMutation.isPending || bulkUnassignMutation.isPending) && (
               <span className="text-xs text-muted-foreground flex items-center gap-1.5 flex-1">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 Undoing…

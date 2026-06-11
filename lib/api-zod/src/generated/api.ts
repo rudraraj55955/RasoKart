@@ -456,7 +456,8 @@ export const BulkRejectMerchantsResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "success": zod.boolean(),
-  "reason": zod.string().nullish()
+  "reason": zod.string().nullish(),
+  "previousPlanId": zod.number().nullish()
 }))
 })
 
@@ -475,7 +476,8 @@ export const BulkApproveMerchantsResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "success": zod.boolean(),
-  "reason": zod.string().nullish()
+  "reason": zod.string().nullish(),
+  "previousPlanId": zod.number().nullish()
 }))
 })
 
@@ -495,7 +497,8 @@ export const BulkSuspendMerchantsResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "success": zod.boolean(),
-  "reason": zod.string().nullish()
+  "reason": zod.string().nullish(),
+  "previousPlanId": zod.number().nullish()
 }))
 })
 
@@ -517,7 +520,28 @@ export const BulkAssignMerchantPlanResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "success": zod.boolean(),
-  "reason": zod.string().nullish()
+  "reason": zod.string().nullish(),
+  "previousPlanId": zod.number().nullish()
+}))
+})
+
+
+/**
+ * @summary Bulk-remove plan assignment from multiple merchants (admin only)
+ */
+export const BulkUnassignMerchantPlanBody = zod.object({
+  "merchantIds": zod.array(zod.number())
+})
+
+export const BulkUnassignMerchantPlanResponse = zod.object({
+  "updated": zod.number(),
+  "failed": zod.number(),
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "success": zod.boolean(),
+  "reason": zod.string().nullish(),
+  "previousPlanId": zod.number().nullish()
 }))
 })
 

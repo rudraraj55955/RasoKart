@@ -1760,6 +1760,77 @@ export const useBulkAssignMerchantPlan = <TError = ErrorType<unknown>,
       return useMutation(getBulkAssignMerchantPlanMutationOptions(options));
     }
 
+export const getBulkUnassignMerchantPlanUrl = () => {
+
+
+
+
+  return `/api/merchants/bulk-unassign-plan`
+}
+
+/**
+ * @summary Bulk-remove plan assignment from multiple merchants (admin only)
+ */
+export const bulkUnassignMerchantPlan = async (bulkMerchantActionInput: BulkMerchantActionInput, options?: RequestInit): Promise<BulkMerchantActionResult> => {
+
+  return customFetch<BulkMerchantActionResult>(getBulkUnassignMerchantPlanUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      bulkMerchantActionInput,)
+  }
+);}
+
+
+
+
+export const getBulkUnassignMerchantPlanMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkUnassignMerchantPlan>>, TError,{data: BodyType<BulkMerchantActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkUnassignMerchantPlan>>, TError,{data: BodyType<BulkMerchantActionInput>}, TContext> => {
+
+const mutationKey = ['bulkUnassignMerchantPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkUnassignMerchantPlan>>, {data: BodyType<BulkMerchantActionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkUnassignMerchantPlan(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkUnassignMerchantPlanMutationResult = NonNullable<Awaited<ReturnType<typeof bulkUnassignMerchantPlan>>>
+    export type BulkUnassignMerchantPlanMutationBody = BodyType<BulkMerchantActionInput>
+    export type BulkUnassignMerchantPlanMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Bulk-remove plan assignment from multiple merchants (admin only)
+ */
+export const useBulkUnassignMerchantPlan = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkUnassignMerchantPlan>>, TError,{data: BodyType<BulkMerchantActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkUnassignMerchantPlan>>,
+        TError,
+        {data: BodyType<BulkMerchantActionInput>},
+        TContext
+      > => {
+      return useMutation(getBulkUnassignMerchantPlanMutationOptions(options));
+    }
+
 export const getAssignMerchantPlanUrl = (id: number,) => {
 
 

@@ -146,6 +146,8 @@ export interface BulkMerchantActionResultItem {
   success: boolean;
   /** @nullable */
   reason?: string | null;
+  /** @nullable */
+  previousPlanId?: number | null;
 }
 
 export interface BulkMerchantActionResult {

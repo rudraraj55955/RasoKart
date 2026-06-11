@@ -509,6 +509,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkMerchantActionResult"
 
+  /merchants/bulk-unassign-plan:
+    post:
+      operationId: bulkUnassignMerchantPlan
+      tags: [merchants]
+      summary: Bulk-remove plan assignment from multiple merchants (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkMerchantActionInput"
+      responses:
+        "200":
+          description: Plans unassigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkMerchantActionResult"
+
   /merchants/{id}/assign-plan:
     post:
       operationId: assignMerchantPlan
@@ -4215,6 +4234,8 @@ components:
           type: boolean
         reason:
           type: ["string", "null"]
+        previousPlanId:
+          type: ["integer", "null"]
 
     BulkMerchantActionResult:
       type: object
