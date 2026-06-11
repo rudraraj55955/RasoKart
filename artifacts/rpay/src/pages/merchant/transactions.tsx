@@ -304,7 +304,7 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
   );
 }
 
-function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open: boolean; onClose: () => void }) {
+function TransactionDetailPanel({ id, open, onClose, utrSearch }: { id: number | null; open: boolean; onClose: () => void; utrSearch?: string }) {
   const { data: tx, isLoading } = useGetTransaction(id ?? 0, {
     query: { enabled: open && id != null } as any,
   });
@@ -360,7 +360,12 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
               </p>
               <div className="space-y-0 rounded-lg border divide-y divide-border bg-card/40">
                 <DetailRow label="ID" value={`#${tx.id}`} mono />
-                <DetailRow label="UTR" value={tx.utr ?? "—"} mono />
+                <div className="flex items-start justify-between gap-4 px-4 py-3">
+                  <span className="text-sm text-muted-foreground shrink-0">UTR</span>
+                  <span className="text-sm text-right break-all font-mono">
+                    {tx.utr ? highlightUtr(tx.utr, utrSearch ?? "") : "—"}
+                  </span>
+                </div>
                 {tx.referenceId && <DetailRow label="Reference ID" value={tx.referenceId} mono />}
                 {tx.description && <DetailRow label="Description" value={tx.description} />}
               </div>
@@ -1201,6 +1206,7 @@ export default function MerchantTransactions() {
         id={selectedTxId}
         open={selectedTxId !== null}
         onClose={() => setSelectedTxId(null)}
+        utrSearch={utrSearch}
       />
     </div>
   );
