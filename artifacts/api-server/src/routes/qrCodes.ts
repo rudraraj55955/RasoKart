@@ -23,6 +23,15 @@ const qrCodeBulkDeleteLimiter = rateLimit({
   message: { error: "Too many bulk-delete requests. You may perform up to 5 bulk deletes per 15 minutes. Please try again later." },
 });
 
+const qrCodeSingleDeleteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => String((req as Request & { user?: { merchantId?: number | null; id: number } }).user?.merchantId ?? req.ip),
+  message: { error: "Too many delete requests. You may delete up to 30 QR codes per 15 minutes. Please try again later." },
+});
+
 async function logQrAudit(req: any, action: string, targetId: number | null, details: object) {
   await db.insert(auditLogsTable).values({
     adminId: req.user.id,
@@ -401,7 +410,7 @@ router.put("/:id", async (req, res) => {
 });
 
 // DELETE /api/qr-codes/:id
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", qrCodeSingleDeleteLimiter, async (req, res) => {
   const user = (req as any).user;
   const id = parseInt(req.params['id'] as string);
   const conditions = [eq(qrCodesTable.id, id)];
