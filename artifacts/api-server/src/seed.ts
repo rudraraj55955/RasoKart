@@ -25,6 +25,7 @@ import {
   SYSTEM_CONFIG_KEYS,
   SYSTEM_CONFIG_DEFAULTS,
   systemSettingsTable,
+  scheduledAuditReportLogsTable,
 } from "@workspace/db";
 
 const PLAN_TIERS = [
@@ -812,6 +813,70 @@ export async function seed() {
       AND merchants.callback_secret_updated_at IS NOT NULL
   `);
   console.log("Webhook secret_rotated_at backfill complete.");
+
+  // Backfill delivery_cycle_id on historical scheduled_audit_report_logs rows.
+  // Idempotent: only touches rows WHERE delivery_cycle_id IS NULL.
+  //
+  // Strategy:
+  //   - Non-retry rows each get a fresh UUID via gen_random_uuid().
+  //   - Retry rows inherit the UUID of the nearest preceding non-retry row
+  //     for the same schedule_id (by sent_at), first looking among rows
+  //     being assigned in this run, then among already-assigned rows.
+  //     If no preceding non-retry row exists at all, a fresh UUID is used
+  //     as a fallback so the row never stays null.
+  await db.execute(sql`
+    WITH non_retry_assignments AS (
+      SELECT
+        id,
+        schedule_id,
+        sent_at,
+        gen_random_uuid() AS cycle_id
+      FROM ${scheduledAuditReportLogsTable}
+      WHERE delivery_cycle_id IS NULL
+        AND is_retry = false
+    ),
+    retry_assignments AS (
+      SELECT
+        r.id,
+        COALESCE(
+          -- Inherit from a non-retry row being assigned in this run
+          (
+            SELECT n.cycle_id
+            FROM non_retry_assignments n
+            WHERE n.schedule_id = r.schedule_id
+              AND n.sent_at <= r.sent_at
+            ORDER BY n.sent_at DESC
+            LIMIT 1
+          ),
+          -- Fall back to an already-assigned non-retry row in the same schedule
+          (
+            SELECT existing.delivery_cycle_id
+            FROM ${scheduledAuditReportLogsTable} existing
+            WHERE existing.schedule_id = r.schedule_id
+              AND existing.is_retry = false
+              AND existing.delivery_cycle_id IS NOT NULL
+              AND existing.sent_at <= r.sent_at
+            ORDER BY existing.sent_at DESC
+            LIMIT 1
+          ),
+          -- Last resort: give the orphan retry its own fresh UUID
+          gen_random_uuid()
+        ) AS cycle_id
+      FROM ${scheduledAuditReportLogsTable} r
+      WHERE r.delivery_cycle_id IS NULL
+        AND r.is_retry = true
+    ),
+    all_assignments AS (
+      SELECT id, cycle_id FROM non_retry_assignments
+      UNION ALL
+      SELECT id, cycle_id FROM retry_assignments
+    )
+    UPDATE ${scheduledAuditReportLogsTable}
+    SET delivery_cycle_id = all_assignments.cycle_id
+    FROM all_assignments
+    WHERE ${scheduledAuditReportLogsTable}.id = all_assignments.id
+  `);
+  console.log("Delivery cycle ID backfill complete.");
 
   console.log("Seed complete.");
 }
