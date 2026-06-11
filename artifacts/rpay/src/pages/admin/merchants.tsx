@@ -1262,7 +1262,20 @@ export default function AdminMerchants() {
                         </div>
                       </div>
                       <div className="rounded-md bg-background/50 border border-border/40 px-2.5 py-2 space-y-1.5">
-                        <p className="text-xs font-medium text-foreground">Payment Links</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-foreground">Payment Links</p>
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                            onClick={() => {
+                              const name = encodeURIComponent(assignPlanMerchant?.name ?? "");
+                              closeAssignPlan();
+                              navigate(`/admin/payment-links?merchant=${name}`);
+                            }}
+                          >
+                            View →
+                          </button>
+                        </div>
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
                           <span className="text-emerald-400">
                             <span className="font-semibold">{merchantPlanUsage.paymentLink.used}</span>

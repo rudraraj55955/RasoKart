@@ -41,7 +41,10 @@ export default function AdminPaymentLinks() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
-  const [merchantName, setMerchantName] = useState("");
+  const [merchantName, setMerchantName] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("merchant") ?? "";
+  });
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useListPaymentLinks({ status: status as any, search, merchantName, page, limit: 20 });
