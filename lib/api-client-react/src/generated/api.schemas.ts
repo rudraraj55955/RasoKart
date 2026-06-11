@@ -89,6 +89,11 @@ export interface Merchant {
   logoUrl?: string | null;
   /** @nullable */
   brandColor?: string | null;
+  /**
+     * Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.
+     * @nullable
+     */
+  callbackTimestampWindowSeconds?: number | null;
   /** @nullable */
   currentPlanName?: string | null;
   /** @nullable */
@@ -105,6 +110,14 @@ export interface MerchantListResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+export interface CallbackWindowInput {
+  /**
+     * Replay-protection window in seconds (1–86400), or null to reset to global default.
+     * @nullable
+     */
+  windowSeconds?: number | null;
 }
 
 export interface MerchantBrandingInput {

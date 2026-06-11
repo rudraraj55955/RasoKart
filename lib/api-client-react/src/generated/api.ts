@@ -59,6 +59,7 @@ import type {
   CallbackSecretRotateResponse,
   CallbackSecretStatus,
   CallbackStatsResponse,
+  CallbackWindowInput,
   ChartDataPoint,
   CreateSettlementInput,
   DashboardStats,
@@ -2554,6 +2555,79 @@ export const useResetAdminMerchantCallbackSecret = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getResetAdminMerchantCallbackSecretMutationOptions(options));
+    }
+
+export const getUpdateMerchantCallbackWindowUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/callback-window`
+}
+
+/**
+ * Sets the number of seconds around the current time that an inbound callback X-Timestamp is considered valid. Pass null to reset to the global default (300 s).
+ * @summary Update the per-merchant replay-protection timestamp window (admin only)
+ */
+export const updateMerchantCallbackWindow = async (id: number,
+    callbackWindowInput: CallbackWindowInput, options?: RequestInit): Promise<Merchant> => {
+
+  return customFetch<Merchant>(getUpdateMerchantCallbackWindowUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      callbackWindowInput,)
+  }
+);}
+
+
+
+
+export const getUpdateMerchantCallbackWindowMutationOptions = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMerchantCallbackWindow>>, TError,{id: number;data: BodyType<CallbackWindowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMerchantCallbackWindow>>, TError,{id: number;data: BodyType<CallbackWindowInput>}, TContext> => {
+
+const mutationKey = ['updateMerchantCallbackWindow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMerchantCallbackWindow>>, {id: number;data: BodyType<CallbackWindowInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMerchantCallbackWindow(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMerchantCallbackWindowMutationResult = NonNullable<Awaited<ReturnType<typeof updateMerchantCallbackWindow>>>
+    export type UpdateMerchantCallbackWindowMutationBody = BodyType<CallbackWindowInput>
+    export type UpdateMerchantCallbackWindowMutationError = ErrorType<ErrorResponse | void>
+
+    /**
+ * @summary Update the per-merchant replay-protection timestamp window (admin only)
+ */
+export const useUpdateMerchantCallbackWindow = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMerchantCallbackWindow>>, TError,{id: number;data: BodyType<CallbackWindowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMerchantCallbackWindow>>,
+        TError,
+        {id: number;data: BodyType<CallbackWindowInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateMerchantCallbackWindowMutationOptions(options));
     }
 
 export const getListMerchantInvoicesUrl = (id: number,) => {

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, numeric, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -18,6 +18,7 @@ export const merchantsTable = pgTable("merchants", {
   brandColor: text("brand_color"),
   callbackSecret: text("callback_secret"),
   callbackSecretUpdatedAt: timestamp("callback_secret_updated_at", { withTimezone: true }),
+  callbackTimestampWindowSeconds: integer("callback_timestamp_window_seconds"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

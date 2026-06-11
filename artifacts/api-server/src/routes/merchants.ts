@@ -240,6 +240,39 @@ router.delete("/:id/callback-secret", requireAdmin, async (req, res) => {
   res.json({ isSet: false, secretPrefix: null, lastRotatedAt: null });
 });
 
+// PATCH /api/merchants/:id/callback-window  (admin only)
+router.patch("/:id/callback-window", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
+  const { windowSeconds } = req.body as { windowSeconds?: number | null };
+
+  if (windowSeconds !== null && windowSeconds !== undefined) {
+    if (!Number.isInteger(windowSeconds) || windowSeconds < 1 || windowSeconds > 86400) {
+      res.status(400).json({ error: "windowSeconds must be an integer between 1 and 86400, or null to reset to default" });
+      return;
+    }
+  }
+
+  const [merchant] = await db
+    .update(merchantsTable)
+    .set({ callbackTimestampWindowSeconds: windowSeconds ?? null, updatedAt: new Date() })
+    .where(eq(merchantsTable.id, id))
+    .returning();
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "callback_window_updated",
+    targetType: "merchant",
+    targetId: merchant.id,
+    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email, callbackTimestampWindowSeconds: merchant.callbackTimestampWindowSeconds }),
+    ipAddress: req.ip ?? null,
+  });
+  req.log.info({ adminId: admin.id, merchantId: id, windowSeconds: merchant.callbackTimestampWindowSeconds }, "Admin updated callback timestamp window");
+  res.json(serializeMerchant(merchant));
+});
+
 // POST /api/merchants/:id/approve
 router.post("/:id/approve", requireAdmin, async (req, res) => {
   const id = parseInt(req.params['id'] as string);

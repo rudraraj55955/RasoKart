@@ -10,6 +10,7 @@ import {
   useBulkApproveMerchants, useBulkSuspendMerchants, useBulkRejectMerchants,
   useUpdateMerchantBranding, useGetMerchantPlanUsageAdmin,
   useGetAdminMerchantCallbackSecret, useResetAdminMerchantCallbackSecret,
+  useUpdateMerchantCallbackWindow,
   useScheduleMerchantPlanRenewal,
   getListMerchantsQueryKey,
   listMerchants,
@@ -78,7 +79,9 @@ export default function AdminMerchants() {
     },
     onError: () => toast.error("Logo upload failed"),
   });
-  const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string } | null>(null);
+  const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string; callbackTimestampWindowSeconds?: number | null } | null>(null);
+  const [windowEditMode, setWindowEditMode] = useState(false);
+  const [windowInput, setWindowInput] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [expiresAt, setExpiresAt] = useState<string>("");
   const [assignNotes, setAssignNotes] = useState<string>("");
@@ -151,6 +154,7 @@ export default function AdminMerchants() {
     { query: { enabled: !!assignPlanMerchant, queryKey: ["getAdminMerchantCallbackSecret", assignPlanMerchant?.id ?? 0] } }
   );
   const resetCallbackSecretMutation = useResetAdminMerchantCallbackSecret();
+  const updateCallbackWindowMutation = useUpdateMerchantCallbackWindow();
   const updateBrandingMutation = useUpdateMerchantBranding();
   const approveMutation = useApproveMerchant();
   const rejectMutation = useRejectMerchant();
@@ -391,8 +395,10 @@ export default function AdminMerchants() {
     });
   };
 
-  const openAssignPlan = (id: number, name: string) => {
-    setAssignPlanMerchant({ id, name });
+  const openAssignPlan = (id: number, name: string, callbackTimestampWindowSeconds?: number | null) => {
+    setAssignPlanMerchant({ id, name, callbackTimestampWindowSeconds });
+    setWindowEditMode(false);
+    setWindowInput("");
     setSelectedPlanId("");
     setExpiresAt("");
     setAssignNotes("");
@@ -410,6 +416,8 @@ export default function AdminMerchants() {
     setConfirmSecretReset(false);
     setConfirmAction(null);
     setScheduleRenewalDate("");
+    setWindowEditMode(false);
+    setWindowInput("");
   };
 
   const handleAssignPlan = () => {
@@ -997,7 +1005,7 @@ export default function AdminMerchants() {
                           <ShieldCheck className="w-4 h-4 mr-1" /> Reinstate
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => openAssignPlan(merchant.id, merchant.businessName)}>
+                      <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds)}>
                         <CreditCard className="w-4 h-4 mr-1" /> {merchant.currentPlanName ? "Change Plan" : "Assign Plan"}
                       </Button>
                       <Button size="sm" variant="ghost" className="text-violet-400 hover:bg-violet-500/10" onClick={() => openBranding(merchant)}>
@@ -1570,9 +1578,11 @@ export default function AdminMerchants() {
 
             {/* Callback Secret */}
             <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-muted-foreground shrink-0" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Callback Signing Secret</p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Callback Signing Secret</p>
+                </div>
               </div>
               {callbackSecretStatus == null ? (
                 <div className="animate-pulse h-5 bg-muted/30 rounded w-32" />
@@ -1641,6 +1651,123 @@ export default function AdminMerchants() {
                     >
                       {resetCallbackSecretMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resetting…</> : "Confirm Reset"}
                     </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Replay-Protection Window */}
+            <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Replay-Protection Window</p>
+              </div>
+              {!windowEditMode ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-foreground font-mono">
+                      {assignPlanMerchant?.callbackTimestampWindowSeconds != null
+                        ? `${assignPlanMerchant.callbackTimestampWindowSeconds}s`
+                        : "300s (global default)"}
+                    </span>
+                    {assignPlanMerchant?.callbackTimestampWindowSeconds != null && (
+                      <span className="text-xs text-muted-foreground">custom</span>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs gap-1.5 h-7 px-2"
+                    onClick={() => {
+                      setWindowInput(String(assignPlanMerchant?.callbackTimestampWindowSeconds ?? 300));
+                      setWindowEditMode(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Set how many seconds around the current time an inbound <code className="font-mono">X-Timestamp</code> is accepted (1–86400). Clear to restore the global default (300 s).
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={86400}
+                      value={windowInput}
+                      onChange={e => setWindowInput(e.target.value)}
+                      placeholder="300"
+                      className="h-7 text-xs w-28 font-mono"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-3 text-xs"
+                      disabled={updateCallbackWindowMutation.isPending}
+                      onClick={() => { setWindowEditMode(false); setWindowInput(""); }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-7 px-3 text-xs gap-1.5"
+                      disabled={updateCallbackWindowMutation.isPending}
+                      onClick={() => {
+                        if (!assignPlanMerchant) return;
+                        const trimmed = windowInput.trim();
+                        const parsed = trimmed === "" ? null : parseInt(trimmed, 10);
+                        if (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > 86400)) {
+                          toast.error("Window must be between 1 and 86400 seconds");
+                          return;
+                        }
+                        updateCallbackWindowMutation.mutate(
+                          { id: assignPlanMerchant.id, data: { windowSeconds: parsed } },
+                          {
+                            onSuccess: (updated) => {
+                              setAssignPlanMerchant(prev => prev ? { ...prev, callbackTimestampWindowSeconds: updated.callbackTimestampWindowSeconds } : prev);
+                              setWindowEditMode(false);
+                              setWindowInput("");
+                              toast.success(parsed === null ? "Replay-protection window reset to default" : `Replay-protection window set to ${parsed}s`);
+                              qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+                            },
+                            onError: () => toast.error("Failed to update replay-protection window"),
+                          }
+                        );
+                      }}
+                    >
+                      {updateCallbackWindowMutation.isPending ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</> : "Save"}
+                    </Button>
+                    {assignPlanMerchant?.callbackTimestampWindowSeconds != null && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground"
+                        disabled={updateCallbackWindowMutation.isPending}
+                        onClick={() => {
+                          if (!assignPlanMerchant) return;
+                          updateCallbackWindowMutation.mutate(
+                            { id: assignPlanMerchant.id, data: { windowSeconds: null } },
+                            {
+                              onSuccess: (updated) => {
+                                setAssignPlanMerchant(prev => prev ? { ...prev, callbackTimestampWindowSeconds: updated.callbackTimestampWindowSeconds } : prev);
+                                setWindowEditMode(false);
+                                setWindowInput("");
+                                toast.success("Replay-protection window reset to default");
+                                qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+                              },
+                              onError: () => toast.error("Failed to reset replay-protection window"),
+                            }
+                          );
+                        }}
+                      >
+                        Reset to default
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}

@@ -786,6 +786,42 @@ paths:
         "404":
           description: Merchant not found
 
+  /merchants/{id}/callback-window:
+    patch:
+      operationId: updateMerchantCallbackWindow
+      tags: [merchants]
+      summary: Update the per-merchant replay-protection timestamp window (admin only)
+      description: Sets the number of seconds around the current time that an inbound callback X-Timestamp is considered valid. Pass null to reset to the global default (300 s).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallbackWindowInput"
+      responses:
+        "200":
+          description: Updated merchant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Merchant"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Admin access only
+        "404":
+          description: Merchant not found
+
   /merchants/{id}/invoices:
     get:
       operationId: listMerchantInvoices
@@ -4149,6 +4185,9 @@ components:
           type: ["string", "null"]
         brandColor:
           type: ["string", "null"]
+        callbackTimestampWindowSeconds:
+          type: ["integer", "null"]
+          description: Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.
         currentPlanName:
           type: ["string", "null"]
         currentPlanStatus:
@@ -4174,6 +4213,13 @@ components:
           type: integer
         limit:
           type: integer
+
+    CallbackWindowInput:
+      type: object
+      properties:
+        windowSeconds:
+          type: ["integer", "null"]
+          description: Replay-protection window in seconds (1–86400), or null to reset to global default.
 
     MerchantBrandingInput:
       type: object

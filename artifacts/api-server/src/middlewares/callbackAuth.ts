@@ -115,7 +115,7 @@ export async function verifyCallbackSignature(req: Request, res: Response, next:
   }
 
   const [merchant] = await db
-    .select({ callbackSecret: merchantsTable.callbackSecret })
+    .select({ callbackSecret: merchantsTable.callbackSecret, callbackTimestampWindowSeconds: merchantsTable.callbackTimestampWindowSeconds })
     .from(merchantsTable)
     .where(eq(merchantsTable.id, merchantId))
     .limit(1);
@@ -125,6 +125,9 @@ export async function verifyCallbackSignature(req: Request, res: Response, next:
     next();
     return;
   }
+
+  // Use the per-merchant window when set, otherwise fall back to the global default.
+  const windowSeconds = merchant.callbackTimestampWindowSeconds ?? TIMESTAMP_WINDOW_SECONDS;
 
   // ── 1. Timestamp check ──────────────────────────────────────────────────────
   const timestampHeader = (req.headers["x-timestamp"] as string | undefined)?.trim();
@@ -141,12 +144,12 @@ export async function verifyCallbackSignature(req: Request, res: Response, next:
 
   const nowSec = Date.now() / 1000;
   const ageSec = nowSec - timestampSec;
-  if (Math.abs(ageSec) > TIMESTAMP_WINDOW_SECONDS) {
+  if (Math.abs(ageSec) > windowSeconds) {
     logAndReject(
       res,
       merchantId,
       req.originalUrl,
-      `X-Timestamp is outside the allowed window (±${TIMESTAMP_WINDOW_SECONDS}s)`,
+      `X-Timestamp is outside the allowed window (±${windowSeconds}s)`,
     );
     return;
   }
@@ -187,7 +190,7 @@ export async function verifyCallbackSignature(req: Request, res: Response, next:
   // poisoned by unauthenticated callers.
   if (nonceKey) {
     // Expire slightly after the window ends to cover boundary-edge timestamps.
-    const expiresAt = (timestampSec + TIMESTAMP_WINDOW_SECONDS + 60) * 1000;
+    const expiresAt = (timestampSec + windowSeconds + 60) * 1000;
     nonceStore.set(nonceKey, expiresAt);
   }
 
