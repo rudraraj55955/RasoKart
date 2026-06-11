@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats } from "@workspace/api-client-react";
+import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, ListCallbackLogsEventType } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -167,10 +167,18 @@ function CallbackRow({ log }: { log: any }) {
   );
 }
 
+const EVENT_TYPE_OPTIONS: { value: ListCallbackLogsEventType; label: string }[] = [
+  { value: ListCallbackLogsEventType.paymentreceived, label: "payment.received" },
+  { value: ListCallbackLogsEventType.paymentsuccess, label: "payment.success" },
+  { value: ListCallbackLogsEventType.paymentfailed, label: "payment.failed" },
+  { value: ListCallbackLogsEventType.paymentpending, label: "payment.pending" },
+];
+
 export default function AdminCallbacks() {
   const [status, setStatus] = useState("all");
   const [sigVerified, setSigVerified] = useState("all");
   const [rejectionReason, setRejectionReason] = useState("all");
+  const [eventTypeFilter, setEventTypeFilter] = useState("all");
   const [merchantIdFilter, setMerchantIdFilter] = useState<number | undefined>(undefined);
   const [merchantNameFilter, setMerchantNameFilter] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
@@ -178,11 +186,13 @@ export default function AdminCallbacks() {
 
   const sigVerifiedParam = sigVerified === "all" ? undefined : (sigVerified as any);
   const rejectionReasonParam = rejectionReason === "all" ? undefined : (rejectionReason as any);
+  const eventTypeParam = eventTypeFilter === "all" ? undefined : (eventTypeFilter as ListCallbackLogsEventType);
 
   const { data, isLoading } = useListCallbackLogs({
     status: status as any,
     signatureVerified: sigVerifiedParam,
     rejectionReason: rejectionReasonParam,
+    eventType: eventTypeParam,
     merchantId: merchantIdFilter,
     page,
     limit: 20,
@@ -302,6 +312,15 @@ export default function AdminCallbacks() {
                 <SelectItem value="replay_detected">Replay detected</SelectItem>
                 <SelectItem value="bad_signature">Bad signature</SelectItem>
                 <SelectItem value="missing_header">Missing header</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={eventTypeFilter} onValueChange={v => { setEventTypeFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Event Types" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Event Types</SelectItem>
+                {EVENT_TYPE_OPTIONS.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             {merchantIdFilter != null && merchantNameFilter && (

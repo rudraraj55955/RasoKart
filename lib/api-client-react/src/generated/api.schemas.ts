@@ -2627,6 +2627,10 @@ rejectionReason?: ListCallbackLogsRejectionReason;
  * Admin only — filter logs by a specific merchant ID
  */
 merchantId?: number;
+/**
+ * Filter logs by event type stored on the callback log row
+ */
+eventType?: ListCallbackLogsEventType;
 page?: number;
 limit?: number;
 };
@@ -2659,6 +2663,16 @@ export const ListCallbackLogsRejectionReason = {
   replay_detected: 'replay_detected',
   bad_signature: 'bad_signature',
   missing_header: 'missing_header',
+} as const;
+
+export type ListCallbackLogsEventType = typeof ListCallbackLogsEventType[keyof typeof ListCallbackLogsEventType];
+
+
+export const ListCallbackLogsEventType = {
+  paymentreceived: 'payment.received',
+  paymentsuccess: 'payment.success',
+  paymentfailed: 'payment.failed',
+  paymentpending: 'payment.pending',
 } as const;
 
 export type RetryCallback200 = {

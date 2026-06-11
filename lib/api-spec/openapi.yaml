@@ -1669,6 +1669,12 @@ paths:
           schema:
             type: integer
           description: Admin only — filter logs by a specific merchant ID
+        - name: eventType
+          in: query
+          schema:
+            type: string
+            enum: [payment.received, payment.success, payment.failed, payment.pending]
+          description: Filter logs by event type stored on the callback log row
         - name: page
           in: query
           schema:

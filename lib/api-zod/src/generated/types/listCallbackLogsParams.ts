@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListCallbackLogsEventType } from './listCallbackLogsEventType';
 import type { ListCallbackLogsRejectionReason } from './listCallbackLogsRejectionReason';
 import type { ListCallbackLogsSignatureVerified } from './listCallbackLogsSignatureVerified';
 import type { ListCallbackLogsStatus } from './listCallbackLogsStatus';
@@ -28,6 +29,10 @@ rejectionReason?: ListCallbackLogsRejectionReason;
  * Admin only — filter logs by a specific merchant ID
  */
 merchantId?: number;
+/**
+ * Filter logs by event type stored on the callback log row
+ */
+eventType?: ListCallbackLogsEventType;
 page?: number;
 limit?: number;
 };
