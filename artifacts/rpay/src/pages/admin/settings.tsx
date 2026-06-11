@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useRunStorageCleanup, type AdminAuditLog } from "@workspace/api-client-react";
@@ -272,9 +272,9 @@ export default function AdminSettings() {
   }
 
   const { mutate: sendTestEmail, isPending: sendingTest } = useMutation({
-    mutationFn: () => {
-      const overrideTrimmed = testEmailTo.trim();
-      return apiPost("/settings/test-email", overrideTrimmed ? { to: overrideTrimmed } : undefined);
+    mutationFn: (recipientOverride?: string) => {
+      const to = recipientOverride ?? testEmailTo.trim();
+      return apiPost("/settings/test-email", to ? { to } : undefined);
     },
     onSuccess: (res: { to: string }) => toast.success(`Test email sent to ${res.to} — check your inbox`),
     onError: (err: Error) => toast.error(`Test email failed: ${err.message}`),
@@ -765,7 +765,7 @@ export default function AdminSettings() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => sendTestEmail()}
+                onClick={() => sendTestEmail(undefined)}
                 disabled={sendingTest || isLoading || smtpConfigured === false || (!testEmailTrimmed && !currentEmail) || testEmailInvalid}
                 title={
                   smtpConfigured === false
@@ -957,6 +957,8 @@ export default function AdminSettings() {
                       ? details.error.replace(/_/g, " ")
                       : null;
 
+                    const retryRecipient = !success && recipients.length > 0 ? recipients[0]! : null;
+
                     return (
                       <div
                         key={row.id}
@@ -979,6 +981,21 @@ export default function AdminSettings() {
                             <p className="text-muted-foreground mt-0.5">{errorLabel}</p>
                           )}
                         </div>
+                        {retryRecipient && (
+                          <button
+                            type="button"
+                            disabled={sendingTest}
+                            onClick={() => {
+                              setTestEmailTo(retryRecipient);
+                              sendTestEmail(retryRecipient);
+                            }}
+                            title={`Retry — send to ${retryRecipient}`}
+                            className="shrink-0 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Retry
+                          </button>
+                        )}
                         <time
                           dateTime={row.createdAt}
                           className="shrink-0 text-muted-foreground tabular-nums"
