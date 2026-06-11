@@ -2069,6 +2069,10 @@ export default function AdminReconciliation() {
             const emailLogs: Array<{ id: number; emailType: string; recipients: string; status: string; errorMessage: string | null; sentAt: string }> = emailLogsQuery.data?.data ?? [];
             const reportLogs = emailLogs.filter(l => l.emailType === "report");
             const alertLogs = emailLogs.filter(l => l.emailType !== "report");
+            const reportSent = reportLogs.filter(l => l.status === "sent").length;
+            const reportFailed = reportLogs.filter(l => l.status === "failed").length;
+            const alertSent = alertLogs.filter(l => l.status === "sent").length;
+            const alertFailed = alertLogs.filter(l => l.status === "failed").length;
             const hasSent = emailLogs.some(l => l.status === "sent");
             const hasFailed = emailLogs.some(l => l.status === "failed");
             const indicatorIcon = hasFailed
@@ -2144,6 +2148,20 @@ export default function AdminReconciliation() {
                                 {reportLogs.length}
                               </Badge>
                             )}
+                            {reportLogs.length > 0 && (
+                              <span className="flex items-center gap-1 ml-1">
+                                {reportSent > 0 && (
+                                  <span className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    {reportSent} sent
+                                  </span>
+                                )}
+                                {reportFailed > 0 && (
+                                  <span className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                                    {reportFailed} failed
+                                  </span>
+                                )}
+                              </span>
+                            )}
                             <ChevronDown className={`w-3 h-3 text-violet-400/60 ml-auto transition-transform ${reportEmailsOpen ? "rotate-180" : ""}`} />
                           </button>
                           {reportEmailsOpen && (
@@ -2189,6 +2207,20 @@ export default function AdminReconciliation() {
                               <Badge className="h-4 px-1.5 text-[10px] ml-0.5 bg-orange-500/10 text-orange-400 border border-orange-500/30">
                                 {alertLogs.length}
                               </Badge>
+                            )}
+                            {alertLogs.length > 0 && (
+                              <span className="flex items-center gap-1 ml-1">
+                                {alertSent > 0 && (
+                                  <span className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    {alertSent} sent
+                                  </span>
+                                )}
+                                {alertFailed > 0 && (
+                                  <span className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                                    {alertFailed} failed
+                                  </span>
+                                )}
+                              </span>
                             )}
                             <ChevronDown className={`w-3 h-3 text-orange-400/60 ml-auto transition-transform ${alertEmailsOpen ? "rotate-180" : ""}`} />
                           </button>
