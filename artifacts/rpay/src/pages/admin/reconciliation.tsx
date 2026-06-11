@@ -943,6 +943,29 @@ export default function AdminReconciliation() {
 
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
   const [dateTo, setDateTo] = useState(today);
+  const [runLookbackPreset, setRunLookbackPreset] = useState("30");
+  const [runLookbackDays, setRunLookbackDays] = useState(30);
+  const { data: runPresets = [] } = useGetReconciliationLookbackPresets();
+
+  function applyRunLookback(days: number) {
+    const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    setDateFrom(from);
+    setDateTo(new Date().toISOString().slice(0, 10));
+  }
+
+  function handleRunPresetChange(v: string) {
+    setRunLookbackPreset(v);
+    if (!v.startsWith("s:") && v !== "custom") {
+      const d = parseInt(v);
+      setRunLookbackDays(d);
+      applyRunLookback(d);
+    } else if (v.startsWith("s:")) {
+      const d = parseInt(v.slice(2));
+      setRunLookbackDays(d);
+      applyRunLookback(d);
+    }
+  }
+
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [resolveItem, setResolveItem] = useState<any | null>(null);
   const [exportFilter, setExportFilter] = useState<"all" | "matched" | "unmatched_deposit" | "unmatched_settlement">("all");
@@ -1172,6 +1195,49 @@ export default function AdminReconciliation() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Lookback</Label>
+              <div className="flex items-center gap-2">
+                <Select value={runLookbackPreset} onValueChange={handleRunPresetChange} disabled={runMutation.isPending}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Yesterday (1 day)</SelectItem>
+                    <SelectItem value="3">Last 3 days</SelectItem>
+                    <SelectItem value="7">Last 7 days</SelectItem>
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    {runPresets.length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider mt-1">Saved presets</div>
+                        {runPresets.map((p) => (
+                          <SelectItem key={`s:${p.days}`} value={`s:${p.days}`}>
+                            {p.name} ({p.days}d)
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    <SelectItem value="custom">Custom…</SelectItem>
+                  </SelectContent>
+                </Select>
+                {runLookbackPreset === "custom" && (
+                  <Input
+                    type="number"
+                    min={1}
+                    max={90}
+                    value={runLookbackDays}
+                    onChange={e => {
+                      const d = Math.min(90, Math.max(1, parseInt(e.target.value) || 1));
+                      setRunLookbackDays(d);
+                      applyRunLookback(d);
+                    }}
+                    className="w-20"
+                    placeholder="days"
+                    disabled={runMutation.isPending}
+                  />
+                )}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">From</Label>
               <Input
