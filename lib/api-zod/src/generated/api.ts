@@ -1440,6 +1440,16 @@ export const GetCallbackStatsResponse = zod.object({
 
 
 /**
+ * Admin-only. Returns the total signature verification failures and number of affected merchants in the last 24 hours across the entire platform.
+ * @summary Get aggregate callback signature failure stats across all merchants
+ */
+export const GetAdminCallbackStatsResponse = zod.object({
+  "signatureFailures24h": zod.number().describe('Total signature verification failures across all merchants in the last 24 hours'),
+  "affectedMerchants": zod.number().describe('Number of distinct merchants with at least one signature failure in the last 24 hours')
+})
+
+
+/**
  * Called by a payment provider or merchant back-end when a payment is received.
 Authentication is via the merchant's API key supplied in the X-Api-Key header.
 The merchantId is derived from the key — it does not need to be in the body.

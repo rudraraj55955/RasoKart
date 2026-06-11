@@ -16,6 +16,7 @@ export * from './adminAuditLog';
 export * from './adminAuditLogInput';
 export * from './adminAuditLogListResponse';
 export * from './adminAuditLogStatsResponse';
+export * from './adminCallbackStatsResponse';
 export * from './adminCreateTransactionInput';
 export * from './adminCreateTransactionInputStatus';
 export * from './adminCreateTransactionInputType';

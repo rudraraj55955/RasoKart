@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCallbackLogs, useRetryCallback } from "@workspace/api-client-react";
+import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, RefreshCw, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -183,9 +183,39 @@ export default function AdminCallbacks() {
     limit: 20,
   });
 
+  const { data: adminStats } = useGetAdminCallbackStats();
+
+  const hasFailures = (adminStats?.signatureFailures24h ?? 0) > 0;
+
+  function filterToSignatureFailures() {
+    setSigVerified("failed");
+    setStatus("all");
+    setPage(1);
+  }
+
   return (
     <div className="space-y-6">
       <div><h1 className="text-3xl font-bold tracking-tight">Callback Logs</h1><p className="text-muted-foreground mt-1">Webhook delivery history with automatic retry</p></div>
+
+      {hasFailures && (
+        <button
+          onClick={filterToSignatureFailures}
+          className="w-full text-left rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 hover:bg-rose-500/20 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-rose-400">
+                {adminStats!.signatureFailures24h} signature {adminStats!.signatureFailures24h === 1 ? "failure" : "failures"} in the last 24 hours
+              </p>
+              <p className="text-xs text-rose-400/70 mt-0.5 flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                {adminStats!.affectedMerchants} {adminStats!.affectedMerchants === 1 ? "merchant" : "merchants"} affected — click to filter
+              </p>
+            </div>
+          </div>
+        </button>
+      )}
 
       <Card>
         <CardHeader className="pb-4">

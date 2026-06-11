@@ -604,6 +604,13 @@ export interface CallbackStatsResponse {
   signatureFailures24h: number;
 }
 
+export interface AdminCallbackStatsResponse {
+  /** Total signature verification failures across all merchants in the last 24 hours */
+  signatureFailures24h: number;
+  /** Number of distinct merchants with at least one signature failure in the last 24 hours */
+  affectedMerchants: number;
+}
+
 export type SettlementStatus = typeof SettlementStatus[keyof typeof SettlementStatus];
 
 

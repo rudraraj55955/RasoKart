@@ -29,6 +29,7 @@ import type {
   AdminAuditLogInput,
   AdminAuditLogListResponse,
   AdminAuditLogStatsResponse,
+  AdminCallbackStatsResponse,
   AdminCreateTransactionInput,
   AdminNotificationListResponse,
   AdminRiskStats,
@@ -4503,6 +4504,84 @@ export function useGetCallbackStats<TData = Awaited<ReturnType<typeof getCallbac
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCallbackStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAdminCallbackStatsUrl = () => {
+
+
+
+
+  return `/api/callbacks/admin/stats`
+}
+
+/**
+ * Admin-only. Returns the total signature verification failures and number of affected merchants in the last 24 hours across the entire platform.
+ * @summary Get aggregate callback signature failure stats across all merchants
+ */
+export const getAdminCallbackStats = async ( options?: RequestInit): Promise<AdminCallbackStatsResponse> => {
+
+  return customFetch<AdminCallbackStatsResponse>(getGetAdminCallbackStatsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminCallbackStatsQueryKey = () => {
+    return [
+    `/api/callbacks/admin/stats`
+    ] as const;
+    }
+
+
+export const getGetAdminCallbackStatsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminCallbackStats>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminCallbackStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminCallbackStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminCallbackStats>>> = ({ signal }) => getAdminCallbackStats({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminCallbackStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminCallbackStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminCallbackStats>>>
+export type GetAdminCallbackStatsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get aggregate callback signature failure stats across all merchants
+ */
+
+export function useGetAdminCallbackStats<TData = Awaited<ReturnType<typeof getAdminCallbackStats>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminCallbackStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminCallbackStatsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

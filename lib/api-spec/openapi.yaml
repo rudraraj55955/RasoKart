@@ -1436,6 +1436,22 @@ paths:
         "403":
           description: Merchant access only
 
+  /callbacks/admin/stats:
+    get:
+      operationId: getAdminCallbackStats
+      tags: [callbacks]
+      summary: Get aggregate callback signature failure stats across all merchants
+      description: Admin-only. Returns the total signature verification failures and number of affected merchants in the last 24 hours across the entire platform.
+      responses:
+        "200":
+          description: Aggregate callback stats for all merchants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCallbackStatsResponse"
+        "403":
+          description: Admin access only
+
   /callbacks:
     post:
       operationId: receivePaymentCallback
@@ -4805,6 +4821,17 @@ components:
         signatureFailures24h:
           type: integer
           description: Number of signature verification failures in the last 24 hours for this merchant
+
+    AdminCallbackStatsResponse:
+      type: object
+      required: [signatureFailures24h, affectedMerchants]
+      properties:
+        signatureFailures24h:
+          type: integer
+          description: Total signature verification failures across all merchants in the last 24 hours
+        affectedMerchants:
+          type: integer
+          description: Number of distinct merchants with at least one signature failure in the last 24 hours
 
     Settlement:
       type: object
