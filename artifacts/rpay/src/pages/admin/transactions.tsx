@@ -459,23 +459,28 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
               </div>
             </div>
 
-            {/* Provider Connection — only shown when a provider is linked */}
-            {tx.connectionProvider != null && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5" /> Provider Connection
-                </p>
-                <div className="space-y-0 rounded-lg border divide-y divide-border bg-card/40">
-                  <div className="flex items-start justify-between gap-4 px-4 py-3">
-                    <span className="text-sm text-muted-foreground shrink-0">Provider</span>
-                    <ProviderBadge provider={tx.connectionProvider} />
-                  </div>
-                  {(tx as any).connectionId != null && (
+            {/* Provider Connection — always shown */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5" /> Provider Connection
+              </p>
+              <div className="space-y-0 rounded-lg border divide-y divide-border bg-card/40">
+                {(tx as any).connectionId != null ? (
+                  <>
+                    <div className="flex items-start justify-between gap-4 px-4 py-3">
+                      <span className="text-sm text-muted-foreground shrink-0">Provider</span>
+                      <ProviderBadge provider={tx.connectionProvider} />
+                    </div>
                     <DetailRow label="Connection ID" value={`#${(tx as any).connectionId}`} mono />
-                  )}
-                </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between gap-4 px-4 py-3">
+                    <span className="text-sm text-muted-foreground shrink-0">Connection</span>
+                    <span className="text-sm text-muted-foreground italic">No connection assigned</span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Timestamps */}
             <div>
