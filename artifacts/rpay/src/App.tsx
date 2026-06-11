@@ -48,6 +48,7 @@ import AdminLedger from "@/pages/admin/ledger";
 import AdminReconciliation from "@/pages/admin/reconciliation";
 import AdminPaymentLinks from "@/pages/admin/payment-links";
 import AdminSettings from "@/pages/admin/settings";
+import AdminNotifications from "@/pages/admin/notifications";
 import PayPage from "@/pages/pay";
 import QrPayPage from "@/pages/qr-pay";
 import VaPayPage from "@/pages/va-pay";
@@ -163,6 +164,7 @@ function Router() {
       <Route path="/admin/reconciliation"><AdminRoute component={AdminReconciliation} /></Route>
       <Route path="/admin/payment-links"><AdminRoute component={AdminPaymentLinks} /></Route>
       <Route path="/admin/settings"><AdminRoute component={AdminSettings} /></Route>
+      <Route path="/admin/notifications"><AdminRoute component={AdminNotifications} /></Route>
 
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>

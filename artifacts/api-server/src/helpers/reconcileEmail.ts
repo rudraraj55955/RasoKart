@@ -279,6 +279,22 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
       errorMessage,
     });
 
+    if (overallStatus === "failed") {
+      try {
+        await createBulkNotifications(admins.map(a => ({
+          userId: a.id,
+          type: "reconciliation_email_failure" as const,
+          title: "Reconciliation Alert Email Failed",
+          body: `The unmatched-items alert email for reconciliation run #${runId} (${run.dateFrom} to ${run.dateTo}) could not be delivered. Open the run to review the email log and use the Resend button.`,
+          metadata: { runId, recipients: recipientList, error: errorMessage },
+        })));
+
+        logger.info({ runId, adminCount: admins.length }, "Admin notifications sent for unmatched-alert email failure");
+      } catch (notifyErr) {
+        logger.error({ err: notifyErr, runId }, "Failed to insert admin notifications for unmatched-alert email failure");
+      }
+    }
+
     logger.info(
       { runId, totalAdmins: admins.length, sent, failed },
       "Admin unmatched-items alert emails dispatched"
@@ -296,6 +312,27 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
       });
     } catch (logErr) {
       logger.error({ logErr, runId }, "Failed to write email log for unmatched-items alert");
+    }
+
+    try {
+      const allAdmins = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+      if (allAdmins.length > 0) {
+        await createBulkNotifications(allAdmins.map(a => ({
+          userId: a.id,
+          type: "reconciliation_email_failure" as const,
+          title: "Reconciliation Alert Email Failed",
+          body: `The unmatched-items alert email for reconciliation run #${runId} could not be sent. Open the run to review the email log and use the Resend button.`,
+          metadata: { runId, error: String(err) },
+        })));
+
+        logger.info({ runId, adminCount: allAdmins.length }, "Admin notifications sent for unmatched-alert email dispatch failure");
+      }
+    } catch (notifyErr) {
+      logger.error({ err: notifyErr, runId }, "Failed to insert admin notifications after unmatched-alert email dispatch failure");
     }
   }
 }

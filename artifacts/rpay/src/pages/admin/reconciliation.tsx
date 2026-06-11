@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
+import { useSearch, useLocation } from "wouter";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -966,7 +967,14 @@ export default function AdminReconciliation() {
     }
   }
 
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const search = useSearch();
+  const [, navigate] = useLocation();
+
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(() => {
+    const params = new URLSearchParams(search);
+    const id = parseInt(params.get("runId") ?? "");
+    return isNaN(id) ? null : id;
+  });
   const [resolveItem, setResolveItem] = useState<any | null>(null);
   const [exportFilter, setExportFilter] = useState<"all" | "matched" | "unmatched_deposit" | "unmatched_settlement">("all");
   const [csvExportFilter, setCsvExportFilter] = useState<"all" | "matched" | "unmatched">("all");
@@ -1527,6 +1535,12 @@ export default function AdminReconciliation() {
             setEmailLogOpen(false);
             setEditingNotes(false);
             setNotesValue("");
+            const params = new URLSearchParams(window.location.search);
+            if (params.has("runId")) {
+              params.delete("runId");
+              const newSearch = params.toString();
+              navigate(`/admin/reconciliation${newSearch ? `?${newSearch}` : ""}`, { replace: true });
+            }
           }
         }}
       >

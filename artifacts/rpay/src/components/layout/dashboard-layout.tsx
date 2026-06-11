@@ -332,7 +332,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
               <span className="font-bold text-sm tracking-wide">RasoKart</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{portalLabel}</span>
             </div>
-            {!publicMode && !isAdmin && user && <NotificationBell />}
+            {!publicMode && user && <NotificationBell />}
           </SidebarHeader>
           <SidebarContent>
             {publicMode ? (
