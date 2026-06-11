@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Search, Plus, Pencil, Trash2, QrCode, Link2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, QrCode, Link2, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { format } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
 
@@ -137,8 +137,8 @@ export default function AdminQrProviders() {
 
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Search merchants..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
             </div>
@@ -157,6 +157,17 @@ export default function AdminQrProviders() {
                 <SelectItem value="inactive">Deactivated</SelectItem>
               </SelectContent>
             </Select>
+            {(search !== "" || providerFilter !== "all" || statusFilter !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSearch(""); setProviderFilter("all"); setStatusFilter("all"); setPage(1); }}
+                className="text-muted-foreground hover:text-foreground shrink-0"
+              >
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Clear filters
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
