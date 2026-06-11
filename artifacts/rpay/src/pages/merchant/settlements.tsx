@@ -17,10 +17,149 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Plus, CalendarRange, X, Search } from "lucide-react";
+import {
+  AlertTriangle, ChevronDown, ChevronRight, Clock, Plus, CalendarRange, X,
+  Search, Sparkles, Bookmark, BookmarkCheck, Trash2, Hash, TrendingUp,
+} from "lucide-react";
 import { getApiErrorMessage, isRateLimitError } from "@/lib/utils";
 import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
-import { format, subDays, startOfMonth, endOfMonth, subMonths, parseISO, isValid } from "date-fns";
+import {
+  format, subDays, startOfMonth, endOfMonth, subMonths,
+  startOfWeek, endOfWeek, startOfDay, endOfDay, parseISO, isValid,
+} from "date-fns";
+
+// ── Smart search types & parsing ─────────────────────────────────────────────
+
+type SettlementStatusFilter = "pending" | "processing" | "paid" | "rejected";
+
+interface SmartFilter {
+  amountMin?: number;
+  amountMax?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  settlementStatus?: SettlementStatusFilter;
+}
+
+const STATUS_KEYWORDS: Record<string, SettlementStatusFilter> = {
+  pending: "pending",
+  processing: "processing",
+  paid: "paid",
+  rejected: "rejected",
+  approved: "paid",
+};
+
+function parseDateToken(token: string, now: Date): Pick<SmartFilter, "dateFrom" | "dateTo"> | null {
+  if (token === "today") {
+    return { dateFrom: format(startOfDay(now), "yyyy-MM-dd"), dateTo: format(endOfDay(now), "yyyy-MM-dd") };
+  }
+  if (token === "this week") {
+    return {
+      dateFrom: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+      dateTo: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+    };
+  }
+  if (token === "this month") {
+    return { dateFrom: format(startOfMonth(now), "yyyy-MM-dd"), dateTo: format(endOfMonth(now), "yyyy-MM-dd") };
+  }
+  if (token === "last month") {
+    const prev = subMonths(now, 1);
+    return { dateFrom: format(startOfMonth(prev), "yyyy-MM-dd"), dateTo: format(endOfMonth(prev), "yyyy-MM-dd") };
+  }
+  if (token === "last week") {
+    const prevWeekStart = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
+    const prevWeekEnd = endOfWeek(subDays(now, 7), { weekStartsOn: 1 });
+    return { dateFrom: format(prevWeekStart, "yyyy-MM-dd"), dateTo: format(prevWeekEnd, "yyyy-MM-dd") };
+  }
+  return null;
+}
+
+function parseAmountToken(token: string): Pick<SmartFilter, "amountMin" | "amountMax"> | null {
+  const gtMatch = token.match(/^(>=?)(\d+(?:\.\d+)?)$/);
+  if (gtMatch) {
+    const inclusive = gtMatch[1] === ">=";
+    const val = parseFloat(gtMatch[2]!);
+    return { amountMin: inclusive ? val : val + 0.01 };
+  }
+  const ltMatch = token.match(/^(<=?)(\d+(?:\.\d+)?)$/);
+  if (ltMatch) {
+    const inclusive = ltMatch[1] === "<=";
+    const val = parseFloat(ltMatch[2]!);
+    return { amountMax: inclusive ? val : val - 0.01 };
+  }
+  const rangeMatch = token.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+  if (rangeMatch) {
+    const min = parseFloat(rangeMatch[1]!);
+    const max = parseFloat(rangeMatch[2]!);
+    if (min <= max) return { amountMin: min, amountMax: max };
+  }
+  return null;
+}
+
+function parseSmartQuery(raw: string): SmartFilter | null {
+  const q = raw.trim().toLowerCase();
+  if (!q) return null;
+
+  const filter: SmartFilter = {};
+  const now = new Date();
+
+  for (const phrase of ["this week", "this month", "last month", "last week"]) {
+    if (q.includes(phrase)) {
+      const dateResult = parseDateToken(phrase, now);
+      if (dateResult) { Object.assign(filter, dateResult); break; }
+    }
+  }
+
+  let remaining = q;
+  if (filter.dateFrom) {
+    for (const phrase of ["this week", "this month", "last month", "last week"]) {
+      remaining = remaining.replace(phrase, "").trim();
+    }
+  }
+
+  const tokens = remaining.split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    if (token in STATUS_KEYWORDS) { filter.settlementStatus = STATUS_KEYWORDS[token]!; continue; }
+    if (!filter.dateFrom) {
+      const dateResult = parseDateToken(token, now);
+      if (dateResult) { Object.assign(filter, dateResult); continue; }
+    }
+    if (filter.amountMin == null && filter.amountMax == null) {
+      const amtResult = parseAmountToken(token);
+      if (amtResult) { Object.assign(filter, amtResult); continue; }
+    }
+  }
+
+  const hasContent =
+    filter.settlementStatus != null || filter.dateFrom != null ||
+    filter.amountMin != null || filter.amountMax != null;
+
+  return hasContent ? filter : null;
+}
+
+// ── Saved filters ─────────────────────────────────────────────────────────────
+
+interface SavedFilter {
+  id: string;
+  name: string;
+  filter: SmartFilter;
+  rawInput: string;
+}
+
+const SAVED_FILTERS_KEY = "rasokart_merchant_settlements_saved_filters";
+
+function loadSavedFilters(): SavedFilter[] {
+  try {
+    const raw = localStorage.getItem(SAVED_FILTERS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as SavedFilter[];
+  } catch { return []; }
+}
+
+function storeSavedFilters(filters: SavedFilter[]): void {
+  localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(filters));
+}
+
+// ── Date presets ──────────────────────────────────────────────────────────────
 
 const DATE_PRESETS = [
   {
@@ -99,6 +238,14 @@ function storeCustomDatePresets(presets: CustomDatePreset[]): void {
   localStorage.setItem(CUSTOM_DATE_PRESETS_KEY, JSON.stringify(presets));
 }
 
+const SETTLEMENT_STATUSES = [
+  { value: "all", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "processing", label: "Processing" },
+  { value: "paid", label: "Paid" },
+  { value: "rejected", label: "Rejected" },
+];
+
 export default function MerchantSettlements() {
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -112,6 +259,19 @@ export default function MerchantSettlements() {
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
 
+  // ── Smart search state ───────────────────────────────────────────────────
+  const [smartInput, setSmartInput] = useState("");
+  const [smartFilter, setSmartFilter] = useState<SmartFilter | null>(null);
+  const [smartError, setSmartError] = useState("");
+  const smartInputRef = useRef<HTMLInputElement>(null);
+
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => loadSavedFilters());
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveFilterName, setSaveFilterName] = useState("");
+  const [saveFilterNameError, setSaveFilterNameError] = useState("");
+  const saveNameInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Custom date preset state ─────────────────────────────────────────────
   const [customDatePresets, setCustomDatePresets] = useState<CustomDatePreset[]>(() => loadCustomDatePresets());
   const [showSaveDatePreset, setShowSaveDatePreset] = useState(false);
   const [saveDatePresetName, setSaveDatePresetName] = useState("");
@@ -130,7 +290,9 @@ export default function MerchantSettlements() {
 
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === CUSTOM_DATE_PRESETS_KEY) {
+      if (e.key === SAVED_FILTERS_KEY) {
+        setSavedFilters(loadSavedFilters());
+      } else if (e.key === CUSTOM_DATE_PRESETS_KEY) {
         setCustomDatePresets(loadCustomDatePresets());
       }
     };
@@ -138,6 +300,81 @@ export default function MerchantSettlements() {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
+  // Smart filter takes precedence over status buttons for status; date pickers for dates
+  const activeStatus = smartFilter?.settlementStatus ?? (status !== "all" ? (status as SettlementStatusFilter) : undefined);
+  const activeDateFrom = smartFilter?.dateFrom ?? (dateFrom || undefined);
+  const activeDateTo = smartFilter?.dateTo ?? (dateTo || undefined);
+  const amountMin = smartFilter?.amountMin;
+  const amountMax = smartFilter?.amountMax;
+
+  // ── Smart search handlers ─────────────────────────────────────────────────
+  const applySmartSearch = () => {
+    setSmartError("");
+    const filter = parseSmartQuery(smartInput);
+    if (!filter) {
+      setSmartError("Try: pending, paid >500, rejected this week, >500, today");
+      return;
+    }
+    setSmartFilter(filter);
+    setPage(1);
+    setShowSaveInput(false);
+    setSaveFilterName("");
+  };
+
+  const clearSmartFilter = () => {
+    setSmartFilter(null);
+    setSmartInput("");
+    setSmartError("");
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    setPage(1);
+    smartInputRef.current?.focus();
+  };
+
+  const applySavedFilter = (saved: SavedFilter) => {
+    setSmartFilter(saved.filter);
+    setSmartInput(saved.rawInput);
+    setSmartError("");
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    setPage(1);
+  };
+
+  const confirmSaveFilter = () => {
+    const trimmed = saveFilterName.trim();
+    if (!trimmed) { setSaveFilterNameError("Please enter a name for this filter."); saveNameInputRef.current?.focus(); return; }
+    if (!smartFilter) return;
+    if (savedFilters.some(f => f.name.toLowerCase() === trimmed.toLowerCase())) {
+      setSaveFilterNameError("A filter with this name already exists."); saveNameInputRef.current?.focus(); return;
+    }
+    const newFilter: SavedFilter = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: trimmed, filter: smartFilter, rawInput: smartInput,
+    };
+    const updated = [...savedFilters, newFilter];
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+  };
+
+  const cancelSaveFilter = () => { setShowSaveInput(false); setSaveFilterName(""); setSaveFilterNameError(""); };
+
+  const deleteSavedFilter = (id: string) => {
+    const updated = savedFilters.filter(f => f.id !== id);
+    setSavedFilters(updated);
+    storeSavedFilters(updated);
+  };
+
+  const hasSmartFilter = smartFilter !== null;
+  const isCurrentFilterSaved = hasSmartFilter && savedFilters.some(
+    f => f.rawInput === smartInput && JSON.stringify(f.filter) === JSON.stringify(smartFilter)
+  );
+
+  // ── Date preset handlers ──────────────────────────────────────────────────
   const applyPreset = (preset: (typeof DATE_PRESETS)[number]) => {
     const { from, to } = preset.getRange();
     setDateFrom(from);
@@ -216,17 +453,56 @@ export default function MerchantSettlements() {
   const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
   const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
 
+  // Unified "any filter active" covering both smart search and manual filter controls
+  const anyFilterActive = hasSmartFilter || !!(search || status !== "all" || dateFrom || dateTo);
+
+  const clearAllFilters = () => {
+    setSmartFilter(null);
+    setSmartInput("");
+    setSmartError("");
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    setSearch("");
+    setStatus("all");
+    setDateFrom("");
+    setDateTo("");
+    setShowSaveDatePreset(false);
+    setPage(1);
+  };
+
   const qc = useQueryClient();
   const { data: me } = useGetMe();
   const { data: merchantData } = useGetMerchant(me?.merchantId ?? 0);
   const { data, isLoading } = useListSettlements({
     page,
     limit: 20,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
-    status: status !== "all" ? (status as "pending" | "processing" | "approved" | "rejected" | "paid") : undefined,
+    status: activeStatus as any,
+    dateFrom: activeDateFrom,
+    dateTo: activeDateTo,
   });
   const { data: withdrawalsData } = useListWithdrawals({ limit: 1 });
+
+  // Client-side amount filter applied on top of server results
+  const filteredSettlements = (data?.data ?? []).filter(s => {
+    const amount = Number(s.requestedAmount ?? s.amount);
+    if (amountMin != null && amount < amountMin) return false;
+    if (amountMax != null && amount > amountMax) return false;
+    return true;
+  });
+
+  // Client-side text search on top of amount filter
+  const searchTerm = search.toLowerCase();
+  const displayedRows = filteredSettlements.filter(s => {
+    if (!searchTerm) return true;
+    return (
+      (s.requestedNote ?? "").toLowerCase().includes(searchTerm) ||
+      (s.adminRemark ?? "").toLowerCase().includes(searchTerm) ||
+      (s.referenceNumber ?? "").toLowerCase().includes(searchTerm) ||
+      (s.actionedByEmail ?? "").toLowerCase().includes(searchTerm) ||
+      String(s.id).includes(searchTerm)
+    );
+  });
 
   const createMutation = useCreateSettlement({
     mutation: {
@@ -262,44 +538,11 @@ export default function MerchantSettlements() {
   const balance = merchantData ? Number(merchantData.balance) : 0;
   const latestWithdrawal = withdrawalsData?.data?.[0];
 
-  // Sum amounts reserved by any pending/processing settlements (server enforces at most 1 at a time,
-  // but we compute from ALL loaded pages for correctness).
   const inFlightSettlement = (data?.data ?? []).find(s => s.status === "pending" || s.status === "processing");
   const pendingReserved = (data?.data ?? [])
     .filter(s => s.status === "pending" || s.status === "processing")
     .reduce((sum, s) => sum + Number(s.requestedAmount ?? s.amount), 0);
   const availableBalance = balance - pendingReserved;
-
-  const anyFilterActive = !!(search || status !== "all" || dateFrom || dateTo);
-
-  const clearAllFilters = () => {
-    setSearch("");
-    setStatus("all");
-    setDateFrom("");
-    setDateTo("");
-    setShowSaveDatePreset(false);
-    setPage(1);
-  };
-
-  const searchTerm = search.toLowerCase();
-  const displayedRows = (data?.data ?? []).filter(s => {
-    if (!searchTerm) return true;
-    return (
-      (s.requestedNote ?? "").toLowerCase().includes(searchTerm) ||
-      (s.adminRemark ?? "").toLowerCase().includes(searchTerm) ||
-      (s.referenceNumber ?? "").toLowerCase().includes(searchTerm) ||
-      (s.actionedByEmail ?? "").toLowerCase().includes(searchTerm) ||
-      String(s.id).includes(searchTerm)
-    );
-  });
-
-  const SETTLEMENT_STATUSES = [
-    { value: "all", label: "All" },
-    { value: "pending", label: "Pending" },
-    { value: "processing", label: "Processing" },
-    { value: "paid", label: "Paid" },
-    { value: "rejected", label: "Rejected" },
-  ];
 
   const exportCsv = () => {
     if (!data?.data) return;
@@ -387,6 +630,233 @@ export default function MerchantSettlements() {
           </Card>
         ))}
       </div>
+
+      {/* Smart Search Bar */}
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Smart Search</p>
+
+          {savedFilters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="text-xs text-muted-foreground font-medium">Saved:</span>
+              {savedFilters.map(saved => (
+                <span
+                  key={saved.id}
+                  className="group inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/8 px-2.5 py-0.5 text-xs font-medium text-violet-300 hover:border-violet-500/60 transition-colors"
+                >
+                  <button
+                    onClick={() => applySavedFilter(saved)}
+                    className="flex items-center gap-1 hover:text-violet-100 transition-colors"
+                    title={`Apply: ${saved.rawInput}`}
+                  >
+                    <BookmarkCheck className="w-3 h-3 shrink-0" />
+                    {saved.name}
+                  </button>
+                  <button
+                    onClick={() => deleteSavedFilter(saved.id)}
+                    className="ml-0.5 rounded-full p-0.5 text-violet-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                    aria-label={`Delete saved filter "${saved.name}"`}
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400" />
+              <Input
+                ref={smartInputRef}
+                className="pl-9"
+                placeholder="Try: pending  ·  paid >500  ·  rejected this week  ·  >500  ·  today"
+                value={smartInput}
+                onChange={e => { setSmartInput(e.target.value); setSmartError(""); }}
+                onKeyDown={e => { if (e.key === "Enter") applySmartSearch(); }}
+              />
+            </div>
+            <Button onClick={applySmartSearch} disabled={!smartInput.trim()}>
+              <Search className="w-4 h-4 mr-2" />Apply
+            </Button>
+            {hasSmartFilter && !isCurrentFilterSaved && !showSaveInput && (
+              <Button
+                variant="outline"
+                onClick={() => { setSaveFilterName(""); setSaveFilterNameError(""); setShowSaveInput(true); }}
+                className="border-violet-500/40 text-violet-300 hover:bg-violet-500/10 hover:text-violet-200"
+              >
+                <Bookmark className="w-4 h-4 mr-2" />Save filter
+              </Button>
+            )}
+            {hasSmartFilter && isCurrentFilterSaved && (
+              <Button variant="outline" disabled className="border-violet-500/20 text-violet-400/50 cursor-default">
+                <BookmarkCheck className="w-4 h-4 mr-2" />Saved
+              </Button>
+            )}
+          </div>
+
+          {showSaveInput && (
+            <div className="mt-3 flex items-start gap-2">
+              <div className="flex-1">
+                <Input
+                  ref={saveNameInputRef}
+                  className="h-8 text-sm"
+                  placeholder="Name this filter (e.g. Large payouts)"
+                  value={saveFilterName}
+                  onChange={e => { setSaveFilterName(e.target.value); setSaveFilterNameError(""); }}
+                  onKeyDown={e => { if (e.key === "Enter") confirmSaveFilter(); if (e.key === "Escape") cancelSaveFilter(); }}
+                  maxLength={40}
+                />
+                {saveFilterNameError && <p className="mt-1 text-xs text-rose-400">{saveFilterNameError}</p>}
+              </div>
+              <Button size="sm" onClick={confirmSaveFilter} className="h-8 shrink-0">Save</Button>
+              <Button size="sm" variant="ghost" onClick={cancelSaveFilter} className="h-8 shrink-0 px-2"><X className="w-4 h-4" /></Button>
+            </div>
+          )}
+
+          {smartError && <p className="mt-2 text-xs text-amber-400">{smartError}</p>}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Status: <span className="font-mono text-foreground/60">pending</span>, <span className="font-mono text-foreground/60">processing</span>, <span className="font-mono text-foreground/60">paid</span>, <span className="font-mono text-foreground/60">rejected</span> — Amount: <span className="font-mono text-foreground/60">{">500"}</span>, <span className="font-mono text-foreground/60">{"200-999"}</span> — Date: <span className="font-mono text-foreground/60">today</span>, <span className="font-mono text-foreground/60">this week</span>, <span className="font-mono text-foreground/60">this month</span> — Combine: <span className="font-mono text-foreground/60">rejected this week</span>
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Active smart filter chips */}
+      {hasSmartFilter && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground font-medium">Smart filter:</span>
+          {(() => {
+            const sf = smartFilter!;
+            const chips: { label: string; key: string }[] = [];
+            if (sf.settlementStatus) chips.push({ key: "status", label: sf.settlementStatus.charAt(0).toUpperCase() + sf.settlementStatus.slice(1) });
+            if (sf.dateFrom || sf.dateTo) {
+              const d = sf.dateFrom && sf.dateTo
+                ? `${sf.dateFrom} – ${sf.dateTo}`
+                : sf.dateFrom ? `From ${sf.dateFrom}` : `Until ${sf.dateTo}`;
+              chips.push({ key: "date", label: d });
+            }
+            if (sf.amountMin != null && sf.amountMax != null) {
+              chips.push({ key: "amount", label: `₹${sf.amountMin.toLocaleString()} – ₹${sf.amountMax.toLocaleString()}` });
+            } else if (sf.amountMin != null) {
+              chips.push({ key: "amount", label: `≥ ₹${sf.amountMin.toLocaleString()}` });
+            } else if (sf.amountMax != null) {
+              chips.push({ key: "amount", label: `≤ ₹${sf.amountMax.toLocaleString()}` });
+            }
+            return chips.map((chip, i) => (
+              <span key={chip.key} className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                <Sparkles className="w-3 h-3" />
+                {chip.label}
+                {i === chips.length - 1 && (
+                  <button
+                    onClick={clearSmartFilter}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                    aria-label="Remove smart filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            ));
+          })()}
+        </div>
+      )}
+
+      {/* Unified filter summary bar */}
+      {anyFilterActive && (
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Active filters</span>
+            {search && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                Search: <span className="font-mono">{search}</span>
+                <button
+                  onClick={() => { setSearch(""); setPage(1); }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                  aria-label="Remove search filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {activeStatus && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                Status: {activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1)}
+                <button
+                  onClick={() => {
+                    if (smartFilter?.settlementStatus) setSmartFilter(prev => prev ? { ...prev, settlementStatus: undefined } : null);
+                    else setStatus("all");
+                    setPage(1);
+                  }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                  aria-label="Remove status filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {activeDateFrom && (() => { const d = parseISO(activeDateFrom); return isValid(d) ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                From: {format(d, "MMM d, yyyy")}
+                <button
+                  onClick={() => {
+                    if (smartFilter?.dateFrom) setSmartFilter(prev => prev ? { ...prev, dateFrom: undefined, dateTo: undefined } : null);
+                    else setDateFrom("");
+                    setPage(1);
+                  }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                  aria-label="Remove from-date filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : null; })()}
+            {activeDateTo && (() => { const d = parseISO(activeDateTo); return isValid(d) ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
+                To: {format(d, "MMM d, yyyy")}
+                <button
+                  onClick={() => {
+                    if (smartFilter?.dateTo) setSmartFilter(prev => prev ? { ...prev, dateFrom: undefined, dateTo: undefined } : null);
+                    else setDateTo("");
+                    setPage(1);
+                  }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
+                  aria-label="Remove to-date filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : null; })()}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearAllFilters}
+              className="ml-auto h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 gap-1.5"
+            >
+              <X className="w-3 h-3" />
+              Clear filters
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div className="flex items-center gap-1.5 text-sm">
+              <Hash className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="font-semibold text-foreground">
+                {isLoading ? <span className="inline-block w-8 h-3.5 bg-muted/60 rounded animate-pulse" /> : (data?.total ?? 0).toLocaleString()}
+              </span>
+              <span className="text-muted-foreground">settlements</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm">
+              <TrendingUp className="w-3.5 h-3.5 text-primary" />
+              <span className="font-semibold text-primary">
+                {isLoading
+                  ? <span className="inline-block w-16 h-3.5 bg-muted/60 rounded animate-pulse" />
+                  : `₹${(displayedRows.reduce((a, s) => a + Number(s.requestedAmount ?? s.amount), 0)).toLocaleString()}`
+                }
+              </span>
+              <span className="text-muted-foreground">total</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardHeader className="pb-4">
@@ -483,7 +953,7 @@ export default function MerchantSettlements() {
               {SETTLEMENT_STATUSES.map(s => (
                 <Button
                   key={s.value}
-                  variant={status === s.value ? "secondary" : "outline"}
+                  variant={!hasSmartFilter && status === s.value ? "secondary" : "outline"}
                   size="sm"
                   className="h-8 text-xs"
                   onClick={() => { setStatus(s.value); setPage(1); }}
@@ -542,73 +1012,6 @@ export default function MerchantSettlements() {
             )}
           </div>
         </CardHeader>
-
-        {/* Active filter pill chips */}
-        {anyFilterActive && (
-          <div className="px-6 pb-3 rounded-xl border-b border-violet-500/20 bg-violet-500/5 mx-6 mb-3 pt-3 space-y-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Active filters</span>
-              {search && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
-                  Search: <span className="font-mono">{search}</span>
-                  <button
-                    onClick={() => { setSearch(""); setPage(1); }}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
-                    aria-label="Remove search filter"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {status !== "all" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
-                  Status: {status.charAt(0).toUpperCase() + status.slice(1)}
-                  <button
-                    onClick={() => { setStatus("all"); setPage(1); }}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
-                    aria-label="Remove status filter"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {dateFrom && (() => { const d = parseISO(dateFrom); return isValid(d) ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
-                  From: {format(d, "MMM d, yyyy")}
-                  <button
-                    onClick={() => { setDateFrom(""); setPage(1); }}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
-                    aria-label="Remove from-date filter"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ) : null; })()}
-              {dateTo && (() => { const d = parseISO(dateTo); return isValid(d) ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/40 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300">
-                  To: {format(d, "MMM d, yyyy")}
-                  <button
-                    onClick={() => { setDateTo(""); setPage(1); }}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-violet-500/20 transition-colors"
-                    aria-label="Remove to-date filter"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ) : null; })()}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearAllFilters}
-                className="ml-auto h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 gap-1.5"
-              >
-                <X className="w-3 h-3" />
-                Clear filters
-              </Button>
-            </div>
-          </div>
-        )}
-
         <CardContent className="p-0">
           <Table>
             <TableHeader>
