@@ -8,6 +8,7 @@
 import type { ListAuditReportScheduleLogsStatus } from './listAuditReportScheduleLogsStatus';
 
 export type ListAuditReportScheduleLogsParams = {
+page?: number;
 limit?: number;
 status?: ListAuditReportScheduleLogsStatus;
 dateFrom?: string;

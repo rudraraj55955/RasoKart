@@ -338,7 +338,9 @@ router.get("/schedules/:id/logs", async (req, res) => {
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const q = req.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(q['page'] ?? "1") || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(q['limit'] ?? "20") || 20));
+  const offset = (pageNum - 1) * limitNum;
   const { status, dateFrom, dateTo } = q;
 
   const [schedule] = await db
@@ -380,12 +382,18 @@ router.get("/schedules/:id/logs", async (req, res) => {
   else if (status === "failed") dataConditions.push(eq(scheduledAuditReportLogsTable.success, false));
   const dataWhere = and(...dataConditions);
 
+  const [{ filteredTotal }] = await db
+    .select({ filteredTotal: count() })
+    .from(scheduledAuditReportLogsTable)
+    .where(dataWhere);
+
   const logs = await db
     .select()
     .from(scheduledAuditReportLogsTable)
     .where(dataWhere)
     .orderBy(desc(scheduledAuditReportLogsTable.sentAt))
-    .limit(limitNum);
+    .limit(limitNum)
+    .offset(offset);
 
   res.json({
     data: logs.map(l => ({
@@ -394,6 +402,8 @@ router.get("/schedules/:id/logs", async (req, res) => {
     })),
     total,
     failureCount,
+    filteredTotal,
+    page: pageNum,
   });
 });
 

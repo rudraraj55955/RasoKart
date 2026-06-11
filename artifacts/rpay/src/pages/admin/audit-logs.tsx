@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   useListAdminAuditLogs, useGetAdminAuditLogStats,
   useListAuditReportSchedules, useCreateAuditReportSchedule,
@@ -997,13 +997,26 @@ const FREQUENCY_LABELS: Record<string, string> = {
   monthly: "Monthly",
 };
 
+const PAGE_SIZE = 20;
+
 function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [retryingId, setRetryingId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [accLogs, setAccLogs] = useState<any[]>([]);
 
-  const params: ListAuditReportScheduleLogsParams = { limit: 50 };
+  // Reset accumulated logs and page when filters change
+  const filterKey = `${statusFilter}|${dateFrom}|${dateTo}`;
+  const prevFilterKey = useRef(filterKey);
+  if (prevFilterKey.current !== filterKey) {
+    prevFilterKey.current = filterKey;
+    setPage(1);
+    setAccLogs([]);
+  }
+
+  const params: ListAuditReportScheduleLogsParams = { limit: PAGE_SIZE, page };
   if (statusFilter !== "all") params.status = statusFilter;
   if (dateFrom) params.dateFrom = dateFrom;
   if (dateTo) params.dateTo = dateTo;
@@ -1011,7 +1024,17 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
   const queryClient = useQueryClient();
   const retrySend = useSendAuditReportNow();
 
-  const { data, isLoading } = useListAuditReportScheduleLogs(scheduleId, params);
+  const { data, isLoading, isFetching } = useListAuditReportScheduleLogs(scheduleId, params);
+
+  useEffect(() => {
+    if (!data?.data) return;
+    if (page === 1) {
+      setAccLogs(data.data);
+    } else {
+      setAccLogs(prev => [...prev, ...data.data]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   async function handleRetry(logId: number) {
     setRetryingId(logId);
@@ -1025,9 +1048,10 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
       setRetryingId(null);
     }
   }
-  const logs = data?.data ?? [];
   const total = data?.total ?? 0;
   const failureCount = data?.failureCount ?? 0;
+  const filteredTotal = data?.filteredTotal ?? 0;
+  const hasMore = accLogs.length < filteredTotal;
 
   const hasFilters = statusFilter !== "all" || dateFrom !== "" || dateTo !== "";
 
@@ -1104,7 +1128,7 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
         <div className="space-y-1.5 px-2 py-2">
           {[1, 2, 3].map(i => <div key={i} className="h-8 bg-muted/20 rounded animate-pulse" />)}
         </div>
-      ) : logs.length === 0 ? (
+      ) : accLogs.length === 0 ? (
         <div className="flex items-center gap-2 px-3 py-3 text-muted-foreground">
           <History className="w-4 h-4 opacity-40" />
           <span className="text-xs">
@@ -1115,7 +1139,7 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
         </div>
       ) : (
         <div className="divide-y divide-border/30">
-          {logs.map((log: any) => (
+          {accLogs.map((log: any) => (
             <div key={log.id} className="flex items-start gap-3 px-4 py-2.5">
               <div className="mt-0.5 shrink-0">
                 {log.success
@@ -1179,6 +1203,27 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
               )}
             </div>
           ))}
+          {hasMore && (
+            <div className="px-4 py-2.5 flex items-center justify-between border-t border-border/30">
+              <span className="text-[11px] text-muted-foreground">
+                Showing {accLogs.length} of {filteredTotal}
+              </span>
+              <button
+                onClick={() => setPage(p => p + 1)}
+                disabled={isFetching}
+                className="text-[11px] text-violet-400 hover:text-violet-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+              >
+                {isFetching ? (
+                  <>
+                    <span className="w-3 h-3 border border-violet-400/50 border-t-violet-400 rounded-full animate-spin" />
+                    Loading…
+                  </>
+                ) : (
+                  "Load more"
+                )}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1336,7 +1381,7 @@ function ScheduleRow({
         <div className="border-t border-border/30">
           <div className="px-2 py-1.5 bg-muted/10">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2">
-              Send History (last 20)
+              Send History
             </span>
           </div>
           <ScheduleHistoryPanel scheduleId={s.id} />

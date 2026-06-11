@@ -3115,6 +3115,9 @@ paths:
           in: path
           required: true
           schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
         - name: limit
           in: query
           schema: { type: integer, default: 20 }
@@ -6870,7 +6873,7 @@ components:
 
     AuditReportScheduleLogListResponse:
       type: object
-      required: [data, total, failureCount]
+      required: [data, total, failureCount, filteredTotal, page]
       properties:
         data:
           type: array
@@ -6879,6 +6882,10 @@ components:
         total:
           type: integer
         failureCount:
+          type: integer
+        filteredTotal:
+          type: integer
+        page:
           type: integer
 
     AdminAuditLog:

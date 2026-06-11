@@ -11,4 +11,6 @@ export interface AuditReportScheduleLogListResponse {
   data: AuditReportScheduleLog[];
   total: number;
   failureCount: number;
+  filteredTotal: number;
+  page: number;
 }

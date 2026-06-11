@@ -1721,6 +1721,8 @@ export interface AuditReportScheduleLogListResponse {
   data: AuditReportScheduleLog[];
   total: number;
   failureCount: number;
+  filteredTotal: number;
+  page: number;
 }
 
 export interface AdminAuditLog {
@@ -2849,6 +2851,7 @@ export const PreviewAuditReportEmailFrequency = {
 } as const;
 
 export type ListAuditReportScheduleLogsParams = {
+page?: number;
 limit?: number;
 status?: ListAuditReportScheduleLogsStatus;
 dateFrom?: string;
