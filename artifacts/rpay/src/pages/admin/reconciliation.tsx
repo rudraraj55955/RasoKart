@@ -598,6 +598,9 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Scheduled Time</p>
                     <p className={`text-sm font-medium font-mono ${!currentEnabled ? "text-muted-foreground/60" : ""}`}>{padTwo(currentHour)}:{padTwo(currentMinute)}</p>
                     {tz && <p className="text-[10px] text-muted-foreground/60">{tz}</p>}
+                    {nextRunData?.serverTime && (
+                      <p className="text-[10px] text-muted-foreground/60">Now: <span className="font-mono">{nextRunData.serverTime}</span></p>
+                    )}
                     {localEquivalent && tzDiffers && (
                       <p className="text-[10px] text-primary/70 mt-0.5">= {localEquivalent} your time</p>
                     )}

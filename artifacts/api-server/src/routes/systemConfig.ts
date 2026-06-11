@@ -49,7 +49,14 @@ async function getReconConfig() {
 router.get("/reconciliation/next-run", (req, res) => {
   const nextRun = getNextRunTime();
   const serverTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  res.json({ nextRunAt: nextRun ? nextRun.toISOString() : null, serverTimezone });
+  const serverTime = new Intl.DateTimeFormat("en-GB", {
+    timeZone: serverTimezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date());
+  res.json({ nextRunAt: nextRun ? nextRun.toISOString() : null, serverTimezone, serverTime });
 });
 
 // GET /api/system-config/reconciliation

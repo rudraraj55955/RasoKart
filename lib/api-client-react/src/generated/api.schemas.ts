@@ -2245,6 +2245,8 @@ export interface ReconciliationNextRun {
   nextRunAt: string | null;
   /** IANA timezone name of the server (e.g. "America/New_York") used to interpret scheduled hour/minute */
   serverTimezone?: string | null;
+  /** Current wall-clock time on the server at the moment of the request (HH:MM:SS, as-of page load) */
+  serverTime?: string | null;
 }
 
 export interface ReconciliationScheduleConfig {

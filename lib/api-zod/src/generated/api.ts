@@ -4038,7 +4038,8 @@ export const ResolveReconciliationItemResponse = zod.object({
  */
 export const GetReconciliationNextRunResponse = zod.object({
   "nextRunAt": zod.string().nullable().describe('ISO timestamp of the next scheduled reconciliation run'),
-  "serverTimezone": zod.string().nullish().describe('IANA timezone name of the server (e.g. \"America\/New_York\") used to interpret scheduled hour\/minute')
+  "serverTimezone": zod.string().nullish().describe('IANA timezone name of the server (e.g. \"America\/New_York\") used to interpret scheduled hour\/minute'),
+  "serverTime": zod.string().nullish().describe('Current wall-clock time on the server at the moment of the request (HH:MM:SS, as-of page load)')
 })
 
 
