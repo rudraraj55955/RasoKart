@@ -171,6 +171,7 @@ import type {
   ReconciliationScheduleConfig,
   ReconciliationSchedulerStatus,
   RejectInput,
+  RenameSavedFilterInput,
   RenewPlanInput,
   ReorderSavedFiltersInput,
   ResendReconciliationReportEmail200,
@@ -14125,6 +14126,33 @@ export const reorderSavedFilters = async (reorderSavedFiltersInput: ReorderSaved
 
 
 
+export const getRenameSavedFilterUrl = (id: number,) => {
+
+
+
+
+  return `/api/saved-filters/${id}`
+}
+
+/**
+ * @summary Rename a saved filter preset
+ */
+export const renameSavedFilter = async (id: number,
+    renameSavedFilterInput: RenameSavedFilterInput, options?: RequestInit): Promise<SavedFilter> => {
+
+  return customFetch<SavedFilter>(getRenameSavedFilterUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      renameSavedFilterInput,)
+  }
+);}
+
+
+
+
 export const getReorderSavedFiltersMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderSavedFilters>>, TError,{data: BodyType<ReorderSavedFiltersInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof reorderSavedFilters>>, TError,{data: BodyType<ReorderSavedFiltersInput>}, TContext> => {
@@ -14148,8 +14176,6 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-
-
   return  { mutationFn, ...mutationOptions }}
 
     export type ReorderSavedFiltersMutationResult = NonNullable<Awaited<ReturnType<typeof reorderSavedFilters>>>
@@ -14168,6 +14194,49 @@ export const useReorderSavedFilters = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getReorderSavedFiltersMutationOptions(options));
+    }
+
+export const getRenameSavedFilterMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameSavedFilter>>, TError,{id: number;data: BodyType<RenameSavedFilterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof renameSavedFilter>>, TError,{id: number;data: BodyType<RenameSavedFilterInput>}, TContext> => {
+
+const mutationKey = ['renameSavedFilter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof renameSavedFilter>>, {id: number;data: BodyType<RenameSavedFilterInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  renameSavedFilter(id,data,requestOptions)
+        }
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RenameSavedFilterMutationResult = NonNullable<Awaited<ReturnType<typeof renameSavedFilter>>>
+    export type RenameSavedFilterMutationBody = BodyType<RenameSavedFilterInput>
+    export type RenameSavedFilterMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Rename a saved filter preset
+ */
+export const useRenameSavedFilter = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameSavedFilter>>, TError,{id: number;data: BodyType<RenameSavedFilterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof renameSavedFilter>>,
+        TError,
+        {id: number;data: BodyType<RenameSavedFilterInput>},
+        TContext
+      > => {
+      return useMutation(getRenameSavedFilterMutationOptions(options));
     }
 
 export const getDeleteSavedFilterUrl = (id: number,) => {

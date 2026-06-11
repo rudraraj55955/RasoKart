@@ -42,6 +42,14 @@ export interface CreateSavedFilterInput {
   filterData: CreateSavedFilterInputFilterData;
 }
 
+export interface RenameSavedFilterInput {
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  name: string;
+}
+
 export interface HealthStatus {
   status: string;
 }

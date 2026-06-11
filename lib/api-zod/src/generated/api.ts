@@ -4280,6 +4280,30 @@ export const ReorderSavedFiltersResponse = zod.object({
 
 
 /**
+ * @summary Rename a saved filter preset
+ */
+export const RenameSavedFilterParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const renameSavedFilterBodyNameMax = 40;
+
+
+
+export const RenameSavedFilterBody = zod.object({
+  "name": zod.string().min(1).max(renameSavedFilterBodyNameMax)
+})
+
+export const RenameSavedFilterResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "rawInput": zod.string(),
+  "filterData": zod.record(zod.string(), zod.unknown()).describe('SmartFilter JSON object'),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Delete a saved filter preset
  */
 export const DeleteSavedFilterParams = zod.object({

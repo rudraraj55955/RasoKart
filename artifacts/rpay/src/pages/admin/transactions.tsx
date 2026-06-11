@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
-import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants, useGetPaymentLink, useListSavedFilters, useCreateSavedFilter, useDeleteSavedFilter, useReorderSavedFilters } from "@workspace/api-client-react";
+import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants, useGetPaymentLink, useListSavedFilters, useCreateSavedFilter, useDeleteSavedFilter, useReorderSavedFilters, useRenameSavedFilter } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -874,6 +874,7 @@ export default function AdminTransactions() {
   const { mutateAsync: createSavedFilterMutation, isPending: isSavingFilter } = useCreateSavedFilter();
   const { mutateAsync: deleteSavedFilterMutation } = useDeleteSavedFilter();
   const { mutateAsync: reorderSavedFiltersMutation } = useReorderSavedFilters();
+  const { mutateAsync: renameSavedFilterMutation } = useRenameSavedFilter();
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveFilterName, setSaveFilterName] = useState("");
   const [saveFilterNameError, setSaveFilterNameError] = useState("");
@@ -922,6 +923,13 @@ export default function AdminTransactions() {
     setDragOverId(null);
   };
 
+  // Inline rename state
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
   // Read ?provider= URL query param on mount and pre-fill the provider filter
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -935,6 +943,10 @@ export default function AdminTransactions() {
   useEffect(() => {
     if (showSaveInput) setTimeout(() => saveNameInputRef.current?.focus(), 50);
   }, [showSaveInput]);
+
+  useEffect(() => {
+    if (renamingId != null) setTimeout(() => renameInputRef.current?.focus(), 50);
+  }, [renamingId]);
 
   // Smart filter derived values
   const amountMin = smartFilter?.amountMin;
@@ -1047,6 +1059,40 @@ export default function AdminTransactions() {
       await qc.invalidateQueries({ queryKey: ["/api/saved-filters"] });
     } catch {
       toast.error("Failed to delete filter");
+    }
+  };
+
+  const startRename = (saved: SavedFilterItem) => {
+    setRenamingId(saved.id);
+    setRenameValue(saved.name);
+    setRenameError("");
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameValue("");
+    setRenameError("");
+  };
+
+  const confirmRename = async () => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) { setRenameError("Please enter a name."); renameInputRef.current?.focus(); return; }
+    const isDuplicate = savedFilters.some(f => f.id !== renamingId && f.name.toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) { setRenameError("A filter with this name already exists."); renameInputRef.current?.focus(); return; }
+    setIsRenaming(true);
+    try {
+      await renameSavedFilterMutation({ id: renamingId!, data: { name: trimmed } });
+      await qc.invalidateQueries({ queryKey: ["/api/saved-filters"] });
+      cancelRename();
+    } catch (err: any) {
+      if (err?.status === 409 || err?.message?.includes("already exists")) {
+        setRenameError("A filter with this name already exists.");
+        renameInputRef.current?.focus();
+      } else {
+        toast.error("Failed to rename filter");
+      }
+    } finally {
+      setIsRenaming(false);
     }
   };
 
@@ -1166,37 +1212,77 @@ export default function AdminTransactions() {
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className="text-xs text-muted-foreground font-medium">Saved:</span>
               {orderedFilters.map(saved => (
-                <span
-                  key={saved.id}
-                  draggable
-                  onDragStart={() => handleDragStart(saved.id)}
-                  onDragOver={(e) => handleDragOver(e, saved.id)}
-                  onDrop={(e) => handleDrop(e, saved.id)}
-                  onDragEnd={handleDragEnd}
-                  className={`group inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-violet-300 transition-colors cursor-grab active:cursor-grabbing select-none
-                    ${draggingId === saved.id
-                      ? "opacity-40 border-violet-500/30 bg-violet-500/8"
-                      : dragOverId === saved.id
-                        ? "border-violet-400/80 bg-violet-500/20 scale-105"
-                        : "border-violet-500/30 bg-violet-500/8 hover:border-violet-500/60"
-                    }`}
-                >
-                  <button
-                    onClick={() => applySavedFilter(saved)}
-                    className="flex items-center gap-1 hover:text-violet-100 transition-colors"
-                    title={`Apply: ${saved.rawInput}`}
+                renamingId === saved.id ? (
+                  <span key={saved.id} className="inline-flex flex-col gap-1">
+                    <span className="inline-flex items-center gap-1">
+                      <Input
+                        ref={renameInputRef}
+                        className="h-6 text-xs px-2 w-36 rounded-full border-violet-500/50 bg-violet-500/10 text-violet-200"
+                        value={renameValue}
+                        onChange={e => { setRenameValue(e.target.value); setRenameError(""); }}
+                        onKeyDown={e => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") cancelRename(); }}
+                        maxLength={40}
+                        disabled={isRenaming}
+                      />
+                      <button
+                        onClick={confirmRename}
+                        disabled={isRenaming}
+                        className="rounded-full p-0.5 text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                        aria-label="Confirm rename"
+                      >
+                        {isRenaming ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                      </button>
+                      <button
+                        onClick={cancelRename}
+                        disabled={isRenaming}
+                        className="rounded-full p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors disabled:opacity-50"
+                        aria-label="Cancel rename"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                    {renameError && <p className="text-xs text-rose-400 pl-1">{renameError}</p>}
+                  </span>
+                ) : (
+                  <span
+                    key={saved.id}
+                    draggable
+                    onDragStart={() => handleDragStart(saved.id)}
+                    onDragOver={(e) => handleDragOver(e, saved.id)}
+                    onDrop={(e) => handleDrop(e, saved.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`group inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium text-violet-300 transition-colors cursor-grab active:cursor-grabbing select-none
+                      ${draggingId === saved.id
+                        ? "opacity-40 border-violet-500/30 bg-violet-500/8"
+                        : dragOverId === saved.id
+                          ? "border-violet-400/80 bg-violet-500/20 scale-105"
+                          : "border-violet-500/30 bg-violet-500/8 hover:border-violet-500/60"
+                      }`}
                   >
-                    <BookmarkCheck className="w-3 h-3 shrink-0" />
-                    {saved.name}
-                  </button>
-                  <button
-                    onClick={() => deleteSavedFilter(saved.id)}
-                    className="ml-0.5 rounded-full p-0.5 text-violet-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                    aria-label={`Delete saved filter "${saved.name}"`}
-                  >
-                    <Trash2 className="w-2.5 h-2.5" />
-                  </button>
-                </span>
+                    <button
+                      onClick={() => applySavedFilter(saved)}
+                      className="flex items-center gap-1 hover:text-violet-100 transition-colors"
+                      title={`Apply: ${saved.rawInput}`}
+                    >
+                      <BookmarkCheck className="w-3 h-3 shrink-0" />
+                      {saved.name}
+                    </button>
+                    <button
+                      onClick={() => startRename(saved)}
+                      className="ml-0.5 rounded-full p-0.5 text-violet-400/50 hover:text-violet-200 hover:bg-violet-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Rename saved filter "${saved.name}"`}
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                    </button>
+                    <button
+                      onClick={() => deleteSavedFilter(saved.id)}
+                      className="rounded-full p-0.5 text-violet-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Delete saved filter "${saved.name}"`}
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                )
               ))}
             </div>
           )}

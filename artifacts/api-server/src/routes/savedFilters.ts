@@ -122,6 +122,55 @@ router.put("/reorder", async (req, res, next) => {
   }
 });
 
+// PATCH /api/saved-filters/:id — rename
+router.patch("/:id", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const id = parseInt(req.params['id'] as string);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const { name } = req.body;
+    if (!name?.trim()) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+    if (name.trim().length > 40) {
+      res.status(400).json({ error: "name must be 40 characters or fewer" });
+      return;
+    }
+
+    const duplicate = await db.select({ id: savedFiltersTable.id })
+      .from(savedFiltersTable)
+      .where(and(
+        eq(savedFiltersTable.userId, user.id),
+        eq(savedFiltersTable.name, name.trim()),
+      ))
+      .limit(1);
+
+    if (duplicate.length > 0 && duplicate[0]!.id !== id) {
+      res.status(409).json({ error: "A filter with this name already exists" });
+      return;
+    }
+
+    const [updated] = await db.update(savedFiltersTable)
+      .set({ name: name.trim() })
+      .where(and(eq(savedFiltersTable.id, id), eq(savedFiltersTable.userId, user.id)))
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: "Saved filter not found" });
+      return;
+    }
+
+    res.json(mapFilter(updated));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /api/saved-filters/:id
 router.delete("/:id", async (req, res, next) => {
   try {

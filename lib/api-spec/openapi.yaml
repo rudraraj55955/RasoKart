@@ -4504,6 +4504,53 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   /saved-filters/{id}:
+    patch:
+      operationId: renameSavedFilter
+      tags: [saved-filters]
+      summary: Rename a saved filter preset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameSavedFilterInput'
+      responses:
+        '200':
+          description: Updated saved filter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedFilter'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     delete:
       operationId: deleteSavedFilter
       tags: [saved-filters]
@@ -4582,6 +4629,15 @@ components:
           type: object
           description: SmartFilter JSON object
           additionalProperties: true
+
+    RenameSavedFilterInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
 
     HealthStatus:
       type: object
