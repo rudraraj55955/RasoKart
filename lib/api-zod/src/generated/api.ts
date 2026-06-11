@@ -145,7 +145,8 @@ export const ListMerchantsQueryParams = zod.object({
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional(),
   "expiryStatus": zod.enum(['expiring', 'expired']).optional(),
-  "rejectionReason": zod.coerce.string().optional()
+  "rejectionReason": zod.coerce.string().optional(),
+  "callbackSecretSet": zod.enum(['true', 'false']).optional().describe('Filter by whether merchants have a callback secret configured. \"true\" = secret set, \"false\" = no secret.')
 })
 
 export const ListMerchantsResponse = zod.object({
@@ -164,6 +165,7 @@ export const ListMerchantsResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
   "currentPlanName": zod.string().nullish(),
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
@@ -198,6 +200,7 @@ export const GetMerchantResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
   "currentPlanName": zod.string().nullish(),
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
@@ -271,6 +274,7 @@ export const ApproveMerchantResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
   "currentPlanName": zod.string().nullish(),
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
@@ -305,6 +309,7 @@ export const RejectMerchantResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
   "currentPlanName": zod.string().nullish(),
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
@@ -335,6 +340,7 @@ export const SuspendMerchantResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
   "currentPlanName": zod.string().nullish(),
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
@@ -365,6 +371,7 @@ export const UnsuspendMerchantResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
   "currentPlanName": zod.string().nullish(),
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
@@ -751,6 +758,7 @@ export const UpdateMerchantBrandingResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
   "currentPlanName": zod.string().nullish(),
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
@@ -816,6 +824,7 @@ export const UpdateMerchantCallbackWindowResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
   "currentPlanName": zod.string().nullish(),
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),

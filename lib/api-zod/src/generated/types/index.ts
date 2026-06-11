@@ -97,6 +97,7 @@ export * from './listCallbackLogsStatus';
 export * from './listInvoicesParams';
 export * from './listLedgerEntriesParams';
 export * from './listMerchantFeaturesParams';
+export * from './listMerchantsCallbackSecretSet';
 export * from './listMerchantsExpiryStatus';
 export * from './listMerchantsParams';
 export * from './listMerchantsStatus';

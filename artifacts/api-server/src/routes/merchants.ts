@@ -59,7 +59,7 @@ async function logPlanHistory(opts: {
 
 // GET /api/merchants
 router.get("/", requireAdmin, async (req, res) => {
-  const { status, search, page = "1", limit = "20", expiryStatus, rejectionReason } = req.query as Record<string, string>;
+  const { status, search, page = "1", limit = "20", expiryStatus, rejectionReason, callbackSecretSet } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -78,6 +78,11 @@ router.get("/", requireAdmin, async (req, res) => {
   }
   if (rejectionReason) {
     conditions.push(ilike(merchantsTable.rejectionReason, `%${rejectionReason}%`));
+  }
+  if (callbackSecretSet === "true") {
+    conditions.push(isNotNull(merchantsTable.callbackSecret));
+  } else if (callbackSecretSet === "false") {
+    conditions.push(sql`${merchantsTable.callbackSecret} IS NULL`);
   }
 
   const planConditions = [];
@@ -126,6 +131,7 @@ router.get("/", requireAdmin, async (req, res) => {
       const isExpired = expiresAt ? now > expiresAt : null;
       return {
         ...serializeMerchant(r.merchant),
+        callbackSecretSet: r.merchant.callbackSecret != null,
         currentPlanName: r.currentPlanName ?? null,
         currentPlanStatus: r.currentPlanStatus ?? null,
         currentPlanExpiresAt: expiresAt ? expiresAt.toISOString() : null,

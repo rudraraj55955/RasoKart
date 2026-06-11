@@ -247,6 +247,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: callbackSecretSet
+          in: query
+          description: Filter by whether merchants have a callback secret configured. "true" = secret set, "false" = no secret.
+          schema:
+            type: string
+            enum: ["true", "false"]
       responses:
         "200":
           description: List of merchants
@@ -4215,6 +4221,9 @@ components:
         callbackTimestampWindowSeconds:
           type: ["integer", "null"]
           description: Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.
+        callbackSecretSet:
+          type: boolean
+          description: Whether the merchant has configured a callback signing secret.
         currentPlanName:
           type: ["string", "null"]
         currentPlanStatus:

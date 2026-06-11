@@ -30,6 +30,8 @@ export interface Merchant {
      * @nullable
      */
   callbackTimestampWindowSeconds?: number | null;
+  /** Whether the merchant has configured a callback signing secret. */
+  callbackSecretSet?: boolean;
   /** @nullable */
   currentPlanName?: string | null;
   /** @nullable */

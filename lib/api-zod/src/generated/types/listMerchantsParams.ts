@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListMerchantsCallbackSecretSet } from './listMerchantsCallbackSecretSet';
 import type { ListMerchantsExpiryStatus } from './listMerchantsExpiryStatus';
 import type { ListMerchantsStatus } from './listMerchantsStatus';
 
@@ -15,4 +16,8 @@ page?: number;
 limit?: number;
 expiryStatus?: ListMerchantsExpiryStatus;
 rejectionReason?: string;
+/**
+ * Filter by whether merchants have a callback secret configured. "true" = secret set, "false" = no secret.
+ */
+callbackSecretSet?: ListMerchantsCallbackSecretSet;
 };

@@ -94,6 +94,8 @@ export interface Merchant {
      * @nullable
      */
   callbackTimestampWindowSeconds?: number | null;
+  /** Whether the merchant has configured a callback signing secret. */
+  callbackSecretSet?: boolean;
   /** @nullable */
   currentPlanName?: string | null;
   /** @nullable */
@@ -2170,6 +2172,10 @@ page?: number;
 limit?: number;
 expiryStatus?: ListMerchantsExpiryStatus;
 rejectionReason?: string;
+/**
+ * Filter by whether merchants have a callback secret configured. "true" = secret set, "false" = no secret.
+ */
+callbackSecretSet?: ListMerchantsCallbackSecretSet;
 };
 
 export type ListMerchantsStatus = typeof ListMerchantsStatus[keyof typeof ListMerchantsStatus];
@@ -2188,6 +2194,14 @@ export type ListMerchantsExpiryStatus = typeof ListMerchantsExpiryStatus[keyof t
 export const ListMerchantsExpiryStatus = {
   expiring: 'expiring',
   expired: 'expired',
+} as const;
+
+export type ListMerchantsCallbackSecretSet = typeof ListMerchantsCallbackSecretSet[keyof typeof ListMerchantsCallbackSecretSet];
+
+
+export const ListMerchantsCallbackSecretSet = {
+  true: 'true',
+  false: 'false',
 } as const;
 
 export type ListInvoicesParams = {

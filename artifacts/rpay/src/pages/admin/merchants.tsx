@@ -59,6 +59,7 @@ export default function AdminMerchants() {
   const [status, setStatus] = useState("all");
   const [expiryStatus, setExpiryStatus] = useState<"" | "expiring" | "expired">("");
   const [rejectionReasonFilter, setRejectionReasonFilter] = useState("");
+  const [callbackSecretFilter, setCallbackSecretFilter] = useState<"" | "true" | "false">("");
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -147,7 +148,7 @@ export default function AdminMerchants() {
   const [bulkUndoSecondsLeft, setBulkUndoSecondsLeft] = useState(0);
   const [bulkUndoUsed, setBulkUndoUsed] = useState(false);
 
-  const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined });
+  const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined, callbackSecretSet: callbackSecretFilter as any || undefined });
   const { data: plans } = useListPlans();
   const { data: currentMerchantPlan, isLoading: planLoading } = useGetMerchantPlan(
     assignPlanMerchant?.id ?? 0,
@@ -809,6 +810,40 @@ export default function AdminMerchants() {
               </button>
             ))}
           </div>
+          <div className="flex gap-1 flex-wrap">
+            <button
+              onClick={() => { setCallbackSecretFilter(""); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                callbackSecretFilter === ""
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              Any Secret
+            </button>
+            <button
+              onClick={() => { setCallbackSecretFilter("false"); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                callbackSecretFilter === "false"
+                  ? "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              No Secret
+            </button>
+            <button
+              onClick={() => { setCallbackSecretFilter("true"); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                callbackSecretFilter === "true"
+                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              Secret Set
+            </button>
+          </div>
         </div>
         {(status === "rejected" || status === "all") && (
           <div className="relative max-w-sm">
@@ -927,6 +962,7 @@ export default function AdminMerchants() {
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Plan</TableHead>
+                <TableHead>Secret</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -936,12 +972,12 @@ export default function AdminMerchants() {
               {isLoading ? (
                 [1,2,3,4,5].map(i => (
                   <TableRow key={i}>
-                    {[1,2,3,4,5,6,7,8].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
+                    {[1,2,3,4,5,6,7,8,9].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
                   </TableRow>
                 ))
               ) : merchants.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-10">No merchants found</TableCell>
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-10">No merchants found</TableCell>
                 </TableRow>
               ) : merchants.map(merchant => (
                 <TableRow key={merchant.id} className={selected.has(merchant.id) ? "bg-primary/5" : undefined}>
@@ -1009,6 +1045,19 @@ export default function AdminMerchants() {
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground italic">No plan</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {merchant.callbackSecretSet ? (
+                      <Badge variant="outline" className="text-xs py-0 text-emerald-400 border-emerald-500/30 bg-emerald-500/10 gap-1">
+                        <KeyRound className="w-3 h-3" />
+                        Set
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs py-0 text-rose-400 border-rose-500/30 bg-rose-500/10 gap-1">
+                        <KeyRound className="w-3 h-3" />
+                        Not Set
+                      </Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm">₹{Number(merchant.balance).toLocaleString()}</TableCell>
