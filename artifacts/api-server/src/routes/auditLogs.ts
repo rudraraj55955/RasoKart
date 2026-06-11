@@ -506,7 +506,7 @@ router.get("/schedules/:id/logs", async (req, res) => {
 
 router.post("/schedules", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
-  const { frequency, recipientEmail } = req.body;
+  const { frequency, recipientEmail, maxRetryAttempts } = req.body;
 
   if (!frequency || !["daily", "weekly", "monthly"].includes(frequency)) {
     res.status(400).json({ error: "frequency must be daily, weekly, or monthly" });
@@ -516,11 +516,24 @@ router.post("/schedules", async (req, res) => {
     res.status(400).json({ error: "recipientEmail is required" });
     return;
   }
+  const parsedMaxRetry = maxRetryAttempts !== undefined ? parseInt(String(maxRetryAttempts)) : 3;
+  if (isNaN(parsedMaxRetry) || parsedMaxRetry < 0 || parsedMaxRetry > 10) {
+    res.status(400).json({ error: "maxRetryAttempts must be an integer between 0 and 10" });
+    return;
+  }
+  const { retryBackoffMinutes } = req.body;
+  const parsedBackoff = retryBackoffMinutes !== undefined ? parseInt(String(retryBackoffMinutes)) : 60;
+  if (isNaN(parsedBackoff) || parsedBackoff < 1 || parsedBackoff > 1440) {
+    res.status(400).json({ error: "retryBackoffMinutes must be an integer between 1 and 1440" });
+    return;
+  }
 
   const [schedule] = await db.insert(scheduledAuditReportsTable).values({
     frequency,
     recipientEmail: recipientEmail.trim(),
     isActive: true,
+    maxRetryAttempts: parsedMaxRetry,
+    retryBackoffMinutes: parsedBackoff,
   }).returning();
 
   res.status(201).json(serializeSchedule(schedule));
@@ -565,11 +578,12 @@ router.patch("/schedules/:id", async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { frequency, recipientEmail, isActive, acknowledgeFailure } = req.body;
+  const { frequency, recipientEmail, isActive, maxRetryAttempts, acknowledgeFailure } = req.body;
   const updates: Partial<{
     frequency: string;
     recipientEmail: string;
     isActive: boolean;
+    maxRetryAttempts: number;
     failureAcknowledgedAt: Date | null;
     updatedAt: Date;
   }> = {
@@ -585,6 +599,23 @@ router.patch("/schedules/:id", async (req, res) => {
   }
   if (recipientEmail !== undefined) updates.recipientEmail = (recipientEmail as string).trim();
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
+  if (maxRetryAttempts !== undefined) {
+    const parsed = parseInt(String(maxRetryAttempts));
+    if (isNaN(parsed) || parsed < 0 || parsed > 10) {
+      res.status(400).json({ error: "maxRetryAttempts must be an integer between 0 and 10" });
+      return;
+    }
+    updates.maxRetryAttempts = parsed;
+  }
+  const { retryBackoffMinutes } = req.body;
+  if (retryBackoffMinutes !== undefined) {
+    const parsed = parseInt(String(retryBackoffMinutes));
+    if (isNaN(parsed) || parsed < 1 || parsed > 1440) {
+      res.status(400).json({ error: "retryBackoffMinutes must be an integer between 1 and 1440" });
+      return;
+    }
+    (updates as any).retryBackoffMinutes = parsed;
+  }
   if (acknowledgeFailure === true) updates.failureAcknowledgedAt = new Date();
 
   const [updated] = await db
@@ -623,7 +654,7 @@ router.post("/schedules/:id/send", async (req, res) => {
 
   if (!schedule) { res.status(404).json({ error: "Schedule not found" }); return; }
 
-  const sent = await sendScheduledReport(schedule, false, "manual");
+  const sent = await sendScheduledReport(schedule, 0, "manual");
   if (!sent) {
     res.status(502).json({ error: "Email delivery failed. Check mailer configuration." });
     return;

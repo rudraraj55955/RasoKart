@@ -10,4 +10,8 @@ import type { AuditReportScheduleInputFrequency } from './auditReportScheduleInp
 export interface AuditReportScheduleInput {
   frequency: AuditReportScheduleInputFrequency;
   recipientEmail: string;
+  /** Maximum number of automatic retry attempts (0–10). Defaults to 3. */
+  maxRetryAttempts?: number;
+  /** Minutes to wait between consecutive retry attempts (1–1440). Defaults to 60. */
+  retryBackoffMinutes?: number;
 }

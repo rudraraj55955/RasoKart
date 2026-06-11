@@ -13,6 +13,10 @@ export interface AuditReportSchedule {
   frequency: AuditReportScheduleFrequency;
   recipientEmail: string;
   isActive: boolean;
+  /** Maximum number of automatic retry attempts after an initial delivery failure (0–10). */
+  maxRetryAttempts: number;
+  /** Minutes to wait between consecutive retry attempts (1–1440). */
+  retryBackoffMinutes: number;
   /** @nullable */
   lastSentAt?: string | null;
   lastSendStatus: AuditReportScheduleLastSendStatus;

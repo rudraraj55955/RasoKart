@@ -1737,6 +1737,10 @@ export interface AuditReportSchedule {
   frequency: AuditReportScheduleFrequency;
   recipientEmail: string;
   isActive: boolean;
+  /** Maximum number of automatic retry attempts after an initial delivery failure (0–10). */
+  maxRetryAttempts: number;
+  /** Minutes to wait between consecutive retry attempts (1–1440). */
+  retryBackoffMinutes: number;
   /** @nullable */
   lastSentAt?: string | null;
   lastSendStatus: AuditReportScheduleLastSendStatus;
@@ -1760,6 +1764,10 @@ export const AuditReportScheduleInputFrequency = {
 export interface AuditReportScheduleInput {
   frequency: AuditReportScheduleInputFrequency;
   recipientEmail: string;
+  /** Maximum number of automatic retry attempts (0–10). Defaults to 3. */
+  maxRetryAttempts?: number;
+  /** Minutes to wait between consecutive retry attempts (1–1440). Defaults to 60. */
+  retryBackoffMinutes?: number;
 }
 
 export type AuditReportSchedulePatchFrequency = typeof AuditReportSchedulePatchFrequency[keyof typeof AuditReportSchedulePatchFrequency];
@@ -1775,6 +1783,10 @@ export interface AuditReportSchedulePatch {
   frequency?: AuditReportSchedulePatchFrequency;
   recipientEmail?: string;
   isActive?: boolean;
+  /** Maximum number of automatic retry attempts (0–10). */
+  maxRetryAttempts?: number;
+  /** Minutes to wait between consecutive retry attempts (1–1440). */
+  retryBackoffMinutes?: number;
   /** When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge. */
   acknowledgeFailure?: boolean;
 }
@@ -1804,6 +1816,8 @@ export interface AuditReportScheduleLog {
   /** @nullable */
   errorMessage?: string | null;
   isRetry: boolean;
+  /** Which attempt number this log entry represents (0 = initial, 1 = first retry, 2 = second retry, etc.). */
+  retryAttempt: number;
   triggerType: AuditReportScheduleLogTriggerType;
 }
 

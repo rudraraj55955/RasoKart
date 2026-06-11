@@ -13,6 +13,7 @@ export const scheduledAuditReportLogsTable = pgTable("scheduled_audit_report_log
   success: boolean("success").notNull(),
   errorMessage: text("error_message"),
   isRetry: boolean("is_retry").notNull().default(false),
+  retryAttempt: integer("retry_attempt").notNull().default(0),
   triggerType: auditReportTriggerTypeEnum("trigger_type").notNull().default("scheduled"),
 });
 

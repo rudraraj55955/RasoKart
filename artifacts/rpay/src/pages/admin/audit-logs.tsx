@@ -1136,7 +1136,7 @@ const FREQUENCY_LABELS: Record<string, string> = {
 
 const PAGE_SIZE = 20;
 
-function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
+function ScheduleHistoryPanel({ scheduleId, maxRetryAttempts }: { scheduleId: number; maxRetryAttempts: number }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -1311,7 +1311,7 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
                   )}
                   {log.isRetry && (
                     <span className="inline-flex items-center gap-0.5 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
-                      ↩ Retry
+                      ↩ Attempt {log.retryAttempt} of {maxRetryAttempts}
                     </span>
                   )}
                   <span className="text-xs text-muted-foreground">
@@ -1802,7 +1802,7 @@ function ScheduleRow({
               Send History
             </span>
           </div>
-          <ScheduleHistoryPanel scheduleId={s.id} />
+          <ScheduleHistoryPanel scheduleId={s.id} maxRetryAttempts={s.maxRetryAttempts ?? 3} />
         </div>
       )}
     </div>

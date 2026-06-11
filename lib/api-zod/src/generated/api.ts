@@ -3023,6 +3023,8 @@ export const ListAuditReportSchedulesResponse = zod.object({
   "frequency": zod.enum(['daily', 'weekly', 'monthly']),
   "recipientEmail": zod.string(),
   "isActive": zod.boolean(),
+  "maxRetryAttempts": zod.number().describe('Maximum number of automatic retry attempts after an initial delivery failure (0–10).'),
+  "retryBackoffMinutes": zod.number().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
@@ -3038,7 +3040,9 @@ export const ListAuditReportSchedulesResponse = zod.object({
  */
 export const CreateAuditReportScheduleBody = zod.object({
   "frequency": zod.enum(['daily', 'weekly', 'monthly']),
-  "recipientEmail": zod.string()
+  "recipientEmail": zod.string(),
+  "maxRetryAttempts": zod.number().optional().describe('Maximum number of automatic retry attempts (0–10). Defaults to 3.'),
+  "retryBackoffMinutes": zod.number().optional().describe('Minutes to wait between consecutive retry attempts (1–1440). Defaults to 60.')
 })
 
 
@@ -3055,6 +3059,8 @@ export const BulkToggleAuditReportSchedulesResponse = zod.object({
   "frequency": zod.enum(['daily', 'weekly', 'monthly']),
   "recipientEmail": zod.string(),
   "isActive": zod.boolean(),
+  "maxRetryAttempts": zod.number().describe('Maximum number of automatic retry attempts after an initial delivery failure (0–10).'),
+  "retryBackoffMinutes": zod.number().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
@@ -3077,6 +3083,8 @@ export const SendAuditReportNowResponse = zod.object({
   "frequency": zod.enum(['daily', 'weekly', 'monthly']),
   "recipientEmail": zod.string(),
   "isActive": zod.boolean(),
+  "maxRetryAttempts": zod.number().describe('Maximum number of automatic retry attempts after an initial delivery failure (0–10).'),
+  "retryBackoffMinutes": zod.number().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),
@@ -3148,6 +3156,7 @@ export const ListAuditReportScheduleLogsResponse = zod.object({
   "success": zod.boolean(),
   "errorMessage": zod.string().nullish(),
   "isRetry": zod.boolean(),
+  "retryAttempt": zod.number().describe('Which attempt number this log entry represents (0 = initial, 1 = first retry, 2 = second retry, etc.).'),
   "triggerType": zod.enum(['manual', 'scheduled'])
 })),
   "total": zod.number(),
@@ -3168,6 +3177,8 @@ export const UpdateAuditReportScheduleBody = zod.object({
   "frequency": zod.enum(['daily', 'weekly', 'monthly']).optional(),
   "recipientEmail": zod.string().optional(),
   "isActive": zod.boolean().optional(),
+  "maxRetryAttempts": zod.number().optional().describe('Maximum number of automatic retry attempts (0–10).'),
+  "retryBackoffMinutes": zod.number().optional().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
   "acknowledgeFailure": zod.boolean().optional().describe('When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge.')
 })
 
@@ -3176,6 +3187,8 @@ export const UpdateAuditReportScheduleResponse = zod.object({
   "frequency": zod.enum(['daily', 'weekly', 'monthly']),
   "recipientEmail": zod.string(),
   "isActive": zod.boolean(),
+  "maxRetryAttempts": zod.number().describe('Maximum number of automatic retry attempts after an initial delivery failure (0–10).'),
+  "retryBackoffMinutes": zod.number().describe('Minutes to wait between consecutive retry attempts (1–1440).'),
   "lastSentAt": zod.string().nullish(),
   "lastSendStatus": zod.enum(['ok', 'failed', 'none']),
   "lastErrorMessage": zod.string().nullish(),

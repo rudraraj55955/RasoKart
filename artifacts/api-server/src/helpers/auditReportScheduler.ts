@@ -113,7 +113,19 @@ function isDue(frequency: string, lastSentAt: Date | null): boolean {
   }
 }
 
-export async function sendScheduledReport(schedule: typeof scheduledAuditReportsTable.$inferSelect, isRetry = false, triggerType: "manual" | "scheduled" = "scheduled"): Promise<boolean> {
+/**
+ * Send a single scheduled audit report and log the result.
+ *
+ * @param schedule       The schedule row from the DB.
+ * @param retryAttempt   0 for the initial delivery, 1+ for each automatic retry.
+ * @param triggerType    "scheduled" (cron) or "manual" (admin Send Now button).
+ */
+export async function sendScheduledReport(
+  schedule: typeof scheduledAuditReportsTable.$inferSelect,
+  retryAttempt: number = 0,
+  triggerType: "manual" | "scheduled" = "scheduled",
+): Promise<boolean> {
+  const isRetry = retryAttempt > 0;
   const { dateFrom, dateTo } = getDateRange(schedule.frequency);
   const sentAt = new Date();
 
@@ -161,6 +173,7 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
     success: sent,
     errorMessage,
     isRetry,
+    retryAttempt,
     triggerType,
   });
 
@@ -169,11 +182,13 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
       .update(scheduledAuditReportsTable)
       .set({ lastSentAt: sentAt, updatedAt: new Date() })
       .where(eq(scheduledAuditReportsTable.id, schedule.id));
-    logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length, isRetry }, "Scheduled audit report sent");
+    logger.info({ scheduleId: schedule.id, recipientEmail: schedule.recipientEmail, rowCount: rows.length, isRetry, retryAttempt }, "Scheduled audit report sent");
   } else {
-    logger.warn({ scheduleId: schedule.id, errorMessage, isRetry }, "Scheduled audit report send failed");
+    logger.warn({ scheduleId: schedule.id, errorMessage, isRetry, retryAttempt }, "Scheduled audit report send failed");
 
-    if (isRetry) {
+    // Notify admins only after all retry attempts are exhausted
+    const allRetriesExhausted = retryAttempt >= schedule.maxRetryAttempts;
+    if (allRetriesExhausted) {
       try {
         const admins = await db
           .select({ id: usersTable.id })
@@ -183,11 +198,14 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
         if (admins.length > 0) {
           const appDomain = process.env["APP_DOMAIN"] ?? "https://rasokart.com";
           const scheduleLink = `${appDomain}/admin/audit-logs`;
+          const attemptSummary = schedule.maxRetryAttempts > 0
+            ? ` after ${schedule.maxRetryAttempts} retry attempt${schedule.maxRetryAttempts !== 1 ? "s" : ""}`
+            : "";
           await createBulkNotifications(admins.map(a => ({
             userId: a.id,
             type: "report_delivery_failure" as const,
             title: "Scheduled Report Delivery Failed",
-            body: `The ${schedule.frequency} audit report scheduled for ${schedule.recipientEmail} could not be delivered after the automatic retry. Please check the recipient email address and SMTP configuration. View the schedule in Audit Logs.`,
+            body: `The ${schedule.frequency} audit report scheduled for ${schedule.recipientEmail} could not be delivered${attemptSummary}. Please check the recipient email address and SMTP configuration. View the schedule in Audit Logs.`,
             metadata: {
               scheduleId: schedule.id,
               recipientEmail: schedule.recipientEmail,
@@ -197,7 +215,7 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
             },
           })));
 
-          logger.info({ scheduleId: schedule.id, adminCount: admins.length }, "Admin notifications sent for scheduled audit report delivery failure");
+          logger.info({ scheduleId: schedule.id, adminCount: admins.length, retryAttempt }, "Admin notifications sent for scheduled audit report delivery failure");
         }
       } catch (notifyErr) {
         logger.error({ err: notifyErr, scheduleId: schedule.id }, "Failed to insert admin notifications for scheduled audit report delivery failure");
@@ -209,6 +227,50 @@ export async function sendScheduledReport(schedule: typeof scheduledAuditReports
   return sent;
 }
 
+/**
+ * Fetch the latest log entry for a schedule (or null if none exists).
+ * Uses a shared helper to avoid duplicating the query in both passes.
+ */
+async function getLatestLog(scheduleId: number) {
+  const [log] = await db
+    .select()
+    .from(scheduledAuditReportLogsTable)
+    .where(eq(scheduledAuditReportLogsTable.scheduleId, scheduleId))
+    .orderBy(desc(scheduledAuditReportLogsTable.sentAt))
+    .limit(1);
+  return log ?? null;
+}
+
+/**
+ * Returns true when the latest log represents an active retry cycle that still
+ * has budget remaining and the failure is recent enough to retry.
+ *
+ * "Active retry cycle" means:
+ *   - the latest log is a failure
+ *   - the failure happened within the schedule's total retry window (we use
+ *     maxRetryAttempts × retryBackoffMinutes + a 1-hour buffer as the cutoff
+ *     so that a cycle is never retried indefinitely)
+ *   - the retry budget is not yet exhausted (retryAttempt < maxRetryAttempts)
+ *
+ * When this returns true the initial-send pass MUST skip the schedule, letting
+ * the retry pass handle it. This prevents fresh attempt-0 sends from
+ * overwriting in-progress retry cycles.
+ */
+function isActiveRetryCycle(
+  latestLog: typeof scheduledAuditReportLogsTable.$inferSelect,
+  schedule: typeof scheduledAuditReportsTable.$inferSelect,
+): boolean {
+  if (latestLog.success) return false;
+  if (latestLog.retryAttempt >= schedule.maxRetryAttempts) return false;
+
+  // The overall retry window: all attempts at their maximum spacing plus 1 hour buffer
+  const totalWindowMs =
+    schedule.maxRetryAttempts * schedule.retryBackoffMinutes * 60 * 1000 +
+    60 * 60 * 1000;
+  const windowCutoff = new Date(Date.now() - totalWindowMs);
+  return latestLog.sentAt >= windowCutoff;
+}
+
 async function runDueReports(): Promise<void> {
   try {
     const active = await db
@@ -218,39 +280,69 @@ async function runDueReports(): Promise<void> {
 
     const sentInThisRun = new Set<number>();
 
+    // ── First pass: send reports that are due on their normal schedule ──────
+    // Before firing a fresh attempt-0 send, check whether the schedule is in
+    // an active retry cycle (a recent failure still within its retry budget).
+    // If so, skip this pass so the second pass can advance the retry counter.
     for (const schedule of active) {
-      if (isDue(schedule.frequency, schedule.lastSentAt)) {
-        sentInThisRun.add(schedule.id);
-        await sendScheduledReport(schedule).catch(err => {
-          logger.error({ err, scheduleId: schedule.id }, "Failed to send scheduled audit report");
-        });
-      }
-    }
+      if (!isDue(schedule.frequency, schedule.lastSentAt)) continue;
 
-    for (const schedule of active) {
-      if (sentInThisRun.has(schedule.id)) continue;
-
-      const [latestLog] = await db
-        .select()
-        .from(scheduledAuditReportLogsTable)
-        .where(eq(scheduledAuditReportLogsTable.scheduleId, schedule.id))
-        .orderBy(desc(scheduledAuditReportLogsTable.sentAt))
-        .limit(1);
-
-      // Only auto-retry once: skip if the latest attempt was already a retry.
-      // Use a frequency-appropriate window: 1 hour for daily, 24 hours for weekly/monthly.
-      if (latestLog && !latestLog.success && !latestLog.isRetry) {
-        const windowMs = schedule.frequency === "daily"
-          ? 1 * 60 * 60 * 1000
-          : 24 * 60 * 60 * 1000;
-        const windowCutoff = new Date(Date.now() - windowMs);
-        if (latestLog.sentAt >= windowCutoff) {
-          logger.info({ scheduleId: schedule.id, frequency: schedule.frequency }, "Retrying recently-failed scheduled audit report");
-          await sendScheduledReport(schedule, true).catch(err => {
-            logger.error({ err, scheduleId: schedule.id }, "Retry of scheduled audit report also failed");
-          });
+      if (schedule.maxRetryAttempts > 0) {
+        const latestLog = await getLatestLog(schedule.id);
+        if (latestLog && isActiveRetryCycle(latestLog, schedule)) {
+          // Retry cycle in progress — do NOT restart at attempt 0
+          logger.info(
+            { scheduleId: schedule.id, retryAttempt: latestLog.retryAttempt, maxRetryAttempts: schedule.maxRetryAttempts },
+            "Skipping initial-send pass: active retry cycle in progress",
+          );
+          continue;
         }
       }
+
+      sentInThisRun.add(schedule.id);
+      await sendScheduledReport(schedule, 0, "scheduled").catch(err => {
+        logger.error({ err, scheduleId: schedule.id }, "Failed to send scheduled audit report");
+      });
+    }
+
+    // ── Second pass: advance retry cycles ────────────────────────────────────
+    // For each active schedule NOT sent in this run, check whether the latest
+    // failure is eligible for the next retry attempt based on:
+    //   1. Retry budget not exhausted (retryAttempt < maxRetryAttempts)
+    //   2. Failure is still within the overall retry window
+    //   3. The configured backoff period has elapsed since the last attempt
+    for (const schedule of active) {
+      if (sentInThisRun.has(schedule.id)) continue;
+      if (schedule.maxRetryAttempts <= 0) continue;
+
+      const latestLog = await getLatestLog(schedule.id);
+      if (!latestLog || latestLog.success) continue;
+
+      // Budget check
+      if (latestLog.retryAttempt >= schedule.maxRetryAttempts) continue;
+
+      // Overall window check (prevents retrying stale failures from previous cycles)
+      if (!isActiveRetryCycle(latestLog, schedule)) continue;
+
+      // Backoff check: enough time must have elapsed since the last attempt
+      const backoffMs = schedule.retryBackoffMinutes * 60 * 1000;
+      const backoffCutoff = new Date(Date.now() - backoffMs);
+      if (latestLog.sentAt > backoffCutoff) {
+        logger.info(
+          { scheduleId: schedule.id, retryAttempt: latestLog.retryAttempt, backoffMinutes: schedule.retryBackoffMinutes },
+          "Skipping retry: backoff period not yet elapsed",
+        );
+        continue;
+      }
+
+      const nextRetryAttempt = latestLog.retryAttempt + 1;
+      logger.info(
+        { scheduleId: schedule.id, frequency: schedule.frequency, nextRetryAttempt, maxRetryAttempts: schedule.maxRetryAttempts },
+        "Retrying failed scheduled audit report",
+      );
+      await sendScheduledReport(schedule, nextRetryAttempt, "scheduled").catch(err => {
+        logger.error({ err, scheduleId: schedule.id, nextRetryAttempt }, "Retry of scheduled audit report also failed");
+      });
     }
   } catch (err) {
     logger.error({ err }, "Audit report scheduler run failed");

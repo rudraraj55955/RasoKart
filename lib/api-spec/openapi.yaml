@@ -7226,7 +7226,7 @@ components:
 
     AuditReportSchedule:
       type: object
-      required: [id, frequency, recipientEmail, isActive, lastSendStatus, createdAt, updatedAt]
+      required: [id, frequency, recipientEmail, isActive, maxRetryAttempts, retryBackoffMinutes, lastSendStatus, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -7237,6 +7237,12 @@ components:
           type: string
         isActive:
           type: boolean
+        maxRetryAttempts:
+          type: integer
+          description: Maximum number of automatic retry attempts after an initial delivery failure (0–10).
+        retryBackoffMinutes:
+          type: integer
+          description: Minutes to wait between consecutive retry attempts (1–1440).
         lastSentAt:
           type: ["string", "null"]
         lastSendStatus:
@@ -7260,6 +7266,12 @@ components:
           enum: [daily, weekly, monthly]
         recipientEmail:
           type: string
+        maxRetryAttempts:
+          type: integer
+          description: Maximum number of automatic retry attempts (0–10). Defaults to 3.
+        retryBackoffMinutes:
+          type: integer
+          description: Minutes to wait between consecutive retry attempts (1–1440). Defaults to 60.
 
     AuditReportSchedulePatch:
       type: object
@@ -7271,6 +7283,12 @@ components:
           type: string
         isActive:
           type: boolean
+        maxRetryAttempts:
+          type: integer
+          description: Maximum number of automatic retry attempts (0–10).
+        retryBackoffMinutes:
+          type: integer
+          description: Minutes to wait between consecutive retry attempts (1–1440).
         acknowledgeFailure:
           type: boolean
           description: When true, records the current timestamp as failureAcknowledgedAt, clearing the delivery-failure badge.
@@ -7293,7 +7311,7 @@ components:
 
     AuditReportScheduleLog:
       type: object
-      required: [id, scheduleId, sentAt, rowCount, success, isRetry, triggerType]
+      required: [id, scheduleId, sentAt, rowCount, success, isRetry, retryAttempt, triggerType]
       properties:
         id:
           type: integer
@@ -7309,6 +7327,9 @@ components:
           type: ["string", "null"]
         isRetry:
           type: boolean
+        retryAttempt:
+          type: integer
+          description: Which attempt number this log entry represents (0 = initial, 1 = first retry, 2 = second retry, etc.).
         triggerType:
           type: string
           enum: [manual, scheduled]
