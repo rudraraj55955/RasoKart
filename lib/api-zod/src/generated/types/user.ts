@@ -18,5 +18,7 @@ export interface User {
   /** @nullable */
   merchantStatus?: string | null;
   reconciliationAlertEmails?: boolean;
+  planExpiryAlertEmails?: boolean;
+  settlementStateEmails?: boolean;
   createdAt: string;
 }

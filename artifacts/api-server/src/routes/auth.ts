@@ -109,7 +109,11 @@ router.get("/me", requireAuth, async (req, res, next) => {
       merchantStatus = merchant?.status ?? null;
     }
     const [row] = await db
-      .select({ reconciliationAlertEmails: usersTable.reconciliationAlertEmails })
+      .select({
+        reconciliationAlertEmails: usersTable.reconciliationAlertEmails,
+        planExpiryAlertEmails: usersTable.planExpiryAlertEmails,
+        settlementStateEmails: usersTable.settlementStateEmails,
+      })
       .from(usersTable)
       .where(eq(usersTable.id, user.id))
       .limit(1);
@@ -122,6 +126,8 @@ router.get("/me", requireAuth, async (req, res, next) => {
       merchantId: user.merchantId,
       merchantStatus,
       reconciliationAlertEmails: row?.reconciliationAlertEmails ?? true,
+      planExpiryAlertEmails: row?.planExpiryAlertEmails ?? true,
+      settlementStateEmails: row?.settlementStateEmails ?? true,
       createdAt: user.createdAt,
     });
   } catch (err) {
@@ -133,16 +139,42 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails } = req.body;
 
-    if (typeof reconciliationAlertEmails !== "boolean") {
-      res.status(400).json({ error: "reconciliationAlertEmails must be a boolean" });
+    const patch: Record<string, boolean> = {};
+
+    if (reconciliationAlertEmails !== undefined) {
+      if (typeof reconciliationAlertEmails !== "boolean") {
+        res.status(400).json({ error: "reconciliationAlertEmails must be a boolean" });
+        return;
+      }
+      patch["reconciliationAlertEmails"] = reconciliationAlertEmails;
+    }
+
+    if (planExpiryAlertEmails !== undefined) {
+      if (typeof planExpiryAlertEmails !== "boolean") {
+        res.status(400).json({ error: "planExpiryAlertEmails must be a boolean" });
+        return;
+      }
+      patch["planExpiryAlertEmails"] = planExpiryAlertEmails;
+    }
+
+    if (settlementStateEmails !== undefined) {
+      if (typeof settlementStateEmails !== "boolean") {
+        res.status(400).json({ error: "settlementStateEmails must be a boolean" });
+        return;
+      }
+      patch["settlementStateEmails"] = settlementStateEmails;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ error: "No valid preference fields provided" });
       return;
     }
 
     const [updated] = await db
       .update(usersTable)
-      .set({ reconciliationAlertEmails })
+      .set(patch)
       .where(eq(usersTable.id, user.id))
       .returning();
 
@@ -155,6 +187,8 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       merchantId: updated.merchantId,
       merchantStatus: null,
       reconciliationAlertEmails: updated.reconciliationAlertEmails,
+      planExpiryAlertEmails: updated.planExpiryAlertEmails,
+      settlementStateEmails: updated.settlementStateEmails,
       createdAt: updated.createdAt,
     });
   } catch (err) {

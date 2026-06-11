@@ -3,10 +3,16 @@ import { db, settlementsTable, merchantsTable, ledgerEntriesTable, usersTable, a
 import { eq, and, count, sql, gte, lte, sum } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createNotification } from "../helpers/notifications";
+import { notifyAdminsOfSettlementStateChange } from "../helpers/adminNotifyEmail";
 
 async function getUserIdForMerchant(merchantId: number): Promise<number | null> {
   const [u] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.merchantId, merchantId)).limit(1);
   return u?.id ?? null;
+}
+
+async function getMerchantName(merchantId: number): Promise<string> {
+  const [m] = await db.select({ businessName: merchantsTable.businessName }).from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);
+  return m?.businessName ?? `Merchant #${merchantId}`;
 }
 
 const router = Router();
@@ -250,6 +256,18 @@ router.post("/:id/process", requireAdmin, async (req, res) => {
   }
 
   res.json(mapSettlement(updated));
+
+  // Notify opted-in admins of state change (fire-and-forget)
+  void getMerchantName(s.merchantId).then(merchantName =>
+    notifyAdminsOfSettlementStateChange({
+      settlementId: id,
+      merchantName,
+      referenceNumber: updated.referenceNumber ?? null,
+      newStatus: "processing",
+      amount: updated.requestedAmount ?? updated.amount,
+      note: remark,
+    })
+  ).catch(() => {});
 });
 
 // POST /api/settlements/:id/approve  (admin: processing → approved, deduct balance atomically)
@@ -346,6 +364,18 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
   });
 
   res.json(mapSettlement(updated));
+
+  // Notify opted-in admins of state change (fire-and-forget)
+  void getMerchantName(s.merchantId).then(merchantName =>
+    notifyAdminsOfSettlementStateChange({
+      settlementId: id,
+      merchantName,
+      referenceNumber: updated.referenceNumber ?? null,
+      newStatus: "approved",
+      amount: updated.requestedAmount ?? updated.amount,
+      note: remark,
+    })
+  ).catch(() => {});
 });
 
 // POST /api/settlements/:id/reject  (admin: pending|processing → rejected)
@@ -385,6 +415,18 @@ router.post("/:id/reject", requireAdmin, async (req, res) => {
   });
 
   res.json(mapSettlement(updated));
+
+  // Notify opted-in admins of state change (fire-and-forget)
+  void getMerchantName(s.merchantId).then(merchantName =>
+    notifyAdminsOfSettlementStateChange({
+      settlementId: id,
+      merchantName,
+      referenceNumber: updated.referenceNumber ?? null,
+      newStatus: "rejected",
+      amount: updated.requestedAmount ?? updated.amount,
+      note: remark,
+    })
+  ).catch(() => {});
 });
 
 // POST /api/settlements/:id/hold  (admin: processing → pending)
@@ -464,6 +506,18 @@ router.post("/:id/mark-paid", requireAdmin, async (req, res) => {
   });
 
   res.json(mapSettlement(updated));
+
+  // Notify opted-in admins of state change (fire-and-forget)
+  void getMerchantName(s.merchantId).then(merchantName =>
+    notifyAdminsOfSettlementStateChange({
+      settlementId: id,
+      merchantName,
+      referenceNumber: updated.referenceNumber ?? null,
+      newStatus: "paid",
+      amount: updated.requestedAmount ?? updated.amount,
+      note: remark,
+    })
+  ).catch(() => {});
 });
 
 export default router;

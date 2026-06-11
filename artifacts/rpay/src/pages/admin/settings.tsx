@@ -91,6 +91,8 @@ export default function AdminSettings() {
 
   const { data: me } = useGetMe();
   const alertEnabled = me?.reconciliationAlertEmails ?? true;
+  const planExpiryEnabled = me?.planExpiryAlertEmails ?? true;
+  const settlementStateEnabled = me?.settlementStateEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -506,7 +508,7 @@ export default function AdminSettings() {
             Control which automated emails are sent to your account. These preferences apply only to you and do not affect other admins.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
             <div className="space-y-0.5">
               <p className="text-sm font-medium">Reconciliation alert emails</p>
@@ -523,9 +525,53 @@ export default function AdminSettings() {
             />
           </div>
           {!alertEnabled && (
-            <p className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               You will not receive alerts when unmatched reconciliation items are found.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Plan expiry alert emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an email when a merchant's subscription plan is about to expire.
+              </p>
+            </div>
+            <Switch
+              checked={planExpiryEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { planExpiryAlertEmails: val } })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!planExpiryEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive alerts when merchant plans are approaching expiry.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Settlement state change emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an email when a merchant settlement changes status (e.g. approved, rejected, completed).
+              </p>
+            </div>
+            <Switch
+              checked={settlementStateEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { settlementStateEmails: val } })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!settlementStateEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive emails when settlement statuses change.
             </p>
           )}
         </CardContent>

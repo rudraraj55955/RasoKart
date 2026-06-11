@@ -11,6 +11,8 @@ export const usersTable = pgTable("users", {
   isActive: boolean("is_active").notNull().default(true),
   merchantId: integer("merchant_id"),
   reconciliationAlertEmails: boolean("reconciliation_alert_emails").notNull().default(true),
+  planExpiryAlertEmails: boolean("plan_expiry_alert_emails").notNull().default(true),
+  settlementStateEmails: boolean("settlement_state_emails").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

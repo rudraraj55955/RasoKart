@@ -153,9 +153,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [reconciliationAlertEmails]
               properties:
                 reconciliationAlertEmails:
+                  type: boolean
+                planExpiryAlertEmails:
+                  type: boolean
+                settlementStateEmails:
                   type: boolean
       responses:
         "200":
@@ -3896,6 +3899,10 @@ components:
         merchantStatus:
           type: ["string", "null"]
         reconciliationAlertEmails:
+          type: boolean
+        planExpiryAlertEmails:
+          type: boolean
+        settlementStateEmails:
           type: boolean
         createdAt:
           type: string

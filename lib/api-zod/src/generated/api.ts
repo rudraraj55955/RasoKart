@@ -35,6 +35,8 @@ export const LoginResponse = zod.object({
   "merchantId": zod.number().nullish(),
   "merchantStatus": zod.string().nullish(),
   "reconciliationAlertEmails": zod.boolean().optional(),
+  "planExpiryAlertEmails": zod.boolean().optional(),
+  "settlementStateEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 })
@@ -65,6 +67,8 @@ export const GetMeResponse = zod.object({
   "merchantId": zod.number().nullish(),
   "merchantStatus": zod.string().nullish(),
   "reconciliationAlertEmails": zod.boolean().optional(),
+  "planExpiryAlertEmails": zod.boolean().optional(),
+  "settlementStateEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 
@@ -73,7 +77,9 @@ export const GetMeResponse = zod.object({
  * @summary Update current user preferences
  */
 export const UpdateMyPreferencesBody = zod.object({
-  "reconciliationAlertEmails": zod.boolean()
+  "reconciliationAlertEmails": zod.boolean().optional(),
+  "planExpiryAlertEmails": zod.boolean().optional(),
+  "settlementStateEmails": zod.boolean().optional()
 })
 
 export const UpdateMyPreferencesResponse = zod.object({
@@ -85,6 +91,8 @@ export const UpdateMyPreferencesResponse = zod.object({
   "merchantId": zod.number().nullish(),
   "merchantStatus": zod.string().nullish(),
   "reconciliationAlertEmails": zod.boolean().optional(),
+  "planExpiryAlertEmails": zod.boolean().optional(),
+  "settlementStateEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 
@@ -1666,6 +1674,8 @@ export const ListUsersResponse = zod.object({
   "merchantId": zod.number().nullish(),
   "merchantStatus": zod.string().nullish(),
   "reconciliationAlertEmails": zod.boolean().optional(),
+  "planExpiryAlertEmails": zod.boolean().optional(),
+  "settlementStateEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -1708,6 +1718,8 @@ export const UpdateUserResponse = zod.object({
   "merchantId": zod.number().nullish(),
   "merchantStatus": zod.string().nullish(),
   "reconciliationAlertEmails": zod.boolean().optional(),
+  "planExpiryAlertEmails": zod.boolean().optional(),
+  "settlementStateEmails": zod.boolean().optional(),
   "createdAt": zod.string()
 })
 

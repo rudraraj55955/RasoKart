@@ -8,6 +8,7 @@ import { initReconciliationScheduler } from "./helpers/reconScheduler";
 import { initAuditReportScheduler } from "./helpers/auditReportScheduler";
 import { startProviderLimitAlertScheduler } from "./helpers/providerLimitScheduler";
 import { initQrCleanupScheduler } from "./helpers/qrCleanupScheduler";
+import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -56,6 +57,7 @@ async function main() {
   initAuditReportScheduler();
   startProviderLimitAlertScheduler();
   initQrCleanupScheduler();
+  initPlanExpiryScheduler();
   scheduleCallbackRetryWorker();
 
   app.listen(port, (err) => {
