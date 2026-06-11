@@ -10,7 +10,7 @@ import { startProviderLimitAlertScheduler, runProviderLimitAlertScan } from "./h
 import { initQrCleanupScheduler } from "./helpers/qrCleanupScheduler";
 import { initPlanExpiryScheduler } from "./helpers/planExpiryScheduler";
 import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
-import { initNonceCleanupScheduler } from "./helpers/nonceCleanupScheduler";
+import { initNonceCleanupScheduler, pruneExpiredNonces } from "./helpers/nonceCleanupScheduler";
 import { initWebhookSecretScheduler } from "./helpers/webhookSecretScheduler";
 
 const rawPort = process.env["PORT"];
@@ -63,6 +63,11 @@ async function main() {
   initPlanExpiryScheduler();
   initPlanRenewalScheduler();
   initNonceCleanupScheduler();
+  // Startup sweep: prune any expired nonces that accumulated while the server
+  // was down, before the first scheduled run (every 6 hours) fires.
+  pruneExpiredNonces().catch((err) => {
+    logger.warn({ err }, "Startup nonce cleanup sweep failed");
+  });
   initWebhookSecretScheduler();
   scheduleCallbackRetryWorker();
 
