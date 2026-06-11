@@ -107,6 +107,8 @@ import type {
   ListReconciliationRunsParams,
   ListSavedFilters200,
   ListSettlementsParams,
+  ListStorageCleanupRuns200,
+  ListStorageCleanupRunsParams,
   ListTransactionsParams,
   ListUploadedObjects200,
   ListUsersParams,
@@ -14173,6 +14175,90 @@ export const useRunStorageCleanup = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getRunStorageCleanupMutationOptions(options));
     }
+
+export const getListStorageCleanupRunsUrl = (params?: ListStorageCleanupRunsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/storage/cleanup-runs?${stringifiedParams}` : `/api/storage/cleanup-runs`
+}
+
+/**
+ * @summary List past storage cleanup runs (admin only)
+ */
+export const listStorageCleanupRuns = async (params?: ListStorageCleanupRunsParams, options?: RequestInit): Promise<ListStorageCleanupRuns200> => {
+
+  return customFetch<ListStorageCleanupRuns200>(getListStorageCleanupRunsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStorageCleanupRunsQueryKey = (params?: ListStorageCleanupRunsParams,) => {
+    return [
+    `/api/storage/cleanup-runs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListStorageCleanupRunsQueryOptions = <TData = Awaited<ReturnType<typeof listStorageCleanupRuns>>, TError = ErrorType<ErrorResponse>>(params?: ListStorageCleanupRunsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStorageCleanupRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStorageCleanupRunsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStorageCleanupRuns>>> = ({ signal }) => listStorageCleanupRuns(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStorageCleanupRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStorageCleanupRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listStorageCleanupRuns>>>
+export type ListStorageCleanupRunsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List past storage cleanup runs (admin only)
+ */
+
+export function useListStorageCleanupRuns<TData = Awaited<ReturnType<typeof listStorageCleanupRuns>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListStorageCleanupRunsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStorageCleanupRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStorageCleanupRunsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListMerchantFilterPresetsUrl = () => {
 

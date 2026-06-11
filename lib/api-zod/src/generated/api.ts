@@ -4320,6 +4320,31 @@ export const RunStorageCleanupResponse = zod.object({
 
 
 /**
+ * @summary List past storage cleanup runs (admin only)
+ */
+export const listStorageCleanupRunsQueryLimitDefault = 20;
+export const listStorageCleanupRunsQueryLimitMax = 100;
+
+
+
+export const ListStorageCleanupRunsQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listStorageCleanupRunsQueryLimitMax).default(listStorageCleanupRunsQueryLimitDefault).describe('Maximum number of runs to return, newest first.')
+})
+
+export const ListStorageCleanupRunsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "runAt": zod.coerce.date(),
+  "totalScanned": zod.number(),
+  "deleted": zod.number(),
+  "errors": zod.number(),
+  "triggeredBy": zod.string().describe('Email or identifier of the admin who triggered the run.'),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
  * @summary List all filter presets for the current merchant
  */
 export const ListMerchantFilterPresetsResponse = zod.object({

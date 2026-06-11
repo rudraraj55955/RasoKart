@@ -2319,6 +2319,17 @@ export interface StorageCleanupResult {
   errors: number;
 }
 
+export interface StorageCleanupRun {
+  id: number;
+  runAt: string;
+  totalScanned: number;
+  deleted: number;
+  errors: number;
+  /** Email or identifier of the admin who triggered the run. */
+  triggeredBy: string;
+  createdAt: string;
+}
+
 export interface LookbackPreset {
   /**
      * Human-readable name for this preset (e.g. "Fortnightly")
@@ -3006,6 +3017,19 @@ export type ResendReconciliationReportEmail200 = {
 
 export type ListUploadedObjects200 = {
   data: UploadedObjectEntry[];
+};
+
+export type ListStorageCleanupRunsParams = {
+/**
+ * Maximum number of runs to return, newest first.
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListStorageCleanupRuns200 = {
+  data: StorageCleanupRun[];
 };
 
 export type ListMerchantFilterPresets200 = {

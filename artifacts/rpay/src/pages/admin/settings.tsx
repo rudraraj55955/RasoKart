@@ -9,7 +9,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useRunStorageCleanup, type AdminAuditLog } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, type AdminAuditLog, type StorageCleanupRun } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
@@ -416,10 +416,17 @@ export default function AdminSettings() {
   });
 
   const [cleanupResult, setCleanupResult] = useState<{ totalScanned: number; deleted: number; errors: number } | null>(null);
+
+  const CLEANUP_RUNS_PARAMS = { limit: 20 } as const;
+  const { data: cleanupRunsData, refetch: refetchCleanupRuns } = useListStorageCleanupRuns(CLEANUP_RUNS_PARAMS);
+  const cleanupRuns: StorageCleanupRun[] = cleanupRunsData?.data ?? [];
+
   const { mutate: runCleanup, isPending: runningCleanup } = useRunStorageCleanup({
     mutation: {
       onSuccess: (result) => {
         setCleanupResult(result);
+        void refetchCleanupRuns();
+        qc.invalidateQueries({ queryKey: getListStorageCleanupRunsQueryKey(CLEANUP_RUNS_PARAMS) });
         if (result.deleted === 0) {
           toast.success("No orphaned files found — storage is already clean");
         } else {
@@ -1517,6 +1524,54 @@ export default function AdminSettings() {
               </Button>
             </div>
           </div>
+
+          {/* Run history */}
+          {cleanupRuns.length > 0 && (
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <History className="w-3.5 h-3.5" />
+                <span>Past runs</span>
+              </div>
+              <div className="rounded-md border border-border/50 overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border/50 bg-muted/20">
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Run at</th>
+                      <th className="px-3 py-2 text-right font-medium text-muted-foreground">Scanned</th>
+                      <th className="px-3 py-2 text-right font-medium text-muted-foreground">Deleted</th>
+                      <th className="px-3 py-2 text-right font-medium text-muted-foreground">Errors</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">By</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cleanupRuns.map((run, idx) => (
+                      <tr
+                        key={run.id}
+                        className={`border-b border-border/30 last:border-0 ${idx % 2 === 0 ? "" : "bg-muted/10"}`}
+                      >
+                        <td className="px-3 py-2 tabular-nums text-muted-foreground whitespace-nowrap">
+                          {new Date(run.runAt).toLocaleString(undefined, {
+                            month: "short", day: "numeric", year: "numeric",
+                            hour: "2-digit", minute: "2-digit",
+                          })}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">{run.totalScanned}</td>
+                        <td className={`px-3 py-2 text-right tabular-nums font-medium ${run.deleted > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
+                          {run.deleted}
+                        </td>
+                        <td className={`px-3 py-2 text-right tabular-nums ${run.errors > 0 ? "text-red-400 font-medium" : "text-muted-foreground"}`}>
+                          {run.errors}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground truncate max-w-[140px]" title={run.triggeredBy}>
+                          {run.triggeredBy}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

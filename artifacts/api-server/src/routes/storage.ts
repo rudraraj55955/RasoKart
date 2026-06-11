@@ -6,7 +6,7 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { db, uploadedObjectsTable, merchantsTable, providersTable } from "@workspace/db";
+import { db, uploadedObjectsTable, merchantsTable, providersTable, auditLogsTable, storageCleanupRunsTable } from "@workspace/db";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { recordUploadIntent } from "../lib/uploadIntentStore";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
@@ -258,6 +258,8 @@ function normalizeToObjectPath(logoUrl: string): string | null {
  * matched to their uploaded_objects row and never treated as orphans.
  */
 router.post("/storage/cleanup-orphans", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id: number; email: string } }).user;
+
   try {
     // Collect every canonical objectPath currently in active use.
     const merchantLogos = await db
@@ -302,15 +304,61 @@ router.post("/storage/cleanup-orphans", requireAuth, requireAdmin, async (req: R
       }
     }
 
+    const totalScanned = allRows.length;
+    const triggeredBy = user?.email ?? "unknown";
+
     req.log.info(
-      { totalScanned: allRows.length, deleted, errors },
+      { totalScanned, deleted, errors },
       "Storage orphan cleanup completed"
     );
 
-    res.json({ totalScanned: allRows.length, deleted, errors });
+    // Persist run record and audit log (fire-and-forget, don't block response).
+    void db.insert(storageCleanupRunsTable).values({
+      totalScanned,
+      deleted,
+      errors,
+      triggeredBy,
+    }).catch((e) => req.log.error({ err: e }, "Failed to persist storage cleanup run"));
+
+    if (user) {
+      void db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "storage_cleanup",
+        targetType: "storage",
+        targetId: null,
+        details: JSON.stringify({ totalScanned, deleted, errors }),
+        ipAddress: req.ip ?? null,
+      }).catch(() => {});
+    }
+
+    res.json({ totalScanned, deleted, errors });
   } catch (err) {
     req.log.error({ err }, "Storage cleanup job failed");
     res.status(500).json({ error: "Storage cleanup failed" });
+  }
+});
+
+/**
+ * GET /storage/cleanup-runs
+ *
+ * Admin-only: returns the last N storage cleanup run records, newest first.
+ */
+router.get("/storage/cleanup-runs", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rawLimit = parseInt(req.query['limit'] as string ?? "20", 10);
+    const limit = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(rawLimit, 100);
+
+    const runs = await db
+      .select()
+      .from(storageCleanupRunsTable)
+      .orderBy(desc(storageCleanupRunsTable.runAt))
+      .limit(limit);
+
+    res.json({ data: runs });
+  } catch (err) {
+    req.log.error({ err }, "Failed to list storage cleanup runs");
+    res.status(500).json({ error: "Failed to list cleanup runs" });
   }
 });
 
