@@ -60,7 +60,7 @@ function formatAmount(val: string | number | null | undefined): string {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function buildEmailHtml(run: typeof reconciliationRunsTable.$inferSelect): string {
+export function buildEmailHtml(run: typeof reconciliationRunsTable.$inferSelect): string {
   const dateRange = `${run.dateFrom} to ${run.dateTo}`;
   const triggeredBy = run.triggeredBy === "auto" ? "Automatic (scheduled)" : "Manual";
 

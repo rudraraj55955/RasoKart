@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2 } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey } from "@workspace/api-client-react";
@@ -136,6 +136,30 @@ export default function AdminSettings() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  const [previewingEmail, setPreviewingEmail] = useState(false);
+
+  async function handlePreviewEmail() {
+    setPreviewingEmail(true);
+    try {
+      const res = await fetch("/api/settings/finance_report_email/preview", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Failed to load preview");
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const tab = window.open(url, "_blank");
+      if (tab) {
+        tab.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Could not load email preview");
+    } finally {
+      setPreviewingEmail(false);
+    }
+  }
 
   const { mutate: sendTestEmail, isPending: sendingTest } = useMutation({
     mutationFn: () => {
@@ -292,7 +316,18 @@ export default function AdminSettings() {
               <Mail className="w-4 h-4 text-muted-foreground" />
               <CardTitle className="text-base">Finance Report Recipients</CardTitle>
             </div>
-            {smtpConfigured === true && (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handlePreviewEmail}
+                disabled={previewingEmail}
+                title="Preview the finance report email with sample data"
+              >
+                <Eye className="w-3.5 h-3.5 mr-1.5" />
+                {previewingEmail ? "Loading…" : "Preview email"}
+              </Button>
+              {smtpConfigured === true && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
                 <Wifi className="w-3 h-3" />
                 SMTP ready
@@ -304,6 +339,7 @@ export default function AdminSettings() {
                 SMTP not configured
               </span>
             )}
+            </div>
           </div>
           <CardDescription className="text-sm">
             After each reconciliation run completes, a summary email with the full CSV report attached

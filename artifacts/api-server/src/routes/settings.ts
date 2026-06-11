@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { db, systemSettingsTable, auditLogsTable } from "@workspace/db";
+import { db, systemSettingsTable, auditLogsTable, reconciliationRunsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMail } from "../helpers/mailer";
+import { buildEmailHtml } from "../helpers/reconcileEmail";
 
 const router = Router();
 router.use(requireAuth);
@@ -80,6 +81,38 @@ router.put("/:key", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// GET /api/settings/finance_report_email/preview
+router.get("/finance_report_email/preview", (_req, res) => {
+  const today = new Date();
+  const dateFrom = new Date(today);
+  dateFrom.setDate(today.getDate() - 7);
+
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  const sampleRun: typeof reconciliationRunsTable.$inferSelect = {
+    id: 42,
+    merchantId: null,
+    dateFrom: fmt(dateFrom),
+    dateTo: fmt(today),
+    runAt: today,
+    totalDeposits: 18,
+    totalMatched: 15,
+    totalUnmatched: 3,
+    totalSettlements: 16,
+    matchedAmount: "245820.00",
+    unmatchedAmount: "18500.00",
+    status: "completed",
+    createdBy: null,
+    triggeredBy: "auto",
+    notes: null,
+    createdAt: today,
+  };
+
+  const html = buildEmailHtml(sampleRun);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
 });
 
 // GET /api/settings/smtp-status
