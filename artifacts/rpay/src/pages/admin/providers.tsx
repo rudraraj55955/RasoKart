@@ -232,7 +232,10 @@ export default function AdminProviders() {
     if (selectedMerchants.size === 0) { toast.error("Select at least one merchant"); return; }
     bulkVisMut.mutate({ id: visDrawer.id, data: { merchantIds: Array.from(selectedMerchants), visible } }, {
       onSuccess: () => { refetchVis(); qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success(`Updated ${selectedMerchants.size} merchants`); setSelectedMerchants(new Set()); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed"),
+      onError: (e: any) => {
+        if (visRateLimit.handleRateLimitError(e)) return;
+        toast.error(e?.response?.data?.error ?? "Failed");
+      },
     });
   }
 
@@ -654,8 +657,8 @@ export default function AdminProviders() {
                 {selectedMerchants.size > 0 && (
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
                     <span className="text-xs text-muted-foreground flex-1">{selectedMerchants.size} merchant{selectedMerchants.size > 1 ? "s" : ""} selected</span>
-                    <Button size="sm" className="h-7 text-xs gap-1" onClick={() => handleBulkVisibility(true)} disabled={bulkVisMut.isPending}>Enable</Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-400 border-rose-500/30" onClick={() => handleBulkVisibility(false)} disabled={bulkVisMut.isPending}>Disable</Button>
+                    <Button size="sm" className="h-7 text-xs gap-1" onClick={() => handleBulkVisibility(true)} disabled={visRateLimit.isRateLimited || bulkVisMut.isPending}>Enable</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-rose-400 border-rose-500/30" onClick={() => handleBulkVisibility(false)} disabled={visRateLimit.isRateLimited || bulkVisMut.isPending}>Disable</Button>
                   </div>
                 )}
 
