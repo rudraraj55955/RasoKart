@@ -428,10 +428,32 @@ function UnmatchedCard({ item, onResolve }: { item: any; onResolve: (item: any) 
   );
 }
 
+function useNow(intervalMs: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function formatCountdown(targetMs: number, nowMs: number): string {
+  const diffMs = targetMs - nowMs;
+  if (diffMs <= 0) return "now";
+  const totalSecs = Math.floor(diffMs / 1000);
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
 function ScheduleSettingsCard() {
   const qc = useQueryClient();
   const { data: config, isLoading: configLoading } = useGetReconciliationScheduleConfig();
   const { data: nextRunData } = useGetReconciliationNextRun();
+  const now = useNow(1000);
 
   const [editing, setEditing] = useState(false);
   const [localTimeStr, setLocalTimeStr] = useState("00:00");
@@ -565,9 +587,9 @@ function ScheduleSettingsCard() {
                   <div className="flex items-center gap-1.5 text-xs text-emerald-400/80">
                     <Clock className="w-3 h-3 shrink-0" />
                     <span>
-                      Next run{" "}
-                      <span className="font-medium text-emerald-400">
-                        {formatDistanceToNow(new Date(nextRunData.nextRunAt), { addSuffix: true })}
+                      Next run in{" "}
+                      <span className="font-medium text-emerald-400 tabular-nums">
+                        {formatCountdown(new Date(nextRunData.nextRunAt).getTime(), now)}
                       </span>
                       <span className="text-muted-foreground/60 ml-1">
                         ({new Date(nextRunData.nextRunAt).toLocaleString(undefined, {
