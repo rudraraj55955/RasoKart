@@ -17,6 +17,12 @@ type ReconciliationSchedule = (typeof RECONCILIATION_SCHEDULE_VALUES)[number];
 
 const SMTP_KEYS = ["smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from"] as const;
 
+export const KNOWN_SETTING_KEYS: { value: string; label: string }[] = [
+  { value: "finance_report_email", label: "Finance Report Email" },
+  { value: "reconciliation_schedule", label: "Reconciliation Schedule" },
+  { value: "smtp", label: "SMTP Configuration" },
+];
+
 // GET /api/settings
 router.get("/", async (req, res, next) => {
   try {
@@ -142,7 +148,7 @@ router.put("/smtp", async (req, res, next) => {
           action: "setting_updated",
           targetType: "system_config",
           targetId: null,
-          details: JSON.stringify({ settingType: "smtp", fieldsChanged: changedFields }),
+          details: JSON.stringify({ key: "smtp", settingType: "smtp", fieldsChanged: changedFields }),
           ipAddress: req.ip ?? null,
         });
       } catch (auditErr) {
@@ -470,6 +476,13 @@ router.get("/finance_report_email/logs", async (_req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// GET /api/settings/known-keys — returns all known setting keys with human-readable labels
+// Used by the audit log filter UI to populate the sub-filter dropdown dynamically
+// NOTE: registered before the generic PUT /:key to avoid wildcard collision
+router.get("/known-keys", (_req, res) => {
+  res.json(KNOWN_SETTING_KEYS);
 });
 
 // PUT /api/settings/:key — generic key/value upsert for non-SMTP settings

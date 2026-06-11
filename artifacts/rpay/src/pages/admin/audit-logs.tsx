@@ -10,7 +10,7 @@ import {
   previewAuditReportEmail,
   type ListAuditReportScheduleLogsParams,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +30,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
+import { getToken } from "@/lib/auth";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   merchant_approved:        { label: "Merchant Approved",    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
@@ -1828,11 +1829,6 @@ function ScheduledReportsPanel() {
   );
 }
 
-const SETTING_KEY_OPTIONS: { value: string; label: string }[] = [
-  { value: "finance_report_email", label: "Finance Report Email" },
-  { value: "reconciliation_schedule", label: "Reconciliation Schedule" },
-];
-
 export default function AdminAuditLogs() {
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("all");
@@ -1846,6 +1842,18 @@ export default function AdminAuditLogs() {
   const [selected, setSelected] = useState<any | null>(null);
   const [exporting, setExporting] = useState(false);
   const [lastExportCount, setLastExportCount] = useState<number | null>(null);
+
+  const { data: settingKeyOptions = [] } = useQuery<{ value: string; label: string }[]>({
+    queryKey: ["settings-known-keys"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings/known-keys", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: Infinity,
+  });
 
   async function handleExportCsv() {
     setExporting(true);
@@ -2007,7 +2015,7 @@ export default function AdminAuditLogs() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All setting keys</SelectItem>
-                    {SETTING_KEY_OPTIONS.map(opt => (
+                    {settingKeyOptions.map(opt => (
                       <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -2134,7 +2142,7 @@ export default function AdminAuditLogs() {
             {hasSettingKey && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-0.5 text-xs font-medium text-amber-400">
                 <Settings className="w-3 h-3" />
-                Key: {SETTING_KEY_OPTIONS.find(o => o.value === settingKey)?.label ?? settingKey}
+                Key: {settingKeyOptions.find(o => o.value === settingKey)?.label ?? settingKey}
                 <button
                   onClick={() => { setSettingKey("all"); setPage(1); }}
                   className="ml-0.5 hover:text-amber-300 transition-colors"
