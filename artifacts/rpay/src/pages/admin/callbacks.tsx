@@ -11,6 +11,7 @@ import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, X 
 import { format, formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/utils";
 
 type RejectionCategory = "stale_timestamp" | "replay_detected" | "bad_signature" | "missing_header" | null;
 
@@ -73,8 +74,8 @@ function CallbackRow({ log }: { log: any }) {
         toast.success("Callback queued for retry");
         queryClient.invalidateQueries({ queryKey: ["listCallbackLogs"] });
       },
-      onError: () => {
-        toast.error("Failed to queue retry");
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, "Failed to queue retry"));
       },
     },
   });

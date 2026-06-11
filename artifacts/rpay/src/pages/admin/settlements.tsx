@@ -31,6 +31,7 @@ import { ChevronDown, ChevronRight, Search, X, MoreHorizontal, TrendingUp, Clock
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { SmartFilterBase, parseSmartQuery } from "@/lib/smart-search";
+import { getApiErrorMessage } from "@/lib/utils";
 
 type ActionType = "process" | "approve" | "reject" | "hold" | "mark-paid";
 
@@ -137,8 +138,8 @@ export default function AdminSettlements() {
     setActionError("");
   };
 
-  const onError = (err: any) => {
-    setActionError(err?.response?.data?.error ?? err?.message ?? "Action failed");
+  const onError = (err: unknown) => {
+    setActionError(getApiErrorMessage(err, "Action failed"));
   };
 
   const processMut = useProcessSettlement({ mutation: { onSuccess: invalidate, onError } });

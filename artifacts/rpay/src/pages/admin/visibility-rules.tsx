@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Search, Globe, Lock, Eye, EyeOff, RotateCcw, Users, Info } from "lucide-react";
+import { getApiErrorMessage } from "@/lib/utils";
 
 function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
 async function api(method: string, path: string, body?: object) {
@@ -61,7 +62,7 @@ export default function AdminVisibilityRules() {
       setBulkDialog(false);
       setAllMerchantsDialog(false);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update visibility")),
   });
 
   function toggleOne(merchantId: number, currentVisible: boolean) {

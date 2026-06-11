@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Wallet, ArrowUpRight, ArrowDownRight, RefreshCw, Plus, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   deposit:    { label: "Deposit",    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
@@ -123,8 +124,8 @@ export default function AdminLedger() {
           setAdjDesc("");
           refetch();
         },
-        onError: (err: any) => {
-          toast.error(err?.response?.data?.error ?? "Failed to apply adjustment");
+        onError: (err: unknown) => {
+          toast.error(getApiErrorMessage(err, "Failed to apply adjustment"));
         },
       }
     );

@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Search, Plus, Pencil, Trash2, QrCode, Link2, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const QR_PROVIDERS = [
   { value: "phonepe",       label: "PhonePe",        color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
@@ -74,19 +75,19 @@ export default function AdminQrProviders() {
   const createMutation = useMutation({
     mutationFn: (body: object) => api("POST", "/connections", body),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["connections"] }); toast.success("QR provider assigned"); setDialog(null); resetForm(); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to assign QR provider")),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, body }: { id: number; body: object }) => api("PUT", `/connections/${id}`, body),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["connections"] }); toast.success("Updated"); setDialog(null); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update QR provider")),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api("DELETE", `/connections/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["connections"] }); toast.success("Removed"); setDialog(null); setEditing(null); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to remove QR provider")),
   });
 
   function resetForm() {

@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
 import { buildUpiId, buildUpiUrl } from "@/lib/upi";
+import { getApiErrorMessage } from "@/lib/utils";
 
 type VaRow = {
   id: number;
@@ -303,7 +304,7 @@ export default function AdminVirtualAccounts() {
   const handleClose = (id: number) => {
     updateMutation.mutate({ id, data: { status: "closed" } }, {
       onSuccess: () => { toast.success("Account closed"); qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] }); },
-      onError: () => toast.error("Failed to close account"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to close account")),
     });
   };
 
@@ -311,7 +312,7 @@ export default function AdminVirtualAccounts() {
     if (!confirm("Delete this virtual account?")) return;
     deleteMutation.mutate({ id }, {
       onSuccess: () => { toast.success("Virtual account deleted"); qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] }); },
-      onError: () => toast.error("Failed to delete"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete")),
     });
   };
 
@@ -366,9 +367,8 @@ export default function AdminVirtualAccounts() {
           qc.invalidateQueries({ queryKey: [`/api/virtual-accounts/${vaId}/balance-history`] });
           qc.invalidateQueries({ queryKey: ["/api/virtual-accounts/balance-audit"] });
         },
-        onError: (err: any) => {
-          const msg = err?.response?.data?.error ?? err?.response?.data?.message ?? null;
-          setEditError(msg ?? "Failed to update.");
+        onError: (err: unknown) => {
+          setEditError(getApiErrorMessage(err, "Failed to update."));
         },
       }
     );
@@ -726,7 +726,7 @@ export default function AdminVirtualAccounts() {
                           }
                           qc.invalidateQueries({ queryKey: ["/api/virtual-accounts"] });
                         },
-                        onError: () => toast.error("Backfill failed"),
+                        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Backfill failed")),
                       });
                     }}
                     className="text-muted-foreground whitespace-nowrap"

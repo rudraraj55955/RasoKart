@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Search, Download, Settings2, Users, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const FEATURES = [
   { key: "dynamicQr",      label: "Dynamic QR",   short: "DQR" },
@@ -74,7 +75,7 @@ export default function AdminFeatureControl() {
       queryClient.invalidateQueries({ queryKey: ["feature-control"] });
       toast.success("Feature updated");
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update feature")),
   });
 
   const bulkMutation = useMutation({
@@ -86,7 +87,7 @@ export default function AdminFeatureControl() {
       setBulkDialog(false);
       setSelected(new Set());
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to bulk update features")),
   });
 
   function toggleFeature(merchantId: number, key: FeatureKey, currentValue: boolean) {

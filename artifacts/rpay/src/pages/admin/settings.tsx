@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
+import { getApiErrorMessage } from "@/lib/utils";
 import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useRunStorageCleanup, type AdminAuditLog } from "@workspace/api-client-react";
 
 async function apiGet(path: string) {
@@ -121,7 +122,7 @@ export default function AdminSettings() {
         toast.success("Notification preferences saved");
         qc.setQueryData(getGetMeQueryKey(), updated);
       },
-      onError: (err: Error) => toast.error(err.message),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save notification preferences")),
     },
   });
 
@@ -170,7 +171,7 @@ export default function AdminSettings() {
       qc.invalidateQueries({ queryKey: ["/api/settings/smtp"] });
       qc.invalidateQueries({ queryKey: ["/api/settings/smtp-status"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save SMTP settings")),
   });
 
   const { mutate: sendSmtpTest, isPending: sendingSmtpTest } = useMutation({
@@ -215,7 +216,7 @@ export default function AdminSettings() {
       toast.success("Finance report email saved");
       qc.invalidateQueries({ queryKey: ["/api/settings"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save email settings")),
   });
 
   const [testHistoryFilter, setTestHistoryFilter] = useState<"all" | "success" | "failed">("all");
@@ -321,7 +322,7 @@ export default function AdminSettings() {
       return apiPost("/settings/test-email", to ? { to } : undefined);
     },
     onSuccess: (res: { to: string }) => toast.success(`Test email sent to ${res.to} — check your inbox`),
-    onError: (err: Error) => toast.error(`Test email failed: ${err.message}`),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Test email failed")),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["test-email-history"] });
       qc.invalidateQueries({ queryKey: ["test-email-history-count"] });
@@ -358,7 +359,7 @@ export default function AdminSettings() {
       toast.success("Reconciliation schedule saved");
       qc.invalidateQueries({ queryKey: ["/api/settings"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save reconciliation schedule")),
   });
 
   const { data: qrCleanupData, isLoading: qrCleanupLoading } = useQuery<{ retentionDays: number }>({
@@ -381,7 +382,7 @@ export default function AdminSettings() {
       toast.success("QR cleanup retention saved");
       qc.invalidateQueries({ queryKey: ["/api/system-config/qr-cleanup"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save QR cleanup retention")),
   });
 
   const [storageScheduleEnabled, setStorageScheduleEnabled] = useState<boolean>(true);
@@ -425,7 +426,7 @@ export default function AdminSettings() {
           toast.success(`Deleted ${result.deleted} orphaned file${result.deleted !== 1 ? "s" : ""}`);
         }
       },
-      onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Cleanup failed")),
     },
   });
 

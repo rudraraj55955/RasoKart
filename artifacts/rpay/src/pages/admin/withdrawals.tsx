@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { CheckCircle, XCircle, ArrowUpRight, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
 
 export default function AdminWithdrawals() {
   const qc = useQueryClient();
@@ -34,7 +35,7 @@ export default function AdminWithdrawals() {
   const handleApprove = (id: number) => {
     approveMutation.mutate({ id }, {
       onSuccess: () => { toast.success("Withdrawal approved"); qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() }); },
-      onError: () => toast.error("Failed"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to approve withdrawal")),
     });
   };
 
@@ -42,7 +43,7 @@ export default function AdminWithdrawals() {
     if (!rejectId || !rejectReason.trim()) return;
     rejectMutation.mutate({ id: rejectId, data: { reason: rejectReason } }, {
       onSuccess: () => { toast.success("Withdrawal rejected"); setRejectId(null); setRejectReason(""); qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() }); },
-      onError: () => toast.error("Failed"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reject withdrawal")),
     });
   };
 

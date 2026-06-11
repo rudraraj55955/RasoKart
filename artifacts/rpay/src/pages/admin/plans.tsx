@@ -16,6 +16,7 @@ import { Pencil, Trash2, PlusCircle, Search, Infinity, KeyRound, Webhook, Percen
 import { toast } from "sonner";
 import { format } from "date-fns";
 import type { Plan } from "@workspace/api-client-react";
+import { getApiErrorMessage } from "@/lib/utils";
 
 interface PricingObj { qr: { monthly: number; perTx: number }; va: { monthly: number; perTx: number } }
 const DEFAULT_PRICING: PricingObj = { qr: { monthly: 0, perTx: 0 }, va: { monthly: 0, perTx: 0 } };
@@ -159,12 +160,12 @@ export default function AdminPlans() {
     if (editPlan) {
       updateMutation.mutate({ id: editPlan.id, data: payload }, {
         onSuccess: () => { toast.success("Plan updated"); setDialogOpen(false); qc.invalidateQueries({ queryKey: getListPlansQueryKey() }); },
-        onError: () => toast.error("Failed to update plan"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update plan")),
       });
     } else {
       createMutation.mutate({ data: payload }, {
         onSuccess: () => { toast.success("Plan created"); setDialogOpen(false); qc.invalidateQueries({ queryKey: getListPlansQueryKey() }); },
-        onError: () => toast.error("Failed to create plan"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to create plan")),
       });
     }
   };
@@ -173,7 +174,7 @@ export default function AdminPlans() {
     if (!confirm(`Delete plan "${name}"? This will unassign it from any merchants.`)) return;
     deleteMutation.mutate({ id }, {
       onSuccess: () => { toast.success("Plan deleted"); qc.invalidateQueries({ queryKey: getListPlansQueryKey() }); },
-      onError: () => toast.error("Failed to delete"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete")),
     });
   };
 

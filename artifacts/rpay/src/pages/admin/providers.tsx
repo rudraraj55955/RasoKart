@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search, GripVertical, Megaphone } from "lucide-react";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   live:         { label: "Live",        color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
@@ -84,7 +85,7 @@ export default function AdminProviders() {
       setBroadcastTarget("all");
       setBroadcastMerchantId("");
     },
-    onError: () => toast.error("Failed to send broadcast"),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to send broadcast")),
   });
 
   // Create / Edit / Delete dialog
@@ -136,7 +137,7 @@ export default function AdminProviders() {
   const reorderMut = useMutation({
     mutationFn: (order: number[]) => apiPut("/providers/reorder", { order }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Sort order saved"); },
-    onError: () => toast.error("Failed to save sort order"),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save sort order")),
   });
 
   // Merchant visibility drawer data
@@ -169,12 +170,12 @@ export default function AdminProviders() {
     if (dialog === "create") {
       createMut.mutate({ data: payload }, {
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Provider created"); setDialog(null); },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to create provider"),
+        onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to create provider")),
       });
     } else if (editing) {
       updateMut.mutate({ id: editing.id, data: payload }, {
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Provider updated"); setDialog(null); },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to update provider"),
+        onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update provider")),
       });
     }
   }
@@ -183,28 +184,28 @@ export default function AdminProviders() {
     if (!editing) return;
     deleteMut.mutate({ id: editing.id }, {
       onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Provider deleted"); setDialog(null); setEditing(null); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to delete provider"),
+      onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to delete provider")),
     });
   }
 
   function handleInlineStatus(providerId: number, newStatus: string) {
     updateMut.mutate({ id: providerId, data: { status: newStatus } }, {
       onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Status updated"); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to update status"),
+      onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update status")),
     });
   }
 
   function handleGlobalVisibility(providerId: number, visible: boolean) {
     setVisMut.mutate({ id: providerId, data: { merchantId: null, visible } }, {
       onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/providers"] }); refetchVis(); toast.success(visible ? "Enabled for all merchants" : "Disabled for all merchants"); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to update visibility"),
+      onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update visibility")),
     });
   }
 
   function handleMerchantToggle(providerId: number, merchantId: number, visible: boolean) {
     setVisMut.mutate({ id: providerId, data: { merchantId, visible } }, {
       onSuccess: () => { refetchVis(); qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success("Visibility updated"); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed"),
+      onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update merchant visibility")),
     });
   }
 
@@ -212,7 +213,7 @@ export default function AdminProviders() {
     if (selectedMerchants.size === 0) { toast.error("Select at least one merchant"); return; }
     bulkVisMut.mutate({ id: visDrawer.id, data: { merchantIds: Array.from(selectedMerchants), visible } }, {
       onSuccess: () => { refetchVis(); qc.invalidateQueries({ queryKey: ["/api/providers"] }); toast.success(`Updated ${selectedMerchants.size} merchants`); setSelectedMerchants(new Set()); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed"),
+      onError: (e: unknown) => toast.error(getApiErrorMessage(e, "Failed to update bulk visibility")),
     });
   }
 

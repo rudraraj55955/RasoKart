@@ -14,6 +14,7 @@ import { Plus, Trash2, Bell, BellOff, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
+import { getApiErrorMessage } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -39,14 +40,14 @@ export default function AdminUsers() {
     if (!form.email || !form.password || !form.name) return;
     createMutation.mutate({ data: form as any }, {
       onSuccess: () => { toast.success("User created"); setCreateOpen(false); setForm({ email: "", password: "", name: "", role: "admin" }); qc.invalidateQueries({ queryKey: getListUsersQueryKey() }); },
-      onError: () => toast.error("Failed to create user"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to create user")),
     });
   };
 
   const handleToggle = (id: number, isActive: boolean) => {
     updateMutation.mutate({ id, data: { isActive } }, {
       onSuccess: () => { toast.success(isActive ? "User activated" : "User deactivated"); qc.invalidateQueries({ queryKey: getListUsersQueryKey() }); },
-      onError: () => toast.error("Failed to update user"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update user")),
     });
   };
 
@@ -54,7 +55,7 @@ export default function AdminUsers() {
     if (!confirm("Delete this user?")) return;
     deleteMutation.mutate({ id }, {
       onSuccess: () => { toast.success("User deleted"); qc.invalidateQueries({ queryKey: getListUsersQueryKey() }); },
-      onError: () => toast.error("Failed to delete user"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete user")),
     });
   };
 

@@ -34,6 +34,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff, Bell, Globe, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const ACTION_COLOR: Record<string, string> = {
   assigned: "text-sky-400",
@@ -89,7 +90,7 @@ export default function AdminMerchants() {
       setBrandingLogoError(false);
       toast.success("Logo uploaded");
     },
-    onError: () => toast.error("Logo upload failed"),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Logo upload failed")),
   });
   const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string; callbackTimestampWindowSeconds?: number | null } | null>(null);
   const [windowEditMode, setWindowEditMode] = useState(false);
@@ -296,7 +297,7 @@ export default function AdminMerchants() {
           setBulkUndoState(null);
           toast.success(`Undo: approved ${result.updated} merchant${result.updated !== 1 ? "s" : ""}`);
         },
-        onError: () => { setBulkUndoUsed(false); toast.error("Undo failed"); },
+        onError: (err: unknown) => { setBulkUndoUsed(false); toast.error(getApiErrorMessage(err, "Undo failed")); },
       });
     } else {
       bulkSuspendMutation.mutate({ data: { merchantIds: ids, action } }, {
@@ -308,7 +309,7 @@ export default function AdminMerchants() {
           setBulkUndoState(null);
           toast.success(`Undo: ${action === "suspend" ? "suspended" : "reinstated"} ${result.updated} merchant${result.updated !== 1 ? "s" : ""}`);
         },
-        onError: () => { setBulkUndoUsed(false); toast.error("Undo failed"); },
+        onError: (err: unknown) => { setBulkUndoUsed(false); toast.error(getApiErrorMessage(err, "Undo failed")); },
       });
     }
   };
@@ -346,29 +347,29 @@ export default function AdminMerchants() {
       const mutation = action === "upgrade" ? upgradeMutation : downgradeMutation;
       mutation.mutate({ id, data: { planId: parseInt(selectedPlanId), expiresAt: actionExpiresAt || null, notes } }, {
         onSuccess: () => afterSuccess(`Plan ${action}d`, () => setSelectedPlanId("")),
-        onError: () => toast.error(`Failed to ${action} plan`),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, `Failed to ${action} plan`)),
       });
     } else if (action === "suspend") {
       suspendPlanMutation.mutate({ id, data: { notes } }, {
         onSuccess: () => afterSuccess("Plan suspended"),
-        onError: () => toast.error("Failed to suspend plan"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to suspend plan")),
       });
     } else if (action === "reinstate") {
       reinstatePlanMutation.mutate({ id, data: { notes } }, {
         onSuccess: () => afterSuccess("Plan reinstated"),
-        onError: () => toast.error("Failed to reinstate plan"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reinstate plan")),
       });
     } else if (action === "renew") {
       const defaultExpiry = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
       renewMutation.mutate({ id, data: { expiresAt: renewExpiresAt || defaultExpiry, scheduledRenewalAt: renewScheduledRenewalAt || null, notes } }, {
         onSuccess: () => afterSuccess("Plan renewed", () => { setRenewExpiresAt(""); setRenewScheduledRenewalAt(""); }),
-        onError: () => toast.error("Failed to renew plan"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to renew plan")),
       });
     } else if (action === "schedule-renewal") {
       const dateVal = scheduleRenewalDate || null;
       scheduleRenewalMutation.mutate({ id, data: { scheduledRenewalAt: dateVal } }, {
         onSuccess: () => afterSuccess(dateVal ? "Renewal scheduled" : "Scheduled renewal cancelled", () => setScheduleRenewalDate("")),
-        onError: () => toast.error("Failed to update scheduled renewal"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update scheduled renewal")),
       });
     }
   };
@@ -381,7 +382,7 @@ export default function AdminMerchants() {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
         setSingleActionResult({ open: true, title: "Merchant Approved", merchantName: merchant.businessName, newStatus: merchant.status, timestamp: new Date().toISOString() });
       },
-      onError: () => toast.error("Failed to approve merchant"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to approve merchant")),
     });
   };
 
@@ -391,7 +392,7 @@ export default function AdminMerchants() {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
         setSingleActionResult({ open: true, title: "Merchant Suspended", merchantName: merchant.businessName, newStatus: merchant.status, timestamp: new Date().toISOString() });
       },
-      onError: () => toast.error("Failed to suspend merchant"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to suspend merchant")),
     });
   };
 
@@ -401,7 +402,7 @@ export default function AdminMerchants() {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
         setSingleActionResult({ open: true, title: "Merchant Reinstated", merchantName: merchant.businessName, newStatus: merchant.status, timestamp: new Date().toISOString() });
       },
-      onError: () => toast.error("Failed to unsuspend merchant"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to unsuspend merchant")),
     });
   };
 
@@ -413,7 +414,7 @@ export default function AdminMerchants() {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
         setSingleActionResult({ open: true, title: "Merchant Rejected", merchantName: merchant.businessName, newStatus: merchant.status, timestamp: new Date().toISOString() });
       },
-      onError: () => toast.error("Failed to reject merchant"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reject merchant")),
     });
   };
 
@@ -439,7 +440,7 @@ export default function AdminMerchants() {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
         closeBranding();
       },
-      onError: () => toast.error("Failed to update branding"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update branding")),
     });
   };
 
@@ -491,7 +492,7 @@ export default function AdminMerchants() {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
         closeAssignPlan();
       },
-      onError: () => toast.error("Failed to assign plan"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to assign plan")),
     });
   };
 
@@ -534,7 +535,7 @@ export default function AdminMerchants() {
           toast.warning(label);
         }
       },
-      onError: () => toast.error("Bulk plan assignment failed"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Bulk plan assignment failed")),
     });
   };
 
@@ -574,7 +575,7 @@ export default function AdminMerchants() {
             toast.warning(label);
           }
         },
-        onError: () => toast.error("Bulk approve failed"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Bulk approve failed")),
       });
     } else {
       const actionLabel = bulkStatusAction === "suspend" ? "suspended" : "reinstated";
@@ -605,7 +606,7 @@ export default function AdminMerchants() {
             toast.warning(label);
           }
         },
-        onError: () => toast.error(`Bulk ${capturedAction} failed`),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, `Bulk ${capturedAction} failed`)),
       });
     }
   };
@@ -625,7 +626,7 @@ export default function AdminMerchants() {
           toast.success(`Security reminder sent to ${result.sent} merchant${result.sent !== 1 ? "s" : ""}`);
         }
       },
-      onError: () => toast.error("Failed to send security reminder"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to send security reminder")),
     });
   };
 
@@ -645,7 +646,7 @@ export default function AdminMerchants() {
         clearSelection();
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
       },
-      onError: () => toast.error("Bulk reject failed"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Bulk reject failed")),
     });
   };
 
@@ -669,7 +670,7 @@ export default function AdminMerchants() {
           const label = `Retry: assigned plan to ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
           if (failed === 0) toast.success(label); else toast.warning(label);
         },
-        onError: () => toast.error("Retry bulk plan assignment failed"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Retry bulk plan assignment failed")),
       });
     } else if (bulkRetryContext.type === "approve") {
       bulkApproveMutation.mutate({ data: { merchantIds: failedIds } }, {
@@ -683,7 +684,7 @@ export default function AdminMerchants() {
           const label = `Retry: approved ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
           if (failed === 0) toast.success(label); else toast.warning(label);
         },
-        onError: () => toast.error("Retry bulk approve failed"),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Retry bulk approve failed")),
       });
     } else if (bulkRetryContext.type === "suspend" || bulkRetryContext.type === "reinstate") {
       const capturedAction = bulkRetryContext.type;
@@ -699,7 +700,7 @@ export default function AdminMerchants() {
           const label = `Retry: ${actionLabel} ${updated} merchant${updated !== 1 ? "s" : ""} — ${failed} failed`;
           if (failed === 0) toast.success(label); else toast.warning(label);
         },
-        onError: () => toast.error(`Retry bulk ${capturedAction} failed`),
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, `Retry bulk ${capturedAction} failed`)),
       });
     }
   };
@@ -1852,7 +1853,7 @@ export default function AdminMerchants() {
                             setConfirmSecretReset(false);
                             refetchCallbackSecret();
                           },
-                          onError: () => toast.error("Failed to reset callback secret"),
+                          onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reset callback secret")),
                         });
                       }}
                     >
@@ -1942,7 +1943,7 @@ export default function AdminMerchants() {
                               toast.success(parsed === null ? "Replay-protection window reset to default" : `Replay-protection window set to ${parsed}s`);
                               qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
                             },
-                            onError: () => toast.error("Failed to update replay-protection window"),
+                            onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update replay-protection window")),
                           }
                         );
                       }}
@@ -1967,7 +1968,7 @@ export default function AdminMerchants() {
                                 toast.success("Replay-protection window reset to default");
                                 qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
                               },
-                              onError: () => toast.error("Failed to reset replay-protection window"),
+                              onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reset replay-protection window")),
                             }
                           );
                         }}
@@ -2042,9 +2043,8 @@ export default function AdminMerchants() {
                               setWebhookUrlInput("");
                               refetchWebhookUrl();
                             },
-                            onError: (err: any) => {
-                              const msg = err?.response?.data?.error ?? "Failed to update webhook URL";
-                              toast.error(msg);
+                            onError: (err: unknown) => {
+                              toast.error(getApiErrorMessage(err, "Failed to update webhook URL"));
                             },
                           }
                         );

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Search, Link2, Trash2, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
 
 type LinkRow = {
   id: number;
@@ -57,7 +58,7 @@ export default function AdminPaymentLinks() {
     if (!confirm("Delete this payment link permanently?")) return;
     deleteMutation.mutate({ id }, {
       onSuccess: () => { toast.success("Payment link deleted"); invalidate(); },
-      onError: () => toast.error("Failed to delete"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete")),
     });
   };
 
@@ -65,7 +66,7 @@ export default function AdminPaymentLinks() {
     if (!confirm("Force expire this payment link?")) return;
     updateMutation.mutate({ id, data: { status: "expired" as any } }, {
       onSuccess: () => { toast.success("Payment link expired"); invalidate(); },
-      onError: () => toast.error("Failed to update"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to update")),
     });
   };
 

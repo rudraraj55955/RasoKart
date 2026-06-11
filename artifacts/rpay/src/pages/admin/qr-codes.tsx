@@ -16,6 +16,7 @@ import { Search, Trash2, Download, QrCode, X, RefreshCw, ChevronDown, ChevronRig
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
+import { getApiErrorMessage } from "@/lib/utils";
 
 function statusBadge(status: string) {
   if (status === "active") return <Badge className="text-xs bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20">Active</Badge>;
@@ -311,7 +312,7 @@ export default function AdminQrCodes() {
     if (!confirm("Delete this QR code?")) return;
     deleteMutation.mutate({ id }, {
       onSuccess: () => { toast.success("QR code deleted"); invalidateQr(); },
-      onError: () => toast.error("Failed to delete"),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete")),
     });
   };
 
@@ -391,8 +392,8 @@ export default function AdminQrCodes() {
         setBulkConfirm(null);
         invalidateQr();
       },
-      onError: () => {
-        toast.error("Bulk delete failed");
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, "Bulk delete failed"));
         setBulkConfirm(null);
       },
     });

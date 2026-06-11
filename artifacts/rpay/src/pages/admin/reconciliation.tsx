@@ -15,6 +15,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
 import { useGetReconciliationScheduleConfig, useUpdateReconciliationScheduleConfig, useGetReconciliationNextRun, useGetReconciliationLookbackPresets, useAddReconciliationLookbackPreset, useDeleteReconciliationLookbackPreset } from "@workspace/api-client-react";
 import type { ReconciliationRun } from "@workspace/api-client-react";
 
@@ -265,7 +266,7 @@ function ResolveDialog({ item, onClose, onResolved }: ResolveDialogProps) {
       onResolved();
       onClose();
     },
-    onError: (err: any) => toast.error(`Failed to resolve: ${err.message}`),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resolve")),
   });
 
   const isDeposit = item?.status === "unmatched_deposit";
@@ -508,8 +509,8 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
         const key = `s:${lookbackDays}`;
         setLookbackPreset(key);
       },
-      onError: (err: any) => {
-        toast.error(`Failed to save preset: ${err?.message ?? "Unknown error"}`);
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, "Failed to save preset"));
         setSavingPreset(false);
       },
     },
@@ -524,7 +525,7 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
           setLookbackPreset("custom");
         }
       },
-      onError: (err: any) => toast.error(`Failed to remove preset: ${err?.message ?? "Unknown error"}`),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to remove preset")),
     },
   });
 
@@ -564,8 +565,8 @@ function ScheduleSettingsCard({ onScheduledRunFired }: { onScheduledRunFired?: (
         qc.invalidateQueries({ queryKey: ["/api/system-config/reconciliation/next-run"] });
         qc.invalidateQueries({ queryKey: ["/api/system-config/reconciliation"] });
       },
-      onError: (err: any) => {
-        toast.error(`Failed to save: ${err?.message ?? "Unknown error"}`);
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, "Failed to save schedule settings"));
       },
     },
   });
@@ -945,7 +946,7 @@ export default function AdminReconciliation() {
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs"] });
       refetch();
     },
-    onError: (err: any) => toast.error(`Run failed: ${err.message}`),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Run failed")),
   });
 
   const resendEmailMutation = useMutation({
@@ -954,7 +955,7 @@ export default function AdminReconciliation() {
       toast.success("Report email resent");
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
     },
-    onError: (err: any) => toast.error(`Resend failed: ${err.message}`),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resend report email")),
   });
 
   const resendAlertMutation = useMutation({
@@ -963,7 +964,7 @@ export default function AdminReconciliation() {
       toast.success("Unmatched-items alert email resent");
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
     },
-    onError: (err: any) => toast.error(`Resend failed: ${err.message}`),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resend alert email")),
   });
 
   const runs = data?.data ?? [];
