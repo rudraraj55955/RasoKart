@@ -6113,7 +6113,7 @@ components:
 
     AdminCallbackStatsResponse:
       type: object
-      required: [signatureFailures24h, affectedMerchants, merchantBreakdown, thresholdExceeded, alertThreshold]
+      required: [signatureFailures24h, affectedMerchants, merchantBreakdown, thresholdExceeded, alertThreshold, hourlyTrend]
       properties:
         signatureFailures24h:
           type: integer
@@ -6132,6 +6132,23 @@ components:
         alertThreshold:
           type: integer
           description: The configured signature failure alert threshold
+        hourlyTrend:
+          type: array
+          description: Hourly signature failure counts for the last 24 hours, oldest first
+          items:
+            $ref: "#/components/schemas/HourlyFailureCount"
+
+    HourlyFailureCount:
+      type: object
+      required: [hour, count]
+      properties:
+        hour:
+          type: string
+          format: date-time
+          description: The start of the hour (UTC)
+        count:
+          type: integer
+          description: Number of signature failures in that hour
 
     SignatureFailureAlertLogEntry:
       type: object

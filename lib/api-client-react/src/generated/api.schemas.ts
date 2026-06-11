@@ -732,6 +732,13 @@ export interface MerchantSignatureFailure {
   failures: number;
 }
 
+export interface HourlyFailureCount {
+  /** The start of the hour (UTC) */
+  hour: string;
+  /** Number of signature failures in that hour */
+  count: number;
+}
+
 export interface AdminCallbackStatsResponse {
   /** Total signature verification failures across all merchants in the last 24 hours */
   signatureFailures24h: number;
@@ -743,6 +750,8 @@ export interface AdminCallbackStatsResponse {
   thresholdExceeded: boolean;
   /** The configured signature failure alert threshold */
   alertThreshold: number;
+  /** Hourly signature failure counts for the last 24 hours, oldest first */
+  hourlyTrend: HourlyFailureCount[];
 }
 
 export type SignatureFailureAlertLogEntryAffectedMerchantsItem = {

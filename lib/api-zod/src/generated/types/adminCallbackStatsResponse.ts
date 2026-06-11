@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { HourlyFailureCount } from './hourlyFailureCount';
 import type { MerchantSignatureFailure } from './merchantSignatureFailure';
 
 export interface AdminCallbackStatsResponse {
@@ -18,4 +19,6 @@ export interface AdminCallbackStatsResponse {
   thresholdExceeded: boolean;
   /** The configured signature failure alert threshold */
   alertThreshold: number;
+  /** Hourly signature failure counts for the last 24 hours, oldest first */
+  hourlyTrend: HourlyFailureCount[];
 }

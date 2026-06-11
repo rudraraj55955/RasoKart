@@ -105,6 +105,7 @@ export * from './getWebhookLogAttempts200';
 export * from './getWebhookLogsEventType';
 export * from './getWebhookLogsParams';
 export * from './healthStatus';
+export * from './hourlyFailureCount';
 export * from './invoice';
 export * from './invoiceInput';
 export * from './invoiceListResponse';

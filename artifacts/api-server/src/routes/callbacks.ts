@@ -202,7 +202,7 @@ router.get("/stats", async (req, res) => {
 router.get("/admin/stats", requireAdmin, async (req, res) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [{ threshold }, [row], breakdown] = await Promise.all([
+  const [{ threshold }, [row], breakdown, hourlyRows] = await Promise.all([
     loadSignatureAlertConfig(),
     db
       .select({
@@ -216,6 +216,7 @@ router.get("/admin/stats", requireAdmin, async (req, res) => {
           gte(callbackLogsTable.createdAt, since),
         )
       ),
+
     db
       .select({
         merchantId: callbackLogsTable.merchantId,
@@ -232,7 +233,39 @@ router.get("/admin/stats", requireAdmin, async (req, res) => {
       )
       .groupBy(callbackLogsTable.merchantId, merchantsTable.businessName)
       .orderBy(sql`count(*) DESC`),
+
+    db
+      .select({
+        hour: sql<string>`date_trunc('hour', ${callbackLogsTable.createdAt})`.as("hour"),
+        count: count(),
+      })
+      .from(callbackLogsTable)
+      .where(
+        and(
+          eq(callbackLogsTable.signatureVerified, false),
+          gte(callbackLogsTable.createdAt, since),
+        )
+      )
+      .groupBy(sql`date_trunc('hour', ${callbackLogsTable.createdAt})`)
+      .orderBy(sql`date_trunc('hour', ${callbackLogsTable.createdAt}) ASC`),
   ]);
+
+  // Build a complete 24-slot array with zeros for hours that had no failures
+  const nowMs = Date.now();
+  const hourlyMap = new Map<number, number>();
+  for (const r of hourlyRows) {
+    const slotMs = new Date(r.hour).getTime();
+    hourlyMap.set(slotMs, r.count);
+  }
+
+  const hourlyTrend: { hour: string; count: number }[] = [];
+  for (let i = 23; i >= 0; i--) {
+    const slotMs = Math.floor((nowMs - i * 60 * 60 * 1000) / (60 * 60 * 1000)) * (60 * 60 * 1000);
+    hourlyTrend.push({
+      hour: new Date(slotMs).toISOString(),
+      count: hourlyMap.get(slotMs) ?? 0,
+    });
+  }
 
   const signatureFailures24h = row?.signatureFailures24h ?? 0;
   res.json({
@@ -241,6 +274,7 @@ router.get("/admin/stats", requireAdmin, async (req, res) => {
     merchantBreakdown: breakdown,
     thresholdExceeded: signatureFailures24h > threshold,
     alertThreshold: threshold,
+    hourlyTrend,
   });
 });
 

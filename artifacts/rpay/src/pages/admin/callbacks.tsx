@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, ListCallbackLogsEventType, useGetSignatureFailureAlertHistory } from "@workspace/api-client-react";
+import { useListCallbackLogs, useRetryCallback, useGetAdminCallbackStats, ListCallbackLogsEventType, useGetSignatureFailureAlertHistory, HourlyFailureCount } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EventTypeBadge } from "@/components/ui/event-type-badge";
 import { Badge } from "@/components/ui/badge";
@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertTriangle, CalendarRange, ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, X, Bell, Mail } from "lucide-react";
+import { AlertTriangle, CalendarRange, ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, X, Bell, Mail, TrendingUp } from "lucide-react";
 import { format, formatDistanceToNow, sub, type Duration } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 type DatePreset = "1h" | "6h" | "24h" | "7d" | "custom" | "all";
 
@@ -206,6 +207,56 @@ const EVENT_TYPE_OPTIONS: { value: ListCallbackLogsEventType; label: string }[] 
   { value: ListCallbackLogsEventType.paymentfailed, label: "payment.failed" },
   { value: ListCallbackLogsEventType.paymentpending, label: "payment.pending" },
 ];
+
+function SignatureFailureTrendChart({ data, thresholdExceeded }: { data: HourlyFailureCount[]; thresholdExceeded: boolean }) {
+  const maxCount = Math.max(...data.map(d => d.count), 1);
+  const accentColor = thresholdExceeded ? "#f43f5e" : "#f59e0b";
+  const dimColor = thresholdExceeded ? "rgba(244,63,94,0.3)" : "rgba(245,158,11,0.3)";
+
+  const chartData = data.map(d => ({
+    hour: format(new Date(d.hour), "HH:mm"),
+    count: d.count,
+  }));
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border/30">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+        <TrendingUp className="w-3 h-3" />
+        Hourly trend — last 24 hours
+      </p>
+      <ResponsiveContainer width="100%" height={72}>
+        <BarChart data={chartData} barCategoryGap="20%" margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+          <XAxis
+            dataKey="hour"
+            tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+            tickLine={false}
+            axisLine={false}
+            interval={3}
+          />
+          <YAxis hide domain={[0, maxCount]} />
+          <Tooltip
+            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null;
+              const val = payload[0]?.value as number;
+              return (
+                <div className="rounded border border-border/60 bg-background/95 px-2 py-1 text-xs shadow">
+                  <span className="text-muted-foreground">{label} — </span>
+                  <span className="font-semibold" style={{ color: accentColor }}>{val} failure{val !== 1 ? "s" : ""}</span>
+                </div>
+              );
+            }}
+          />
+          <Bar dataKey="count" radius={[2, 2, 0, 0]} minPointSize={3}>
+            {chartData.map((entry, index) => (
+              <Cell key={index} fill={entry.count > 0 ? accentColor : dimColor} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 function AlertHistoryPanel() {
   const { data, isLoading } = useGetSignatureFailureAlertHistory({ limit: 20 });
@@ -499,6 +550,17 @@ export default function AdminCallbacks() {
           </div>
         );
       })()}
+
+      {adminStats && adminStats.hourlyTrend && (
+        <Card>
+          <CardContent className="px-4 pt-4 pb-3">
+            <SignatureFailureTrendChart
+              data={adminStats.hourlyTrend}
+              thresholdExceeded={thresholdExceeded}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-4">
