@@ -15,6 +15,58 @@ function ensureAdmin(req: any, res: any): boolean {
   return true;
 }
 
+function anonymiseEmail(email: string): string {
+  const atIdx = email.indexOf("@");
+  if (atIdx < 0) return "****";
+  const local = email.slice(0, atIdx);
+  const domain = email.slice(atIdx);
+  const visible = local.length > 0 ? local[0] : "";
+  return `${visible}${"*".repeat(Math.max(3, local.length - 1))}${domain}`;
+}
+
+router.get("/my-activity", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "merchant") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (!user.merchantId) {
+    res.json({ data: [], total: 0, page: 1, limit: 20 });
+    return;
+  }
+
+  const { page = "1", limit = "20" } = req.query as Record<string, string>;
+  const pageNum = Math.max(1, parseInt(page));
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+  const offset = (pageNum - 1) * limitNum;
+
+  const where = eq(auditLogsTable.targetId, user.merchantId);
+
+  const [{ total }] = await db.select({ total: count() }).from(auditLogsTable).where(where);
+
+  const rows = await db
+    .select()
+    .from(auditLogsTable)
+    .where(where)
+    .limit(limitNum)
+    .offset(offset)
+    .orderBy(desc(auditLogsTable.createdAt));
+
+  res.json({
+    data: rows.map(r => ({
+      id: r.id,
+      action: r.action,
+      adminEmail: anonymiseEmail(r.adminEmail),
+      targetType: r.targetType,
+      details: r.details,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    total,
+    page: pageNum,
+    limit: limitNum,
+  });
+});
+
 router.get("/stats", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 

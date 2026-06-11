@@ -1692,6 +1692,24 @@ export interface AdminAuditLogInput {
   details?: string | null;
 }
 
+export interface MerchantActivityLogEntry {
+  id: number;
+  action: string;
+  /** Anonymised admin email (e.g. a****@rasokart.com) */
+  adminEmail: string;
+  targetType: string;
+  /** @nullable */
+  details?: string | null;
+  createdAt: string;
+}
+
+export interface MerchantActivityLogListResponse {
+  data: MerchantActivityLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface AdminAuditLogStatsResponse {
   csvExportsLast30Days: number;
 }
@@ -2675,6 +2693,11 @@ export const ListAuditReportScheduleLogsStatus = {
   success: 'success',
   failed: 'failed',
 } as const;
+
+export type ListMySecurityActivityParams = {
+page?: number;
+limit?: number;
+};
 
 export type ExportAdminAuditLogsCsvParams = {
 action?: string;

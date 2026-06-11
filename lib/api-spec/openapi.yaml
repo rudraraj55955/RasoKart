@@ -3104,6 +3104,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /audit-logs/my-activity:
+    get:
+      operationId: listMySecurityActivity
+      tags: [dashboard]
+      summary: List admin-initiated security events for the authenticated merchant
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Merchant security activity log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantActivityLogListResponse"
+        "403":
+          description: Forbidden
+
   /audit-logs/stats:
     get:
       operationId: getAdminAuditLogStats
@@ -6442,6 +6464,39 @@ components:
           type: ["integer", "null"]
         details:
           type: ["string", "null"]
+
+    MerchantActivityLogEntry:
+      type: object
+      required: [id, action, adminEmail, targetType, createdAt]
+      properties:
+        id:
+          type: integer
+        action:
+          type: string
+        adminEmail:
+          type: string
+          description: Anonymised admin email (e.g. a****@rasokart.com)
+        targetType:
+          type: string
+        details:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    MerchantActivityLogListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MerchantActivityLogEntry"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
 
     AdminAuditLogStatsResponse:
       type: object

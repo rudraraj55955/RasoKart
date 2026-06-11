@@ -2993,6 +2993,29 @@ export const DeleteAuditReportScheduleResponse = zod.object({
 
 
 /**
+ * @summary List admin-initiated security events for the authenticated merchant
+ */
+export const ListMySecurityActivityQueryParams = zod.object({
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListMySecurityActivityResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "action": zod.string(),
+  "adminEmail": zod.string().describe('Anonymised admin email (e.g. a\*\*\*\*@rasokart.com)'),
+  "targetType": zod.string(),
+  "details": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Get audit log summary stats
  */
 export const GetAdminAuditLogStatsResponse = zod.object({

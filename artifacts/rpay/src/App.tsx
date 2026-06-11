@@ -71,6 +71,7 @@ import MerchantLedger from "@/pages/merchant/ledger";
 import MerchantNotifications from "@/pages/merchant/notifications";
 import MerchantPaymentLinks from "@/pages/merchant/payment-links";
 import MerchantBranding from "@/pages/merchant/branding";
+import MerchantSecurity from "@/pages/merchant/security";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -181,6 +182,7 @@ function Router() {
       <Route path="/merchant/notifications"><MerchantRoute component={MerchantNotifications} /></Route>
       <Route path="/merchant/payment-links"><MerchantRoute component={MerchantPaymentLinks} /></Route>
       <Route path="/merchant/branding"><MerchantRoute component={MerchantBranding} /></Route>
+      <Route path="/merchant/security"><MerchantRoute component={MerchantSecurity} /></Route>
       <Route path="/merchant/api-docs"><PublicPage component={MerchantApiDocs} /></Route>
 
       <Route path="/pay/:slug" component={PayPage} />

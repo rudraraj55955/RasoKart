@@ -158,6 +158,12 @@ function MerchantSidebar() {
       ],
     },
     {
+      group: "Account",
+      items: [
+        { title: "Security", icon: Shield, href: "/merchant/security", locked: false, lockReason: null },
+      ],
+    },
+    {
       group: "Integration",
       items: [
         { title: "Connect", icon: Plug, href: "/merchant/connect", locked: false, lockReason: null },
