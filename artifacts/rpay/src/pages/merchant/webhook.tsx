@@ -20,6 +20,50 @@ import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckC
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 import { SIG_VERIFIED_KEY } from "./callbacks";
 
+const SIG_VERIFIED_DISMISSED_KEY = "rasokart_sig_verified_dismissed_until";
+const SIG_VERIFIED_DISMISSED_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface SigVerifiedDismissal {
+  dismissedUntil: number;
+  dismissedAt: number;
+}
+
+function readSigVerifiedDismissal(): SigVerifiedDismissal | null {
+  try {
+    const val = localStorage.getItem(SIG_VERIFIED_DISMISSED_KEY);
+    if (!val) return null;
+    return JSON.parse(val) as SigVerifiedDismissal;
+  } catch {
+    return null;
+  }
+}
+
+function isSigVerifiedStillDismissed(dismissal: SigVerifiedDismissal): boolean {
+  if (Date.now() >= dismissal.dismissedUntil) return false;
+  try {
+    const verifiedAt = Number(localStorage.getItem(SIG_VERIFIED_KEY));
+    if (Number.isFinite(verifiedAt) && verifiedAt > dismissal.dismissedAt) return false;
+  } catch { /* ignore */ }
+  return true;
+}
+
+function writeSigVerifiedDismissal() {
+  try {
+    const now = Date.now();
+    const dismissal: SigVerifiedDismissal = {
+      dismissedUntil: now + SIG_VERIFIED_DISMISSED_TTL_MS,
+      dismissedAt: now,
+    };
+    localStorage.setItem(SIG_VERIFIED_DISMISSED_KEY, JSON.stringify(dismissal));
+  } catch { /* ignore */ }
+}
+
+function clearSigVerifiedDismissal() {
+  try {
+    localStorage.removeItem(SIG_VERIFIED_DISMISSED_KEY);
+  } catch { /* ignore */ }
+}
+
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
   if (value === true) {
     return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20 text-xs">✓ Verified</Badge>;
@@ -536,7 +580,10 @@ export default function MerchantWebhook() {
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const [testEventType, setTestEventType] = useState<WebhookTestRequestEventType>(WebhookTestRequestEventType.paymentsuccess);
   const [secretSavedAt, setSecretSavedAt] = useState<number | null>(null);
-  const [secretVerifiedDismissed, setSecretVerifiedDismissed] = useState(false);
+  const [secretVerifiedDismissed, setSecretVerifiedDismissed] = useState(() => {
+    const d = readSigVerifiedDismissal();
+    return d != null && isSigVerifiedStillDismissed(d);
+  });
   const [sigVerifiedFromCallbacks, setSigVerifiedFromCallbacks] = useState<boolean>(() => {
     try { return !!localStorage.getItem(SIG_VERIFIED_KEY); } catch { return false; }
   });
@@ -567,6 +614,7 @@ export default function MerchantWebhook() {
         qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() });
         if (hasSecret) {
           setSecretSavedAt(Date.now());
+          clearSigVerifiedDismissal();
           setSecretVerifiedDismissed(false);
         }
       },
@@ -1178,7 +1226,7 @@ onError: () => toast.error("Failed to send test event"),
               <button
                 type="button"
                 aria-label="Dismiss"
-                onClick={() => { setSecretVerifiedDismissed(true); setSigVerifiedFromCallbacks(false); }}
+                onClick={() => { writeSigVerifiedDismissal(); setSecretVerifiedDismissed(true); setSigVerifiedFromCallbacks(false); }}
                 className="shrink-0 text-emerald-400/60 hover:text-emerald-300 transition-colors"
               >
                 <X className="w-4 h-4" />
