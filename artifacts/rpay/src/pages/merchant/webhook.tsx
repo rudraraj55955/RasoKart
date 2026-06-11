@@ -224,14 +224,98 @@ def webhook():
     # handle payload['event'] …
     return '', 200`;
 
+const PHP_SNIPPET = `<?php
+// $rawBody must be the raw request body string (before json_decode)
+function verifySignature(string $rawBody, string $signature): bool {
+    $expected = hash_hmac('sha256', $rawBody, 'YOUR_CALLBACK_SECRET');
+    return hash_equals($expected, $signature);
+}
+
+// Slim / plain PHP example
+$rawBody = file_get_contents('php://input');
+$sig = $_SERVER['HTTP_X_SIGNATURE'] ?? '';
+
+if (!verifySignature($rawBody, $sig)) {
+    http_response_code(401);
+    echo 'Invalid signature';
+    exit;
+}
+
+$payload = json_decode($rawBody, true);
+// handle $payload['event'] …
+http_response_code(200);`;
+
+const RUBY_SNIPPET = `require 'openssl'
+
+# raw_body must be the raw request body string (before JSON.parse)
+def verify_signature(raw_body, signature)
+  expected = OpenSSL::HMAC.hexdigest('SHA256', 'YOUR_CALLBACK_SECRET', raw_body)
+  ActiveSupport::SecurityUtils.secure_compare(expected, signature)
+end
+
+# Rails example
+class WebhooksController < ApplicationController
+  skip_before_action :verify_authenticity_token
+
+  def receive
+    raw_body = request.raw_post
+    sig = request.headers['X-Signature'].to_s
+    unless verify_signature(raw_body, sig)
+      return render plain: 'Invalid signature', status: :unauthorized
+    end
+    payload = JSON.parse(raw_body)
+    # handle payload['event'] …
+    head :ok
+  end
+end`;
+
+const GO_SNIPPET = `package main
+
+import (
+        "crypto/hmac"
+        "crypto/sha256"
+        "encoding/hex"
+        "encoding/json"
+        "io"
+        "net/http"
+)
+
+// verifySignature checks the HMAC-SHA256 signature of rawBody.
+func verifySignature(rawBody []byte, signature string) bool {
+        mac := hmac.New(sha256.New, []byte("YOUR_CALLBACK_SECRET"))
+        mac.Write(rawBody)
+        expected := hex.EncodeToString(mac.Sum(nil))
+        // hmac.Equal uses constant-time comparison
+        sig, err := hex.DecodeString(signature)
+        if err != nil {
+                return false
+        }
+        exp, _ := hex.DecodeString(expected)
+        return hmac.Equal(sig, exp)
+}
+
+// net/http example
+func webhookHandler(w http.ResponseWriter, r *http.Request) {
+        rawBody, err := io.ReadAll(r.Body)
+        if err != nil || !verifySignature(rawBody, r.Header.Get("X-Signature")) {
+                http.Error(w, "Invalid signature", http.StatusUnauthorized)
+                return
+        }
+        var payload map[string]any
+        json.Unmarshal(rawBody, &payload)
+        // handle payload["event"] …
+        w.WriteHeader(http.StatusOK)
+}`;
+
 function WebhookTestPanel({ result, onDismiss, onRetry, isRetrying }: { result: TestResult; onDismiss: () => void; onRetry?: () => void; isRetrying?: boolean }) {
   const [showVerifyGuide, setShowVerifyGuide] = useState(false);
-  const [activeTab, setActiveTab] = useState<"node" | "python">(() => {
+  const [activeTab, setActiveTab] = useState<"node" | "python" | "php" | "ruby" | "go">(() => {
     const stored = localStorage.getItem("rasokart_webhook_snippet_lang");
-    return stored === "python" ? "python" : "node";
+    if (stored === "python" || stored === "php" || stored === "ruby" || stored === "go") return stored;
+    return "node";
   });
 
-  const handleTabChange = (tab: "node" | "python") => {
+  const handleTabChange = (tab: "node" | "python" | "php" | "ruby" | "go") => {
     setActiveTab(tab);
     localStorage.setItem("rasokart_webhook_snippet_lang", tab);
   };
@@ -413,27 +497,24 @@ function WebhookTestPanel({ result, onDismiss, onRetry, isRetrying }: { result: 
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center gap-1 border-b border-border/20 pb-1">
-                  <button
-                    onClick={() => handleTabChange("node")}
-                    className={`text-xs px-2 py-0.5 rounded transition-colors ${activeTab === "node" ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground/50 hover:text-muted-foreground/80"}`}
-                  >
-                    Node.js
-                  </button>
-                  <button
-                    onClick={() => handleTabChange("python")}
-                    className={`text-xs px-2 py-0.5 rounded transition-colors ${activeTab === "python" ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground/50 hover:text-muted-foreground/80"}`}
-                  >
-                    Python
-                  </button>
+                <div className="flex items-center gap-1 border-b border-border/20 pb-1 flex-wrap">
+                  {(["node", "python", "php", "ruby", "go"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => handleTabChange(tab)}
+                      className={`text-xs px-2 py-0.5 rounded transition-colors ${activeTab === tab ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground/50 hover:text-muted-foreground/80"}`}
+                    >
+                      {tab === "node" ? "Node.js" : tab === "python" ? "Python" : tab === "php" ? "PHP" : tab === "ruby" ? "Ruby" : "Go"}
+                    </button>
+                  ))}
                 </div>
 
                 <div className="relative group">
                   <pre className="text-xs font-mono bg-black/40 border border-border/30 rounded p-2.5 overflow-x-auto whitespace-pre text-muted-foreground/80 max-h-52 overflow-y-auto leading-relaxed">
-                    {activeTab === "node" ? NODE_SNIPPET : PYTHON_SNIPPET}
+                    {activeTab === "node" ? NODE_SNIPPET : activeTab === "python" ? PYTHON_SNIPPET : activeTab === "php" ? PHP_SNIPPET : activeTab === "ruby" ? RUBY_SNIPPET : GO_SNIPPET}
                   </pre>
                   <button
-                    onClick={() => copy(activeTab === "node" ? NODE_SNIPPET : PYTHON_SNIPPET)}
+                    onClick={() => copy(activeTab === "node" ? NODE_SNIPPET : activeTab === "python" ? PYTHON_SNIPPET : activeTab === "php" ? PHP_SNIPPET : activeTab === "ruby" ? RUBY_SNIPPET : GO_SNIPPET)}
                     className="absolute top-2 right-2 text-muted-foreground/40 hover:text-muted-foreground/80 transition-colors bg-black/60 rounded p-1"
                     title="Copy snippet"
                   >
