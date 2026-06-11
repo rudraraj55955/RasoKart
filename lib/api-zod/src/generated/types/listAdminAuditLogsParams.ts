@@ -23,4 +23,8 @@ dateFrom?: Date;
  * Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)
  */
 dateTo?: Date;
+/**
+ * Filter logs by merchant ID — matches rows where target_id equals the merchant, as well as bulk-action rows whose details.merchantIds array includes the merchant
+ */
+merchantId?: number;
 };

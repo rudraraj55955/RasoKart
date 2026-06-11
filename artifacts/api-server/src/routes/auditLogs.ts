@@ -36,7 +36,7 @@ router.get("/stats", async (req, res) => {
 router.get("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
-  const { page = "1", limit = "20", action, targetType, search, dateFrom, dateTo } = req.query as Record<string, string>;
+  const { page = "1", limit = "20", action, targetType, search, dateFrom, dateTo, merchantId } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -62,6 +62,17 @@ router.get("/", async (req, res) => {
     const to = new Date(dateTo);
     to.setUTCHours(23, 59, 59, 999);
     if (!isNaN(to.getTime())) conditions.push(lte(auditLogsTable.createdAt, to));
+  }
+  if (merchantId) {
+    const merchantIdNum = parseInt(merchantId);
+    if (!isNaN(merchantIdNum)) {
+      conditions.push(
+        or(
+          eq(auditLogsTable.targetId, merchantIdNum),
+          sql`${auditLogsTable.details}::jsonb -> 'merchantIds' @> ${JSON.stringify([merchantIdNum])}::jsonb`,
+        )!
+      );
+    }
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;

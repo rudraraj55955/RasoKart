@@ -2773,6 +2773,10 @@ paths:
           in: query
           description: "Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)"
           schema: { type: string, format: date }
+        - name: merchantId
+          in: query
+          description: "Filter logs by merchant ID — matches rows where target_id equals the merchant, as well as bulk-action rows whose details.merchantIds array includes the merchant"
+          schema: { type: integer }
       responses:
         "200":
           description: Audit log list

@@ -2687,7 +2687,8 @@ export const ListAdminAuditLogsQueryParams = zod.object({
   "targetType": zod.coerce.string().optional().describe('Filter logs by target entity type (e.g. merchant, plan, user, account_detail)'),
   "search": zod.coerce.string().optional(),
   "dateFrom": zod.date().optional().describe('Filter logs on or after this date (ISO 8601, e.g. 2025-01-01)'),
-  "dateTo": zod.date().optional().describe('Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)')
+  "dateTo": zod.date().optional().describe('Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)'),
+  "merchantId": zod.coerce.number().optional().describe('Filter logs by merchant ID — matches rows where target_id equals the merchant, as well as bulk-action rows whose details.merchantIds array includes the merchant')
 })
 
 export const ListAdminAuditLogsResponse = zod.object({

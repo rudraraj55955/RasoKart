@@ -1019,6 +1019,8 @@ export default function AdminAuditLogs() {
   const [targetType, setTargetType] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [merchantIdInput, setMerchantIdInput] = useState("");
+  const [merchantId, setMerchantId] = useState<number | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -1033,6 +1035,7 @@ export default function AdminAuditLogs() {
       if (search) params.set("search", search);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
+      if (merchantId != null) params.set("merchantId", String(merchantId));
 
       const token = localStorage.getItem("rasokart_token");
       const res = await fetch(`/api/audit-logs/export?${params.toString()}`, {
@@ -1063,6 +1066,7 @@ export default function AdminAuditLogs() {
 
   const hasDateFilter = dateFrom !== "" || dateTo !== "";
   const hasTargetType = targetType !== "all";
+  const hasMerchantId = merchantId != null;
 
   function resetFilters() {
     setSearch("");
@@ -1070,6 +1074,15 @@ export default function AdminAuditLogs() {
     setTargetType("all");
     setDateFrom("");
     setDateTo("");
+    setMerchantIdInput("");
+    setMerchantId(undefined);
+    setPage(1);
+  }
+
+  function applyMerchantIdFilter(val: string) {
+    const trimmed = val.trim();
+    const num = parseInt(trimmed);
+    setMerchantId(trimmed !== "" && !isNaN(num) ? num : undefined);
     setPage(1);
   }
 
@@ -1079,6 +1092,7 @@ export default function AdminAuditLogs() {
     search: search || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    merchantId,
     page,
     limit: 20,
   } as any);
@@ -1204,8 +1218,33 @@ export default function AdminAuditLogs() {
                   </div>
                 </div>
               </div>
+              <div className="relative w-36 shrink-0">
+                <Landmark className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  className="pl-8 pr-7 text-sm h-9"
+                  placeholder="Merchant ID"
+                  value={merchantIdInput}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  onChange={e => {
+                    const v = e.target.value.replace(/\D/g, "");
+                    setMerchantIdInput(v);
+                    applyMerchantIdFilter(v);
+                  }}
+                  aria-label="Filter by merchant ID"
+                />
+                {merchantIdInput && (
+                  <button
+                    onClick={() => { setMerchantIdInput(""); setMerchantId(undefined); setPage(1); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear merchant ID filter"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2 shrink-0">
-                {(hasDateFilter || search !== "" || action !== "all" || hasTargetType) && (
+                {(hasDateFilter || search !== "" || action !== "all" || hasTargetType || hasMerchantId) && (
                   <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground hover:text-foreground">
                     <X className="w-3.5 h-3.5 mr-1.5" />
                     Clear filters
@@ -1240,8 +1279,21 @@ export default function AdminAuditLogs() {
           </div>
         </CardHeader>
 
-        {(hasTargetType || hasDateFilter) && (
+        {(hasTargetType || hasDateFilter || hasMerchantId) && (
           <div className="flex items-center gap-2 px-6 py-2 border-t border-border/40 bg-muted/10 flex-wrap">
+            {hasMerchantId && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-0.5 text-xs font-medium text-orange-400">
+                <Landmark className="w-3 h-3" />
+                Merchant #{merchantId}
+                <button
+                  onClick={() => { setMerchantIdInput(""); setMerchantId(undefined); setPage(1); }}
+                  className="ml-0.5 hover:text-orange-300 transition-colors"
+                  aria-label="Clear merchant ID filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
             {hasTargetType && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-0.5 text-xs font-medium text-violet-400">
                 Target: {TARGET_TYPE_OPTIONS.find(o => o.value === targetType)?.label ?? targetType}
@@ -1332,8 +1384,15 @@ export default function AdminAuditLogs() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : logs.map((log: any) => (
-                <TableRow key={log.id}>
+              ) : logs.map((log: any) => {
+                const isBulkAction = (log.action as string).startsWith("bulk_");
+                const isDirectMerchantMatch = hasMerchantId && log.targetId === merchantId;
+                const isBulkMerchantMatch = hasMerchantId && isBulkAction && !isDirectMerchantMatch;
+                return (
+                <TableRow
+                  key={log.id}
+                  className={isDirectMerchantMatch ? "bg-orange-500/5 hover:bg-orange-500/10" : undefined}
+                >
                   <TableCell>
                     <div>
                       <p className="text-sm font-medium">{log.adminEmail}</p>
@@ -1343,10 +1402,16 @@ export default function AdminAuditLogs() {
                   <TableCell>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <ActionBadge action={log.action} />
-                      {(log.action as string).startsWith("bulk_") && (
+                      {isBulkAction && (
                         <span className="inline-flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-violet-400 uppercase tracking-wide">
                           <Users className="w-2.5 h-2.5" />
                           Bulk
+                        </span>
+                      )}
+                      {isBulkMerchantMatch && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-orange-500/30 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400 uppercase tracking-wide">
+                          <Landmark className="w-2.5 h-2.5" />
+                          Includes #{merchantId}
                         </span>
                       )}
                     </div>
@@ -1371,7 +1436,8 @@ export default function AdminAuditLogs() {
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
