@@ -4,6 +4,7 @@ import { inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays } from "../helpers/qrCleanupScheduler";
+import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 import { sql } from "drizzle-orm";
 
 const router = Router();
@@ -191,6 +192,97 @@ router.put("/qr-cleanup", async (req, res, next) => {
     req.log.info({ retentionDays }, "QR cleanup retention config updated");
 
     res.json({ retentionDays });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/system-config/signature-failure-alert
+router.get("/signature-failure-alert", async (req, res, next) => {
+  try {
+    const keys = [
+      SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD,
+      SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS,
+    ];
+
+    const rows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(inArray(systemConfigTable.key, keys));
+
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+
+    res.json({
+      threshold: parseInt(
+        map.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD]
+      ),
+      cooldownHours: parseInt(
+        map.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS) ??
+          SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS]
+      ),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/signature-failure-alert
+router.put("/signature-failure-alert", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { threshold, cooldownHours } = req.body;
+
+    if (typeof threshold !== "number" || !Number.isInteger(threshold)) {
+      res.status(400).json({ error: "threshold must be an integer" });
+      return;
+    }
+
+    if (threshold < 1 || threshold > 10000) {
+      res.status(400).json({ error: "threshold must be between 1 and 10000" });
+      return;
+    }
+
+    if (typeof cooldownHours !== "number" || !Number.isInteger(cooldownHours)) {
+      res.status(400).json({ error: "cooldownHours must be an integer" });
+      return;
+    }
+
+    if (cooldownHours < 1 || cooldownHours > 168) {
+      res.status(400).json({ error: "cooldownHours must be between 1 and 168" });
+      return;
+    }
+
+    const entries = [
+      { key: SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD, value: String(threshold), updatedByEmail: user.email },
+      { key: SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS, value: String(cooldownHours), updatedByEmail: user.email },
+    ];
+
+    for (const entry of entries) {
+      await db
+        .insert(systemConfigTable)
+        .values(entry)
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: entry.value, updatedByEmail: entry.updatedByEmail, updatedAt: sql`now()` },
+        });
+    }
+
+    resetAlertRateLimit();
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "signature_failure_alert", threshold, cooldownHours }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ threshold, cooldownHours }, "Signature failure alert config updated — rate-limit reset");
+
+    res.json({ threshold, cooldownHours });
   } catch (err) {
     next(err);
   }
