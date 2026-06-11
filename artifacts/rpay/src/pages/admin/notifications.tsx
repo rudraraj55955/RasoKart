@@ -4,20 +4,32 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, Check, CheckCheck, AlertCircle, Mail, ExternalLink } from "lucide-react";
+import { Bell, Check, CheckCheck, AlertCircle, Mail, ExternalLink, Megaphone } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { getApiErrorMessage } from "@/lib/utils";
+
+function extractMetadata(raw: unknown): Record<string, unknown> {
+  if (raw == null) return {};
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+  }
+  return {};
+}
 
 function notifIcon(type: string) {
   if (type === "reconciliation_email_failure" || type === "report_delivery_failure") return <Mail className="w-4 h-4" />;
+  if (type === "system_notice") return <Megaphone className="w-4 h-4" />;
   return <AlertCircle className="w-4 h-4" />;
 }
 
 function notifColor(type: string): string {
   if (type === "reconciliation_email_failure" || type === "report_delivery_failure") return "text-red-400";
-  return "text-blue-400";
+  if (type === "system_notice") return "text-blue-400";
+  return "text-amber-400";
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -28,20 +40,34 @@ const TYPE_LABELS: Record<string, string> = {
 
 type TypeFilter = "all" | "reconciliation_email_failure" | "report_delivery_failure" | "system_notice";
 
-const TYPE_CHIPS: { value: TypeFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "reconciliation_email_failure", label: "Email Failures" },
-  { value: "system_notice", label: "System Notice" },
+const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] = [
+  { value: "all", label: "All", icon: <Bell className="w-3 h-3" /> },
+  { value: "report_delivery_failure", label: "Delivery Failures", icon: <Mail className="w-3 h-3" /> },
+  { value: "reconciliation_email_failure", label: "Email Failures", icon: <Mail className="w-3 h-3" /> },
+  { value: "system_notice", label: "System Notice", icon: <Megaphone className="w-3 h-3" /> },
 ];
 
-function getRunLink(type: string, metadata: unknown): string | null {
-  if (type === "reconciliation_email_failure" || type === "report_delivery_failure") {
-    const meta = metadata as Record<string, unknown> | null;
-    const runId = meta?.runId;
+function getNotifLink(type: string, metadata: unknown): string | null {
+  const meta = extractMetadata(metadata);
+  if (type === "reconciliation_email_failure") {
+    const runId = meta["runId"];
     if (runId != null) return `/admin/reconciliation?runId=${runId}`;
     return "/admin/reconciliation";
   }
+  if (type === "report_delivery_failure") {
+    const scheduleLink = typeof meta["scheduleLink"] === "string" ? meta["scheduleLink"] : null;
+    if (scheduleLink) {
+      return scheduleLink.replace(/^https?:\/\/[^/]+/, "");
+    }
+    return "/admin/audit-logs";
+  }
   return null;
+}
+
+function getNotifLinkLabel(type: string): string {
+  if (type === "report_delivery_failure") return "View schedule →";
+  if (type === "reconciliation_email_failure") return "View run →";
+  return "View →";
 }
 
 export default function AdminNotificationsPage() {
@@ -78,6 +104,7 @@ export default function AdminNotificationsPage() {
         qc.invalidateQueries({ queryKey: ["/api/notifications"] });
         refetch();
       },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to mark notifications as read")),
     });
   }
 
@@ -88,9 +115,10 @@ export default function AdminNotificationsPage() {
           qc.invalidateQueries({ queryKey: ["/api/notifications"] });
           refetch();
         },
+        onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to mark notification as read")),
       });
     }
-    const link = getRunLink(type, metadata);
+    const link = getNotifLink(type, metadata);
     if (link) navigate(link);
   }
 
@@ -142,6 +170,7 @@ export default function AdminNotificationsPage() {
                 : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border bg-transparent"
             }`}
           >
+            {chip.icon}
             {chip.label}
           </button>
         ))}
@@ -161,7 +190,7 @@ export default function AdminNotificationsPage() {
           ) : (
             <ul className="divide-y divide-border/50">
               {notifications.map((n) => {
-                const link = getRunLink(n.type, n.metadata);
+                const link = getNotifLink(n.type, n.metadata);
                 const isClickable = !!link || !n.isRead;
                 return (
                   <li
@@ -186,7 +215,7 @@ export default function AdminNotificationsPage() {
                         {link && (
                           <span className="inline-flex items-center gap-1 text-[10px] text-primary/70">
                             <ExternalLink className="w-3 h-3" />
-                            View run
+                            {getNotifLinkLabel(n.type)}
                           </span>
                         )}
                         {!n.isRead && (
