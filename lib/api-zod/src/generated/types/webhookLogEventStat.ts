@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { WebhookLogDayBucket } from './webhookLogDayBucket';
 
 export interface WebhookLogEventStat {
   /** Event type (e.g. payment.success) */
@@ -15,4 +16,6 @@ export interface WebhookLogEventStat {
   success: number;
   /** Number of failed or pending-retry deliveries */
   failed: number;
+  /** Last 7 days of daily success/failure counts, oldest first */
+  trend: WebhookLogDayBucket[];
 }

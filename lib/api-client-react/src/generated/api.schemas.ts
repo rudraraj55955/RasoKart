@@ -806,6 +806,15 @@ export interface CallbackLogListResponse {
   limit: number;
 }
 
+export interface WebhookLogDayBucket {
+  /** ISO date (YYYY-MM-DD) for this bucket */
+  date: string;
+  /** Successful deliveries on this day */
+  success: number;
+  /** Failed deliveries on this day */
+  failed: number;
+}
+
 export interface WebhookLogEventStat {
   /** Event type (e.g. payment.success) */
   eventType: string;
@@ -815,6 +824,8 @@ export interface WebhookLogEventStat {
   success: number;
   /** Number of failed or pending-retry deliveries */
   failed: number;
+  /** Last 7 days of daily success/failure counts, oldest first */
+  trend: WebhookLogDayBucket[];
 }
 
 export interface WebhookLogStatsResponse {

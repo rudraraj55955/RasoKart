@@ -1469,7 +1469,12 @@ export const GetWebhookLogStatsResponse = zod.object({
   "eventType": zod.string().describe('Event type (e.g. payment.success)'),
   "total": zod.number().describe('Total delivery attempts for this event type'),
   "success": zod.number().describe('Number of successful deliveries'),
-  "failed": zod.number().describe('Number of failed or pending-retry deliveries')
+  "failed": zod.number().describe('Number of failed or pending-retry deliveries'),
+  "trend": zod.array(zod.object({
+  "date": zod.string().describe('ISO date (YYYY-MM-DD) for this bucket'),
+  "success": zod.number().describe('Successful deliveries on this day'),
+  "failed": zod.number().describe('Failed deliveries on this day')
+})).describe('Last 7 days of daily success\/failure counts, oldest first')
 }))
 })
 

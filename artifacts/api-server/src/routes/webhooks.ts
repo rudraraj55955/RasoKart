@@ -164,6 +164,7 @@ router.get("/logs/stats", async (req, res) => {
     return;
   }
 
+  // Overall totals per event type (all-time)
   const rows = await db
     .select({
       eventType: callbackLogsTable.eventType,
@@ -177,13 +178,59 @@ router.get("/logs/stats", async (req, res) => {
     )
     .groupBy(callbackLogsTable.eventType);
 
+  // Daily trend for last 7 days per event type
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const trendRows = await db
+    .select({
+      eventType: callbackLogsTable.eventType,
+      date: sql<string>`DATE(${callbackLogsTable.createdAt} AT TIME ZONE 'UTC')`,
+      success: sql<number>`COUNT(*) FILTER (WHERE ${callbackLogsTable.status} = 'success')`,
+      failed: sql<number>`COUNT(*) FILTER (WHERE ${callbackLogsTable.status} != 'success')`,
+    })
+    .from(callbackLogsTable)
+    .where(
+      sql`${callbackLogsTable.merchantId} = ${merchantId}
+        AND ${callbackLogsTable.eventType} IS NOT NULL
+        AND ${callbackLogsTable.createdAt} >= ${sevenDaysAgo}`
+    )
+    .groupBy(callbackLogsTable.eventType, sql`DATE(${callbackLogsTable.createdAt} AT TIME ZONE 'UTC')`);
+
+  // Build the 7-day date scaffolding
+  const last7Days: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    last7Days.push(d.toISOString().slice(0, 10));
+  }
+
+  // Group trend rows by event type
+  const trendByEventType: Record<string, Record<string, { success: number; failed: number }>> = {};
+  for (const tr of trendRows) {
+    const et = tr.eventType!;
+    if (!trendByEventType[et]) trendByEventType[et] = {};
+    trendByEventType[et][tr.date] = { success: Number(tr.success), failed: Number(tr.failed) };
+  }
+
   res.json({
-    data: rows.map(r => ({
-      eventType: r.eventType!,
-      total: Number(r.total),
-      success: Number(r.success),
-      failed: Number(r.failed),
-    })),
+    data: rows.map(r => {
+      const et = r.eventType!;
+      const dayMap = trendByEventType[et] ?? {};
+      const trend = last7Days.map(date => ({
+        date,
+        success: dayMap[date]?.success ?? 0,
+        failed: dayMap[date]?.failed ?? 0,
+      }));
+      return {
+        eventType: et,
+        total: Number(r.total),
+        success: Number(r.success),
+        failed: Number(r.failed),
+        trend,
+      };
+    }),
   });
 });
 

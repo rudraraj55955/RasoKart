@@ -5904,9 +5904,23 @@ components:
         limit:
           type: integer
 
+    WebhookLogDayBucket:
+      type: object
+      required: [date, success, failed]
+      properties:
+        date:
+          type: string
+          description: "ISO date (YYYY-MM-DD) for this bucket"
+        success:
+          type: integer
+          description: Successful deliveries on this day
+        failed:
+          type: integer
+          description: Failed deliveries on this day
+
     WebhookLogEventStat:
       type: object
-      required: [eventType, total, success, failed]
+      required: [eventType, total, success, failed, trend]
       properties:
         eventType:
           type: string
@@ -5920,6 +5934,11 @@ components:
         failed:
           type: integer
           description: Number of failed or pending-retry deliveries
+        trend:
+          type: array
+          description: "Last 7 days of daily success/failure counts, oldest first"
+          items:
+            $ref: "#/components/schemas/WebhookLogDayBucket"
 
     WebhookLogStatsResponse:
       type: object

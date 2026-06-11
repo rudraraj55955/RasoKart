@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { EVENT_TYPE_COLORS, EventTypeBadge } from "@/components/ui/event-type-badge";
 import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, WebhookTestRequestEventType } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
-import type { CallbackLog } from "@workspace/api-client-react";
+import type { CallbackLog, WebhookLogDayBucket } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X, BarChart2, Calendar, Bell, BellOff } from "lucide-react";
+import { Save, Webhook, ShieldCheck, RefreshCw, Copy, AlertTriangle, Eye, CheckCircle2, XCircle, Clock, Activity, FlaskConical, Zap, ChevronRight, ChevronDown, RotateCcw, ShieldOff, Shield, FlaskRound, X, BarChart2, Calendar, Bell, BellOff, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { formatDistanceToNow, format, differenceInDays } from "date-fns";
 import { SIG_VERIFIED_KEY } from "./callbacks";
 
@@ -62,6 +62,63 @@ function clearSigVerifiedDismissal() {
   try {
     localStorage.removeItem(SIG_VERIFIED_DISMISSED_KEY);
   } catch { /* ignore */ }
+}
+
+type TrendDirection = "improving" | "declining" | "stable" | "nodata";
+
+function getTrendDirection(trend: WebhookLogDayBucket[]): TrendDirection {
+  const rates = trend.map(d => {
+    const total = d.success + d.failed;
+    return total > 0 ? d.failed / total : null;
+  });
+  const firstHalf = rates.slice(0, 3).filter((r): r is number => r !== null);
+  const lastHalf = rates.slice(4).filter((r): r is number => r !== null);
+  if (firstHalf.length === 0 && lastHalf.length === 0) return "nodata";
+  if (firstHalf.length === 0 || lastHalf.length === 0) return "stable";
+  const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+  const avgLast = lastHalf.reduce((a, b) => a + b, 0) / lastHalf.length;
+  const diff = avgLast - avgFirst;
+  if (diff > 0.05) return "declining";
+  if (diff < -0.05) return "improving";
+  return "stable";
+}
+
+function FailureRateSparkline({ trend }: { trend: WebhookLogDayBucket[] }) {
+  const W = 56, H = 22, PAD = 2;
+  const pts = trend.map((d, i) => {
+    const total = d.success + d.failed;
+    const rate = total > 0 ? d.success / total : null;
+    return { x: PAD + (i / Math.max(trend.length - 1, 1)) * (W - PAD * 2), y: rate };
+  });
+  const valid = pts.filter((p): p is { x: number; y: number } => p.y !== null);
+  if (valid.length < 2) {
+    return <span className="text-muted-foreground/30 text-[10px] font-mono">—</span>;
+  }
+  const toY = (rate: number) => PAD + (1 - rate) * (H - PAD * 2);
+  const dir = getTrendDirection(trend);
+  const strokeColor = dir === "declining" ? "#f43f5e" : dir === "improving" ? "#34d399" : "#64748b";
+  const fillColor = dir === "declining" ? "rgba(244,63,94,0.08)" : dir === "improving" ? "rgba(52,211,153,0.08)" : "rgba(100,116,139,0.06)";
+  const linePath = valid.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${toY(p.y).toFixed(1)}`).join(" ");
+  const last = valid[valid.length - 1];
+  const first = valid[0];
+  const fillPath = `${linePath} L ${last.x.toFixed(1)} ${(H - PAD).toFixed(1)} L ${first.x.toFixed(1)} ${(H - PAD).toFixed(1)} Z`;
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
+      <path d={fillPath} fill={fillColor} stroke="none" />
+      <path d={linePath} fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      {valid.map((p, i) => (
+        <circle key={i} cx={p.x} cy={toY(p.y)} r={i === valid.length - 1 ? 2 : 1} fill={strokeColor} opacity={i === valid.length - 1 ? 1 : 0.4} />
+      ))}
+    </svg>
+  );
+}
+
+function TrendArrow({ trend }: { trend: WebhookLogDayBucket[] }) {
+  const dir = getTrendDirection(trend);
+  if (dir === "declining") return <TrendingDown className="w-3 h-3 text-rose-400 shrink-0" />;
+  if (dir === "improving") return <TrendingUp className="w-3 h-3 text-emerald-400 shrink-0" />;
+  if (dir === "stable") return <Minus className="w-3 h-3 text-muted-foreground/50 shrink-0" />;
+  return null;
 }
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -996,6 +1053,7 @@ onError: () => toast.error("Failed to send test event"),
                         <th className="text-right px-3 py-2 font-medium text-muted-foreground">Success</th>
                         <th className="text-right px-3 py-2 font-medium text-muted-foreground">Failed</th>
                         <th className="text-right px-3 py-2 font-medium text-muted-foreground">Rate</th>
+                        <th className="text-right px-3 py-2 font-medium text-muted-foreground">7d trend</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/40">
@@ -1026,6 +1084,12 @@ onError: () => toast.error("Failed to send test event"),
                               }`}>
                                 {rate}%
                               </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <FailureRateSparkline trend={stat.trend} />
+                                <TrendArrow trend={stat.trend} />
+                              </div>
                             </td>
                           </tr>
                         );

@@ -310,6 +310,7 @@ export * from './visibilityRuleUpdateInput';
 export * from './webhookConfig';
 export * from './webhookConfigInput';
 export * from './webhookHealthSummary';
+export * from './webhookLogDayBucket';
 export * from './webhookLogEventStat';
 export * from './webhookLogStatsResponse';
 export * from './webhookRetriesConfig';
