@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useListCallbackLogs } from "@workspace/api-client-react";
+import { useListCallbackLogs, useGetWebhookLogAttempts } from "@workspace/api-client-react";
+import type { CallbackLogAttempt } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,9 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Webhook, Search, CheckCircle2, XCircle, Activity, Eye, Info, ArrowRight } from "lucide-react";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Activity, CheckCircle2, ChevronDown, ChevronRight, ListOrdered, Loader2, Search, XCircle } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -39,12 +39,144 @@ function exportCsv(data: any[]) {
   a.click();
 }
 
+function AttemptStatusDot({ httpStatus }: { httpStatus: number | null | undefined }) {
+  if (httpStatus != null && httpStatus >= 200 && httpStatus < 300) {
+    return <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-0.5" />;
+  }
+  if (httpStatus != null) {
+    return <span className="inline-block w-2 h-2 rounded-full bg-rose-400 shrink-0 mt-0.5" />;
+  }
+  return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/30 shrink-0 mt-0.5" />;
+}
+
+function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) {
+  const { data, isLoading, isError } = useGetWebhookLogAttempts(logId, {
+    query: { enabled: open } as any,
+  });
+
+  const attempts: CallbackLogAttempt[] = (data as any)?.data ?? [];
+
+  return (
+    <div className="px-2 pt-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <ListOrdered className="w-3.5 h-3.5 text-muted-foreground/60" />
+        <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">Attempt History</p>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 px-1 py-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground/50" />
+          <span className="text-xs text-muted-foreground/50">Loading attempt history…</span>
+        </div>
+      ) : isError ? (
+        <p className="text-xs text-rose-400/70 italic px-1">Failed to load attempt history.</p>
+      ) : attempts.length === 0 ? (
+        <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records — history is recorded for new deliveries going forward.</p>
+      ) : (
+        <div className="space-y-2">
+          {attempts.map(a => (
+            <div key={a.id} className="flex items-start gap-2 px-1">
+              <AttemptStatusDot httpStatus={a.httpStatus} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium text-foreground/80">#{a.attemptNumber}</span>
+                  {a.httpStatus != null && (
+                    <span className={`font-mono text-xs font-semibold ${
+                      a.httpStatus >= 200 && a.httpStatus < 300
+                        ? "text-emerald-400"
+                        : a.httpStatus < 500
+                        ? "text-amber-400"
+                        : "text-rose-400"
+                    }`}>{a.httpStatus}</span>
+                  )}
+                  <span className="text-xs text-muted-foreground/50">
+                    {format(new Date(a.firedAt), "MMM d, HH:mm:ss")}
+                  </span>
+                </div>
+                {a.responseBody && (
+                  <pre className="mt-1 text-xs text-muted-foreground/60 bg-background/30 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap line-clamp-3 border border-border/30">
+                    {a.responseBody}
+                  </pre>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getHttpBadgeText(code: number | null): { text: string; className: string } {
+  if (!code) return { text: "—", className: "text-muted-foreground text-xs" };
+  const color = code < 300 ? "text-emerald-400" : code < 500 ? "text-amber-400" : "text-rose-400";
+  return { text: String(code), className: `font-mono text-xs font-semibold ${color}` };
+}
+
+function WebhookRow({ log }: { log: any }) {
+  const [open, setOpen] = useState(false);
+
+  const tryParse = (s: string | null) => {
+    if (!s) return null;
+    try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
+  };
+
+  const { text: httpText, className: httpClass } = getHttpBadgeText(log.httpStatus);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <TableRow className="cursor-pointer" onClick={() => setOpen(!open)}>
+        <TableCell className="w-8">
+          {open
+            ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+        </TableCell>
+        <TableCell className="font-mono text-xs text-muted-foreground">#{log.id}</TableCell>
+        <TableCell className="text-xs text-muted-foreground">#{log.merchantId}</TableCell>
+        <TableCell className="max-w-[200px]">
+          <span className="font-mono text-xs truncate block" title={log.url}>{log.url}</span>
+        </TableCell>
+        <TableCell><span className={httpClass}>{httpText}</span></TableCell>
+        <TableCell>
+          <Badge variant={log.attempts > 2 ? "destructive" : "secondary"} className="text-xs">
+            {log.attempts}x
+          </Badge>
+        </TableCell>
+        <TableCell><SignatureVerifiedBadge value={log.signatureVerified} /></TableCell>
+        <TableCell><StatusBadge status={log.status} /></TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {format(new Date(log.createdAt), "MMM d, HH:mm")}
+        </TableCell>
+      </TableRow>
+      <CollapsibleContent asChild>
+        <TableRow>
+          <TableCell colSpan={9} className="bg-muted/20 pb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2 pt-2">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Request</p>
+                <pre className="text-xs bg-background/50 rounded p-3 overflow-x-auto border border-border/50 whitespace-pre-wrap">
+                  {tryParse(log.requestBody) || "—"}
+                </pre>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Response</p>
+                <pre className="text-xs bg-background/50 rounded p-3 overflow-x-auto border border-border/50 whitespace-pre-wrap">
+                  {tryParse(log.responseBody) || "—"}
+                </pre>
+              </div>
+            </div>
+            <RetryHistorySection logId={log.id} open={open} />
+          </TableCell>
+        </TableRow>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function AdminWebhookLogs() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [sigVerified, setSigVerified] = useState("all");
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<any | null>(null);
 
   const sigVerifiedParam = sigVerified === "all" ? undefined : (sigVerified as any);
 
@@ -59,12 +191,6 @@ export default function AdminWebhookLogs() {
   const total = (data as any)?.total ?? 0;
   const successCount = items.filter((c: any) => c.status === "success").length;
   const failedCount = items.filter((c: any) => c.status === "failed").length;
-
-  function getHttpBadge(code: number | null) {
-    if (!code) return <span className="text-muted-foreground text-xs">—</span>;
-    const color = code < 300 ? "text-emerald-400" : code < 500 ? "text-amber-400" : "text-rose-400";
-    return <span className={`font-mono text-xs font-semibold ${color}`}>{code}</span>;
-  }
 
   return (
     <div className="space-y-6">
@@ -152,61 +278,39 @@ export default function AdminWebhookLogs() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Merchant</TableHead>
-                <TableHead>Endpoint URL</TableHead>
-                <TableHead>HTTP</TableHead>
-                <TableHead>Attempts</TableHead>
-                <TableHead>Signature</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
-                      <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : !items.length ? (
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
-                    No webhook logs found
-                  </TableCell>
+                  <TableHead className="w-8"></TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Merchant</TableHead>
+                  <TableHead>Endpoint URL</TableHead>
+                  <TableHead>HTTP</TableHead>
+                  <TableHead>Attempts</TableHead>
+                  <TableHead>Signature</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Date</TableHead>
                 </TableRow>
-              ) : items.map((c: any) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">#{c.id}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">#{c.merchantId}</TableCell>
-                  <TableCell className="max-w-[200px]">
-                    <span className="font-mono text-xs truncate block" title={c.url}>{c.url}</span>
-                  </TableCell>
-                  <TableCell>{getHttpBadge(c.httpStatus)}</TableCell>
-                  <TableCell>
-                    <Badge variant={c.attempts > 2 ? "destructive" : "secondary"} className="text-xs">
-                      {c.attempts}x
-                    </Badge>
-                  </TableCell>
-                  <TableCell><SignatureVerifiedBadge value={c.signatureVerified} /></TableCell>
-                  <TableCell><StatusBadge status={c.status} /></TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {format(new Date(c.createdAt), "MMM d, HH:mm")}
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => setSelected(c)}>
-                      <Eye className="w-3.5 h-3.5" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 9 }).map((_, j) => (
+                        <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : !items.length ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
+                      No webhook logs found
+                    </TableCell>
+                  </TableRow>
+                ) : items.map((c: any) => (
+                  <WebhookRow key={c.id} log={c} />
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -220,60 +324,6 @@ export default function AdminWebhookLogs() {
           </div>
         </div>
       )}
-
-      <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Webhook className="w-4 h-4" /> Webhook Delivery #{selected?.id}
-            </DialogTitle>
-          </DialogHeader>
-          {selected && (
-            <div className="space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Status</p>
-                  <StatusBadge status={selected.status} />
-                </div>
-                <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">HTTP Status</p>
-                  <p className="font-mono font-semibold">{selected.httpStatus ?? "—"}</p>
-                </div>
-                <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Attempts</p>
-                  <p className="font-semibold">{selected.attempts}</p>
-                </div>
-                <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Merchant ID</p>
-                  <p className="font-mono">#{selected.merchantId}</p>
-                </div>
-                <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Signature</p>
-                  <SignatureVerifiedBadge value={selected.signatureVerified} />
-                </div>
-              </div>
-              <div className="rounded-lg bg-muted/20 p-3">
-                <p className="text-xs text-muted-foreground mb-1">Endpoint URL</p>
-                <p className="font-mono text-xs break-all">{selected.url}</p>
-              </div>
-              {selected.requestBody && (
-                <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-2">Request Body</p>
-                  <pre className="text-xs overflow-auto max-h-40 font-mono">
-                    {(() => { try { return JSON.stringify(JSON.parse(selected.requestBody), null, 2); } catch { return selected.requestBody; } })()}
-                  </pre>
-                </div>
-              )}
-              {selected.responseBody && (
-                <div className="rounded-lg bg-muted/20 p-3">
-                  <p className="text-xs text-muted-foreground mb-2">Response Body</p>
-                  <pre className="text-xs overflow-auto max-h-40 font-mono">{selected.responseBody}</pre>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

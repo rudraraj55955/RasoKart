@@ -34,14 +34,59 @@ function AttemptStatusDot({ httpStatus }: { httpStatus: number | null | undefine
   return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/30 shrink-0 mt-0.5" />;
 }
 
-function RetryHistorySection({ logId: _logId }: { logId: number }) {
+function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) {
+  const { data, isLoading, isError } = useGetWebhookLogAttempts(logId, {
+    query: { enabled: open } as any,
+  });
+
+  const attempts: CallbackLogAttempt[] = (data as any)?.data ?? [];
+
   return (
     <div className="px-2 pt-3">
       <div className="flex items-center gap-1.5 mb-2">
         <ListOrdered className="w-3.5 h-3.5 text-muted-foreground/60" />
         <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">Attempt History</p>
       </div>
-      <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records yet — history is recorded for new deliveries going forward.</p>
+      {isLoading ? (
+        <div className="flex items-center gap-2 px-1 py-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground/50" />
+          <span className="text-xs text-muted-foreground/50">Loading attempt history…</span>
+        </div>
+      ) : isError ? (
+        <p className="text-xs text-rose-400/70 italic px-1">Failed to load attempt history.</p>
+      ) : attempts.length === 0 ? (
+        <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records — history is recorded for new deliveries going forward.</p>
+      ) : (
+        <div className="space-y-2">
+          {attempts.map(a => (
+            <div key={a.id} className="flex items-start gap-2 px-1">
+              <AttemptStatusDot httpStatus={a.httpStatus} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium text-foreground/80">#{a.attemptNumber}</span>
+                  {a.httpStatus != null && (
+                    <span className={`font-mono text-xs font-semibold ${
+                      a.httpStatus >= 200 && a.httpStatus < 300
+                        ? "text-emerald-400"
+                        : a.httpStatus < 500
+                        ? "text-amber-400"
+                        : "text-rose-400"
+                    }`}>{a.httpStatus}</span>
+                  )}
+                  <span className="text-xs text-muted-foreground/50">
+                    {format(new Date(a.firedAt), "MMM d, HH:mm:ss")}
+                  </span>
+                </div>
+                {a.responseBody && (
+                  <pre className="mt-1 text-xs text-muted-foreground/60 bg-background/30 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap line-clamp-3 border border-border/30">
+                    {a.responseBody}
+                  </pre>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -177,7 +222,7 @@ function CallbackRow({ log, activeQrFilter, onFilterByQr }: { log: any; activeQr
                 <pre className="text-xs bg-background/50 rounded p-3 overflow-x-auto border border-border/50 whitespace-pre-wrap">{tryParse(log.responseBody) || "—"}</pre>
               </div>
             </div>
-            {open && <RetryHistorySection logId={log.id} />}
+            <RetryHistorySection logId={log.id} open={open} />
             {log.qrCodeId && activeQrFilter !== log.qrCodeId && (
               <div className="px-2 pt-3">
                 <button
