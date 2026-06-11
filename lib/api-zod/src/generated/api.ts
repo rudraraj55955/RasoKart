@@ -842,6 +842,35 @@ export const UpdateMerchantCallbackWindowResponse = zod.object({
 
 
 /**
+ * @summary Get the webhook URL configured for a merchant (admin only)
+ */
+export const GetAdminMerchantWebhookUrlParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAdminMerchantWebhookUrlResponse = zod.object({
+  "url": zod.string().nullable().describe('The merchant\'s current webhook callback URL, or null if not configured.')
+})
+
+
+/**
+ * Overwrites the merchant's webhook callback URL. If no webhook config exists yet one is created. An email notification is sent to the merchant. Only HTTPS URLs are accepted.
+ * @summary Update the webhook URL for a merchant (admin only)
+ */
+export const UpdateAdminMerchantWebhookUrlParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAdminMerchantWebhookUrlBody = zod.object({
+  "url": zod.string().describe('New webhook callback URL. Must be HTTPS.')
+})
+
+export const UpdateAdminMerchantWebhookUrlResponse = zod.object({
+  "url": zod.string().nullable().describe('The merchant\'s current webhook callback URL, or null if not configured.')
+})
+
+
+/**
  * @summary List invoices for a specific merchant (admin only)
  */
 export const ListMerchantInvoicesParams = zod.object({

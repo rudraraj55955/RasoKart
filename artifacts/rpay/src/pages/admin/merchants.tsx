@@ -11,6 +11,8 @@ import {
   useUpdateMerchantBranding, useGetMerchantPlanUsageAdmin,
   useGetAdminMerchantCallbackSecret, useResetAdminMerchantCallbackSecret,
   useUpdateMerchantCallbackWindow,
+  useGetAdminMerchantWebhookUrl, useUpdateAdminMerchantWebhookUrl,
+  getGetAdminMerchantWebhookUrlQueryKey,
   useScheduleMerchantPlanRenewal, useGetMerchant,
   useSendSecurityReminder,
   getListMerchantsQueryKey,
@@ -29,7 +31,7 @@ import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff, Bell } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, BellOff, Bell, Globe, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -104,6 +106,8 @@ export default function AdminMerchants() {
   const [renewScheduledRenewalAt, setRenewScheduledRenewalAt] = useState<string>("");
   const [scheduleRenewalDate, setScheduleRenewalDate] = useState<string>("");
   const [confirmSecretReset, setConfirmSecretReset] = useState(false);
+  const [webhookUrlEditMode, setWebhookUrlEditMode] = useState(false);
+  const [webhookUrlInput, setWebhookUrlInput] = useState("");
 
   // Parse ?open=<merchantId> once on mount (e.g. linked from QR/VA detail panels)
   const [deepLinkId] = useState<number | null>(() => {
@@ -173,6 +177,10 @@ export default function AdminMerchants() {
     assignPlanMerchant?.id ?? 0,
     { query: { enabled: !!assignPlanMerchant, queryKey: ["getAdminMerchantCallbackSecret", assignPlanMerchant?.id ?? 0] } }
   );
+  const { data: merchantWebhookUrl, refetch: refetchWebhookUrl } = useGetAdminMerchantWebhookUrl(
+    assignPlanMerchant?.id ?? 0,
+    { query: { enabled: !!assignPlanMerchant, queryKey: getGetAdminMerchantWebhookUrlQueryKey(assignPlanMerchant?.id ?? 0) } }
+  );
   // Fetch the deep-link merchant by ID so the panel opens regardless of which page they're on
   const { data: deepLinkMerchant } = useGetMerchant(
     deepLinkId ?? 0,
@@ -180,6 +188,7 @@ export default function AdminMerchants() {
   );
   const resetCallbackSecretMutation = useResetAdminMerchantCallbackSecret();
   const updateCallbackWindowMutation = useUpdateMerchantCallbackWindow();
+  const updateWebhookUrlMutation = useUpdateAdminMerchantWebhookUrl();
   const updateBrandingMutation = useUpdateMerchantBranding();
   const approveMutation = useApproveMerchant();
   const rejectMutation = useRejectMerchant();
@@ -457,6 +466,8 @@ export default function AdminMerchants() {
     setScheduleRenewalDate("");
     setWindowEditMode(false);
     setWindowInput("");
+    setWebhookUrlEditMode(false);
+    setWebhookUrlInput("");
   };
 
   const handleAssignPlan = () => {
@@ -1964,6 +1975,83 @@ export default function AdminMerchants() {
                         Reset to default
                       </Button>
                     )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Webhook URL */}
+            <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-muted-foreground shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Webhook URL</p>
+              </div>
+              {!webhookUrlEditMode ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {merchantWebhookUrl?.url ? (
+                      <span className="font-mono text-xs text-foreground truncate">{merchantWebhookUrl.url}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Not configured</span>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => {
+                      setWebhookUrlInput(merchantWebhookUrl?.url ?? "");
+                      setWebhookUrlEditMode(true);
+                    }}
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1" />
+                    {merchantWebhookUrl?.url ? "Edit" : "Set URL"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    className="h-8 text-sm font-mono"
+                    placeholder="https://yourapp.com/webhook"
+                    value={webhookUrlInput}
+                    onChange={e => setWebhookUrlInput(e.target.value)}
+                    type="url"
+                  />
+                  <p className="text-xs text-muted-foreground">Only HTTPS URLs are accepted. The merchant will be notified by email.</p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { setWebhookUrlEditMode(false); setWebhookUrlInput(""); }}
+                      disabled={updateWebhookUrlMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5"
+                      disabled={updateWebhookUrlMutation.isPending || !webhookUrlInput.trim()}
+                      onClick={() => {
+                        if (!assignPlanMerchant) return;
+                        updateWebhookUrlMutation.mutate(
+                          { id: assignPlanMerchant.id, data: { url: webhookUrlInput.trim() } },
+                          {
+                            onSuccess: () => {
+                              toast.success("Webhook URL updated — merchant notified by email");
+                              setWebhookUrlEditMode(false);
+                              setWebhookUrlInput("");
+                              refetchWebhookUrl();
+                            },
+                            onError: (err: any) => {
+                              const msg = err?.response?.data?.error ?? "Failed to update webhook URL";
+                              toast.error(msg);
+                            },
+                          }
+                        );
+                      }}
+                    >
+                      {updateWebhookUrlMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</> : "Save"}
+                    </Button>
                   </div>
                 </div>
               )}

@@ -162,6 +162,19 @@ export interface CallbackWindowInput {
   windowSeconds?: number | null;
 }
 
+export interface MerchantWebhookUrlResponse {
+  /**
+     * The merchant's current webhook callback URL, or null if not configured.
+     * @nullable
+     */
+  url: string | null;
+}
+
+export interface UpdateMerchantWebhookUrlInput {
+  /** New webhook callback URL. Must be HTTPS. */
+  url: string;
+}
+
 export interface MerchantBrandingInput {
   /** @nullable */
   logoUrl?: string | null;

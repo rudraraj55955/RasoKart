@@ -126,6 +126,7 @@ import type {
   MerchantProduct,
   MerchantRegisterInput,
   MerchantVolumeListResponse,
+  MerchantWebhookUrlResponse,
   MessageResponse,
   Notification,
   NotificationListResponse,
@@ -192,6 +193,7 @@ import type {
   Transaction,
   TransactionListResponse,
   UpdateAccountDetailVisibility200,
+  UpdateMerchantWebhookUrlInput,
   UpdateMyPreferencesBody,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -2645,6 +2647,156 @@ export const useUpdateMerchantCallbackWindow = <TError = ErrorType<ErrorResponse
         TContext
       > => {
       return useMutation(getUpdateMerchantCallbackWindowMutationOptions(options));
+    }
+
+export const getGetAdminMerchantWebhookUrlUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/webhook-url`
+}
+
+/**
+ * @summary Get the webhook URL configured for a merchant (admin only)
+ */
+export const getAdminMerchantWebhookUrl = async (id: number, options?: RequestInit): Promise<MerchantWebhookUrlResponse> => {
+
+  return customFetch<MerchantWebhookUrlResponse>(getGetAdminMerchantWebhookUrlUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminMerchantWebhookUrlQueryKey = (id: number,) => {
+    return [
+    `/api/merchants/${id}/webhook-url`
+    ] as const;
+    }
+
+
+export const getGetAdminMerchantWebhookUrlQueryOptions = <TData = Awaited<ReturnType<typeof getAdminMerchantWebhookUrl>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantWebhookUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminMerchantWebhookUrlQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminMerchantWebhookUrl>>> = ({ signal }) => getAdminMerchantWebhookUrl(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantWebhookUrl>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminMerchantWebhookUrlQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminMerchantWebhookUrl>>>
+export type GetAdminMerchantWebhookUrlQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the webhook URL configured for a merchant (admin only)
+ */
+
+export function useGetAdminMerchantWebhookUrl<TData = Awaited<ReturnType<typeof getAdminMerchantWebhookUrl>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMerchantWebhookUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminMerchantWebhookUrlQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAdminMerchantWebhookUrlUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/webhook-url`
+}
+
+/**
+ * Overwrites the merchant's webhook callback URL. If no webhook config exists yet one is created. An email notification is sent to the merchant. Only HTTPS URLs are accepted.
+ * @summary Update the webhook URL for a merchant (admin only)
+ */
+export const updateAdminMerchantWebhookUrl = async (id: number,
+    updateMerchantWebhookUrlInput: UpdateMerchantWebhookUrlInput, options?: RequestInit): Promise<MerchantWebhookUrlResponse> => {
+
+  return customFetch<MerchantWebhookUrlResponse>(getUpdateAdminMerchantWebhookUrlUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateMerchantWebhookUrlInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAdminMerchantWebhookUrlMutationOptions = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminMerchantWebhookUrl>>, TError,{id: number;data: BodyType<UpdateMerchantWebhookUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAdminMerchantWebhookUrl>>, TError,{id: number;data: BodyType<UpdateMerchantWebhookUrlInput>}, TContext> => {
+
+const mutationKey = ['updateAdminMerchantWebhookUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminMerchantWebhookUrl>>, {id: number;data: BodyType<UpdateMerchantWebhookUrlInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAdminMerchantWebhookUrl(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAdminMerchantWebhookUrlMutationResult = NonNullable<Awaited<ReturnType<typeof updateAdminMerchantWebhookUrl>>>
+    export type UpdateAdminMerchantWebhookUrlMutationBody = BodyType<UpdateMerchantWebhookUrlInput>
+    export type UpdateAdminMerchantWebhookUrlMutationError = ErrorType<ErrorResponse | void>
+
+    /**
+ * @summary Update the webhook URL for a merchant (admin only)
+ */
+export const useUpdateAdminMerchantWebhookUrl = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminMerchantWebhookUrl>>, TError,{id: number;data: BodyType<UpdateMerchantWebhookUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAdminMerchantWebhookUrl>>,
+        TError,
+        {id: number;data: BodyType<UpdateMerchantWebhookUrlInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAdminMerchantWebhookUrlMutationOptions(options));
     }
 
 export const getListMerchantInvoicesUrl = (id: number,) => {

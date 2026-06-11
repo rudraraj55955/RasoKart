@@ -832,6 +832,63 @@ paths:
         "404":
           description: Merchant not found
 
+  /merchants/{id}/webhook-url:
+    get:
+      operationId: getAdminMerchantWebhookUrl
+      tags: [merchants]
+      summary: Get the webhook URL configured for a merchant (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Current webhook URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantWebhookUrlResponse"
+        "403":
+          description: Admin access only
+        "404":
+          description: Merchant not found
+    patch:
+      operationId: updateAdminMerchantWebhookUrl
+      tags: [merchants]
+      summary: Update the webhook URL for a merchant (admin only)
+      description: Overwrites the merchant's webhook callback URL. If no webhook config exists yet one is created. An email notification is sent to the merchant. Only HTTPS URLs are accepted.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMerchantWebhookUrlInput"
+      responses:
+        "200":
+          description: Updated webhook URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantWebhookUrlResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Admin access only
+        "404":
+          description: Merchant not found
+
   /merchants/{id}/invoices:
     get:
       operationId: listMerchantInvoices
@@ -4659,6 +4716,22 @@ components:
         windowSeconds:
           type: ["integer", "null"]
           description: Replay-protection window in seconds (1–86400), or null to reset to global default.
+
+    MerchantWebhookUrlResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: ["string", "null"]
+          description: The merchant's current webhook callback URL, or null if not configured.
+
+    UpdateMerchantWebhookUrlInput:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: New webhook callback URL. Must be HTTPS.
 
     MerchantBrandingInput:
       type: object

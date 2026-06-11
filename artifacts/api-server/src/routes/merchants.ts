@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable } from "@workspace/db";
+import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, webhooksTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 import { sendRejectionEmail } from "../helpers/rejectionEmail";
 import { sendCallbackSecretResetEmail } from "../helpers/callbackSecretResetEmail";
+import { sendCallbackUrlChangedEmail } from "../helpers/callbackUrlChangedEmail";
 import { ObjectStorageService, ObjectNotFoundError, InvalidImageError } from "../lib/objectStorage";
 import { consumeUploadIntent } from "../lib/uploadIntentStore";
 
@@ -850,6 +851,81 @@ router.post("/:id/plan/schedule-renewal", requireAdmin, async (req, res) => {
   });
 
   res.json({ ...result, expiresAt: result.expiresAt ?? null, scheduledRenewalAt: result.scheduledRenewalAt?.toISOString() ?? null });
+});
+
+// GET /api/merchants/:id/webhook-url  (admin only)
+router.get("/:id/webhook-url", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const [merchant] = await db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+  const [webhook] = await db.select({ url: webhooksTable.url }).from(webhooksTable).where(eq(webhooksTable.merchantId, id)).limit(1);
+  res.json({ url: webhook?.url ?? null });
+});
+
+// PATCH /api/merchants/:id/webhook-url  (admin only)
+router.patch("/:id/webhook-url", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
+  const { url } = req.body as { url: string };
+
+  if (!url || typeof url !== "string" || !url.trim()) {
+    res.status(400).json({ error: "url is required" });
+    return;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    res.status(400).json({ error: "url must be a valid URL" });
+    return;
+  }
+  if (parsed.protocol !== "https:") {
+    res.status(400).json({ error: "Only HTTPS webhook URLs are supported" });
+    return;
+  }
+
+  const trimmedUrl = url.trim();
+
+  const [merchant] = await db.select().from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+  const existing = await db.select().from(webhooksTable).where(eq(webhooksTable.merchantId, id)).limit(1);
+  let webhook;
+  if (existing.length > 0) {
+    [webhook] = await db
+      .update(webhooksTable)
+      .set({ url: trimmedUrl })
+      .where(eq(webhooksTable.merchantId, id))
+      .returning();
+  } else {
+    [webhook] = await db
+      .insert(webhooksTable)
+      .values({ merchantId: id, url: trimmedUrl, isActive: true, events: [] })
+      .returning();
+  }
+
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "webhook_url_updated",
+    targetType: "merchant",
+    targetId: merchant.id,
+    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email, newUrl: trimmedUrl }),
+    ipAddress: req.ip ?? null,
+  });
+
+  req.log.info({ adminId: admin.id, merchantId: id }, "Admin updated merchant webhook URL");
+
+  sendCallbackUrlChangedEmail({
+    to: merchant.email,
+    businessName: merchant.businessName,
+    adminEmail: admin.email,
+    newUrl: trimmedUrl,
+    changedAt: new Date(),
+  }).catch((err) => req.log.error({ err, merchantId: id }, "Failed to send callback URL changed email"));
+
+  res.json({ url: webhook!.url });
 });
 
 // GET /api/merchants/:id/invoices (admin only)
