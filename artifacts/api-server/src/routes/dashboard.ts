@@ -295,7 +295,7 @@ router.get("/risk", async (req, res, next) => {
   }
 });
 
-// GET /api/dashboard/recon-summary — latest auto-reconciliation run summary (admin only)
+// GET /api/dashboard/recon-summary — latest reconciliation run summary (admin only)
 router.get("/recon-summary", async (req, res, next) => {
   try {
     const user = (req as any).user;
@@ -304,12 +304,7 @@ router.get("/recon-summary", async (req, res, next) => {
     const [run] = await db
       .select()
       .from(reconciliationRunsTable)
-      .where(
-        and(
-          eq(reconciliationRunsTable.triggeredBy, "auto"),
-          eq(reconciliationRunsTable.status, "complete")
-        )
-      )
+      .where(eq(reconciliationRunsTable.status, "complete"))
       .orderBy(sql`${reconciliationRunsTable.runAt} DESC`)
       .limit(1);
 

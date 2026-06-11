@@ -141,7 +141,10 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <GitCompareArrows className={`w-4 h-4 ${hasUnmatched ? "text-rose-400" : "text-emerald-400"}`} />
-                  <CardTitle className="text-base">Last Auto-Reconciliation Run</CardTitle>
+                  <CardTitle className="text-base">Latest Reconciliation Run</CardTitle>
+                  <span className={`rounded-full text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide ${reconSummary.triggeredBy === "manual" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"}`}>
+                    {reconSummary.triggeredBy === "manual" ? "Manual" : "Auto"}
+                  </span>
                   {hasUnmatched && (
                     <span className="rounded-full bg-rose-500/20 text-rose-400 text-[10px] font-semibold px-2 py-0.5 border border-rose-500/30 uppercase tracking-wide">
                       Needs Review
