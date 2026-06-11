@@ -1,10 +1,20 @@
 import { execSync } from "child_process";
 
-const GITHUB_REPO = "rudraraj55955/RasoKart";
+const GITHUB_REPO =
+  process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
 const REMOTE_NAME = "github";
 
 function run(cmd: string, opts: { stdio?: "pipe" | "inherit" } = {}) {
   return execSync(cmd, { stdio: opts.stdio ?? "pipe" });
+}
+
+function resetRemote() {
+  try {
+    run(
+      `git remote set-url ${REMOTE_NAME} https://github.com/${GITHUB_REPO}.git`,
+    );
+  } catch {
+  }
 }
 
 async function main() {
@@ -26,22 +36,27 @@ async function main() {
     run(`git remote add ${REMOTE_NAME} ${remoteUrl}`);
   }
 
-  console.log(`GITHUB_SYNC: Pushing to ${GITHUB_REPO}...`);
   try {
-    run(`git fetch ${REMOTE_NAME} main`, { stdio: "inherit" });
-  } catch {
+    console.log(`GITHUB_SYNC: Pushing to ${GITHUB_REPO}...`);
+    try {
+      run(`git fetch ${REMOTE_NAME} main`, { stdio: "inherit" });
+    } catch {
+    }
+    run(`git push ${REMOTE_NAME} HEAD:main --force`, { stdio: "inherit" });
+    console.log("GITHUB_SYNC: Sync complete.");
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error
+        ? err.message.replace(token, "<REDACTED>")
+        : String(err).replace(token, "<REDACTED>");
+    throw new Error(`Push failed — ${message}`);
+  } finally {
+    resetRemote();
   }
-  run(`git push ${REMOTE_NAME} HEAD:main --force`, { stdio: "inherit" });
-
-  run(
-    `git remote set-url ${REMOTE_NAME} https://github.com/${GITHUB_REPO}.git`,
-  );
-
-  console.log("GITHUB_SYNC: Sync complete.");
 }
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`GITHUB_SYNC: Push failed — ${message}`);
+  console.error(`GITHUB_SYNC: ${message}`);
   process.exit(1);
 });
