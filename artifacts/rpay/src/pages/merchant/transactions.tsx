@@ -345,6 +345,7 @@ function formatProvider(p: string | null | undefined): string {
   return PROVIDER_LABELS[p] ?? p.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
+
 function ProviderBadge({ provider }: { provider: string | null | undefined }) {
   if (!provider) return null;
   return (
