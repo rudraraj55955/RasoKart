@@ -85,6 +85,67 @@ router.get("/my-activity", async (req, res) => {
   });
 });
 
+router.get("/my-activity/export", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "merchant") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (!user.merchantId) {
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="security-activity-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send("ID,Action,Admin,Target Type,Timestamp\n");
+    return;
+  }
+
+  const { action, dateFrom, dateTo } = req.query as Record<string, string>;
+
+  const conditions: any[] = [eq(auditLogsTable.targetId, user.merchantId)];
+  if (action && action !== "all") conditions.push(eq(auditLogsTable.action, action));
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    from.setUTCHours(0, 0, 0, 0);
+    if (!isNaN(from.getTime())) conditions.push(gte(auditLogsTable.createdAt, from));
+  }
+  if (dateTo) {
+    const to = new Date(dateTo);
+    to.setUTCHours(23, 59, 59, 999);
+    if (!isNaN(to.getTime())) conditions.push(lte(auditLogsTable.createdAt, to));
+  }
+  const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+  const rows = await db
+    .select()
+    .from(auditLogsTable)
+    .where(where)
+    .orderBy(desc(auditLogsTable.createdAt));
+
+  function escapeCsv(val: string | null | undefined): string {
+    if (val == null) return "";
+    const s = String(val);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  }
+
+  const header = ["ID", "Action", "Admin", "Target Type", "Timestamp"];
+  const csvRows = rows.map(r => [
+    escapeCsv(String(r.id)),
+    escapeCsv(r.action),
+    escapeCsv(anonymiseEmail(r.adminEmail)),
+    escapeCsv(r.targetType),
+    escapeCsv(r.createdAt.toISOString()),
+  ].join(","));
+
+  const csv = [header.join(","), ...csvRows].join("\n");
+
+  const filename = `security-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(csv);
+});
+
 router.get("/stats", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 

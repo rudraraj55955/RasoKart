@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { ShieldCheck, KeyRound, Webhook, RotateCcw, CheckCircle2, AlertTriangle, Clock, Lock, Shield, ChevronLeft, ChevronRight, AlertCircle, UserCog, CreditCard, FileText, Sliders, Info, X, History } from "lucide-react";
 import { format, formatDistanceToNow, differenceInDays } from "date-fns";
 import { Link } from "wouter";
@@ -514,10 +515,25 @@ export default function MerchantSecurity() {
 
       {/* ── Admin activity log ── */}
       <div>
-        <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2 mb-3">
-          <Shield className="w-5 h-5 text-primary" />
-          Security Activity
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" />
+            Security Activity
+          </h2>
+          <ExportCsvButton
+            label="Export CSV"
+            disabled={entries.length === 0}
+            onExport={() => downloadCsvFromUrl(
+              "/api/audit-logs/my-activity/export",
+              `security-activity-${new Date().toISOString().slice(0, 10)}.csv`,
+              {
+                ...(actionFilter !== "all" ? { action: actionFilter } : {}),
+                ...(dateFrom ? { dateFrom } : {}),
+                ...(dateTo ? { dateTo } : {}),
+              },
+            )}
+          />
+        </div>
 
         <Card className="border-blue-500/20 bg-blue-950/10 mb-4">
           <CardContent className="py-3 flex items-start gap-3">

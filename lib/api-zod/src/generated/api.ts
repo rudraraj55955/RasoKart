@@ -3250,6 +3250,16 @@ export const ListMySecurityActivityResponse = zod.object({
 
 
 /**
+ * @summary Export merchant security activity log as CSV
+ */
+export const ExportMySecurityActivityQueryParams = zod.object({
+  "action": zod.coerce.string().optional().describe('Filter by action type (e.g. plan_assigned, merchant_suspended)'),
+  "dateFrom": zod.date().optional().describe('Filter events on or after this date (ISO 8601, e.g. 2025-01-01)'),
+  "dateTo": zod.date().optional().describe('Filter events on or before this date (ISO 8601, e.g. 2025-12-31)')
+})
+
+
+/**
  * @summary Get audit log summary stats
  */
 export const GetAdminAuditLogStatsResponse = zod.object({

@@ -39,7 +39,10 @@ export async function downloadCsvFromUrl(url: string, filename: string, params?:
   if (params) {
     Object.entries(params).forEach(([k, v]) => { if (v) searchParams.set(k, v); });
   }
-  const res = await fetch(`${url}?${searchParams.toString()}`, { credentials: "include" });
+  const token = localStorage.getItem("rasokart_token");
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${url}?${searchParams.toString()}`, { credentials: "include", headers });
   if (!res.ok) throw new Error("Export failed");
   const blob = await res.blob();
   const a = document.createElement("a");

@@ -76,6 +76,7 @@ import type {
   ExpiryCheckResult,
   ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
+  ExportMySecurityActivityParams,
   ExportVaBalanceAuditCsvParams,
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
@@ -10191,6 +10192,90 @@ export function useListMySecurityActivity<TData = Awaited<ReturnType<typeof list
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListMySecurityActivityQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportMySecurityActivityUrl = (params?: ExportMySecurityActivityParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/audit-logs/my-activity/export?${stringifiedParams}` : `/api/audit-logs/my-activity/export`
+}
+
+/**
+ * @summary Export merchant security activity log as CSV
+ */
+export const exportMySecurityActivity = async (params?: ExportMySecurityActivityParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportMySecurityActivityUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportMySecurityActivityQueryKey = (params?: ExportMySecurityActivityParams,) => {
+    return [
+    `/api/audit-logs/my-activity/export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportMySecurityActivityQueryOptions = <TData = Awaited<ReturnType<typeof exportMySecurityActivity>>, TError = ErrorType<void>>(params?: ExportMySecurityActivityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportMySecurityActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportMySecurityActivityQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportMySecurityActivity>>> = ({ signal }) => exportMySecurityActivity(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportMySecurityActivity>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportMySecurityActivityQueryResult = NonNullable<Awaited<ReturnType<typeof exportMySecurityActivity>>>
+export type ExportMySecurityActivityQueryError = ErrorType<void>
+
+
+/**
+ * @summary Export merchant security activity log as CSV
+ */
+
+export function useExportMySecurityActivity<TData = Awaited<ReturnType<typeof exportMySecurityActivity>>, TError = ErrorType<void>>(
+ params?: ExportMySecurityActivityParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportMySecurityActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportMySecurityActivityQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

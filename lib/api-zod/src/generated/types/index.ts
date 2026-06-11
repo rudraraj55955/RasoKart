@@ -91,6 +91,7 @@ export * from './errorResponse';
 export * from './expiryCheckResult';
 export * from './exportAdminAuditLogsCsvParams';
 export * from './exportMerchantBalanceHistoryParams';
+export * from './exportMySecurityActivityParams';
 export * from './exportVaBalanceAuditCsvFieldChanged';
 export * from './exportVaBalanceAuditCsvParams';
 export * from './getQrCodeStatsParams';

@@ -3399,6 +3399,34 @@ paths:
         "403":
           description: Forbidden
 
+  /audit-logs/my-activity/export:
+    get:
+      operationId: exportMySecurityActivity
+      tags: [dashboard]
+      summary: Export merchant security activity log as CSV
+      parameters:
+        - name: action
+          in: query
+          description: "Filter by action type (e.g. plan_assigned, merchant_suspended)"
+          schema: { type: string }
+        - name: dateFrom
+          in: query
+          description: "Filter events on or after this date (ISO 8601, e.g. 2025-01-01)"
+          schema: { type: string, format: date }
+        - name: dateTo
+          in: query
+          description: "Filter events on or before this date (ISO 8601, e.g. 2025-12-31)"
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+        "403":
+          description: Forbidden
+
   /audit-logs/stats:
     get:
       operationId: getAdminAuditLogStats
