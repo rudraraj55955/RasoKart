@@ -187,8 +187,16 @@ function sweepStaleCooldowns() {
   }
 }
 
-function CallbackRow({ log, activeQrFilter, onFilterByQr }: { log: any; activeQrFilter: number | undefined; onFilterByQr: (id: number) => void }) {
-  const [open, setOpen] = useState(false);
+function CallbackRow({ log, activeQrFilter, onFilterByQr, initialOpen, onDeepLinkCollapse }: { log: any; activeQrFilter: number | undefined; onFilterByQr: (id: number) => void; initialOpen?: boolean; onDeepLinkCollapse?: () => void }) {
+  const [open, setOpen] = useState(initialOpen ?? false);
+  const rowRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    if (initialOpen && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(() => readStoredCooldown(log.id));
   const [secondsLeft, setSecondsLeft] = useState(() => {
@@ -246,13 +254,20 @@ function CallbackRow({ log, activeQrFilter, onFilterByQr }: { log: any; activeQr
   const canRetry = log.status === "failed" || log.status === "pending_retry";
 
 
+  const handleOpenChange = useCallback((next: boolean) => {
+    setOpen(next);
+    if (!next && onDeepLinkCollapse) {
+      onDeepLinkCollapse();
+    }
+  }, [onDeepLinkCollapse]);
+
   const tryParse = (s: string | null) => {
     if (!s) return null;
     try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
   };
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <TableRow className="cursor-pointer" onClick={() => setOpen(!open)}>
+    <Collapsible open={open} onOpenChange={handleOpenChange}>
+      <TableRow ref={rowRef} className="cursor-pointer" onClick={() => handleOpenChange(!open)}>
         <TableCell>{open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</TableCell>
         <TableCell>
           {log.qrCodeId ? (
@@ -414,6 +429,7 @@ export default function MerchantCallbacks() {
   const sigVerified = params.get("sig") ?? "all";
   const qrCodeId = (() => { const v = params.get("qr"); const n = v ? parseInt(v) : NaN; return !isNaN(n) && n > 0 ? n : undefined; })();
   const page = (() => { const v = params.get("page"); const n = v ? parseInt(v) : NaN; return !isNaN(n) && n > 0 ? n : 1; })();
+  const deepLinkId = (() => { const v = params.get("id"); const n = v ? parseInt(v) : NaN; return !isNaN(n) && n > 0 ? n : undefined; })();
 
   const [qrCodeIdInput, setQrCodeIdInput] = useState(() => qrCodeId != null ? String(qrCodeId) : "");
   const [sigWarnDismissed, setSigWarnDismissed] = useState(() => {
@@ -537,6 +553,10 @@ export default function MerchantCallbacks() {
     setQrCodeIdInput(String(id));
     updateParams({ qr: String(id), page: "1" });
   };
+
+  const removeDeepLink = useCallback(() => {
+    updateParams({ id: undefined });
+  }, [updateParams]);
 
   const applySigFailureFilter = () => {
     updateParams({ sig: "failed", page: "1" });
@@ -726,7 +746,16 @@ export default function MerchantCallbacks() {
                       : qrCodeId ? `No webhook logs for QR #${qrCodeId}` : "No callback logs yet"}
                   </TableCell>
                 </TableRow>
-              ) : data?.data?.map(log => <CallbackRow key={log.id} log={log} activeQrFilter={qrCodeId} onFilterByQr={applyQrFilterById} />)}
+              ) : data?.data?.map(log => (
+                <CallbackRow
+                  key={log.id}
+                  log={log}
+                  activeQrFilter={qrCodeId}
+                  onFilterByQr={applyQrFilterById}
+                  initialOpen={log.id === deepLinkId}
+                  onDeepLinkCollapse={log.id === deepLinkId ? removeDeepLink : undefined}
+                />
+              ))}
             </TableBody>
           </Table>
           </div>
