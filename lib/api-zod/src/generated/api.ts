@@ -1527,7 +1527,8 @@ export const ListSecurityEventsQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listSecurityEventsQueryLimitMax).default(listSecurityEventsQueryLimitDefault),
   "eventType": zod.coerce.string().optional().describe('Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated)'),
   "dateFrom": zod.date().optional().describe('Filter events on or after this date (YYYY-MM-DD)'),
-  "dateTo": zod.date().optional().describe('Filter events on or before this date (YYYY-MM-DD)')
+  "dateTo": zod.date().optional().describe('Filter events on or before this date (YYYY-MM-DD)'),
+  "ipAddress": zod.coerce.string().optional().describe('Filter events by IP address (exact match)')
 })
 
 export const ListSecurityEventsResponse = zod.object({

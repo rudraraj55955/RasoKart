@@ -3255,6 +3255,10 @@ dateFrom?: string;
  * Filter events on or before this date (YYYY-MM-DD)
  */
 dateTo?: string;
+/**
+ * Filter events by IP address (exact match)
+ */
+ipAddress?: string;
 };
 
 export type GetWebhookLogsParams = {

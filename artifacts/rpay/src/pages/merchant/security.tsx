@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useListCallbackLogs, useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useListMySecurityActivity, useListSecurityEvents, useListKnownLoginIps, useListTrustedIps, useDeleteTrustedIp, getListTrustedIpsQueryKey } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -340,6 +341,43 @@ function CredentialEventSkeletonRows() {
 
 export default function MerchantSecurity() {
   const qc = useQueryClient();
+  const locationSearch = useSearch();
+  const [, setLocation] = useLocation();
+
+  // IP filter — read from URL on mount
+  const [ipFilter, setIpFilter] = useState<string>(() => {
+    const params = new URLSearchParams(locationSearch);
+    return params.get("ip") ?? "";
+  });
+
+  const credEventRef = useRef<HTMLDivElement>(null);
+
+  function applyIpFilter(ip: string) {
+    setIpFilter(ip);
+    setSecPage(1);
+    // Always scope to login events when filtering by IP — the task asks for
+    // "merchant_login events from that IP"
+    setSecEventType("merchant_login");
+    const next = new URLSearchParams(locationSearch);
+    if (ip) {
+      next.set("ip", ip);
+    } else {
+      next.delete("ip");
+    }
+    setLocation(`?${next.toString()}`, { replace: true });
+    // Scroll to credential event history
+    setTimeout(() => credEventRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
+  function clearIpFilter() {
+    setIpFilter("");
+    setSecPage(1);
+    setSecEventType("all");
+    const next = new URLSearchParams(locationSearch);
+    next.delete("ip");
+    const qs = next.toString();
+    setLocation(qs ? `?${qs}` : window.location.pathname, { replace: true });
+  }
 
   // Security notification preferences
   const { data: me } = useGetMe();
@@ -516,6 +554,7 @@ export default function MerchantSecurity() {
     eventType: secEventType === "all" ? undefined : (secEventType as any),
     dateFrom: secDateFrom || undefined,
     dateTo: secDateTo || undefined,
+    ipAddress: ipFilter || undefined,
   });
 
   const allSecEvents = (secEventsData?.data ?? []) as LocalSecurityEvent[];
@@ -530,7 +569,7 @@ export default function MerchantSecurity() {
   const secTotal = secEventsData?.total ?? 0;
   const secTotalPages = Math.max(1, Math.ceil(secTotal / SEC_PAGE_SIZE));
 
-  const anySecFilterActive = !!(secEventType !== "all" || secDateFrom || secDateTo || secSearch);
+  const anySecFilterActive = !!(secEventType !== "all" || secDateFrom || secDateTo || secSearch || ipFilter);
 
   // Known login IPs
   const { data: knownIpsData, isLoading: knownIpsLoading } = useListKnownLoginIps();
@@ -1156,7 +1195,7 @@ export default function MerchantSecurity() {
             Known Login Locations
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
-            IP addresses that have previously signed into your account — up to the last 10 unique locations.
+            IP addresses that have previously signed into your account — up to the last 10 unique locations. Click a row to filter the event history below by that IP.
           </p>
         </CardHeader>
         <CardContent>
@@ -1186,21 +1225,41 @@ export default function MerchantSecurity() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {knownIpsData.data.map((row) => (
-                  <TableRow key={row.ipAddress} className="border-border/40">
-                    <TableCell className="py-2.5">
-                      <code className="text-xs font-mono text-foreground/90 bg-muted/50 px-1.5 py-0.5 rounded">
-                        {row.ipAddress}
-                      </code>
-                    </TableCell>
-                    <TableCell className="py-2.5 text-xs text-muted-foreground">
-                      {format(new Date(row.firstSeen), "dd MMM yyyy 'at' HH:mm")}
-                    </TableCell>
-                    <TableCell className="py-2.5 text-xs text-muted-foreground">
-                      {format(new Date(row.lastSeen), "dd MMM yyyy 'at' HH:mm")}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {knownIpsData.data.map((row) => {
+                  const isActive = ipFilter === row.ipAddress;
+                  return (
+                    <TableRow
+                      key={row.ipAddress}
+                      className={`group border-border/40 cursor-pointer transition-colors ${isActive ? "bg-sky-500/10 hover:bg-sky-500/15" : "hover:bg-muted/30"}`}
+                      onClick={() => isActive ? clearIpFilter() : applyIpFilter(row.ipAddress)}
+                      title={isActive ? "Clear IP filter" : `Filter credential events by ${row.ipAddress}`}
+                    >
+                      <TableCell className="py-2.5">
+                        <div className="flex items-center gap-2">
+                          <code className={`text-xs font-mono px-1.5 py-0.5 rounded ${isActive ? "text-sky-300 bg-sky-500/20" : "text-foreground/90 bg-muted/50"}`}>
+                            {row.ipAddress}
+                          </code>
+                          {isActive ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-sky-400 border border-sky-500/40 rounded-full px-1.5 py-0.5 bg-sky-500/10">
+                              <X className="w-2.5 h-2.5" />
+                              filtered
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                              click to filter ↓
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2.5 text-xs text-muted-foreground">
+                        {format(new Date(row.firstSeen), "dd MMM yyyy 'at' HH:mm")}
+                      </TableCell>
+                      <TableCell className="py-2.5 text-xs text-muted-foreground">
+                        {format(new Date(row.lastSeen), "dd MMM yyyy 'at' HH:mm")}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -1282,7 +1341,7 @@ export default function MerchantSecurity() {
       </Card>
 
       {/* Security event history */}
-      <Card>
+      <Card ref={credEventRef}>
         <CardHeader className="pb-3 space-y-3">
           <div className="flex items-center gap-2">
             <CardTitle className="text-base flex items-center gap-2 flex-1">
@@ -1306,7 +1365,7 @@ export default function MerchantSecurity() {
                 variant="ghost"
                 size="sm"
                 className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
-                onClick={() => { setSecEventType("all"); setSecDateFrom(""); setSecDateTo(""); setSecSearch(""); setSecPage(1); }}
+                onClick={() => { setSecEventType("all"); setSecDateFrom(""); setSecDateTo(""); setSecSearch(""); setSecPage(1); clearIpFilter(); }}
               >
                 <X className="w-3 h-3" />
                 Clear
@@ -1326,9 +1385,26 @@ export default function MerchantSecurity() {
             </Button>
           </div>
           <div className="flex flex-col gap-2">
+            {ipFilter && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground">Filtered by IP:</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 text-sky-300 text-xs font-mono px-2.5 py-0.5">
+                  <MapPin className="w-3 h-3 shrink-0" />
+                  {ipFilter}
+                  <button
+                    onClick={clearIpFilter}
+                    className="ml-0.5 text-sky-400/60 hover:text-sky-300 transition-colors"
+                    aria-label="Clear IP filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              </div>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {[
                 { value: "all", label: "All" },
+                { value: "merchant_login", label: "Logins" },
                 { value: "api_key_generated", label: "Key Generated" },
                 { value: "api_key_revoked", label: "Key Revoked" },
                 { value: "callback_secret_rotated", label: "Secret Rotated" },

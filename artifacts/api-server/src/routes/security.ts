@@ -15,7 +15,7 @@ router.get("/events", async (req, res, next) => {
       return;
     }
 
-    const { page = "1", limit = "50", dateFrom, dateTo, eventType } = req.query as Record<string, string>;
+    const { page = "1", limit = "50", dateFrom, dateTo, eventType, ipAddress } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -24,6 +24,9 @@ router.get("/events", async (req, res, next) => {
 
     if (eventType && eventType !== "all") {
       conditions.push(eq(credentialEventsTable.eventType, eventType));
+    }
+    if (ipAddress) {
+      conditions.push(eq(credentialEventsTable.ipAddress, ipAddress));
     }
     const dateRe = /^\d{4}-\d{2}-\d{2}$/;
     if (dateFrom && dateRe.test(dateFrom)) {

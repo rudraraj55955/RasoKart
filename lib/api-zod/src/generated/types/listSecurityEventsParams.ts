@@ -28,4 +28,8 @@ dateFrom?: Date;
  * Filter events on or before this date (YYYY-MM-DD)
  */
 dateTo?: Date;
+/**
+ * Filter events by IP address (exact match)
+ */
+ipAddress?: string;
 };
