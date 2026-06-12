@@ -174,14 +174,15 @@ router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
 router.post("/bulk", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const rows = req.body as Array<{
+    const body = req.body as { rows?: Array<{
       beneficiary_name?: string;
       account_number?: string;
       ifsc?: string;
       upi_id?: string;
       amount?: string | number;
       remark?: string;
-    }>;
+    }> };
+    const rows = body.rows ?? [];
 
     if (!Array.isArray(rows) || rows.length === 0) {
       res.status(400).json({ error: "rows array is required and must not be empty" }); return;

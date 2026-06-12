@@ -120,12 +120,9 @@ function SettingsTab() {
     try {
       const body: Record<string, unknown> = { enabled: currentEnabled, env: currentEnv };
       if (clientId.trim()) body.clientId = clientId.trim();
+      // Only send clientSecret if user explicitly typed a new value.
+      // An empty field means "keep existing" — never send empty string.
       if (clientSecret.trim()) body.clientSecret = clientSecret.trim();
-      if (clientSecret === "" && clientId.trim() === "") {
-        // pass — user didn't touch secret
-      } else if (clientSecret === "") {
-        body.clientSecret = "";
-      }
       await updateConfig({ data: body as any });
       qc.invalidateQueries({ queryKey: getGetCashfreePayoutConfigQueryKey() });
       setClientId("");
@@ -514,6 +511,9 @@ function PayoutsTab() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<Status | "ALL">("ALL");
+  const [merchantIdFilter, setMerchantIdFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -523,6 +523,9 @@ function PayoutsTab() {
     page,
     limit: PAGE_LIMIT,
     ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+    ...(merchantIdFilter.trim() ? { merchantId: parseInt(merchantIdFilter) } : {}),
+    ...(dateFrom ? { dateFrom } : {}),
+    ...(dateTo ? { dateTo } : {}),
   };
 
   const { data, isLoading, refetch } = useListCashfreePayouts(params, { request: { headers: AUTH_HEADERS } });
@@ -532,6 +535,16 @@ function PayoutsTab() {
   const rows = data?.data ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_LIMIT);
+
+  function resetFilters() {
+    setStatusFilter("ALL");
+    setMerchantIdFilter("");
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  }
+
+  const hasActiveFilters = statusFilter !== "ALL" || merchantIdFilter.trim() || dateFrom || dateTo;
 
   async function handleSync() {
     setSyncing(true);
@@ -561,34 +574,85 @@ function PayoutsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        {(["ALL", "PENDING", "SUCCESS", "FAILED", "REVERSED"] as const).map(s => (
-          <Button
-            key={s}
-            size="sm"
-            variant={statusFilter === s ? "default" : "outline"}
-            className="text-xs"
-            onClick={() => { setStatusFilter(s); setPage(1); }}
-          >
-            {s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}
-          </Button>
-        ))}
-        <div className="ml-auto flex gap-2">
-          <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing}>
-            {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-            Sync Status
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setShowBulk(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Bulk Upload
-          </Button>
-          <Button size="sm" onClick={() => setShowAdd(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Payout
-          </Button>
-        </div>
-      </div>
+      {/* Filters */}
+      <Card className="border-border/40">
+        <CardContent className="pt-4 pb-3">
+          <div className="flex flex-wrap items-end gap-3">
+            {/* Status pills */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium">Status</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(["ALL", "PENDING", "SUCCESS", "FAILED", "REVERSED"] as const).map(s => (
+                  <Button
+                    key={s}
+                    size="sm"
+                    variant={statusFilter === s ? "default" : "outline"}
+                    className="text-xs h-7 px-2.5"
+                    onClick={() => { setStatusFilter(s); setPage(1); }}
+                  >
+                    {s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Merchant ID */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium">Merchant ID</p>
+              <Input
+                className="h-8 w-32 text-xs"
+                placeholder="e.g. 42"
+                type="number"
+                min="1"
+                value={merchantIdFilter}
+                onChange={e => { setMerchantIdFilter(e.target.value); setPage(1); }}
+              />
+            </div>
+
+            {/* Date range */}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium">Date From</p>
+              <Input
+                className="h-8 w-36 text-xs"
+                type="date"
+                value={dateFrom}
+                onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium">Date To</p>
+              <Input
+                className="h-8 w-36 text-xs"
+                type="date"
+                value={dateTo}
+                onChange={e => { setDateTo(e.target.value); setPage(1); }}
+              />
+            </div>
+
+            {hasActiveFilters && (
+              <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground" onClick={resetFilters}>
+                Clear filters
+              </Button>
+            )}
+
+            {/* Actions */}
+            <div className="ml-auto flex gap-2 items-end">
+              <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing}>
+                {syncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Sync Status
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowBulk(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Bulk Upload
+              </Button>
+              <Button size="sm" onClick={() => setShowAdd(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Payout
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Table */}
       <Card className="border-border/50">
