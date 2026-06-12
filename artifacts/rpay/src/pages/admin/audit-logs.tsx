@@ -979,7 +979,7 @@ function ScheduleHistoryPanel({
   const retentionDays = retentionData?.retentionDays ?? 90;
   const logs = data?.data ?? [];
   const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
-  const autoExpandedRef = useRef(false);
+  const autoExpandedCycleRef = useRef<string | null>(null);
 
   const cycles = useMemo(() => {
     const map = new Map<string, typeof logs>();
@@ -1011,12 +1011,23 @@ function ScheduleHistoryPanel({
   }, [cycles]);
 
   useEffect(() => {
-    if (autoExpandedRef.current || cycles.length === 0) return;
-    autoExpandedRef.current = true;
     if (mostRecentFailedCycleId) {
-      setExpandedCycles(new Set([mostRecentFailedCycleId]));
+      // Auto-expand this failed cycle if we haven't already tracked it
+      if (autoExpandedCycleRef.current !== mostRecentFailedCycleId) {
+        autoExpandedCycleRef.current = mostRecentFailedCycleId;
+        setExpandedCycles(prev => new Set([...prev, mostRecentFailedCycleId]));
+      }
+    } else if (autoExpandedCycleRef.current !== null) {
+      // Most recent cycle is now a success — collapse the previously auto-expanded cycle
+      const toCollapse = autoExpandedCycleRef.current;
+      autoExpandedCycleRef.current = null;
+      setExpandedCycles(prev => {
+        const next = new Set(prev);
+        next.delete(toCollapse);
+        return next;
+      });
     }
-  }, [cycles, mostRecentFailedCycleId]);
+  }, [mostRecentFailedCycleId]);
 
   function toggleCycle(cycleId: string) {
     setExpandedCycles(prev => {
@@ -1025,6 +1036,11 @@ function ScheduleHistoryPanel({
       else next.add(cycleId);
       return next;
     });
+    // If user manually toggles the auto-expanded cycle, stop tracking it
+    // so the auto-collapse logic doesn't interfere with the manual state
+    if (autoExpandedCycleRef.current === cycleId) {
+      autoExpandedCycleRef.current = null;
+    }
   }
 
   if (isLoading) {
