@@ -470,6 +470,7 @@ export default function MerchantSecurity() {
   const [secEventType, setSecEventType] = useState("all");
   const [secDateFrom, setSecDateFrom] = useState("");
   const [secDateTo, setSecDateTo] = useState("");
+  const [secSearch, setSecSearch] = useState("");
   const [secPage, setSecPage] = useState(1);
   const SEC_PAGE_SIZE = 20;
 
@@ -481,11 +482,19 @@ export default function MerchantSecurity() {
     dateTo: secDateTo || undefined,
   });
 
-  const secPageSlice = (secEventsData?.data ?? []) as LocalSecurityEvent[];
+  const allSecEvents = (secEventsData?.data ?? []) as LocalSecurityEvent[];
+  const secPageSlice = secSearch
+    ? allSecEvents.filter(ev => {
+        const q = secSearch.toLowerCase();
+        const meta = securityEventMeta(ev.eventType);
+        return [ev.keyPrefix ?? "", meta.label, ev.eventType.replace(/_/g, " "), ev.actorEmail ?? "", ev.ipAddress ?? ""]
+          .join(" ").toLowerCase().includes(q);
+      })
+    : allSecEvents;
   const secTotal = secEventsData?.total ?? 0;
   const secTotalPages = Math.max(1, Math.ceil(secTotal / SEC_PAGE_SIZE));
 
-  const anySecFilterActive = !!(secEventType !== "all" || secDateFrom || secDateTo);
+  const anySecFilterActive = !!(secEventType !== "all" || secDateFrom || secDateTo || secSearch);
 
   function handleExportCsv() {
     if (!filteredLogs.length && !secPageSlice.length) return;
@@ -1017,7 +1026,7 @@ export default function MerchantSecurity() {
                 variant="ghost"
                 size="sm"
                 className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
-                onClick={() => { setSecEventType("all"); setSecDateFrom(""); setSecDateTo(""); setSecPage(1); }}
+                onClick={() => { setSecEventType("all"); setSecDateFrom(""); setSecDateTo(""); setSecSearch(""); setSecPage(1); }}
               >
                 <X className="w-3 h-3" />
                 Clear
@@ -1061,6 +1070,24 @@ export default function MerchantSecurity() {
                 title="To date"
               />
             </div>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search by key prefix or description…"
+                value={secSearch}
+                onChange={e => { setSecSearch(e.target.value); setSecPage(1); }}
+                className="h-7 pl-8 text-xs"
+              />
+              {secSearch && (
+                <button
+                  onClick={() => { setSecSearch(""); setSecPage(1); }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
           {anySecFilterActive && (
             <p className="text-xs text-muted-foreground mt-2">
@@ -1076,10 +1103,16 @@ export default function MerchantSecurity() {
               <Shield className="w-8 h-8 text-muted-foreground/30" />
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  {anySecFilterActive ? "No events match your filters" : "No security events recorded yet"}
+                  {secSearch
+                    ? `No events match "${secSearch}"`
+                    : anySecFilterActive
+                    ? "No events match your filters"
+                    : "No security events recorded yet"}
                 </p>
                 <p className="text-xs text-muted-foreground/60 mt-1">
-                  {anySecFilterActive
+                  {secSearch
+                    ? "Try a different key prefix or description term."
+                    : anySecFilterActive
                     ? "Try clearing the filters to see all events."
                     : "Login events, key generation, and secret rotations will appear here."}
                 </p>
