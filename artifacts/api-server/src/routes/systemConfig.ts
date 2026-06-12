@@ -270,7 +270,7 @@ router.put("/va-cleanup", async (req, res, next) => {
 // POST /api/system-config/qr-cleanup/run
 router.post("/qr-cleanup/run", async (req, res, next) => {
   try {
-    const { expired, deleted } = await runQrCleanup();
+    const { expired, deleted } = await runQrCleanup("manual");
     req.log.info({ expired, deleted }, "QR cleanup triggered manually");
     res.json({ expired, deleted });
   } catch (err) {
@@ -281,7 +281,7 @@ router.post("/qr-cleanup/run", async (req, res, next) => {
 // POST /api/system-config/va-cleanup/run
 router.post("/va-cleanup/run", async (req, res, next) => {
   try {
-    const { closed, deleted } = await runVaCleanup();
+    const { closed, deleted } = await runVaCleanup("manual");
     req.log.info({ closed, deleted }, "VA cleanup triggered manually");
     res.json({ closed, deleted });
   } catch (err) {
@@ -293,7 +293,7 @@ router.post("/va-cleanup/run", async (req, res, next) => {
 router.get("/qr-cleanup/history", async (req, res, next) => {
   try {
     const data = await loadQrCleanupHistory();
-    res.json({ data: data.map((r) => ({ id: r.id, ranAt: r.ranAt.toISOString(), deleted: r.deleted, retentionDays: r.retentionDays })) });
+    res.json({ data: data.map((r) => ({ id: r.id, ranAt: r.ranAt.toISOString(), deleted: r.deleted, retentionDays: r.retentionDays, triggeredBy: r.triggeredBy })) });
   } catch (err) {
     next(err);
   }
@@ -303,7 +303,7 @@ router.get("/qr-cleanup/history", async (req, res, next) => {
 router.get("/va-cleanup/history", async (req, res, next) => {
   try {
     const data = await loadVaCleanupHistory();
-    res.json({ data: data.map((r) => ({ id: r.id, ranAt: r.ranAt.toISOString(), deleted: r.deleted, retentionDays: r.retentionDays })) });
+    res.json({ data: data.map((r) => ({ id: r.id, ranAt: r.ranAt.toISOString(), deleted: r.deleted, retentionDays: r.retentionDays, triggeredBy: r.triggeredBy })) });
   } catch (err) {
     next(err);
   }

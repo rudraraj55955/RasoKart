@@ -4664,7 +4664,8 @@ export const GetQrCleanupHistoryResponse = zod.object({
   "id": zod.number(),
   "ranAt": zod.coerce.date().describe('ISO timestamp of when the cleanup run occurred.'),
   "deleted": zod.number().describe('Number of records deleted in this run.'),
-  "retentionDays": zod.number().describe('Retention window in days that was active during this run.')
+  "retentionDays": zod.number().describe('Retention window in days that was active during this run.'),
+  "triggeredBy": zod.string().describe('\"manual\" for admin-triggered runs, \"scheduled\" for cron-triggered runs.')
 }))
 })
 
@@ -4677,7 +4678,8 @@ export const GetVaCleanupHistoryResponse = zod.object({
   "id": zod.number(),
   "ranAt": zod.coerce.date().describe('ISO timestamp of when the cleanup run occurred.'),
   "deleted": zod.number().describe('Number of records deleted in this run.'),
-  "retentionDays": zod.number().describe('Retention window in days that was active during this run.')
+  "retentionDays": zod.number().describe('Retention window in days that was active during this run.'),
+  "triggeredBy": zod.string().describe('\"manual\" for admin-triggered runs, \"scheduled\" for cron-triggered runs.')
 }))
 })
 

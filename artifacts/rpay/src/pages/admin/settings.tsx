@@ -1696,6 +1696,7 @@ export default function AdminSettings() {
                       <thead>
                         <tr className="border-b border-border/40 bg-muted/20">
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date &amp; time</th>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">Trigger</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Deleted</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Retention</th>
                         </tr>
@@ -1705,6 +1706,11 @@ export default function AdminSettings() {
                           <tr key={row.id} className={`border-b border-border/30 last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
                             <td className="px-3 py-2 text-foreground/80">
                               {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(row.ranAt))}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.triggeredBy === "manual"
+                                ? <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/15 text-blue-400 border border-blue-500/20">Manual</span>
+                                : <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted/40 text-muted-foreground border border-border/30">Scheduled</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
                               {row.deleted === 0
@@ -1872,6 +1878,7 @@ export default function AdminSettings() {
                       <thead>
                         <tr className="border-b border-border/40 bg-muted/20">
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date &amp; time</th>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">Trigger</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Deleted</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Retention</th>
                         </tr>
@@ -1881,6 +1888,11 @@ export default function AdminSettings() {
                           <tr key={row.id} className={`border-b border-border/30 last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
                             <td className="px-3 py-2 text-foreground/80">
                               {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(row.ranAt))}
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.triggeredBy === "manual"
+                                ? <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/15 text-blue-400 border border-blue-500/20">Manual</span>
+                                : <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted/40 text-muted-foreground border border-border/30">Scheduled</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
                               {row.deleted === 0

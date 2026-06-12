@@ -19,7 +19,7 @@ export async function loadQrCleanupRetentionDays(): Promise<number> {
   return isNaN(days) ? 30 : Math.max(0, days);
 }
 
-async function persistQrCleanupStats(deleted: number, retentionDays: number): Promise<void> {
+async function persistQrCleanupStats(deleted: number, retentionDays: number, triggeredBy: string): Promise<void> {
   const now = new Date().toISOString();
   const entries = [
     { key: SYSTEM_CONFIG_KEYS.QR_CLEANUP_LAST_RUN_AT, value: now },
@@ -40,6 +40,7 @@ async function persistQrCleanupStats(deleted: number, retentionDays: number): Pr
     ranAt: new Date(),
     deleted,
     retentionDays,
+    triggeredBy,
   });
 
   const allRows = await db
@@ -56,7 +57,7 @@ async function persistQrCleanupStats(deleted: number, retentionDays: number): Pr
   }
 }
 
-export async function runQrCleanup(): Promise<{ expired: number; deleted: number }> {
+export async function runQrCleanup(triggeredBy: string = "scheduled"): Promise<{ expired: number; deleted: number }> {
   const retentionDays = await loadQrCleanupRetentionDays();
 
   if (retentionDays === 0) {
@@ -97,9 +98,9 @@ export async function runQrCleanup(): Promise<{ expired: number; deleted: number
   `);
   const deleted = Number((deleteResult as any).rowCount ?? 0);
 
-  logger.info({ retentionDays, expired, deleted }, "QR code auto-cleanup complete");
+  logger.info({ retentionDays, expired, deleted, triggeredBy }, "QR code auto-cleanup complete");
 
-  await persistQrCleanupStats(deleted, retentionDays);
+  await persistQrCleanupStats(deleted, retentionDays, triggeredBy);
 
   return { expired, deleted };
 }
@@ -119,7 +120,7 @@ export async function loadQrCleanupLastRun(): Promise<{ lastRunAt: string | null
   return { lastRunAt, lastDeleted };
 }
 
-export async function loadQrCleanupHistory(): Promise<Array<{ id: number; ranAt: Date; deleted: number; retentionDays: number }>> {
+export async function loadQrCleanupHistory(): Promise<Array<{ id: number; ranAt: Date; deleted: number; retentionDays: number; triggeredBy: string }>> {
   return db
     .select()
     .from(cleanupRunHistoryTable)
@@ -136,7 +137,7 @@ export function initQrCleanupScheduler(): void {
 
   cleanupTask = cron.schedule("0 2 * * *", async () => {
     try {
-      await runQrCleanup();
+      await runQrCleanup("scheduled");
     } catch (err) {
       logger.error({ err }, "QR code auto-cleanup job failed");
     }

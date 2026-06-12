@@ -9184,7 +9184,7 @@ components:
 
     CleanupRunHistoryEntry:
       type: object
-      required: [id, ranAt, deleted, retentionDays]
+      required: [id, ranAt, deleted, retentionDays, triggeredBy]
       properties:
         id:
           type: integer
@@ -9198,6 +9198,9 @@ components:
         retentionDays:
           type: integer
           description: Retention window in days that was active during this run.
+        triggeredBy:
+          type: string
+          description: '"manual" for admin-triggered runs, "scheduled" for cron-triggered runs.'
 
     CleanupRunHistoryResponse:
       type: object

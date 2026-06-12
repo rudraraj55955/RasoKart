@@ -14,4 +14,6 @@ export interface CleanupRunHistoryEntry {
   deleted: number;
   /** Retention window in days that was active during this run. */
   retentionDays: number;
+  /** "manual" for admin-triggered runs, "scheduled" for cron-triggered runs. */
+  triggeredBy: string;
 }

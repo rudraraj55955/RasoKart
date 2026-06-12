@@ -19,7 +19,7 @@ export async function loadVaCleanupRetentionDays(): Promise<number> {
   return isNaN(days) ? VA_CLEANUP_DEFAULT_DAYS : Math.max(0, days);
 }
 
-export async function runVaCleanup(): Promise<{ closed: number; deleted: number }> {
+export async function runVaCleanup(triggeredBy: string = "scheduled"): Promise<{ closed: number; deleted: number }> {
   const retentionDays = await loadVaCleanupRetentionDays();
 
   if (retentionDays === 0) {
@@ -63,14 +63,14 @@ export async function runVaCleanup(): Promise<{ closed: number; deleted: number 
   `);
   const deleted = Number((deleteResult as any).rowCount ?? 0);
 
-  logger.info({ retentionDays, closed, deleted }, "VA auto-cleanup complete");
+  logger.info({ retentionDays, closed, deleted, triggeredBy }, "VA auto-cleanup complete");
 
-  await writeVaCleanupLastRun(deleted, retentionDays);
+  await writeVaCleanupLastRun(deleted, retentionDays, triggeredBy);
 
   return { closed, deleted };
 }
 
-async function writeVaCleanupLastRun(deleted: number, retentionDays: number): Promise<void> {
+async function writeVaCleanupLastRun(deleted: number, retentionDays: number, triggeredBy: string): Promise<void> {
   const now = new Date().toISOString();
   const entries = [
     { key: SYSTEM_CONFIG_KEYS.VA_CLEANUP_LAST_RUN_AT, value: now },
@@ -91,6 +91,7 @@ async function writeVaCleanupLastRun(deleted: number, retentionDays: number): Pr
     ranAt: new Date(),
     deleted,
     retentionDays,
+    triggeredBy,
   });
 
   const allRows = await db
@@ -122,7 +123,7 @@ export async function loadVaCleanupLastRun(): Promise<{ lastRunAt: string | null
   return { lastRunAt, lastDeleted };
 }
 
-export async function loadVaCleanupHistory(): Promise<Array<{ id: number; ranAt: Date; deleted: number; retentionDays: number }>> {
+export async function loadVaCleanupHistory(): Promise<Array<{ id: number; ranAt: Date; deleted: number; retentionDays: number; triggeredBy: string }>> {
   return db
     .select()
     .from(cleanupRunHistoryTable)
@@ -139,7 +140,7 @@ export function initVaCleanupScheduler(): void {
 
   cleanupTask = cron.schedule("0 3 * * *", async () => {
     try {
-      await runVaCleanup();
+      await runVaCleanup("scheduled");
     } catch (err) {
       logger.error({ err }, "VA auto-cleanup job failed");
     }
