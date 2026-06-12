@@ -690,6 +690,12 @@ router.put("/", async (req, res) => {
     return;
   }
 
+  // Trim delay slots that exceed maxRetries. Storing overrides for slots that will never
+  // fire is misleading: delay1 applies to retry #1, delay2 to #2, delay3 to #3+.
+  if (maxRetriesNum < 1) delay1 = null;
+  if (maxRetriesNum < 2) delay2 = null;
+  if (maxRetriesNum < 3) delay3 = null;
+
   const alertEnabled = failureAlertEnabled != null ? Boolean(failureAlertEnabled) : true;
   const alertThresholdNum = failureAlertThreshold != null ? parseInt(String(failureAlertThreshold), 10) : 3;
   if (!isFinite(alertThresholdNum) || alertThresholdNum < 1 || alertThresholdNum > 10) {

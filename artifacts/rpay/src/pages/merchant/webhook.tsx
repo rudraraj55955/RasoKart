@@ -1004,38 +1004,64 @@ onError: () => toast.error("Failed to send test event"),
               <div>
                 <Label className="text-xs">Retry delay schedule</Label>
                 <p className="text-xs text-muted-foreground mt-0.5 mb-3">How long to wait before each retry attempt. Applies to both webhook and QR code callback retries. Leave as "System default" to use the platform-wide setting.</p>
+                {(() => {
+                  const ignoredSlots = [
+                    retryDelay1 != null && maxRetries < 1,
+                    retryDelay2 != null && maxRetries < 2,
+                    retryDelay3 != null && maxRetries < 3,
+                  ].filter(Boolean).length;
+                  return ignoredSlots > 0 ? (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 mb-3">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-400/90 leading-relaxed">
+                        {ignoredSlots === 1 ? "1 custom delay is" : `${ignoredSlots} custom delays are`} set on a slot that won't fire with the current max-retries value. {ignoredSlots === 1 ? "It" : "They"} will be cleared when you save.
+                      </p>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {([
-                    { label: "After 1st failure", value: retryDelay1, setValue: setRetryDelay1 },
-                    { label: "After 2nd failure", value: retryDelay2, setValue: setRetryDelay2 },
-                    { label: "After 3rd+ failure", value: retryDelay3, setValue: setRetryDelay3 },
-                  ] as const).map(({ label, value, setValue }) => (
-                    <div key={label}>
-                      <p className="text-xs text-muted-foreground mb-1">{label}</p>
-                      <Select
-                        value={value == null ? "default" : String(value)}
-                        onValueChange={v => setValue(v === "default" ? null : parseInt(v, 10))}
-                      >
-                        <SelectTrigger className="w-full text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="default" className="text-xs text-muted-foreground">System default</SelectItem>
-                          <SelectItem value="30" className="text-xs">30 seconds</SelectItem>
-                          <SelectItem value="60" className="text-xs">1 minute</SelectItem>
-                          <SelectItem value="300" className="text-xs">5 minutes</SelectItem>
-                          <SelectItem value="900" className="text-xs">15 minutes</SelectItem>
-                          <SelectItem value="1800" className="text-xs">30 minutes</SelectItem>
-                          <SelectItem value="3600" className="text-xs">1 hour</SelectItem>
-                          <SelectItem value="7200" className="text-xs">2 hours</SelectItem>
-                          <SelectItem value="14400" className="text-xs">4 hours</SelectItem>
-                          <SelectItem value="21600" className="text-xs">6 hours</SelectItem>
-                          <SelectItem value="43200" className="text-xs">12 hours</SelectItem>
-                          <SelectItem value="86400" className="text-xs">24 hours</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ))}
+                    { label: "After 1st failure", value: retryDelay1, setValue: setRetryDelay1, minRetries: 1 },
+                    { label: "After 2nd failure", value: retryDelay2, setValue: setRetryDelay2, minRetries: 2 },
+                    { label: "After 3rd+ failure", value: retryDelay3, setValue: setRetryDelay3, minRetries: 3 },
+                  ] as const).map(({ label, value, setValue, minRetries }) => {
+                    const active = maxRetries >= minRetries;
+                    return (
+                      <div key={label} className={active ? undefined : "opacity-40 pointer-events-none"}>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          {!active && (
+                            <span className="text-[10px] font-medium text-muted-foreground/50 bg-muted/30 border border-border/40 rounded px-1 py-px leading-none">
+                              ignored
+                            </span>
+                          )}
+                        </div>
+                        <Select
+                          value={value == null ? "default" : String(value)}
+                          onValueChange={v => setValue(v === "default" ? null : parseInt(v, 10))}
+                          disabled={!active}
+                        >
+                          <SelectTrigger className="w-full text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default" className="text-xs text-muted-foreground">System default</SelectItem>
+                            <SelectItem value="30" className="text-xs">30 seconds</SelectItem>
+                            <SelectItem value="60" className="text-xs">1 minute</SelectItem>
+                            <SelectItem value="300" className="text-xs">5 minutes</SelectItem>
+                            <SelectItem value="900" className="text-xs">15 minutes</SelectItem>
+                            <SelectItem value="1800" className="text-xs">30 minutes</SelectItem>
+                            <SelectItem value="3600" className="text-xs">1 hour</SelectItem>
+                            <SelectItem value="7200" className="text-xs">2 hours</SelectItem>
+                            <SelectItem value="14400" className="text-xs">4 hours</SelectItem>
+                            <SelectItem value="21600" className="text-xs">6 hours</SelectItem>
+                            <SelectItem value="43200" className="text-xs">12 hours</SelectItem>
+                            <SelectItem value="86400" className="text-xs">24 hours</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
