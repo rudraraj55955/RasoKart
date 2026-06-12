@@ -67,8 +67,10 @@ import type {
   ChartDataPoint,
   CleanupRunHistoryResponse,
   CleanupStats,
+  ClearQrCleanupHistory200,
   ClearSignatureFailureAlertHistory200,
   ClearTestEmailHistory200,
+  ClearVaCleanupHistory200,
   ClearWebhookFailureAlertHistory200,
   CreateMerchantSavedFilterInput,
   CreateSavedFilterInput,
@@ -15271,6 +15273,76 @@ export function useGetQrCleanupHistory<TData = Awaited<ReturnType<typeof getQrCl
 
 
 
+export const getClearQrCleanupHistoryUrl = () => {
+
+
+
+
+  return `/api/system-config/qr-cleanup/history`
+}
+
+/**
+ * @summary Clear all QR code cleanup run history (admin only)
+ */
+export const clearQrCleanupHistory = async ( options?: RequestInit): Promise<ClearQrCleanupHistory200> => {
+
+  return customFetch<ClearQrCleanupHistory200>(getClearQrCleanupHistoryUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getClearQrCleanupHistoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearQrCleanupHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearQrCleanupHistory>>, TError,void, TContext> => {
+
+const mutationKey = ['clearQrCleanupHistory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearQrCleanupHistory>>, void> = () => {
+
+
+          return  clearQrCleanupHistory(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearQrCleanupHistoryMutationResult = NonNullable<Awaited<ReturnType<typeof clearQrCleanupHistory>>>
+
+    export type ClearQrCleanupHistoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear all QR code cleanup run history (admin only)
+ */
+export const useClearQrCleanupHistory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearQrCleanupHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearQrCleanupHistory>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClearQrCleanupHistoryMutationOptions(options));
+    }
+
 export const getGetVaCleanupHistoryUrl = () => {
 
 
@@ -15347,6 +15419,76 @@ export function useGetVaCleanupHistory<TData = Awaited<ReturnType<typeof getVaCl
 
 
 
+
+export const getClearVaCleanupHistoryUrl = () => {
+
+
+
+
+  return `/api/system-config/va-cleanup/history`
+}
+
+/**
+ * @summary Clear all virtual account cleanup run history (admin only)
+ */
+export const clearVaCleanupHistory = async ( options?: RequestInit): Promise<ClearVaCleanupHistory200> => {
+
+  return customFetch<ClearVaCleanupHistory200>(getClearVaCleanupHistoryUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getClearVaCleanupHistoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearVaCleanupHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearVaCleanupHistory>>, TError,void, TContext> => {
+
+const mutationKey = ['clearVaCleanupHistory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearVaCleanupHistory>>, void> = () => {
+
+
+          return  clearVaCleanupHistory(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearVaCleanupHistoryMutationResult = NonNullable<Awaited<ReturnType<typeof clearVaCleanupHistory>>>
+
+    export type ClearVaCleanupHistoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear all virtual account cleanup run history (admin only)
+ */
+export const useClearVaCleanupHistory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearVaCleanupHistory>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearVaCleanupHistory>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClearVaCleanupHistoryMutationOptions(options));
+    }
 
 export const getGetTestEmailRetentionConfigUrl = () => {
 

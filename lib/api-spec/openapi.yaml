@@ -4794,6 +4794,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CleanupRunHistoryResponse"
+    delete:
+      operationId: clearQrCleanupHistory
+      tags: [system-config]
+      summary: Clear all QR code cleanup run history (admin only)
+      responses:
+        "200":
+          description: History cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: integer
 
   /system-config/va-cleanup/history:
     get:
@@ -4807,6 +4822,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CleanupRunHistoryResponse"
+    delete:
+      operationId: clearVaCleanupHistory
+      tags: [system-config]
+      summary: Clear all virtual account cleanup run history (admin only)
+      responses:
+        "200":
+          description: History cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: integer
 
   /system-config/test-email-retention:
     get:
@@ -9217,14 +9247,26 @@ components:
 
     CleanupRunHistoryEntry:
       type: object
-      required: [id, ranAt, deleted, retentionDays, triggeredBy]
+      required: [id, ranAt, deleted, retentionDays, trigger]
       properties:
         id:
           type: integer
+        trigger:
+          type: string
+          enum: [scheduled, manual]
+          description: Whether this run was triggered by the cron schedule or manually by an admin.
         ranAt:
           type: string
           format: date-time
           description: ISO timestamp of when the cleanup run occurred.
+        expired:
+          type: integer
+          nullable: true
+          description: Number of QR codes marked as expired in this run (QR cleanup only).
+        closed:
+          type: integer
+          nullable: true
+          description: Number of virtual accounts closed in this run (VA cleanup only).
         deleted:
           type: integer
           description: Number of records deleted in this run.

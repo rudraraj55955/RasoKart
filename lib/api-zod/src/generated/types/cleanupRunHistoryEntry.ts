@@ -5,11 +5,18 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { CleanupRunHistoryEntryTrigger } from './cleanupRunHistoryEntryTrigger';
 
 export interface CleanupRunHistoryEntry {
   id: number;
+  /** Whether this run was triggered by the cron schedule or manually by an admin. */
+  trigger: CleanupRunHistoryEntryTrigger;
   /** ISO timestamp of when the cleanup run occurred. */
   ranAt: Date;
+  /** Number of QR codes marked as expired in this run (QR cleanup only). */
+  expired?: number | null;
+  /** Number of virtual accounts closed in this run (VA cleanup only). */
+  closed?: number | null;
   /** Number of records deleted in this run. */
   deleted: number;
   /** Retention window in days that was active during this run. */

@@ -10,7 +10,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, useTestEkqrWebhook, getGetEkqrConfigQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useListMerchants, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, useTestEkqrWebhook, getGetEkqrConfigQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -518,7 +518,7 @@ export default function AdminSettings() {
     onSuccess: (res: { expired: number; deleted: number }) => {
       setQrCleanupRunResult(res);
       qc.invalidateQueries({ queryKey: ["/api/system-config/qr-cleanup"] });
-      qc.invalidateQueries({ queryKey: ["qr-cleanup-history"] });
+      qc.invalidateQueries({ queryKey: getGetQrCleanupHistoryQueryKey() });
       if (res.expired === 0 && res.deleted === 0) {
         toast.info("Cleanup complete — nothing to clean up.");
       } else {
@@ -535,15 +535,35 @@ export default function AdminSettings() {
   const [qrHistoryOpen, setQrHistoryOpen] = useState(false);
   const [vaHistoryOpen, setVaHistoryOpen] = useState(false);
 
-  const { data: qrHistoryData, isLoading: qrHistoryLoading } = useGetQrCleanupHistory({ query: { enabled: qrHistoryOpen, queryKey: ["qr-cleanup-history"] } });
-  const { data: vaHistoryData, isLoading: vaHistoryLoading } = useGetVaCleanupHistory({ query: { enabled: vaHistoryOpen, queryKey: ["va-cleanup-history"] } });
+  const { data: qrHistoryData, isLoading: qrHistoryLoading } = useGetQrCleanupHistory({ query: { enabled: qrHistoryOpen, queryKey: getGetQrCleanupHistoryQueryKey() } });
+  const { data: vaHistoryData, isLoading: vaHistoryLoading } = useGetVaCleanupHistory({ query: { enabled: vaHistoryOpen, queryKey: getGetVaCleanupHistoryQueryKey() } });
+
+  const { mutate: clearQrHistory, isPending: clearingQrHistory } = useClearQrCleanupHistory({
+    mutation: {
+      onSuccess: () => {
+        toast.success("QR cleanup history cleared");
+        qc.invalidateQueries({ queryKey: getGetQrCleanupHistoryQueryKey() });
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to clear history")),
+    },
+  });
+
+  const { mutate: clearVaHistory, isPending: clearingVaHistory } = useClearVaCleanupHistory({
+    mutation: {
+      onSuccess: () => {
+        toast.success("VA cleanup history cleared");
+        qc.invalidateQueries({ queryKey: getGetVaCleanupHistoryQueryKey() });
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to clear history")),
+    },
+  });
 
   const { mutate: runVaCleanupNow, isPending: runningVaCleanup } = useMutation({
     mutationFn: () => apiPost("/system-config/va-cleanup/run"),
     onSuccess: (res: { closed: number; deleted: number }) => {
       setVaCleanupRunResult(res);
       qc.invalidateQueries({ queryKey: ["/api/system-config/va-cleanup"] });
-      qc.invalidateQueries({ queryKey: ["va-cleanup-history"] });
+      qc.invalidateQueries({ queryKey: getGetVaCleanupHistoryQueryKey() });
       if (res.closed === 0 && res.deleted === 0) {
         toast.info("Cleanup complete — nothing to clean up.");
       } else {
@@ -1689,14 +1709,26 @@ export default function AdminSettings() {
           </div>
 
           <div className="border-t border-border/50 pt-3">
-            <button
-              type="button"
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setQrHistoryOpen(v => !v)}
-            >
-              {qrHistoryOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              View history
-            </button>
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setQrHistoryOpen(v => !v)}
+              >
+                {qrHistoryOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                Recent runs
+              </button>
+              {qrHistoryOpen && (qrHistoryData?.data?.length ?? 0) > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  onClick={() => clearQrHistory()}
+                  disabled={clearingQrHistory}
+                >
+                  {clearingQrHistory ? "Clearing…" : "Clear history"}
+                </button>
+              )}
+            </div>
             {qrHistoryOpen && (
               <div className="mt-2">
                 {qrHistoryLoading ? (
@@ -1710,6 +1742,7 @@ export default function AdminSettings() {
                         <tr className="border-b border-border/40 bg-muted/20">
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date &amp; time</th>
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Trigger</th>
+                          <th className="text-right px-3 py-2 font-medium text-muted-foreground">Expired</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Deleted</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Retention</th>
                         </tr>
@@ -1721,9 +1754,15 @@ export default function AdminSettings() {
                               {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(row.ranAt))}
                             </td>
                             <td className="px-3 py-2">
-                              {row.triggeredBy === "manual"
-                                ? <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/15 text-blue-400 border border-blue-500/20">Manual</span>
-                                : <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted/40 text-muted-foreground border border-border/30">Scheduled</span>}
+                              {row.trigger === "manual"
+                                ? <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 border border-violet-500/25 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">manual</span>
+                                : <span className="inline-flex items-center gap-1 rounded-full bg-muted/40 border border-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">scheduled</span>
+                              }
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {(row.expired ?? 0) === 0
+                                ? <span className="text-muted-foreground">0</span>
+                                : <span className="text-amber-400 font-medium">{row.expired}</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
                               {row.deleted === 0
@@ -1871,14 +1910,26 @@ export default function AdminSettings() {
           </div>
 
           <div className="border-t border-border/50 pt-3">
-            <button
-              type="button"
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setVaHistoryOpen(v => !v)}
-            >
-              {vaHistoryOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              View history
-            </button>
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setVaHistoryOpen(v => !v)}
+              >
+                {vaHistoryOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                Recent runs
+              </button>
+              {vaHistoryOpen && (vaHistoryData?.data?.length ?? 0) > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  onClick={() => clearVaHistory()}
+                  disabled={clearingVaHistory}
+                >
+                  {clearingVaHistory ? "Clearing…" : "Clear history"}
+                </button>
+              )}
+            </div>
             {vaHistoryOpen && (
               <div className="mt-2">
                 {vaHistoryLoading ? (
@@ -1892,6 +1943,7 @@ export default function AdminSettings() {
                         <tr className="border-b border-border/40 bg-muted/20">
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date &amp; time</th>
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Trigger</th>
+                          <th className="text-right px-3 py-2 font-medium text-muted-foreground">Closed</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Deleted</th>
                           <th className="text-right px-3 py-2 font-medium text-muted-foreground">Retention</th>
                         </tr>
@@ -1903,9 +1955,15 @@ export default function AdminSettings() {
                               {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(row.ranAt))}
                             </td>
                             <td className="px-3 py-2">
-                              {row.triggeredBy === "manual"
-                                ? <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/15 text-blue-400 border border-blue-500/20">Manual</span>
-                                : <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted/40 text-muted-foreground border border-border/30">Scheduled</span>}
+                              {row.trigger === "manual"
+                                ? <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 border border-violet-500/25 px-1.5 py-0.5 text-[10px] font-medium text-violet-400">manual</span>
+                                : <span className="inline-flex items-center gap-1 rounded-full bg-muted/40 border border-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">scheduled</span>
+                              }
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {(row.closed ?? 0) === 0
+                                ? <span className="text-muted-foreground">0</span>
+                                : <span className="text-amber-400 font-medium">{row.closed}</span>}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
                               {row.deleted === 0

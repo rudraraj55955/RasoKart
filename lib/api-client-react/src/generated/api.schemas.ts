@@ -2743,10 +2743,27 @@ export interface TestEmailRetentionRunResult {
   deleted: number;
 }
 
+/**
+ * Whether this run was triggered by the cron schedule or manually by an admin.
+ */
+export type CleanupRunHistoryEntryTrigger = typeof CleanupRunHistoryEntryTrigger[keyof typeof CleanupRunHistoryEntryTrigger];
+
+
+export const CleanupRunHistoryEntryTrigger = {
+  scheduled: 'scheduled',
+  manual: 'manual',
+} as const;
+
 export interface CleanupRunHistoryEntry {
   id: number;
+  /** Whether this run was triggered by the cron schedule or manually by an admin. */
+  trigger: CleanupRunHistoryEntryTrigger;
   /** ISO timestamp of when the cleanup run occurred. */
   ranAt: string;
+  /** Number of QR codes marked as expired in this run (QR cleanup only). */
+  expired?: number | null;
+  /** Number of virtual accounts closed in this run (VA cleanup only). */
+  closed?: number | null;
   /** Number of records deleted in this run. */
   deleted: number;
   /** Retention window in days that was active during this run. */
@@ -3744,6 +3761,14 @@ export type ResendReconciliationReportEmail200 = {
 
 export type ResendReconciliationAlertEmail200 = {
   ok?: boolean;
+};
+
+export type ClearQrCleanupHistory200 = {
+  deleted: number;
+};
+
+export type ClearVaCleanupHistory200 = {
+  deleted: number;
 };
 
 export type ListStorageCleanupRunsParams = {

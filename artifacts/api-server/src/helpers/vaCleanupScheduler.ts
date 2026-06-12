@@ -4,7 +4,7 @@ import { eq, inArray, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 const VA_CLEANUP_DEFAULT_DAYS = 30;
-const HISTORY_LIMIT = 10;
+const HISTORY_LIMIT = 20;
 
 let cleanupTask: ScheduledTask | null = null;
 
@@ -19,7 +19,9 @@ export async function loadVaCleanupRetentionDays(): Promise<number> {
   return isNaN(days) ? VA_CLEANUP_DEFAULT_DAYS : Math.max(0, days);
 }
 
-export async function runVaCleanup(triggeredBy: string = "scheduled"): Promise<{ closed: number; deleted: number }> {
+export async function runVaCleanup(
+  trigger: "scheduled" | "manual" = "scheduled"
+): Promise<{ closed: number; deleted: number }> {
   const retentionDays = await loadVaCleanupRetentionDays();
 
   if (retentionDays === 0) {
@@ -27,8 +29,6 @@ export async function runVaCleanup(triggeredBy: string = "scheduled"): Promise<{
     return { closed: 0, deleted: 0 };
   }
 
-  // Step 1: Close active VAs that have never received any funds (totalCollection = '0.00')
-  // and have no associated transactions, and were created more than retention days ago.
   const closeResult = await db.execute(sql`
     UPDATE virtual_accounts
     SET status = 'closed', updated_at = NOW()
@@ -47,8 +47,6 @@ export async function runVaCleanup(triggeredBy: string = "scheduled"): Promise<{
     logger.info({ closed }, "VA cleanup: closed unused active virtual accounts");
   }
 
-  // Step 2: Delete closed VAs that have zero balance and zero totalCollection,
-  // no linked transactions, and were last updated more than retention days ago.
   const deleteResult = await db.execute(sql`
     DELETE FROM virtual_accounts
     WHERE status = 'closed'
@@ -63,14 +61,19 @@ export async function runVaCleanup(triggeredBy: string = "scheduled"): Promise<{
   `);
   const deleted = Number((deleteResult as any).rowCount ?? 0);
 
-  logger.info({ retentionDays, closed, deleted, triggeredBy }, "VA auto-cleanup complete");
+  logger.info({ retentionDays, trigger, closed, deleted }, "VA auto-cleanup complete");
 
-  await writeVaCleanupLastRun(deleted, retentionDays, triggeredBy);
+  await writeVaCleanupLastRun(deleted, retentionDays, trigger, closed);
 
   return { closed, deleted };
 }
 
-async function writeVaCleanupLastRun(deleted: number, retentionDays: number, triggeredBy: string): Promise<void> {
+async function writeVaCleanupLastRun(
+  deleted: number,
+  retentionDays: number,
+  trigger: "scheduled" | "manual",
+  closed: number
+): Promise<void> {
   const now = new Date().toISOString();
   const entries = [
     { key: SYSTEM_CONFIG_KEYS.VA_CLEANUP_LAST_RUN_AT, value: now },
@@ -88,10 +91,12 @@ async function writeVaCleanupLastRun(deleted: number, retentionDays: number, tri
 
   await db.insert(cleanupRunHistoryTable).values({
     type: "va",
+    trigger,
+    triggeredBy: trigger,
     ranAt: new Date(),
+    closed,
     deleted,
     retentionDays,
-    triggeredBy,
   });
 
   const allRows = await db
@@ -123,13 +128,27 @@ export async function loadVaCleanupLastRun(): Promise<{ lastRunAt: string | null
   return { lastRunAt, lastDeleted };
 }
 
-export async function loadVaCleanupHistory(): Promise<Array<{ id: number; ranAt: Date; deleted: number; retentionDays: number; triggeredBy: string }>> {
+export async function loadVaCleanupHistory(): Promise<Array<{
+  id: number;
+  trigger: string;
+  ranAt: Date;
+  closed: number | null;
+  deleted: number;
+  retentionDays: number;
+}>> {
   return db
     .select()
     .from(cleanupRunHistoryTable)
     .where(eq(cleanupRunHistoryTable.type, "va"))
     .orderBy(desc(cleanupRunHistoryTable.ranAt))
     .limit(HISTORY_LIMIT);
+}
+
+export async function clearVaCleanupHistory(): Promise<number> {
+  const result = await db.execute(
+    sql`DELETE FROM cleanup_run_history WHERE type = 'va'`
+  );
+  return Number((result as any).rowCount ?? 0);
 }
 
 export function initVaCleanupScheduler(): void {

@@ -5,8 +5,8 @@ import { inArray, desc, count, sql, eq } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
-import { loadQrCleanupRetentionDays, loadQrCleanupLastRun, runQrCleanup, loadQrCleanupHistory } from "../helpers/qrCleanupScheduler";
-import { loadVaCleanupRetentionDays, loadVaCleanupLastRun, runVaCleanup, loadVaCleanupHistory } from "../helpers/vaCleanupScheduler";
+import { loadQrCleanupRetentionDays, loadQrCleanupLastRun, runQrCleanup, loadQrCleanupHistory, clearQrCleanupHistory } from "../helpers/qrCleanupScheduler";
+import { loadVaCleanupRetentionDays, loadVaCleanupLastRun, runVaCleanup, loadVaCleanupHistory, clearVaCleanupHistory } from "../helpers/vaCleanupScheduler";
 import { loadTestEmailRetentionDays, runTestEmailRetentionCleanup } from "../helpers/testEmailRetentionScheduler";
 import { loadAuditReportLogRetentionDays, runAuditReportLogCleanup } from "../helpers/auditReportRetentionScheduler";
 import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
@@ -293,7 +293,27 @@ router.post("/va-cleanup/run", async (req, res, next) => {
 router.get("/qr-cleanup/history", async (req, res, next) => {
   try {
     const data = await loadQrCleanupHistory();
-    res.json({ data: data.map((r) => ({ id: r.id, ranAt: r.ranAt.toISOString(), deleted: r.deleted, retentionDays: r.retentionDays, triggeredBy: r.triggeredBy })) });
+    res.json({
+      data: data.map((r) => ({
+        id: r.id,
+        trigger: r.trigger,
+        ranAt: r.ranAt.toISOString(),
+        expired: r.expired ?? null,
+        deleted: r.deleted,
+        retentionDays: r.retentionDays,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/system-config/qr-cleanup/history
+router.delete("/qr-cleanup/history", async (req, res, next) => {
+  try {
+    const deleted = await clearQrCleanupHistory();
+    req.log.info({ deleted }, "QR cleanup history cleared");
+    res.json({ deleted });
   } catch (err) {
     next(err);
   }
@@ -303,7 +323,27 @@ router.get("/qr-cleanup/history", async (req, res, next) => {
 router.get("/va-cleanup/history", async (req, res, next) => {
   try {
     const data = await loadVaCleanupHistory();
-    res.json({ data: data.map((r) => ({ id: r.id, ranAt: r.ranAt.toISOString(), deleted: r.deleted, retentionDays: r.retentionDays, triggeredBy: r.triggeredBy })) });
+    res.json({
+      data: data.map((r) => ({
+        id: r.id,
+        trigger: r.trigger,
+        ranAt: r.ranAt.toISOString(),
+        closed: r.closed ?? null,
+        deleted: r.deleted,
+        retentionDays: r.retentionDays,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/system-config/va-cleanup/history
+router.delete("/va-cleanup/history", async (req, res, next) => {
+  try {
+    const deleted = await clearVaCleanupHistory();
+    req.log.info({ deleted }, "VA cleanup history cleared");
+    res.json({ deleted });
   } catch (err) {
     next(err);
   }

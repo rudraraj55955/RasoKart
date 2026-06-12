@@ -4677,11 +4677,22 @@ export const RunQrCleanupResponse = zod.object({
 export const GetQrCleanupHistoryResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.number(),
+  "trigger": zod.enum(['scheduled', 'manual']).describe('Whether this run was triggered by the cron schedule or manually by an admin.'),
   "ranAt": zod.coerce.date().describe('ISO timestamp of when the cleanup run occurred.'),
+  "expired": zod.number().nullish().describe('Number of QR codes marked as expired in this run (QR cleanup only).'),
+  "closed": zod.number().nullish().describe('Number of virtual accounts closed in this run (VA cleanup only).'),
   "deleted": zod.number().describe('Number of records deleted in this run.'),
   "retentionDays": zod.number().describe('Retention window in days that was active during this run.'),
   "triggeredBy": zod.string().describe('\"manual\" for admin-triggered runs, \"scheduled\" for cron-triggered runs.')
 }))
+})
+
+
+/**
+ * @summary Clear all QR code cleanup run history (admin only)
+ */
+export const ClearQrCleanupHistoryResponse = zod.object({
+  "deleted": zod.number()
 })
 
 
@@ -4691,11 +4702,22 @@ export const GetQrCleanupHistoryResponse = zod.object({
 export const GetVaCleanupHistoryResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.number(),
+  "trigger": zod.enum(['scheduled', 'manual']).describe('Whether this run was triggered by the cron schedule or manually by an admin.'),
   "ranAt": zod.coerce.date().describe('ISO timestamp of when the cleanup run occurred.'),
+  "expired": zod.number().nullish().describe('Number of QR codes marked as expired in this run (QR cleanup only).'),
+  "closed": zod.number().nullish().describe('Number of virtual accounts closed in this run (VA cleanup only).'),
   "deleted": zod.number().describe('Number of records deleted in this run.'),
   "retentionDays": zod.number().describe('Retention window in days that was active during this run.'),
   "triggeredBy": zod.string().describe('\"manual\" for admin-triggered runs, \"scheduled\" for cron-triggered runs.')
 }))
+})
+
+
+/**
+ * @summary Clear all virtual account cleanup run history (admin only)
+ */
+export const ClearVaCleanupHistoryResponse = zod.object({
+  "deleted": zod.number()
 })
 
 
