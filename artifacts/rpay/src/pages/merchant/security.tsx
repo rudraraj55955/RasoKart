@@ -164,6 +164,19 @@ function buildSecurityCsvRows(data: any[]): string[][] {
   ]);
 }
 
+function buildCredentialEventCsvText(data: LocalSecurityEvent[]): string {
+  const header = ["ID", "Event Type", "Key Prefix", "Actor Email", "IP Address", "Date"];
+  const rows = data.map(ev => [
+    String(ev.id),
+    ev.eventType,
+    ev.keyPrefix ?? "",
+    ev.actorEmail ?? "",
+    ev.ipAddress ?? "",
+    ev.occurredAt,
+  ]);
+  return [header, ...rows].map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+}
+
 function buildUnifiedCsvText(callbackData: any[], securityData: any[]): string {
   const header = ["ID", "Source", "Event Type", "Status", "HTTP Status", "Signature", "Attempts", "QR Code ID", "IP / Transaction ID", "Actor Email", "Date"];
   const rows = [
@@ -601,19 +614,7 @@ export default function MerchantSecurity() {
         toast.info("No events to export");
         return;
       }
-      const header = ["ID", "Event Type", "Actor Email", "Key Prefix", "IP Address", "Date"];
-      const rows = [
-        header,
-        ...allSecEvents.map(ev => [
-          String(ev.id),
-          ev.eventType,
-          ev.actorEmail ?? "",
-          ev.keyPrefix ?? "",
-          ev.ipAddress ?? "",
-          ev.occurredAt,
-        ]),
-      ];
-      const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+      const csv = buildCredentialEventCsvText(allSecEvents);
       const rowCount = allSecEvents.length;
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -1191,6 +1192,18 @@ export default function MerchantSecurity() {
               <Shield className="w-4 h-4 text-muted-foreground" />
               Credential Event History
             </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportSecEventsCsv}
+              disabled={exportingSecEvents || secTotal === 0}
+              className="h-7 text-xs gap-1.5 border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
+            >
+              {exportingSecEvents
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <FileDown className="w-3 h-3" />}
+              {exportingSecEvents ? "Exporting…" : "Export CSV"}
+            </Button>
             {anySecFilterActive && (
               <Button
                 variant="ghost"
