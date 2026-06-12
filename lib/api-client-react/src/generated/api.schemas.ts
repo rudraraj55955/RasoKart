@@ -2010,6 +2010,20 @@ export interface SecurityComplianceSummaryResponse {
   neverCount: number;
 }
 
+export interface SecurityReminderRequest {
+  /** Specific merchant IDs to remind. If omitted, reminds all never-exported merchants. */
+  merchantIds?: number[];
+}
+
+export interface SecurityReminderResponse {
+  /** Number of merchants reminded (audit log entries created) */
+  sent: number;
+  /** Number of merchants skipped (already exported or not found) */
+  skipped: number;
+  /** Number of emails actually sent (may be less if SMTP not configured) */
+  emailsDispatched: number;
+}
+
 export interface AdminAuditLog {
   id: number;
   adminId: number;

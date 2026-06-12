@@ -211,6 +211,8 @@ import type {
   SearchByUtrParams,
   SecurityComplianceSummaryResponse,
   SecurityEventListResponse,
+  SecurityReminderRequest,
+  SecurityReminderResponse,
   Settlement,
   SettlementActionInput,
   SettlementListResponse,
@@ -10460,6 +10462,77 @@ export function useGetSecurityComplianceSummary<TData = Awaited<ReturnType<typeo
 
 
 
+
+export const getSendSecurityReviewReminderUrl = () => {
+
+
+
+
+  return `/api/audit-logs/security-compliance/remind`
+}
+
+/**
+ * @summary Send security review reminder emails to non-compliant merchants
+ */
+export const sendSecurityReviewReminder = async (securityReminderRequest?: SecurityReminderRequest, options?: RequestInit): Promise<SecurityReminderResponse> => {
+
+  return customFetch<SecurityReminderResponse>(getSendSecurityReviewReminderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      securityReminderRequest,)
+  }
+);}
+
+
+
+
+export const getSendSecurityReviewReminderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSecurityReviewReminder>>, TError,{data?: BodyType<SecurityReminderRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendSecurityReviewReminder>>, TError,{data?: BodyType<SecurityReminderRequest>}, TContext> => {
+
+const mutationKey = ['sendSecurityReviewReminder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendSecurityReviewReminder>>, {data?: BodyType<SecurityReminderRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendSecurityReviewReminder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendSecurityReviewReminderMutationResult = NonNullable<Awaited<ReturnType<typeof sendSecurityReviewReminder>>>
+    export type SendSecurityReviewReminderMutationBody = BodyType<SecurityReminderRequest> | undefined
+    export type SendSecurityReviewReminderMutationError = ErrorType<void>
+
+    /**
+ * @summary Send security review reminder emails to non-compliant merchants
+ */
+export const useSendSecurityReviewReminder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSecurityReviewReminder>>, TError,{data?: BodyType<SecurityReminderRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendSecurityReviewReminder>>,
+        TError,
+        {data?: BodyType<SecurityReminderRequest>},
+        TContext
+      > => {
+      return useMutation(getSendSecurityReviewReminderMutationOptions(options));
+    }
 
 export const getGetAdminAuditLogStatsUrl = () => {
 

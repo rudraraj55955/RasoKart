@@ -277,6 +277,8 @@ export * from './securityComplianceSummaryResponse';
 export * from './securityEvent';
 export * from './securityEventEventType';
 export * from './securityEventListResponse';
+export * from './securityReminderRequest';
+export * from './securityReminderResponse';
 export * from './settlement';
 export * from './settlementActionInput';
 export * from './settlementListResponse';

@@ -11,6 +11,7 @@ import {
   useListCredentialEvents,
   useGetAuditReportRetentionConfig,
   useGetSecurityComplianceSummary,
+  useSendSecurityReviewReminder,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -27,8 +28,9 @@ import {
   Package, PencilLine, Trash2, ArrowRightLeft, CreditCard,
   Users, Loader2, QrCode, Landmark,
   Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle, Settings,
-  MonitorPlay, RefreshCw, KeyRound, RotateCcw, ClipboardCheck, AlertTriangle, Building2,
+  MonitorPlay, RefreshCw, KeyRound, RotateCcw, ClipboardCheck, AlertTriangle, Building2, BellRing,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO, formatDistanceToNow } from "date-fns";
@@ -67,6 +69,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   setting_updated:              { label: "Setting Updated",              color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   system_config_updated:        { label: "System Config Updated",        color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   security_activity_exported:   { label: "Security Activity Exported",   color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  security_review_reminded:     { label: "Security Review Reminder Sent", color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
@@ -2042,15 +2045,71 @@ function SecurityEventsPanel() {
 
 function CompliancePanel() {
   const [statusFilter, setStatusFilter] = useState<"all" | "exported" | "never">("all");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useGetSecurityComplianceSummary(
     statusFilter !== "all" ? { status: statusFilter } : {},
   );
 
+  const remind = useSendSecurityReviewReminder();
+
   const rows = data?.data ?? [];
   const totalMerchants = data?.totalMerchants ?? 0;
   const exportedCount = data?.exportedCount ?? 0;
   const neverCount = data?.neverCount ?? 0;
+
+  const neverRows = rows.filter((r: any) => r.status === "never");
+  const selectableIds = neverRows.map((r: any) => r.merchantId as number);
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
+  const someSelected = selectableIds.some(id => selected.has(id));
+
+  function toggleRow(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelected(prev => {
+        const next = new Set(prev);
+        selectableIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        selectableIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  }
+
+  async function handleRemind(merchantIds?: number[]) {
+    try {
+      const result = await remind.mutateAsync({ data: merchantIds ? { merchantIds } : {} });
+      queryClient.invalidateQueries({ queryKey: ["getSecurityComplianceSummary"] });
+      setSelected(new Set());
+      const label = merchantIds ? `${result.sent} merchant${result.sent !== 1 ? "s" : ""}` : `all ${result.sent} non-compliant merchant${result.sent !== 1 ? "s" : ""}`;
+      if (result.sent === 0) {
+        toast.info("No reminders sent — all selected merchants have already reviewed their security log.");
+      } else if (result.emailsDispatched > 0) {
+        toast.success(`Reminder sent to ${label}. ${result.emailsDispatched} email${result.emailsDispatched !== 1 ? "s" : ""} dispatched.`);
+      } else {
+        toast.success(`Reminder logged for ${label}. (SMTP not configured — no emails sent.)`);
+      }
+    } catch {
+      toast.error("Failed to send reminders. Please try again.");
+    }
+  }
+
+  const selectedNeverIds = Array.from(selected).filter(id =>
+    neverRows.some((r: any) => r.merchantId === id),
+  );
+  const canRemindSelected = selectedNeverIds.length > 0;
 
   return (
     <div className="space-y-5">
@@ -2091,11 +2150,11 @@ function CompliancePanel() {
               <ClipboardCheck className="w-4 h-4 text-teal-400" />
               Security Review Status
             </CardTitle>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
               {(["all", "exported", "never"] as const).map(v => (
                 <button
                   key={v}
-                  onClick={() => setStatusFilter(v)}
+                  onClick={() => { setStatusFilter(v); setSelected(new Set()); }}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition-colors border ${
                     statusFilter === v
                       ? v === "exported"
@@ -2109,6 +2168,35 @@ function CompliancePanel() {
                   {v === "all" ? "All" : v === "exported" ? "Reviewed" : "Never reviewed"}
                 </button>
               ))}
+              {canRemindSelected ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-3 text-xs gap-1.5 border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 hover:border-amber-500/60"
+                  onClick={() => handleRemind(selectedNeverIds)}
+                  disabled={remind.isPending}
+                >
+                  {remind.isPending
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <BellRing className="w-3 h-3" />
+                  }
+                  Remind selected ({selectedNeverIds.length})
+                </Button>
+              ) : neverCount > 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-3 text-xs gap-1.5 border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 hover:border-amber-500/60"
+                  onClick={() => handleRemind()}
+                  disabled={remind.isPending}
+                >
+                  {remind.isPending
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <BellRing className="w-3 h-3" />
+                  }
+                  Remind all ({neverCount})
+                </Button>
+              ) : null}
             </div>
           </div>
         </CardHeader>
@@ -2117,82 +2205,136 @@ function CompliancePanel() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10 pl-4">
+                    {selectableIds.length > 0 && (
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={toggleAll}
+                        aria-label="Select all non-reviewed merchants"
+                        className="border-border/60"
+                        data-state={someSelected && !allSelected ? "indeterminate" : allSelected ? "checked" : "unchecked"}
+                      />
+                    )}
+                  </TableHead>
                   <TableHead>Merchant</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Last Export</TableHead>
+                  <TableHead className="w-20" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 4 }).map((_, j) => (
+                      {Array.from({ length: 6 }).map((_, j) => (
                         <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
                       ))}
                     </TableRow>
                   ))
                 ) : !rows.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-14">
+                    <TableCell colSpan={6} className="text-center py-14">
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <ClipboardCheck className="w-8 h-8 opacity-30" />
                         <p className="text-sm">No merchants match this filter</p>
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : rows.map((row: any) => (
-                  <TableRow key={row.merchantId}>
-                    <TableCell>
-                      <div>
-                        <p className="text-sm font-medium">{row.businessName}</p>
-                        <p className="text-xs text-muted-foreground font-mono">ID #{row.merchantId}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.email}</TableCell>
-                    <TableCell>
-                      {row.status === "exported" ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-teal-500/20 bg-teal-500/10 px-2 py-0.5 text-xs font-medium text-teal-400">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Reviewed
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
-                          <AlertTriangle className="w-3 h-3" />
-                          Never reviewed
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {row.lastExportedAt ? (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="cursor-default">
-                                {formatDistanceToNow(new Date(row.lastExportedAt), { addSuffix: true })}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">
-                              {format(new Date(row.lastExportedAt), "MMM d, yyyy HH:mm:ss")}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ) : (
-                        <span className="text-muted-foreground/50 italic">Never</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                ) : rows.map((row: any) => {
+                  const isNever = row.status === "never";
+                  const isChecked = selected.has(row.merchantId);
+                  return (
+                    <TableRow key={row.merchantId} className={isChecked ? "bg-amber-500/5" : undefined}>
+                      <TableCell className="pl-4">
+                        {isNever && (
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => toggleRow(row.merchantId)}
+                            aria-label={`Select ${row.businessName}`}
+                            className="border-border/60"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium">{row.businessName}</p>
+                          <p className="text-xs text-muted-foreground font-mono">ID #{row.merchantId}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{row.email}</TableCell>
+                      <TableCell>
+                        {row.status === "exported" ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-teal-500/20 bg-teal-500/10 px-2 py-0.5 text-xs font-medium text-teal-400">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Reviewed
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+                            <AlertTriangle className="w-3 h-3" />
+                            Never reviewed
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {row.lastExportedAt ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-default">
+                                  {formatDistanceToNow(new Date(row.lastExportedAt), { addSuffix: true })}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                {format(new Date(row.lastExportedAt), "MMM d, yyyy HH:mm:ss")}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <span className="text-muted-foreground/50 italic">Never</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="pr-3">
+                        {isNever && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10"
+                                  onClick={() => handleRemind([row.merchantId])}
+                                  disabled={remind.isPending}
+                                >
+                                  {remind.isPending
+                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    : <BellRing className="w-3.5 h-3.5" />
+                                  }
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">Send reminder email</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
         </CardContent>
         {rows.length > 0 && (
-          <div className="px-6 py-3 border-t border-border/40">
+          <div className="px-6 py-3 border-t border-border/40 flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
               Showing {rows.length} of {totalMerchants} merchant{totalMerchants !== 1 ? "s" : ""}
               {statusFilter !== "all" && ` (filtered: ${statusFilter === "exported" ? "reviewed" : "never reviewed"})`}
             </p>
+            {someSelected && (
+              <p className="text-xs text-amber-400">
+                {selectedNeverIds.length} selected
+              </p>
+            )}
           </div>
         )}
       </Card>

@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db, auditLogsTable, scheduledAuditReportsTable, scheduledAuditReportLogsTable, credentialEventsTable, merchantsTable } from "@workspace/db";
-import { eq, ilike, and, count, sql, or, gte, lte, desc, getTableColumns } from "drizzle-orm";
+import { eq, ilike, and, count, sql, or, gte, lte, desc, getTableColumns, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { sendScheduledReport, buildEmailHtml, getDateRange, getRetryDelayMs } from "../helpers/auditReportScheduler";
+import { sendMail } from "../helpers/mailer";
 
 const MAX_RETRY_ATTEMPTS = 3;
 
@@ -60,6 +61,126 @@ router.get("/security-compliance", async (req, res) => {
     neverCount,
   });
 });
+
+router.post("/security-compliance/remind", async (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  const user = (req as any).user;
+
+  const { merchantIds } = (req.body ?? {}) as { merchantIds?: number[] };
+
+  const allRows = await db
+    .select({
+      merchantId: merchantsTable.id,
+      businessName: merchantsTable.businessName,
+      email: merchantsTable.email,
+      lastExportedAt: sql<string | null>`(
+        SELECT MAX(${auditLogsTable.createdAt})
+        FROM ${auditLogsTable}
+        WHERE ${auditLogsTable.action} = 'security_activity_exported'
+          AND ${auditLogsTable.targetId} = ${merchantsTable.id}
+      )`,
+    })
+    .from(merchantsTable)
+    .orderBy(merchantsTable.businessName);
+
+  const neverExported = allRows.filter(r => r.lastExportedAt == null);
+
+  let targets = neverExported;
+  if (Array.isArray(merchantIds) && merchantIds.length > 0) {
+    const ids = new Set(merchantIds);
+    targets = neverExported.filter(r => ids.has(r.merchantId));
+  }
+
+  let sent = 0;
+  let emailsDispatched = 0;
+  const skipped = allRows.length - targets.length;
+
+  for (const merchant of targets) {
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "security_review_reminded",
+      targetType: "merchant",
+      targetId: merchant.merchantId,
+      details: JSON.stringify({
+        businessName: merchant.businessName,
+        email: merchant.email,
+      }),
+      ipAddress: req.ip ?? null,
+    });
+    sent++;
+
+    const emailOk = await sendMail({
+      to: merchant.email,
+      subject: "Action Required: Review Your Security Activity on RasoKart",
+      html: buildSecurityReminderHtml(merchant.businessName),
+    });
+    if (emailOk) emailsDispatched++;
+  }
+
+  res.json({ sent, skipped, emailsDispatched });
+});
+
+function buildSecurityReminderHtml(businessName: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Security Activity Review Reminder</title>
+  <style>
+    body { margin: 0; padding: 0; background: #0a0a0f; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #e2e8f0; }
+    .wrapper { max-width: 560px; margin: 0 auto; padding: 40px 20px; }
+    .card { background: #12121a; border: 1px solid #1e1e2e; border-radius: 12px; padding: 32px; }
+    .logo { font-size: 20px; font-weight: 700; color: #7c3aed; margin-bottom: 28px; letter-spacing: -0.3px; }
+    .icon-wrap { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; margin-bottom: 20px; }
+    h1 { font-size: 20px; font-weight: 700; color: #f8fafc; margin: 0 0 12px; }
+    p { font-size: 14px; line-height: 1.65; color: #94a3b8; margin: 0 0 16px; }
+    .highlight { color: #e2e8f0; font-weight: 500; }
+    .btn { display: inline-block; background: #7c3aed; color: #fff !important; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; margin: 8px 0 24px; }
+    .steps { background: rgba(255,255,255,0.03); border: 1px solid #1e1e2e; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; }
+    .steps p { margin: 0 0 6px; font-size: 13px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .steps ol { margin: 0; padding-left: 18px; }
+    .steps li { font-size: 13px; color: #94a3b8; line-height: 1.6; margin-bottom: 2px; }
+    .footer { margin-top: 28px; font-size: 12px; color: #475569; text-align: center; }
+    .divider { border: none; border-top: 1px solid #1e1e2e; margin: 24px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="card">
+      <div class="logo">RasoKart</div>
+      <div class="icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <h1>Review Your Security Activity</h1>
+      <p>Hi <span class="highlight">${escapeHtml(businessName)}</span>,</p>
+      <p>Our records show that your account's security activity log has <strong style="color:#f59e0b">never been reviewed or exported</strong>. Reviewing your security activity helps you spot any unauthorised access or unexpected changes to your account.</p>
+      <a href="https://rasokart.com/merchant/security-activity" class="btn">Review Security Activity →</a>
+      <div class="steps">
+        <p>How to review</p>
+        <ol>
+          <li>Log in to your RasoKart merchant dashboard</li>
+          <li>Navigate to <strong style="color:#e2e8f0">Security Activity</strong> in the sidebar</li>
+          <li>Review the listed events and export a copy for your records</li>
+        </ol>
+      </div>
+      <hr class="divider" />
+      <p style="font-size:13px;color:#475569;margin:0">If you have already reviewed your security log, you can safely ignore this message. If you believe you received this in error, please contact our support team.</p>
+    </div>
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} RasoKart &mdash; Payment Gateway Platform
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 router.get("/stats", async (req, res) => {
   if (!ensureAdmin(req, res)) return;

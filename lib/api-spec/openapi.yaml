@@ -3424,6 +3424,27 @@ paths:
         "403":
           description: Forbidden
 
+  /audit-logs/security-compliance/remind:
+    post:
+      operationId: sendSecurityReviewReminder
+      tags: [dashboard]
+      summary: Send security review reminder emails to non-compliant merchants
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityReminderRequest"
+      responses:
+        "200":
+          description: Reminders sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityReminderResponse"
+        "403":
+          description: Forbidden
+
   /audit-logs/stats:
     get:
       operationId: getAdminAuditLogStats
@@ -7884,6 +7905,29 @@ components:
           type: integer
         neverCount:
           type: integer
+
+    SecurityReminderRequest:
+      type: object
+      properties:
+        merchantIds:
+          type: array
+          items:
+            type: integer
+          description: "Specific merchant IDs to remind. If omitted, reminds all never-exported merchants."
+
+    SecurityReminderResponse:
+      type: object
+      required: [sent, skipped, emailsDispatched]
+      properties:
+        sent:
+          type: integer
+          description: Number of merchants reminded (audit log entries created)
+        skipped:
+          type: integer
+          description: Number of merchants skipped (already exported or not found)
+        emailsDispatched:
+          type: integer
+          description: Number of emails actually sent (may be less if SMTP not configured)
 
     AdminAuditLog:
       type: object

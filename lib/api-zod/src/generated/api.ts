@@ -3387,6 +3387,20 @@ export const GetSecurityComplianceSummaryResponse = zod.object({
 
 
 /**
+ * @summary Send security review reminder emails to non-compliant merchants
+ */
+export const SendSecurityReviewReminderBody = zod.object({
+  "merchantIds": zod.array(zod.number()).optional().describe('Specific merchant IDs to remind. If omitted, reminds all never-exported merchants.')
+})
+
+export const SendSecurityReviewReminderResponse = zod.object({
+  "sent": zod.number().describe('Number of merchants reminded (audit log entries created)'),
+  "skipped": zod.number().describe('Number of merchants skipped (already exported or not found)'),
+  "emailsDispatched": zod.number().describe('Number of emails actually sent (may be less if SMTP not configured)')
+})
+
+
+/**
  * @summary Get audit log summary stats
  */
 export const GetAdminAuditLogStatsResponse = zod.object({
