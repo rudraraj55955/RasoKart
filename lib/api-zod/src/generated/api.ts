@@ -877,6 +877,9 @@ export const GetAdminMerchantWebhookConfigResponse = zod.object({
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
   "maxRetries": zod.number().min(getAdminMerchantWebhookConfigResponseMaxRetriesMin).max(getAdminMerchantWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "retryDelay1": zod.number().nullish().describe('Delay in seconds before the 1st retry. Null means use the system default.'),
+  "retryDelay2": zod.number().nullish().describe('Delay in seconds before the 2nd retry. Null means use the system default.'),
+  "retryDelay3": zod.number().nullish().describe('Delay in seconds before the 3rd and subsequent retries. Null means use the system default.'),
   "failureAlertEnabled": zod.boolean().describe('Whether to send an email alert when consecutive failures reach the threshold'),
   "failureAlertThreshold": zod.number().min(1).max(getAdminMerchantWebhookConfigResponseFailureAlertThresholdMax).describe('Number of consecutive delivery failures that triggers an email alert (default 3)'),
   "createdAt": zod.string().optional()
@@ -914,6 +917,9 @@ export const UpdateMerchantWebhookMaxRetriesResponse = zod.object({
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
   "maxRetries": zod.number().min(updateMerchantWebhookMaxRetriesResponseMaxRetriesMin).max(updateMerchantWebhookMaxRetriesResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "retryDelay1": zod.number().nullish().describe('Delay in seconds before the 1st retry. Null means use the system default.'),
+  "retryDelay2": zod.number().nullish().describe('Delay in seconds before the 2nd retry. Null means use the system default.'),
+  "retryDelay3": zod.number().nullish().describe('Delay in seconds before the 3rd and subsequent retries. Null means use the system default.'),
   "failureAlertEnabled": zod.boolean().describe('Whether to send an email alert when consecutive failures reach the threshold'),
   "failureAlertThreshold": zod.number().min(1).max(updateMerchantWebhookMaxRetriesResponseFailureAlertThresholdMax).describe('Number of consecutive delivery failures that triggers an email alert (default 3)'),
   "createdAt": zod.string().optional()
@@ -4910,6 +4916,93 @@ export const DeleteSavedFilterParams = zod.object({
 })
 
 export const DeleteSavedFilterResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary List saved smart search filter presets for the current merchant
+ */
+export const ListMerchantSavedFiltersQueryParams = zod.object({
+  "context": zod.coerce.string().optional()
+})
+
+export const ListMerchantSavedFiltersResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "rawInput": zod.string(),
+  "filterData": zod.record(zod.string(), zod.unknown()).describe('SmartFilter JSON object'),
+  "context": zod.string(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Save a named smart search filter preset for the current merchant
+ */
+export const createMerchantSavedFilterBodyNameMax = 40;
+
+
+
+
+export const CreateMerchantSavedFilterBody = zod.object({
+  "name": zod.string().min(1).max(createMerchantSavedFilterBodyNameMax),
+  "rawInput": zod.string().min(1),
+  "filterData": zod.record(zod.string(), zod.unknown()).describe('SmartFilter JSON object'),
+  "context": zod.string()
+})
+
+
+/**
+ * @summary Reorder saved filter presets for the current merchant
+ */
+export const ReorderMerchantSavedFiltersBody = zod.object({
+  "ids": zod.array(zod.number()),
+  "context": zod.string()
+})
+
+export const ReorderMerchantSavedFiltersResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Rename a saved filter preset
+ */
+export const RenameMerchantSavedFilterParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const renameMerchantSavedFilterBodyNameMax = 40;
+
+
+
+export const RenameMerchantSavedFilterBody = zod.object({
+  "name": zod.string().min(1).max(renameMerchantSavedFilterBodyNameMax)
+})
+
+export const RenameMerchantSavedFilterResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "rawInput": zod.string(),
+  "filterData": zod.record(zod.string(), zod.unknown()).describe('SmartFilter JSON object'),
+  "context": zod.string(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a saved filter preset
+ */
+export const DeleteMerchantSavedFilterParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteMerchantSavedFilterResponse = zod.object({
   "message": zod.string()
 })
 

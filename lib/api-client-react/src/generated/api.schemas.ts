@@ -66,6 +66,53 @@ export interface CreateSavedFilterInput {
   filterData: CreateSavedFilterInputFilterData;
 }
 
+/**
+ * SmartFilter JSON object
+ */
+export type MerchantSavedFilterFilterData = { [key: string]: unknown };
+
+export interface MerchantSavedFilter {
+  id: number;
+  name: string;
+  rawInput: string;
+  /** SmartFilter JSON object */
+  filterData: MerchantSavedFilterFilterData;
+  context: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+/**
+ * SmartFilter JSON object
+ */
+export type CreateMerchantSavedFilterInputFilterData = { [key: string]: unknown };
+
+export interface CreateMerchantSavedFilterInput {
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  name: string;
+  /** @minLength 1 */
+  rawInput: string;
+  /** SmartFilter JSON object */
+  filterData: CreateMerchantSavedFilterInputFilterData;
+  context: string;
+}
+
+export interface RenameMerchantSavedFilterInput {
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  name: string;
+}
+
+export interface ReorderMerchantSavedFiltersInput {
+  ids: number[];
+  context: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -3477,6 +3524,14 @@ export type ClearSignatureFailureAlertHistory200 = {
 
 export type ListSavedFilters200 = {
   data: SavedFilter[];
+};
+
+export type ListMerchantSavedFiltersParams = {
+context?: string;
+};
+
+export type ListMerchantSavedFilters200 = {
+  data: MerchantSavedFilter[];
 };
 
 export type UpdateGithubSyncConfigBody = {

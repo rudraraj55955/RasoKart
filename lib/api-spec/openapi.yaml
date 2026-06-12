@@ -5052,6 +5052,181 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /merchant/saved-filters:
+    get:
+      operationId: listMerchantSavedFilters
+      tags: [merchant-saved-filters]
+      summary: List saved smart search filter presets for the current merchant
+      parameters:
+        - name: context
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of saved filters.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MerchantSavedFilter'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      operationId: createMerchantSavedFilter
+      tags: [merchant-saved-filters]
+      summary: Save a named smart search filter preset for the current merchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMerchantSavedFilterInput'
+      responses:
+        '201':
+          description: Created saved filter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MerchantSavedFilter'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /merchant/saved-filters/reorder:
+    put:
+      operationId: reorderMerchantSavedFilters
+      tags: [merchant-saved-filters]
+      summary: Reorder saved filter presets for the current merchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderMerchantSavedFiltersInput'
+      responses:
+        '200':
+          description: Reordered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /merchant/saved-filters/{id}:
+    patch:
+      operationId: renameMerchantSavedFilter
+      tags: [merchant-saved-filters]
+      summary: Rename a saved filter preset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameMerchantSavedFilterInput'
+      responses:
+        '200':
+          description: Renamed filter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MerchantSavedFilter'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      operationId: deleteMerchantSavedFilter
+      tags: [merchant-saved-filters]
+      summary: Delete a saved filter preset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /github-sync/config:
     get:
       operationId: getGithubSyncConfig
@@ -5321,6 +5496,66 @@ components:
           type: object
           description: SmartFilter JSON object
           additionalProperties: true
+
+    MerchantSavedFilter:
+      type: object
+      required: [id, name, rawInput, filterData, context, sortOrder, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        rawInput:
+          type: string
+        filterData:
+          type: object
+          description: SmartFilter JSON object
+          additionalProperties: true
+        context:
+          type: string
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateMerchantSavedFilterInput:
+      type: object
+      required: [name, rawInput, filterData, context]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        rawInput:
+          type: string
+          minLength: 1
+        filterData:
+          type: object
+          description: SmartFilter JSON object
+          additionalProperties: true
+        context:
+          type: string
+
+    RenameMerchantSavedFilterInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+
+    ReorderMerchantSavedFiltersInput:
+      type: object
+      required: [ids, context]
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+        context:
+          type: string
 
     HealthStatus:
       type: object

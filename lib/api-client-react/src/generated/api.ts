@@ -68,6 +68,7 @@ import type {
   ClearSignatureFailureAlertHistory200,
   ClearTestEmailHistory200,
   ClearWebhookFailureAlertHistory200,
+  CreateMerchantSavedFilterInput,
   CreateSavedFilterInput,
   CreateSettlementInput,
   CredentialEventList,
@@ -113,6 +114,8 @@ import type {
   ListLedgerEntriesParams,
   ListMerchantCredentialEventsParams,
   ListMerchantFeaturesParams,
+  ListMerchantSavedFilters200,
+  ListMerchantSavedFiltersParams,
   ListMerchantsParams,
   ListMySecurityActivityParams,
   ListNotificationsParams,
@@ -148,6 +151,7 @@ import type {
   MerchantPlanWithDetails,
   MerchantProduct,
   MerchantRegisterInput,
+  MerchantSavedFilter,
   MerchantVolumeListResponse,
   MerchantWebhookMaxRetriesInput,
   MessageResponse,
@@ -193,7 +197,9 @@ import type {
   ReconciliationScheduleConfig,
   ReconciliationSchedulerStatus,
   RejectInput,
+  RenameMerchantSavedFilterInput,
   RenewPlanInput,
+  ReorderMerchantSavedFiltersInput,
   ResendReconciliationAlertEmail200,
   ResendReconciliationReportEmail200,
   RetryCallback200,
@@ -16263,6 +16269,374 @@ export const useDeleteSavedFilter = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteSavedFilterMutationOptions(options));
+    }
+
+export const getListMerchantSavedFiltersUrl = (params?: ListMerchantSavedFiltersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/merchant/saved-filters?${stringifiedParams}` : `/api/merchant/saved-filters`
+}
+
+/**
+ * @summary List saved smart search filter presets for the current merchant
+ */
+export const listMerchantSavedFilters = async (params?: ListMerchantSavedFiltersParams, options?: RequestInit): Promise<ListMerchantSavedFilters200> => {
+
+  return customFetch<ListMerchantSavedFilters200>(getListMerchantSavedFiltersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMerchantSavedFiltersQueryKey = (params?: ListMerchantSavedFiltersParams,) => {
+    return [
+    `/api/merchant/saved-filters`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMerchantSavedFiltersQueryOptions = <TData = Awaited<ReturnType<typeof listMerchantSavedFilters>>, TError = ErrorType<ErrorResponse>>(params?: ListMerchantSavedFiltersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantSavedFilters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMerchantSavedFiltersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMerchantSavedFilters>>> = ({ signal }) => listMerchantSavedFilters(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMerchantSavedFilters>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMerchantSavedFiltersQueryResult = NonNullable<Awaited<ReturnType<typeof listMerchantSavedFilters>>>
+export type ListMerchantSavedFiltersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List saved smart search filter presets for the current merchant
+ */
+
+export function useListMerchantSavedFilters<TData = Awaited<ReturnType<typeof listMerchantSavedFilters>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListMerchantSavedFiltersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantSavedFilters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMerchantSavedFiltersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateMerchantSavedFilterUrl = () => {
+
+
+
+
+  return `/api/merchant/saved-filters`
+}
+
+/**
+ * @summary Save a named smart search filter preset for the current merchant
+ */
+export const createMerchantSavedFilter = async (createMerchantSavedFilterInput: CreateMerchantSavedFilterInput, options?: RequestInit): Promise<MerchantSavedFilter> => {
+
+  return customFetch<MerchantSavedFilter>(getCreateMerchantSavedFilterUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createMerchantSavedFilterInput,)
+  }
+);}
+
+
+
+
+export const getCreateMerchantSavedFilterMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMerchantSavedFilter>>, TError,{data: BodyType<CreateMerchantSavedFilterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMerchantSavedFilter>>, TError,{data: BodyType<CreateMerchantSavedFilterInput>}, TContext> => {
+
+const mutationKey = ['createMerchantSavedFilter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMerchantSavedFilter>>, {data: BodyType<CreateMerchantSavedFilterInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMerchantSavedFilter(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMerchantSavedFilterMutationResult = NonNullable<Awaited<ReturnType<typeof createMerchantSavedFilter>>>
+    export type CreateMerchantSavedFilterMutationBody = BodyType<CreateMerchantSavedFilterInput>
+    export type CreateMerchantSavedFilterMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save a named smart search filter preset for the current merchant
+ */
+export const useCreateMerchantSavedFilter = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMerchantSavedFilter>>, TError,{data: BodyType<CreateMerchantSavedFilterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMerchantSavedFilter>>,
+        TError,
+        {data: BodyType<CreateMerchantSavedFilterInput>},
+        TContext
+      > => {
+      return useMutation(getCreateMerchantSavedFilterMutationOptions(options));
+    }
+
+export const getReorderMerchantSavedFiltersUrl = () => {
+
+
+
+
+  return `/api/merchant/saved-filters/reorder`
+}
+
+/**
+ * @summary Reorder saved filter presets for the current merchant
+ */
+export const reorderMerchantSavedFilters = async (reorderMerchantSavedFiltersInput: ReorderMerchantSavedFiltersInput, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getReorderMerchantSavedFiltersUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reorderMerchantSavedFiltersInput,)
+  }
+);}
+
+
+
+
+export const getReorderMerchantSavedFiltersMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderMerchantSavedFilters>>, TError,{data: BodyType<ReorderMerchantSavedFiltersInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reorderMerchantSavedFilters>>, TError,{data: BodyType<ReorderMerchantSavedFiltersInput>}, TContext> => {
+
+const mutationKey = ['reorderMerchantSavedFilters'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderMerchantSavedFilters>>, {data: BodyType<ReorderMerchantSavedFiltersInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  reorderMerchantSavedFilters(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReorderMerchantSavedFiltersMutationResult = NonNullable<Awaited<ReturnType<typeof reorderMerchantSavedFilters>>>
+    export type ReorderMerchantSavedFiltersMutationBody = BodyType<ReorderMerchantSavedFiltersInput>
+    export type ReorderMerchantSavedFiltersMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Reorder saved filter presets for the current merchant
+ */
+export const useReorderMerchantSavedFilters = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderMerchantSavedFilters>>, TError,{data: BodyType<ReorderMerchantSavedFiltersInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reorderMerchantSavedFilters>>,
+        TError,
+        {data: BodyType<ReorderMerchantSavedFiltersInput>},
+        TContext
+      > => {
+      return useMutation(getReorderMerchantSavedFiltersMutationOptions(options));
+    }
+
+export const getRenameMerchantSavedFilterUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchant/saved-filters/${id}`
+}
+
+/**
+ * @summary Rename a saved filter preset
+ */
+export const renameMerchantSavedFilter = async (id: number,
+    renameMerchantSavedFilterInput: RenameMerchantSavedFilterInput, options?: RequestInit): Promise<MerchantSavedFilter> => {
+
+  return customFetch<MerchantSavedFilter>(getRenameMerchantSavedFilterUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      renameMerchantSavedFilterInput,)
+  }
+);}
+
+
+
+
+export const getRenameMerchantSavedFilterMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameMerchantSavedFilter>>, TError,{id: number;data: BodyType<RenameMerchantSavedFilterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof renameMerchantSavedFilter>>, TError,{id: number;data: BodyType<RenameMerchantSavedFilterInput>}, TContext> => {
+
+const mutationKey = ['renameMerchantSavedFilter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof renameMerchantSavedFilter>>, {id: number;data: BodyType<RenameMerchantSavedFilterInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  renameMerchantSavedFilter(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RenameMerchantSavedFilterMutationResult = NonNullable<Awaited<ReturnType<typeof renameMerchantSavedFilter>>>
+    export type RenameMerchantSavedFilterMutationBody = BodyType<RenameMerchantSavedFilterInput>
+    export type RenameMerchantSavedFilterMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Rename a saved filter preset
+ */
+export const useRenameMerchantSavedFilter = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameMerchantSavedFilter>>, TError,{id: number;data: BodyType<RenameMerchantSavedFilterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof renameMerchantSavedFilter>>,
+        TError,
+        {id: number;data: BodyType<RenameMerchantSavedFilterInput>},
+        TContext
+      > => {
+      return useMutation(getRenameMerchantSavedFilterMutationOptions(options));
+    }
+
+export const getDeleteMerchantSavedFilterUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchant/saved-filters/${id}`
+}
+
+/**
+ * @summary Delete a saved filter preset
+ */
+export const deleteMerchantSavedFilter = async (id: number, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getDeleteMerchantSavedFilterUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteMerchantSavedFilterMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMerchantSavedFilter>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMerchantSavedFilter>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteMerchantSavedFilter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMerchantSavedFilter>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteMerchantSavedFilter(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMerchantSavedFilterMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMerchantSavedFilter>>>
+
+    export type DeleteMerchantSavedFilterMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a saved filter preset
+ */
+export const useDeleteMerchantSavedFilter = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMerchantSavedFilter>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMerchantSavedFilter>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteMerchantSavedFilterMutationOptions(options));
     }
 
 export const getGetGithubSyncConfigUrl = () => {

@@ -7,6 +7,11 @@ import {
   useListVirtualAccounts,
   useGetDashboardStats,
   useListMerchantConnections,
+  useListMerchantSavedFilters,
+  useCreateMerchantSavedFilter,
+  useDeleteMerchantSavedFilter,
+  useRenameMerchantSavedFilter,
+  useReorderMerchantSavedFilters,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -321,6 +326,52 @@ export default function MerchantDeposits() {
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
 
+  // Server-side saved filters sync
+  const FILTER_CONTEXT = "merchant_deposits";
+  const filtersInitialized = useRef(false);
+  const { data: serverFiltersData, isSuccess: serverFiltersLoaded } = useListMerchantSavedFilters(
+    { context: FILTER_CONTEXT },
+    { query: { staleTime: Infinity, retry: false } as any },
+  );
+  const { mutateAsync: createFilterMutation } = useCreateMerchantSavedFilter();
+  const { mutateAsync: deleteFilterMutation } = useDeleteMerchantSavedFilter();
+  const { mutateAsync: renameFilterMutation } = useRenameMerchantSavedFilter();
+  const { mutateAsync: reorderFilterMutation } = useReorderMerchantSavedFilters();
+
+  useEffect(() => {
+    if (!serverFiltersLoaded || filtersInitialized.current) return;
+    filtersInitialized.current = true;
+    const serverFilters: SavedFilter[] = (serverFiltersData?.data ?? []).map(f => ({
+      id: String(f.id),
+      name: f.name,
+      filter: f.filterData as SmartFilter,
+      rawInput: f.rawInput,
+    }));
+    if (serverFilters.length > 0) {
+      setSavedFilters(serverFilters);
+      storeSavedFilters(serverFilters);
+    } else {
+      const local = loadSavedFilters();
+      if (local.length > 0) {
+        (async () => {
+          const imported: SavedFilter[] = [];
+          for (const f of local) {
+            try {
+              const created = await createFilterMutation({
+                data: { name: f.name, rawInput: f.rawInput, filterData: f.filter as Record<string, unknown>, context: FILTER_CONTEXT },
+              });
+              imported.push({ id: String(created.id), name: created.name, filter: created.filterData as SmartFilter, rawInput: created.rawInput });
+            } catch { /* skip duplicates or errors */ }
+          }
+          if (imported.length > 0) {
+            setSavedFilters(imported);
+            storeSavedFilters(imported);
+          }
+        })();
+      }
+    }
+  }, [serverFiltersLoaded, serverFiltersData]);
+
   useEffect(() => {
     if (showSaveDatePreset) {
       setTimeout(() => saveDatePresetNameRef.current?.focus(), 50);
@@ -454,35 +505,50 @@ export default function MerchantDeposits() {
     setShowSaveInput(true);
   };
 
-  const confirmSaveFilter = () => {
+  const confirmSaveFilter = async () => {
     const trimmed = saveFilterName.trim();
     if (!trimmed) { setSaveFilterNameError("Please enter a name."); saveNameInputRef.current?.focus(); return; }
     if (!smartFilter) return;
     if (savedFilters.some(f => f.name.toLowerCase() === trimmed.toLowerCase())) {
       setSaveFilterNameError("A filter with this name already exists."); saveNameInputRef.current?.focus(); return;
     }
-    const newFilter: SavedFilter = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: trimmed, filter: smartFilter, rawInput: smartInput,
-    };
-    const updated = [...savedFilters, newFilter];
-    setSavedFilters(updated);
-    storeSavedFilters(updated);
-    setShowSaveInput(false);
-    setSaveFilterName("");
-    setSaveFilterNameError("");
+    try {
+      const created = await createFilterMutation({
+        data: { name: trimmed, rawInput: smartInput, filterData: smartFilter as Record<string, unknown>, context: FILTER_CONTEXT },
+      });
+      const newFilter: SavedFilter = {
+        id: String(created.id),
+        name: created.name,
+        filter: created.filterData as SmartFilter,
+        rawInput: created.rawInput,
+      };
+      const updated = [...savedFilters, newFilter];
+      setSavedFilters(updated);
+      storeSavedFilters(updated);
+      setShowSaveInput(false);
+      setSaveFilterName("");
+      setSaveFilterNameError("");
+    } catch {
+      toast.error("Failed to save filter. Please try again.");
+    }
   };
 
   const cancelSaveFilter = () => { setShowSaveInput(false); setSaveFilterName(""); setSaveFilterNameError(""); };
 
-  const deleteSavedFilter = (id: string) => {
+  const deleteSavedFilter = async (id: string) => {
     const updated = savedFilters.filter(f => f.id !== id);
     setSavedFilters(updated);
     storeSavedFilters(updated);
     if (renamingId === id) setRenamingId(null);
+    const numericId = parseInt(id);
+    if (!isNaN(numericId)) {
+      try {
+        await deleteFilterMutation({ id: numericId });
+      } catch { /* optimistic delete already applied locally */ }
+    }
   };
 
-  const moveSavedFilter = (id: string, dir: -1 | 1) => {
+  const moveSavedFilter = async (id: string, dir: -1 | 1) => {
     const idx = savedFilters.findIndex(f => f.id === id);
     if (idx === -1) return;
     const newIdx = idx + dir;
@@ -491,6 +557,10 @@ export default function MerchantDeposits() {
     [updated[idx], updated[newIdx]] = [updated[newIdx]!, updated[idx]!];
     setSavedFilters(updated);
     storeSavedFilters(updated);
+    const ids = updated.map(f => parseInt(f.id)).filter(n => !isNaN(n));
+    try {
+      await reorderFilterMutation({ data: { ids, context: FILTER_CONTEXT } });
+    } catch { /* optimistic reorder already applied locally */ }
   };
 
   const handleDragStart = (id: string) => {
@@ -516,6 +586,8 @@ export default function MerchantDeposits() {
     updated.splice(toIdx, 0, item!);
     setSavedFilters(updated);
     storeSavedFilters(updated);
+    const ids = updated.map(f => parseInt(f.id)).filter(n => !isNaN(n));
+    reorderFilterMutation({ data: { ids, context: FILTER_CONTEXT } }).catch(() => {});
   };
   const handleDragEnd = () => {
     dragIdRef.current = null;
@@ -528,7 +600,7 @@ export default function MerchantDeposits() {
     setRenameValue(saved.name);
   };
 
-  const commitRename = () => {
+  const commitRename = async () => {
     if (!renamingId) return;
     const trimmed = renameValue.trim();
     if (!trimmed) { setRenamingId(null); return; }
@@ -540,6 +612,12 @@ export default function MerchantDeposits() {
     setSavedFilters(updated);
     storeSavedFilters(updated);
     setRenamingId(null);
+    const numericId = parseInt(renamingId);
+    if (!isNaN(numericId)) {
+      try {
+        await renameFilterMutation({ id: numericId, data: { name: trimmed } });
+      } catch { /* optimistic rename already applied locally */ }
+    }
   };
 
   const cancelRename = () => { setRenamingId(null); };
