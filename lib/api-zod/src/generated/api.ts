@@ -865,6 +865,8 @@ export const GetAdminMerchantWebhookConfigParams = zod.object({
 export const getAdminMerchantWebhookConfigResponseMaxRetriesMin = 0;
 export const getAdminMerchantWebhookConfigResponseMaxRetriesMax = 10;
 
+export const getAdminMerchantWebhookConfigResponseGlobalMaxRetriesMin = 0;
+
 export const getAdminMerchantWebhookConfigResponseFailureAlertThresholdMax = 10;
 
 
@@ -877,6 +879,7 @@ export const GetAdminMerchantWebhookConfigResponse = zod.object({
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
   "maxRetries": zod.number().min(getAdminMerchantWebhookConfigResponseMaxRetriesMin).max(getAdminMerchantWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "globalMaxRetries": zod.number().min(getAdminMerchantWebhookConfigResponseGlobalMaxRetriesMin).describe('The admin-configured global cap on retries (maxAttempts - 1). The per-webhook maxRetries cannot exceed this value.'),
   "retryDelay1": zod.number().nullish().describe('Delay in seconds before the 1st retry. Null means use the system default.'),
   "retryDelay2": zod.number().nullish().describe('Delay in seconds before the 2nd retry. Null means use the system default.'),
   "retryDelay3": zod.number().nullish().describe('Delay in seconds before the 3rd and subsequent retries. Null means use the system default.'),
@@ -905,6 +908,8 @@ export const UpdateMerchantWebhookMaxRetriesBody = zod.object({
 export const updateMerchantWebhookMaxRetriesResponseMaxRetriesMin = 0;
 export const updateMerchantWebhookMaxRetriesResponseMaxRetriesMax = 10;
 
+export const updateMerchantWebhookMaxRetriesResponseGlobalMaxRetriesMin = 0;
+
 export const updateMerchantWebhookMaxRetriesResponseFailureAlertThresholdMax = 10;
 
 
@@ -917,6 +922,7 @@ export const UpdateMerchantWebhookMaxRetriesResponse = zod.object({
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
   "maxRetries": zod.number().min(updateMerchantWebhookMaxRetriesResponseMaxRetriesMin).max(updateMerchantWebhookMaxRetriesResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "globalMaxRetries": zod.number().min(updateMerchantWebhookMaxRetriesResponseGlobalMaxRetriesMin).describe('The admin-configured global cap on retries (maxAttempts - 1). The per-webhook maxRetries cannot exceed this value.'),
   "retryDelay1": zod.number().nullish().describe('Delay in seconds before the 1st retry. Null means use the system default.'),
   "retryDelay2": zod.number().nullish().describe('Delay in seconds before the 2nd retry. Null means use the system default.'),
   "retryDelay3": zod.number().nullish().describe('Delay in seconds before the 3rd and subsequent retries. Null means use the system default.'),
@@ -1662,6 +1668,8 @@ export const SendWebhookTestResponse = zod.object({
 export const getWebhookConfigResponseMaxRetriesMin = 0;
 export const getWebhookConfigResponseMaxRetriesMax = 10;
 
+export const getWebhookConfigResponseGlobalMaxRetriesMin = 0;
+
 export const getWebhookConfigResponseFailureAlertThresholdMax = 10;
 
 
@@ -1674,6 +1682,7 @@ export const GetWebhookConfigResponse = zod.object({
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
   "maxRetries": zod.number().min(getWebhookConfigResponseMaxRetriesMin).max(getWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "globalMaxRetries": zod.number().min(getWebhookConfigResponseGlobalMaxRetriesMin).describe('The admin-configured global cap on retries (maxAttempts - 1). The per-webhook maxRetries cannot exceed this value.'),
   "retryDelay1": zod.number().nullish().describe('Delay in seconds before the 1st retry. Null means use the system default.'),
   "retryDelay2": zod.number().nullish().describe('Delay in seconds before the 2nd retry. Null means use the system default.'),
   "retryDelay3": zod.number().nullish().describe('Delay in seconds before the 3rd and subsequent retries. Null means use the system default.'),
@@ -1709,6 +1718,8 @@ export const UpdateWebhookConfigBody = zod.object({
 export const updateWebhookConfigResponseMaxRetriesMin = 0;
 export const updateWebhookConfigResponseMaxRetriesMax = 10;
 
+export const updateWebhookConfigResponseGlobalMaxRetriesMin = 0;
+
 export const updateWebhookConfigResponseFailureAlertThresholdMax = 10;
 
 
@@ -1721,6 +1732,7 @@ export const UpdateWebhookConfigResponse = zod.object({
   "events": zod.array(zod.string()),
   "secret": zod.string().nullish(),
   "maxRetries": zod.number().min(updateWebhookConfigResponseMaxRetriesMin).max(updateWebhookConfigResponseMaxRetriesMax).describe('Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)'),
+  "globalMaxRetries": zod.number().min(updateWebhookConfigResponseGlobalMaxRetriesMin).describe('The admin-configured global cap on retries (maxAttempts - 1). The per-webhook maxRetries cannot exceed this value.'),
   "retryDelay1": zod.number().nullish().describe('Delay in seconds before the 1st retry. Null means use the system default.'),
   "retryDelay2": zod.number().nullish().describe('Delay in seconds before the 2nd retry. Null means use the system default.'),
   "retryDelay3": zod.number().nullish().describe('Delay in seconds before the 3rd and subsequent retries. Null means use the system default.'),

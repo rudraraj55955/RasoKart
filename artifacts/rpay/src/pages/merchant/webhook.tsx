@@ -801,6 +801,7 @@ export default function MerchantWebhook() {
   const [isActive, setIsActive] = useState(true);
   const [events, setEvents] = useState<string[]>([]);
   const [maxRetries, setMaxRetries] = useState(3);
+  const [globalMaxRetries, setGlobalMaxRetries] = useState<number>(10);
   const [retryDelay1, setRetryDelay1] = useState<number | null>(null);
   const [retryDelay2, setRetryDelay2] = useState<number | null>(null);
   const [retryDelay3, setRetryDelay3] = useState<number | null>(null);
@@ -829,7 +830,9 @@ export default function MerchantWebhook() {
       setSecret(config.secret || "");
       setIsActive(config.isActive);
       setEvents(config.events || []);
-      setMaxRetries(config.maxRetries ?? 3);
+      const cap = config.globalMaxRetries ?? 10;
+      setGlobalMaxRetries(cap);
+      setMaxRetries(Math.min(config.maxRetries ?? 3, cap));
       setRetryDelay1(config.retryDelay1 ?? null);
       setRetryDelay2(config.retryDelay2 ?? null);
       setRetryDelay3(config.retryDelay3 ?? null);
@@ -961,26 +964,26 @@ onError: () => toast.error("Failed to send test event"),
           </div>
           <div>
             <Label>Max retries</Label>
-            <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+            <p className="text-xs text-muted-foreground mt-0.5 mb-1">
               Number of automatic retry attempts when delivery fails (0 = no retries).
               When set, this overrides the platform-wide default configured by the admin.
             </p>
-            <Select value={String(maxRetries)} onValueChange={v => setMaxRetries(parseInt(v, 10))}>
+            <p className="text-xs text-amber-400/80 mb-2">
+              Global cap: <span className="font-semibold">{globalMaxRetries}</span> {globalMaxRetries === 1 ? "retry" : "retries"} (admin-configured maximum)
+            </p>
+            <Select
+              value={String(Math.min(maxRetries, globalMaxRetries))}
+              onValueChange={v => setMaxRetries(Math.min(parseInt(v, 10), globalMaxRetries))}
+            >
               <SelectTrigger className="w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="0">0 — no retries</SelectItem>
-                <SelectItem value="1">1 retry</SelectItem>
-                <SelectItem value="2">2 retries</SelectItem>
-                <SelectItem value="3">3 retries (default)</SelectItem>
-                <SelectItem value="4">4 retries</SelectItem>
-                <SelectItem value="5">5 retries</SelectItem>
-                <SelectItem value="6">6 retries</SelectItem>
-                <SelectItem value="7">7 retries</SelectItem>
-                <SelectItem value="8">8 retries</SelectItem>
-                <SelectItem value="9">9 retries</SelectItem>
-                <SelectItem value="10">10 retries</SelectItem>
+                {Array.from({ length: globalMaxRetries + 1 }, (_, n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n === 0 ? "0 — no retries" : n === 1 ? "1 retry" : `${n} retries${n === 3 ? " (default)" : ""}`}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

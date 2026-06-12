@@ -1712,6 +1712,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WebhookConfig"
+        "422":
+          description: maxRetries exceeds the admin-configured global cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /callbacks/stats:
     get:
@@ -6300,7 +6306,7 @@ components:
 
     WebhookConfig:
       type: object
-      required: [id, merchantId, url, isActive, events, maxRetries, failureAlertEnabled, failureAlertThreshold]
+      required: [id, merchantId, url, isActive, events, maxRetries, failureAlertEnabled, failureAlertThreshold, globalMaxRetries]
       properties:
         id:
           type: integer
@@ -6321,6 +6327,10 @@ components:
           minimum: 0
           maximum: 10
           description: Maximum number of automatic retries for failed deliveries (0 = no retries, default 3)
+        globalMaxRetries:
+          type: integer
+          minimum: 0
+          description: The admin-configured global cap on retries (maxAttempts - 1). The per-webhook maxRetries cannot exceed this value.
         retryDelay1:
           type: ["integer", "null"]
           description: Delay in seconds before the 1st retry. Null means use the system default.

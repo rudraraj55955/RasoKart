@@ -21,6 +21,11 @@ export interface WebhookConfig {
      */
   maxRetries: number;
   /**
+     * The admin-configured global cap on retries (maxAttempts - 1). The per-webhook maxRetries cannot exceed this value.
+     * @minimum 0
+     */
+  globalMaxRetries: number;
+  /**
      * Delay in seconds before the 1st retry. Null means use the system default.
      * @nullable
      */

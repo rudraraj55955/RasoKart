@@ -5182,7 +5182,7 @@ export const updateWebhookConfig = async (webhookConfigInput: WebhookConfigInput
 
 
 
-export const getUpdateWebhookConfigMutationOptions = <TError = ErrorType<unknown>,
+export const getUpdateWebhookConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWebhookConfig>>, TError,{data: BodyType<WebhookConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateWebhookConfig>>, TError,{data: BodyType<WebhookConfigInput>}, TContext> => {
 
@@ -5211,12 +5211,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdateWebhookConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateWebhookConfig>>>
     export type UpdateWebhookConfigMutationBody = BodyType<WebhookConfigInput>
-    export type UpdateWebhookConfigMutationError = ErrorType<unknown>
+    export type UpdateWebhookConfigMutationError = ErrorType<ErrorResponse>
 
     /**
  * @summary Update webhook configuration
  */
-export const useUpdateWebhookConfig = <TError = ErrorType<unknown>,
+export const useUpdateWebhookConfig = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWebhookConfig>>, TError,{data: BodyType<WebhookConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateWebhookConfig>>,

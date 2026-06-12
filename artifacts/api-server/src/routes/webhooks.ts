@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, webhooksTable, callbackLogsTable, auditLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
 import { and, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { fireCallback } from "../helpers/callbackRetry";
+import { fireCallback, loadWebhookRetryConfig } from "../helpers/callbackRetry";
 import crypto from "crypto";
 import dns from "dns";
 import net from "net";
@@ -597,12 +597,16 @@ router.get("/", async (req, res) => {
     res.status(403).json({ error: "Merchants only" });
     return;
   }
-  const [webhook] = await db.select().from(webhooksTable).where(eq(webhooksTable.merchantId, merchantId)).limit(1);
+  const [globalConfig, webhook] = await Promise.all([
+    loadWebhookRetryConfig(),
+    db.select().from(webhooksTable).where(eq(webhooksTable.merchantId, merchantId)).limit(1).then(r => r[0]),
+  ]);
+  const globalMaxRetries = globalConfig.maxAttempts - 1;
   if (!webhook) {
-    res.json({ id: 0, merchantId, url: "", isActive: false, events: [], secret: null, createdAt: new Date().toISOString() });
+    res.json({ id: 0, merchantId, url: "", isActive: false, events: [], secret: null, createdAt: new Date().toISOString(), maxRetries: 3, failureAlertEnabled: true, failureAlertThreshold: 3, globalMaxRetries });
     return;
   }
-  res.json(webhook);
+  res.json({ ...webhook, globalMaxRetries });
 });
 
 // PUT /api/webhooks
@@ -622,6 +626,13 @@ router.put("/", async (req, res) => {
   const maxRetriesNum = maxRetries != null ? parseInt(String(maxRetries), 10) : 3;
   if (!isFinite(maxRetriesNum) || maxRetriesNum < 0 || maxRetriesNum > 10) {
     res.status(400).json({ error: "maxRetries must be an integer between 0 and 10" });
+    return;
+  }
+
+  const globalConfig = await loadWebhookRetryConfig();
+  const globalMaxRetries = globalConfig.maxAttempts - 1;
+  if (maxRetriesNum > globalMaxRetries) {
+    res.status(422).json({ error: `maxRetries cannot exceed the global cap of ${globalMaxRetries}` });
     return;
   }
 
@@ -680,7 +691,7 @@ router.put("/", async (req, res) => {
       .values({ merchantId, ...fieldsToSet })
       .returning();
   }
-  res.json(webhook);
+  res.json({ ...webhook, globalMaxRetries });
 });
 
 export default router;

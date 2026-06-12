@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable, credentialEventsTable, webhooksTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull, inArray } from "drizzle-orm";
 import { maskIp } from "../helpers/apiKeyEmail";
+import { loadWebhookRetryConfig } from "../helpers/callbackRetry";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 import { sendRejectionEmail } from "../helpers/rejectionEmail";
@@ -291,12 +292,12 @@ router.patch("/:id/callback-window", requireAdmin, async (req, res) => {
 // GET /api/merchants/:id/webhook-config  (admin only)
 router.get("/:id/webhook-config", requireAdmin, async (req, res) => {
   const id = parseInt(req.params['id'] as string);
-  const [webhook] = await db
-    .select()
-    .from(webhooksTable)
-    .where(eq(webhooksTable.merchantId, id));
+  const [globalConfig, webhook] = await Promise.all([
+    loadWebhookRetryConfig(),
+    db.select().from(webhooksTable).where(eq(webhooksTable.merchantId, id)).then(r => r[0]),
+  ]);
   if (!webhook) { res.status(404).json({ error: "Webhook config not found for this merchant" }); return; }
-  res.json(webhook);
+  res.json({ ...webhook, globalMaxRetries: globalConfig.maxAttempts - 1 });
 });
 
 // PATCH /api/merchants/:id/webhook-max-retries  (admin only)
