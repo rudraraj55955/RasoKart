@@ -1096,7 +1096,7 @@ function ScheduleHistoryPanel({
                   )}
                 </div>
                 {!overallSuccess && attempts[0]?.errorMessage && !hasRetries && (
-                  <p className="text-xs text-rose-400/80 mt-0.5 truncate" title={attempts[0].errorMessage ?? undefined}>
+                  <p className="text-xs text-rose-400/80 mt-0.5 break-words" title={attempts[0].errorMessage ?? undefined}>
                     {attempts[0].errorMessage}
                   </p>
                 )}
@@ -1152,7 +1152,7 @@ function ScheduleHistoryPanel({
                           }
                         </div>
                         {!log.success && log.errorMessage && (
-                          <p className="text-[10px] text-rose-400/80 mt-0.5 truncate" title={log.errorMessage ?? undefined}>
+                          <p className="text-[10px] text-rose-400/80 mt-0.5 break-words" title={log.errorMessage ?? undefined}>
                             {log.errorMessage}
                           </p>
                         )}
@@ -1972,7 +1972,7 @@ function GlobalDeliveryHistoryPanel() {
                               <span className="text-muted-foreground">{log.rowCount} row{log.rowCount !== 1 ? "s" : ""}</span>
                             </div>
                             {log.errorMessage && (
-                              <p className="text-[10px] text-rose-400 mt-0.5 truncate">{log.errorMessage}</p>
+                              <p className="text-[10px] text-rose-400 mt-0.5 break-words" title={log.errorMessage}>{log.errorMessage}</p>
                             )}
                           </div>
                         </div>
