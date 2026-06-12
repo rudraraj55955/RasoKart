@@ -961,7 +961,15 @@ const FREQUENCY_LABELS: Record<string, string> = {
   monthly: "Monthly",
 };
 
-function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
+function ScheduleHistoryPanel({
+  scheduleId,
+  failureAcknowledgedAt,
+  failureAcknowledgedByEmail,
+}: {
+  scheduleId: number;
+  failureAcknowledgedAt?: string | null;
+  failureAcknowledgedByEmail?: string | null;
+}) {
   const { data, isLoading } = useListAuditReportScheduleLogs(scheduleId, { limit: 50 });
   const { data: retentionData } = useGetAuditReportRetentionConfig();
   const retentionDays = retentionData?.retentionDays ?? 90;
@@ -996,6 +1004,12 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
       return next;
     });
   }
+
+  const dismissedCycleId = (() => {
+    if (!failureAcknowledgedAt) return null;
+    const firstFailed = cycles.find(c => !c.overallSuccess);
+    return firstFailed?.cycleId ?? null;
+  })();
 
   if (isLoading) {
     return (
@@ -1074,6 +1088,12 @@ function ScheduleHistoryPanel({ scheduleId }: { scheduleId: number }) {
                 {!overallSuccess && attempts[0]?.errorMessage && !hasRetries && (
                   <p className="text-xs text-rose-400/80 mt-0.5 truncate" title={attempts[0].errorMessage ?? undefined}>
                     {attempts[0].errorMessage}
+                  </p>
+                )}
+                {cycleId === dismissedCycleId && failureAcknowledgedAt && (
+                  <p className="flex items-center gap-1 text-[10px] text-amber-400/80 mt-0.5">
+                    <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
+                    Dismissed by {failureAcknowledgedByEmail ?? "unknown"} at {format(new Date(failureAcknowledgedAt), "MMM d, yyyy 'at' HH:mm")}
                   </p>
                 )}
               </div>
@@ -1401,7 +1421,11 @@ function ScheduleRow({
               Send History (last 20)
             </span>
           </div>
-          <ScheduleHistoryPanel scheduleId={s.id} />
+          <ScheduleHistoryPanel
+            scheduleId={s.id}
+            failureAcknowledgedAt={s.failureAcknowledgedAt}
+            failureAcknowledgedByEmail={s.failureAcknowledgedByEmail}
+          />
         </div>
       )}
     </div>
