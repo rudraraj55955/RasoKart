@@ -362,6 +362,13 @@ router.patch("/:id/webhook-max-retries", requireAdmin, async (req, res) => {
     return;
   }
 
+  const globalConfig = await loadWebhookRetryConfig();
+  const globalMaxRetries = globalConfig.maxAttempts - 1;
+  if ((maxRetries as number) > globalMaxRetries) {
+    res.status(422).json({ error: `maxRetries cannot exceed the global cap of ${globalMaxRetries}` });
+    return;
+  }
+
   const [merchant] = await db
     .select({ id: merchantsTable.id, businessName: merchantsTable.businessName, email: merchantsTable.email })
     .from(merchantsTable)

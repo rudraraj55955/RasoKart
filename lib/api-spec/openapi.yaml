@@ -929,6 +929,12 @@ paths:
           description: Admin access only
         "404":
           description: Merchant or webhook config not found
+        "422":
+          description: Value exceeds the global retry cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /merchants/{id}/credential-events:
     get:

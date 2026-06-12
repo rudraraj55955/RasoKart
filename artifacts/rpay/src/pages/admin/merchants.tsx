@@ -2412,6 +2412,8 @@ export default function AdminMerchants() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-foreground font-mono">{merchantWebhookConfig.maxRetries}</span>
                     <span className="text-xs text-muted-foreground">{merchantWebhookConfig.maxRetries === 1 ? "retry" : "retries"}</span>
+                    <span className="text-xs text-muted-foreground/60">·</span>
+                    <span className="text-xs text-muted-foreground/70">global cap: <span className="font-mono">{merchantWebhookConfig.globalMaxRetries}</span></span>
                   </div>
                   <Button
                     size="sm"
@@ -2428,13 +2430,13 @@ export default function AdminMerchants() {
               ) : (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Set how many times a failed webhook delivery is automatically retried (1–10).
+                    Set how many times a failed webhook delivery is automatically retried (1–{merchantWebhookConfig.globalMaxRetries}). Global cap: <span className="font-mono font-semibold text-foreground">{merchantWebhookConfig.globalMaxRetries}</span>.
                   </p>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
                       min={1}
-                      max={10}
+                      max={merchantWebhookConfig.globalMaxRetries}
                       value={retriesInput}
                       onChange={e => setRetriesInput(e.target.value)}
                       placeholder="3"
@@ -2459,8 +2461,9 @@ export default function AdminMerchants() {
                       onClick={() => {
                         if (!assignPlanMerchant) return;
                         const parsed = parseInt(retriesInput.trim(), 10);
-                        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) {
-                          toast.error("Retries must be between 1 and 10");
+                        const cap = merchantWebhookConfig.globalMaxRetries;
+                        if (!Number.isInteger(parsed) || parsed < 1 || parsed > cap) {
+                          toast.error(`Retries must be between 1 and ${cap}`);
                           return;
                         }
                         updateWebhookMaxRetriesMutation.mutate(
@@ -2472,7 +2475,10 @@ export default function AdminMerchants() {
                               setRetriesInput("");
                               toast.success(`Max retries set to ${parsed}`);
                             },
-                            onError: () => toast.error("Failed to update max retries"),
+                            onError: (err: any) => {
+                              const msg = err?.response?.data?.error ?? "Failed to update max retries";
+                              toast.error(msg);
+                            },
                           }
                         );
                       }}
