@@ -25,4 +25,12 @@ merchantId?: number;
  * Filter by event type: api_key_generated, api_key_revoked, callback_secret_rotated
  */
 eventType?: string;
+/**
+ * Filter events where actor email contains this value (case-insensitive)
+ */
+actorEmail?: string;
+/**
+ * Filter events by IP address (exact or prefix match)
+ */
+ipAddress?: string;
 };

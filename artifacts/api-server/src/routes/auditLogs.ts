@@ -478,7 +478,7 @@ router.get("/my-activity/export", async (req, res) => {
 router.get("/credential-events", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
-  const { page = "1", limit = "20", dateFrom, dateTo, merchantId, eventType } = req.query as Record<string, string>;
+  const { page = "1", limit = "20", dateFrom, dateTo, merchantId, eventType, actorEmail, ipAddress } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -498,6 +498,12 @@ router.get("/credential-events", async (req, res) => {
   if (merchantId) {
     const merchantIdNum = parseInt(merchantId);
     if (!isNaN(merchantIdNum)) conditions.push(eq(credentialEventsTable.merchantId, merchantIdNum));
+  }
+  if (actorEmail && actorEmail.trim() !== "") {
+    conditions.push(ilike(credentialEventsTable.actorEmail, `%${actorEmail.trim()}%`));
+  }
+  if (ipAddress && ipAddress.trim() !== "") {
+    conditions.push(ilike(credentialEventsTable.ipAddress, `${ipAddress.trim()}%`));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;

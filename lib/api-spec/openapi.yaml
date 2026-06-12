@@ -3633,6 +3633,14 @@ paths:
           in: query
           description: "Filter by event type: api_key_generated, api_key_revoked, callback_secret_rotated"
           schema: { type: string }
+        - name: actorEmail
+          in: query
+          description: "Filter events where actor email contains this value (case-insensitive)"
+          schema: { type: string }
+        - name: ipAddress
+          in: query
+          description: "Filter events by IP address (exact or prefix match)"
+          schema: { type: string }
       responses:
         "200":
           description: Credential event list

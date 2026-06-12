@@ -17,7 +17,7 @@ async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementS
     .where(and(
       eq(usersTable.role, "admin"),
       eq(usersTable.isActive, true),
-      eq(usersTable[preference], true),
+      eq((usersTable as any)[preference], true),
     ));
   return admins.map(a => a.email);
 }

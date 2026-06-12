@@ -3530,7 +3530,9 @@ export const ListCredentialEventsQueryParams = zod.object({
   "dateFrom": zod.date().optional().describe('Filter events on or after this date (ISO 8601)'),
   "dateTo": zod.date().optional().describe('Filter events on or before this date (ISO 8601)'),
   "merchantId": zod.coerce.number().optional().describe('Filter events by merchant ID'),
-  "eventType": zod.coerce.string().optional().describe('Filter by event type: api_key_generated, api_key_revoked, callback_secret_rotated')
+  "eventType": zod.coerce.string().optional().describe('Filter by event type: api_key_generated, api_key_revoked, callback_secret_rotated'),
+  "actorEmail": zod.coerce.string().optional().describe('Filter events where actor email contains this value (case-insensitive)'),
+  "ipAddress": zod.coerce.string().optional().describe('Filter events by IP address (exact or prefix match)')
 })
 
 export const ListCredentialEventsResponse = zod.object({

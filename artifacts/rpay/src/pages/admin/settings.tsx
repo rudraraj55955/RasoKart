@@ -901,6 +901,16 @@ export default function AdminSettings() {
   })();
   const scheduleUnchanged = scheduleMode === currentSchedule;
 
+  const webhookAlertNow = Date.now();
+  const webhookAlertCooldownMs = currentWebhookAlertCooldownHours * 60 * 60 * 1000;
+  const webhookAlertLatestPerMerchant = new Map<number, number>();
+  for (const entry of webhookAlertHistory) {
+    const t = new Date(entry.sentAt).getTime();
+    if (!webhookAlertLatestPerMerchant.has(entry.merchantId) || t > webhookAlertLatestPerMerchant.get(entry.merchantId)!) {
+      webhookAlertLatestPerMerchant.set(entry.merchantId, t);
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-3">
@@ -2468,30 +2478,21 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {webhookAlertHistory.length === 0 ? (
+          {webhookAlertHistory.length === 0 && (
             <p className="text-sm text-muted-foreground py-2">
               {webhookAlertMerchantFilter != null
-                ? `No webhook failure alerts for ${webhookAlertMerchantMap.get(webhookAlertMerchantFilter) ?? `Merchant #${webhookAlertMerchantFilter}`}.`
+                ? `No webhook failure alerts for ${webhookAlertMerchantMap.get(webhookAlertMerchantFilter) ?? ("Merchant #" + webhookAlertMerchantFilter)}.`
                 : "No webhook failure alert emails have been sent yet."}
             </p>
-          ) : (() => {
-            const now = Date.now();
-            const cooldownMs = currentWebhookAlertCooldownHours * 60 * 60 * 1000;
-            const latestPerMerchant = new Map<number, number>();
-            for (const entry of webhookAlertHistory) {
-              const t = new Date(entry.sentAt).getTime();
-              if (!latestPerMerchant.has(entry.merchantId) || t > latestPerMerchant.get(entry.merchantId)!) {
-                latestPerMerchant.set(entry.merchantId, t);
-              }
-            }
-            return (
-              <div className="space-y-2">
-                {webhookAlertHistory.map((entry) => {
+          )}
+          {webhookAlertHistory.length > 0 && (
+            <div className="space-y-2">
+              {webhookAlertHistory.map((entry) => {
                   const merchantName = webhookAlertMerchantMap.get(entry.merchantId);
                   const entryTime = new Date(entry.sentAt).getTime();
-                  const isLatestForMerchant = latestPerMerchant.get(entry.merchantId) === entryTime;
-                  const inCooldown = isLatestForMerchant && (now - entryTime) < cooldownMs;
-                  const cooldownExpiresAt = entryTime + cooldownMs;
+                  const isLatestForMerchant = webhookAlertLatestPerMerchant.get(entry.merchantId) === entryTime;
+                  const inCooldown = isLatestForMerchant && (webhookAlertNow - entryTime) < webhookAlertCooldownMs;
+                  const cooldownExpiresAt = entryTime + webhookAlertCooldownMs;
                   return (
                     <div key={entry.id} className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-1.5">
                       <div className="flex items-center justify-between gap-2">
@@ -2512,7 +2513,7 @@ export default function AdminSettings() {
                           </div>
                           <button
                             className="hover:text-foreground transition-colors"
-                            title={`Filter by ${merchantName ?? `Merchant #${entry.merchantId}`}`}
+                            title={`Filter by ${merchantName ?? ("Merchant #" + entry.merchantId)}`}
                             onClick={() => setWebhookAlertMerchantFilter(entry.merchantId)}
                           >
                             {merchantName ? (
@@ -2555,8 +2556,7 @@ export default function AdminSettings() {
                 );
                 })}
               </div>
-            );
-          })()}
+          )}
         </CardContent>
       </Card>
 

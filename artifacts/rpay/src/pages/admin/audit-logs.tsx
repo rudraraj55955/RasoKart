@@ -31,7 +31,7 @@ import {
   Users, Loader2, QrCode, Landmark,
   Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle, Settings,
   MonitorPlay, RefreshCw, KeyRound, RotateCcw, ClipboardCheck, AlertTriangle, Building2, BellRing,
-  ArrowUpRight,
+  ArrowUpRight, AtSign, Network,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -2056,6 +2056,8 @@ function SecurityEventsPanel() {
   const [dateTo, setDateTo] = useState("");
   const [merchantIdInput, setMerchantIdInput] = useState("");
   const [merchantId, setMerchantId] = useState<number | undefined>(undefined);
+  const [actorEmailInput, setActorEmailInput] = useState("");
+  const [ipAddressInput, setIpAddressInput] = useState("");
   const [page, setPage] = useState(1);
 
   function resetFilters() {
@@ -2064,6 +2066,8 @@ function SecurityEventsPanel() {
     setDateTo("");
     setMerchantIdInput("");
     setMerchantId(undefined);
+    setActorEmailInput("");
+    setIpAddressInput("");
     setPage(1);
   }
 
@@ -2073,13 +2077,15 @@ function SecurityEventsPanel() {
     setPage(1);
   }
 
-  const hasFilters = eventType !== "all" || dateFrom !== "" || dateTo !== "" || merchantId != null;
+  const hasFilters = eventType !== "all" || dateFrom !== "" || dateTo !== "" || merchantId != null || actorEmailInput !== "" || ipAddressInput !== "";
 
   const { data, isLoading } = useListCredentialEvents({
     eventType: eventType === "all" ? undefined : eventType,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     merchantId,
+    actorEmail: actorEmailInput.trim() || undefined,
+    ipAddress: ipAddressInput.trim() || undefined,
     page,
     limit: 20,
   } as any);
@@ -2172,6 +2178,46 @@ function SecurityEventsPanel() {
                   onClick={() => { setMerchantIdInput(""); setMerchantId(undefined); setPage(1); }}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   aria-label="Clear merchant ID filter"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1 min-w-0">
+              <AtSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-8 pr-7 text-sm h-9"
+                placeholder="Actor email (contains)"
+                value={actorEmailInput}
+                onChange={e => { setActorEmailInput(e.target.value); setPage(1); }}
+                aria-label="Filter by actor email"
+              />
+              {actorEmailInput && (
+                <button
+                  onClick={() => { setActorEmailInput(""); setPage(1); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear actor email filter"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="relative flex-1 min-w-0">
+              <Network className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-8 pr-7 text-sm h-9"
+                placeholder="IP address (prefix)"
+                value={ipAddressInput}
+                onChange={e => { setIpAddressInput(e.target.value); setPage(1); }}
+                aria-label="Filter by IP address"
+              />
+              {ipAddressInput && (
+                <button
+                  onClick={() => { setIpAddressInput(""); setPage(1); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear IP address filter"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
