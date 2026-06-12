@@ -241,6 +241,7 @@ import type {
   ToggleProductInput,
   Transaction,
   TransactionListResponse,
+  TrustedIpListResponse,
   UpdateAccountDetailVisibility200,
   UpdateGithubSyncConfigBody,
   UpdateMyPreferencesBody,
@@ -723,6 +724,155 @@ export const useLogout = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getLogoutMutationOptions(options));
+    }
+
+export const getListTrustedIpsUrl = () => {
+
+
+
+
+  return `/api/auth/trusted-ips`
+}
+
+/**
+ * Returns all trusted IP addresses for the authenticated merchant user.
+ * @summary List trusted IP addresses
+ */
+export const listTrustedIps = async ( options?: RequestInit): Promise<TrustedIpListResponse> => {
+
+  return customFetch<TrustedIpListResponse>(getListTrustedIpsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTrustedIpsQueryKey = () => {
+    return [
+    `/api/auth/trusted-ips`
+    ] as const;
+    }
+
+
+export const getListTrustedIpsQueryOptions = <TData = Awaited<ReturnType<typeof listTrustedIps>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTrustedIps>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTrustedIpsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTrustedIps>>> = ({ signal }) => listTrustedIps({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTrustedIps>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTrustedIpsQueryResult = NonNullable<Awaited<ReturnType<typeof listTrustedIps>>>
+export type ListTrustedIpsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List trusted IP addresses
+ */
+
+export function useListTrustedIps<TData = Awaited<ReturnType<typeof listTrustedIps>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTrustedIps>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTrustedIpsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDeleteTrustedIpUrl = (id: number,) => {
+
+
+
+
+  return `/api/auth/trusted-ips/${id}`
+}
+
+/**
+ * Removes a trusted IP so login alerts will resume from that IP.
+ * @summary Remove a trusted IP address
+ */
+export const deleteTrustedIp = async (id: number, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getDeleteTrustedIpUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteTrustedIpMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTrustedIp>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteTrustedIp>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteTrustedIp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTrustedIp>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteTrustedIp(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteTrustedIpMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTrustedIp>>>
+
+    export type DeleteTrustedIpMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Remove a trusted IP address
+ */
+export const useDeleteTrustedIp = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTrustedIp>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteTrustedIp>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteTrustedIpMutationOptions(options));
     }
 
 export const getGetDashboardStatsUrl = () => {

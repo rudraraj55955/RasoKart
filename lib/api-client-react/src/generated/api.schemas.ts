@@ -710,6 +710,19 @@ export interface MerchantListCredentialEvent {
   actorEmail?: string | null;
 }
 
+export interface TrustedIp {
+  /** Unique identifier for the trusted IP entry */
+  id: number;
+  /** The trusted IP address */
+  ipAddress: string;
+  /** Timestamp when this IP was trusted */
+  trustedAt: string;
+}
+
+export interface TrustedIpListResponse {
+  data: TrustedIp[];
+}
+
 export interface KnownLoginIp {
   /** The IP address that logged in */
   ipAddress: string;
@@ -2769,7 +2782,7 @@ export interface CleanupRunHistoryEntry {
   /** Retention window in days that was active during this run. */
   retentionDays: number;
   /** "manual" for admin-triggered runs, "scheduled" for cron-triggered runs. */
-  triggeredBy: string;
+  triggeredBy?: string;
 }
 
 export interface CleanupRunHistoryResponse {

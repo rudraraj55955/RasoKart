@@ -126,6 +126,32 @@ export const LogoutResponse = zod.object({
 
 
 /**
+ * Returns all trusted IP addresses for the authenticated merchant user.
+ * @summary List trusted IP addresses
+ */
+export const ListTrustedIpsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number().describe('Unique identifier for the trusted IP entry'),
+  "ipAddress": zod.string().describe('The trusted IP address'),
+  "trustedAt": zod.coerce.date().describe('Timestamp when this IP was trusted')
+}))
+})
+
+
+/**
+ * Removes a trusted IP so login alerts will resume from that IP.
+ * @summary Remove a trusted IP address
+ */
+export const DeleteTrustedIpParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTrustedIpResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
  * @summary Get dashboard statistics
  */
 export const GetDashboardStatsResponse = zod.object({
@@ -4683,7 +4709,7 @@ export const GetQrCleanupHistoryResponse = zod.object({
   "closed": zod.number().nullish().describe('Number of virtual accounts closed in this run (VA cleanup only).'),
   "deleted": zod.number().describe('Number of records deleted in this run.'),
   "retentionDays": zod.number().describe('Retention window in days that was active during this run.'),
-  "triggeredBy": zod.string().describe('\"manual\" for admin-triggered runs, \"scheduled\" for cron-triggered runs.')
+  "triggeredBy": zod.string().optional().describe('\"manual\" for admin-triggered runs, \"scheduled\" for cron-triggered runs.')
 }))
 })
 
@@ -4708,7 +4734,7 @@ export const GetVaCleanupHistoryResponse = zod.object({
   "closed": zod.number().nullish().describe('Number of virtual accounts closed in this run (VA cleanup only).'),
   "deleted": zod.number().describe('Number of records deleted in this run.'),
   "retentionDays": zod.number().describe('Retention window in days that was active during this run.'),
-  "triggeredBy": zod.string().describe('\"manual\" for admin-triggered runs, \"scheduled\" for cron-triggered runs.')
+  "triggeredBy": zod.string().optional().describe('\"manual\" for admin-triggered runs, \"scheduled\" for cron-triggered runs.')
 }))
 })
 

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useListCallbackLogs, useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useListMySecurityActivity, useListSecurityEvents, useListKnownLoginIps } from "@workspace/api-client-react";
+import { useListCallbackLogs, useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useListMySecurityActivity, useListSecurityEvents, useListKnownLoginIps, useListTrustedIps, useDeleteTrustedIp, getListTrustedIpsQueryKey } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,7 @@ import {
   LogIn,
   Monitor,
   MapPin,
+  Trash2,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -533,6 +534,28 @@ export default function MerchantSecurity() {
 
   // Known login IPs
   const { data: knownIpsData, isLoading: knownIpsLoading } = useListKnownLoginIps();
+
+  // Trusted IPs
+  const { data: trustedIpsData, isLoading: trustedIpsLoading } = useListTrustedIps();
+  const [removingTrustedIpId, setRemovingTrustedIpId] = useState<number | null>(null);
+  const { mutate: deleteTrustedIp } = useDeleteTrustedIp({
+    mutation: {
+      onSuccess: (_data, { id }) => {
+        toast.success("Trusted IP removed. You will receive login alerts from this address again.");
+        qc.invalidateQueries({ queryKey: getListTrustedIpsQueryKey() });
+        setRemovingTrustedIpId(null);
+      },
+      onError: (err: Error) => {
+        toast.error(err.message ?? "Failed to remove trusted IP");
+        setRemovingTrustedIpId(null);
+      },
+    },
+  });
+
+  function handleRemoveTrustedIp(id: number) {
+    setRemovingTrustedIpId(id);
+    deleteTrustedIp({ id });
+  }
 
   const [exportingSecEvents, setExportingSecEvents] = useState(false);
 
@@ -1175,6 +1198,80 @@ export default function MerchantSecurity() {
                     </TableCell>
                     <TableCell className="py-2.5 text-xs text-muted-foreground">
                       {format(new Date(row.lastSeen), "dd MMM yyyy 'at' HH:mm")}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Trusted Locations */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            Trusted Locations
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            IP addresses you have marked as trusted. Login alerts are suppressed from these addresses. Remove any you no longer recognise or use.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {trustedIpsLoading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-7 w-20 ml-auto" />
+                </div>
+              ))}
+            </div>
+          ) : !trustedIpsData?.data?.length ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
+              <ShieldOff className="w-7 h-7 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">No trusted locations yet</p>
+              <p className="text-xs text-muted-foreground/60">
+                When you receive a login alert email, you can trust that IP to suppress future alerts.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border/40">
+                  <TableHead className="text-xs text-muted-foreground font-medium h-8">IP Address</TableHead>
+                  <TableHead className="text-xs text-muted-foreground font-medium h-8">Trusted Since</TableHead>
+                  <TableHead className="text-xs text-muted-foreground font-medium h-8 w-[100px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {trustedIpsData.data.map((row) => (
+                  <TableRow key={row.id} className="border-border/40">
+                    <TableCell className="py-2.5">
+                      <code className="text-xs font-mono text-foreground/90 bg-muted/50 px-1.5 py-0.5 rounded">
+                        {row.ipAddress}
+                      </code>
+                    </TableCell>
+                    <TableCell className="py-2.5 text-xs text-muted-foreground">
+                      {format(new Date(row.trustedAt), "dd MMM yyyy 'at' HH:mm")}
+                    </TableCell>
+                    <TableCell className="py-2.5 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                        disabled={removingTrustedIpId === row.id}
+                        onClick={() => handleRemoveTrustedIp(row.id)}
+                      >
+                        {removingTrustedIpId === row.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3 h-3" />
+                        )}
+                        Remove
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

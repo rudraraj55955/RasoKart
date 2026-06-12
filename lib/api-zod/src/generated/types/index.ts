@@ -330,6 +330,8 @@ export * from './transactionListResponse';
 export * from './transactionListResponseStats';
 export * from './transactionStatus';
 export * from './transactionType';
+export * from './trustedIp';
+export * from './trustedIpListResponse';
 export * from './updateAccountDetailVisibility200';
 export * from './updateGithubSyncConfigBody';
 export * from './updateMyPreferencesBody';

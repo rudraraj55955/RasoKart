@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable } from "@workspace/db";
 import { dbRateLimitStore } from "../lib/rateLimitStore";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
@@ -421,6 +421,70 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       loginAlertEmails: updated.loginAlertEmails,
       createdAt: updated.createdAt,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/auth/trusted-ips
+router.get("/trusted-ips", requireAuth, async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "merchant") {
+      res.status(403).json({ error: "Merchant access only" });
+      return;
+    }
+
+    const rows = await db
+      .select({
+        id: merchantTrustedIpsTable.id,
+        ipAddress: merchantTrustedIpsTable.ipAddress,
+        trustedAt: merchantTrustedIpsTable.trustedAt,
+      })
+      .from(merchantTrustedIpsTable)
+      .where(eq(merchantTrustedIpsTable.userId, user.id))
+      .orderBy(desc(merchantTrustedIpsTable.trustedAt));
+
+    res.json({ data: rows.map(r => ({ id: r.id, ipAddress: r.ipAddress, trustedAt: r.trustedAt })) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/auth/trusted-ips/:id
+router.delete("/trusted-ips/:id", requireAuth, async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "merchant") {
+      res.status(403).json({ error: "Merchant access only" });
+      return;
+    }
+
+    const id = parseInt(req.params['id'] as string, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid ID" });
+      return;
+    }
+
+    const [existing] = await db
+      .select({ id: merchantTrustedIpsTable.id, userId: merchantTrustedIpsTable.userId })
+      .from(merchantTrustedIpsTable)
+      .where(eq(merchantTrustedIpsTable.id, id))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: "Trusted IP not found" });
+      return;
+    }
+
+    if (existing.userId !== user.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    await db.delete(merchantTrustedIpsTable).where(eq(merchantTrustedIpsTable.id, id));
+
+    res.json({ message: "Trusted IP removed" });
   } catch (err) {
     next(err);
   }

@@ -203,6 +203,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
 
+  /auth/trusted-ips:
+    get:
+      operationId: listTrustedIps
+      tags: [auth]
+      summary: List trusted IP addresses
+      description: Returns all trusted IP addresses for the authenticated merchant user.
+      responses:
+        "200":
+          description: List of trusted IPs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustedIpListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Merchant access only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/trusted-ips/{id}:
+    delete:
+      operationId: deleteTrustedIp
+      tags: [auth]
+      summary: Remove a trusted IP address
+      description: Removes a trusted IP so login alerts will resume from that IP.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Trusted IP removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dashboard/stats:
     get:
       operationId: getDashboardStats
@@ -6633,6 +6697,30 @@ components:
         actorEmail:
           type: ["string", "null"]
           description: Email of the actor who performed the action (admin view only)
+
+    TrustedIp:
+      type: object
+      required: [id, ipAddress, trustedAt]
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the trusted IP entry
+        ipAddress:
+          type: string
+          description: The trusted IP address
+        trustedAt:
+          type: string
+          format: date-time
+          description: Timestamp when this IP was trusted
+
+    TrustedIpListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrustedIp"
 
     KnownLoginIp:
       type: object
