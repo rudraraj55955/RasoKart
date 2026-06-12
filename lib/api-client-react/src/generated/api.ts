@@ -183,6 +183,7 @@ import type {
   ProviderVolumeListResponse,
   PublicPaymentLink,
   QrCleanupConfig,
+  QrCleanupRunResult,
   QrCode,
   QrCodeActivityResponse,
   QrCodeInput,
@@ -207,7 +208,6 @@ import type {
   RetryCallback200,
   RetryWebhookLog200,
   RunLedgerBackfill200,
-  RunVaCleanup200,
   SavedFilter,
   ScheduleRenewalInput,
   SearchByUtrParams,
@@ -240,6 +240,7 @@ import type {
   VaBalanceAuditListResponse,
   VaBalanceHistoryListResponse,
   VaCleanupConfig,
+  VaCleanupRunResult,
   VaTransactionListResponse,
   VirtualAccount,
   VirtualAccountInput,
@@ -8915,15 +8916,15 @@ export const getRunVaCleanupUrl = () => {
 
 
 
-  return `/api/virtual-accounts/cleanup/run`
+  return `/api/system-config/va-cleanup/run`
 }
 
 /**
- * @summary Manually trigger a virtual account cleanup run (admin only)
+ * @summary Immediately run the virtual account auto-cleanup job (admin only)
  */
-export const runVaCleanup = async ( options?: RequestInit): Promise<RunVaCleanup200> => {
+export const runVaCleanup = async ( options?: RequestInit): Promise<VaCleanupRunResult> => {
 
-  return customFetch<RunVaCleanup200>(getRunVaCleanupUrl(),
+  return customFetch<VaCleanupRunResult>(getRunVaCleanupUrl(),
   {
     ...options,
     method: 'POST'
@@ -8967,7 +8968,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RunVaCleanupMutationError = ErrorType<unknown>
 
     /**
- * @summary Manually trigger a virtual account cleanup run (admin only)
+ * @summary Immediately run the virtual account auto-cleanup job (admin only)
  */
 export const useRunVaCleanup = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runVaCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -14792,6 +14793,76 @@ export const useUpdateVaCleanupConfig = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateVaCleanupConfigMutationOptions(options));
+    }
+
+export const getRunQrCleanupUrl = () => {
+
+
+
+
+  return `/api/system-config/qr-cleanup/run`
+}
+
+/**
+ * @summary Immediately run the QR code auto-cleanup job (admin only)
+ */
+export const runQrCleanup = async ( options?: RequestInit): Promise<QrCleanupRunResult> => {
+
+  return customFetch<QrCleanupRunResult>(getRunQrCleanupUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunQrCleanupMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runQrCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runQrCleanup>>, TError,void, TContext> => {
+
+const mutationKey = ['runQrCleanup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runQrCleanup>>, void> = () => {
+
+
+          return  runQrCleanup(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunQrCleanupMutationResult = NonNullable<Awaited<ReturnType<typeof runQrCleanup>>>
+
+    export type RunQrCleanupMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Immediately run the QR code auto-cleanup job (admin only)
+ */
+export const useRunQrCleanup = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runQrCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runQrCleanup>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunQrCleanupMutationOptions(options));
     }
 
 export const getGetTestEmailRetentionConfigUrl = () => {

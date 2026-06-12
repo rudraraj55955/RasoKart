@@ -4666,6 +4666,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /system-config/qr-cleanup/run:
+    post:
+      operationId: runQrCleanup
+      tags: [system-config]
+      summary: Immediately run the QR code auto-cleanup job (admin only)
+      responses:
+        "200":
+          description: Cleanup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrCleanupRunResult"
+
+  /system-config/va-cleanup/run:
+    post:
+      operationId: runVaCleanup
+      tags: [system-config]
+      summary: Immediately run the virtual account auto-cleanup job (admin only)
+      responses:
+        "200":
+          description: Cleanup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaCleanupRunResult"
+
   /system-config/test-email-retention:
     get:
       operationId: getTestEmailRetentionConfig
@@ -8861,6 +8887,28 @@ components:
           description: >
             Days to retain test email audit log entries before auto-deleting them.
             Set to 0 to disable automatic cleanup.
+
+    QrCleanupRunResult:
+      type: object
+      required: [expired, deleted]
+      properties:
+        expired:
+          type: integer
+          description: Number of QR codes marked as expired by this cleanup run.
+        deleted:
+          type: integer
+          description: Number of QR codes deleted by this cleanup run.
+
+    VaCleanupRunResult:
+      type: object
+      required: [closed, deleted]
+      properties:
+        closed:
+          type: integer
+          description: Number of virtual accounts closed by this cleanup run.
+        deleted:
+          type: integer
+          description: Number of virtual accounts deleted by this cleanup run.
 
     TestEmailRetentionRunResult:
       type: object

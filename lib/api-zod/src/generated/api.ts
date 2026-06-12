@@ -2974,11 +2974,11 @@ export const CreateVirtualAccountBody = zod.object({
 
 
 /**
- * @summary Manually trigger a virtual account cleanup run (admin only)
+ * @summary Immediately run the virtual account auto-cleanup job (admin only)
  */
 export const RunVaCleanupResponse = zod.object({
-  "closed": zod.number().describe('Number of stale active VAs that were closed'),
-  "deleted": zod.number().describe('Number of closed VAs with zero balance\/collection that were deleted')
+  "closed": zod.number().describe('Number of virtual accounts closed by this cleanup run.'),
+  "deleted": zod.number().describe('Number of virtual accounts deleted by this cleanup run.')
 })
 
 
@@ -4571,6 +4571,15 @@ export const UpdateVaCleanupConfigResponse = zod.object({
   "retentionDays": zod.number().min(updateVaCleanupConfigResponseRetentionDaysMin).max(updateVaCleanupConfigResponseRetentionDaysMax).describe('Days to retain closed virtual accounts before auto-deleting them. Set to 0 to disable automatic cleanup.\n'),
   "lastRunAt": zod.coerce.date().nullable().describe('ISO timestamp of the last cleanup run, or null if never run.'),
   "lastDeleted": zod.number().nullable().describe('Number of virtual accounts deleted in the last cleanup run, or null if never run.')
+})
+
+
+/**
+ * @summary Immediately run the QR code auto-cleanup job (admin only)
+ */
+export const RunQrCleanupResponse = zod.object({
+  "expired": zod.number().describe('Number of QR codes marked as expired by this cleanup run.'),
+  "deleted": zod.number().describe('Number of QR codes deleted by this cleanup run.')
 })
 
 

@@ -2677,6 +2677,20 @@ export interface TestEmailRetentionConfig {
   retentionDays: number;
 }
 
+export interface QrCleanupRunResult {
+  /** Number of QR codes marked as expired by this cleanup run. */
+  expired: number;
+  /** Number of QR codes deleted by this cleanup run. */
+  deleted: number;
+}
+
+export interface VaCleanupRunResult {
+  /** Number of virtual accounts closed by this cleanup run. */
+  closed: number;
+  /** Number of virtual accounts deleted by this cleanup run. */
+  deleted: number;
+}
+
 export interface TestEmailRetentionRunResult {
   /** Number of test email history rows deleted by this cleanup run. */
   deleted: number;
