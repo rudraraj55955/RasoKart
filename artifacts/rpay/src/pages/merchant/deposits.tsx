@@ -290,13 +290,22 @@ export default function MerchantDeposits() {
 
   const [customDatePresets, setCustomDatePresets] = useState<CustomDatePreset[]>(() => loadCustomDatePresets());
 
-  useCrossTabSync([{
-    key: CUSTOM_DATE_PRESETS_KEY,
-    onUpdate: (raw) => {
-      try { setCustomDatePresets(raw ? (JSON.parse(raw) as CustomDatePreset[]) : []); }
-      catch { setCustomDatePresets([]); }
+  useCrossTabSync([
+    {
+      key: CUSTOM_DATE_PRESETS_KEY,
+      onUpdate: (raw) => {
+        try { setCustomDatePresets(raw ? (JSON.parse(raw) as CustomDatePreset[]) : []); }
+        catch { setCustomDatePresets([]); }
+      },
     },
-  }]);
+    {
+      key: SAVED_FILTERS_KEY,
+      onUpdate: (raw) => {
+        try { setSavedFilters(raw ? (JSON.parse(raw) as SavedFilter[]) : []); }
+        catch { setSavedFilters([]); }
+      },
+    },
+  ]);
 
   const [showSaveDatePreset, setShowSaveDatePreset] = useState(false);
   const [saveDatePresetName, setSaveDatePresetName] = useState("");

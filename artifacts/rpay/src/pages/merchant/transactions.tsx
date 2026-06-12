@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useListTransactions, useSearchByUtr, useGetTransaction, useGetPaymentLink, useListMerchantSavedFilters, useCreateMerchantSavedFilter, useDeleteMerchantSavedFilter, useRenameMerchantSavedFilter, useReorderMerchantSavedFilters } from "@workspace/api-client-react";
+import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -569,6 +570,16 @@ export default function MerchantTransactions() {
       }
     }
   }, [serverFiltersLoaded, serverFiltersData]);
+
+  useCrossTabSync([
+    {
+      key: SAVED_FILTERS_KEY,
+      onUpdate: (raw) => {
+        try { setSavedFilters(raw ? (JSON.parse(raw) as SavedFilter[]) : []); }
+        catch { setSavedFilters([]); }
+      },
+    },
+  ]);
 
   // Custom date preset state
   const [customDatePresets, setCustomDatePresets] = useState<CustomDatePreset[]>(() => loadCustomDatePresets());
