@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ChevronDown, ChevronRight, RefreshCw, RotateCcw, ShieldAlert, Users, Info, ArrowRight, AlertTriangle, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { ChevronDown, ChevronRight, ListOrdered, RefreshCw, RotateCcw, ShieldAlert, Users, Info, ArrowRight, AlertTriangle, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { format, formatDistanceToNow, differenceInSeconds } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -100,10 +100,17 @@ function RetryTimeline({ logId, totalAttempts, status, nextRetryAt }: {
     );
   }
 
-  if (attempts.length === 0) return null;
+  const isPendingRetry = status === "pending_retry";
+
+  if (attempts.length === 0) {
+    return <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records — history is recorded for new deliveries going forward.</p>;
+  }
+
+  if (attempts.length === 1 && !isPendingRetry) {
+    return <p className="text-xs text-muted-foreground/50 italic px-1">Only one attempt was made — no retry history to show.</p>;
+  }
 
   const sorted = [...attempts].sort((a, b) => a.attemptNumber - b.attemptNumber);
-  const isPendingRetry = status === "pending_retry";
 
   return (
     <TooltipProvider>
@@ -351,9 +358,14 @@ function CallbackRow({ log }: { log: any }) {
         <TableRow>
           <TableCell colSpan={10} className="bg-muted/20 pb-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2 pt-2">
-              {open && (log.attempts ?? 0) > 1 && (
+              {open && (
                 <div className="md:col-span-2 p-3 rounded-lg bg-background/50 border border-border/50">
-                  <p className="text-xs font-medium text-muted-foreground mb-2.5 uppercase tracking-wider">Retry Attempts</p>
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <ListOrdered className="w-3.5 h-3.5 text-muted-foreground/60" />
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Attempt History{(log.attempts ?? 0) > 1 ? ` · ${log.attempts}` : ""}
+                    </p>
+                  </div>
                   <RetryTimeline
                     logId={log.id}
                     totalAttempts={log.attempts ?? 0}
