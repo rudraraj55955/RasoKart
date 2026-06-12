@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1199,22 +1200,72 @@ export default function AdminReconciliation() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label="Copy link to this run"
-                                className="h-7 w-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-                                onClick={() => {
-                                  const url = `${window.location.origin}/admin/reconciliation?run=${run.id}`;
-                                  navigator.clipboard.writeText(url).then(() => {
-                                    toast.success("Link copied to clipboard");
-                                  }).catch(() => {
-                                    toast.error("Failed to copy link");
-                                  });
-                                }}
-                              >
-                                <Link2 className="w-3.5 h-3.5" />
-                              </Button>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label="Copy link to this run"
+                                    className="h-7 w-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                                    onClick={() => {
+                                      const url = `${window.location.origin}/admin/reconciliation?run=${run.id}`;
+                                      navigator.clipboard.writeText(url).then(() => {
+                                        toast.success("Link copied to clipboard");
+                                      }).catch(() => {
+                                        toast.error("Failed to copy link");
+                                      });
+                                    }}
+                                  >
+                                    <Link2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="left"
+                                  className="p-0 bg-card border border-border/60 shadow-xl rounded-lg overflow-hidden"
+                                >
+                                  <div className="px-3 py-2 border-b border-border/50 flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-foreground">Run #{run.id}</span>
+                                    <Badge className={`text-[10px] px-1.5 py-0 h-4 gap-1 border ${meta.className}`}>
+                                      {meta.icon}
+                                      {meta.label}
+                                    </Badge>
+                                  </div>
+                                  <div className="px-3 py-2 space-y-1.5">
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                      <span className="text-muted-foreground w-14 shrink-0">Period</span>
+                                      <span className="font-mono text-foreground">{run.dateFrom} → {run.dateTo}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                      <span className="text-muted-foreground w-14 shrink-0">Matched</span>
+                                      <span className="font-mono text-emerald-400">{run.totalMatched}</span>
+                                      <span className="text-muted-foreground/40">of</span>
+                                      <span className="font-mono text-foreground">{run.totalDeposits}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                      <span className="text-muted-foreground w-14 shrink-0">Unmatched</span>
+                                      <span className="font-mono text-orange-400">{run.totalUnmatched}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                      <span className="text-muted-foreground w-14 shrink-0">Triggered</span>
+                                      {run.triggeredBy === "auto" ? (
+                                        <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-violet-500/10 text-violet-400 border-violet-500/30 gap-1">
+                                          <Zap className="w-2.5 h-2.5" /> Auto
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-sky-500/10 text-sky-400 border-sky-500/30 gap-1">
+                                          <User className="w-2.5 h-2.5" /> Manual
+                                        </Badge>
+                                      )}
+                                      {run.triggeredBy !== "auto" && (run as any).createdByEmail && (
+                                        <span className="text-[10px] text-muted-foreground/60">by {(run as any).createdByEmail}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="px-3 py-1.5 bg-muted/20 border-t border-border/40">
+                                    <p className="text-[10px] text-muted-foreground/50">Click to copy deep-link</p>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
                               <Button
                                 variant="ghost"
                                 size="sm"
