@@ -13,6 +13,8 @@ import {
   useDeleteMerchantSavedFilter,
   useRenameMerchantSavedFilter,
   useReorderMerchantSavedFilters,
+  useCreateCashfreeOrder,
+  useGetCashfreeConfig,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -47,6 +49,7 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
@@ -745,6 +748,50 @@ export default function MerchantDeposits() {
   const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
   const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
 
+  // Cashfree payment dialog state
+  const [showCashfree, setShowCashfree] = useState(false);
+  const [cfAmount, setCfAmount] = useState("");
+  const [cfPhone, setCfPhone] = useState("");
+  const [cfName, setCfName] = useState("");
+  const [cfEmail, setCfEmail] = useState("");
+  const [cfNote, setCfNote] = useState("");
+  const [cfCreating, setCfCreating] = useState(false);
+
+  const { data: cashfreeConfig } = useGetCashfreeConfig();
+  const cashfreeEnabled = cashfreeConfig?.enabled ?? false;
+
+  const { mutateAsync: createCashfreeOrder } = useCreateCashfreeOrder();
+
+  const handleCashfreePay = async () => {
+    if (!cfAmount || Number(cfAmount) <= 0) { toast.error("Enter a valid amount"); return; }
+    if (!cfPhone.trim()) { toast.error("Customer phone number is required"); return; }
+    setCfCreating(true);
+    try {
+      const result = await createCashfreeOrder({
+        data: {
+          amount: Number(cfAmount),
+          customerPhone: cfPhone.trim(),
+          customerName: cfName.trim() || undefined,
+          customerEmail: cfEmail.trim() || undefined,
+          note: cfNote.trim() || undefined,
+        },
+      });
+      const env = result.env;
+      const sessionId = result.paymentSessionId;
+      const checkoutUrl = env === "live"
+        ? `https://payments.cashfree.com/order/pay/${sessionId}`
+        : `https://sandbox.cashfree.com/pg/view/sessions/${sessionId}`;
+      setShowCashfree(false);
+      setCfAmount(""); setCfPhone(""); setCfName(""); setCfEmail(""); setCfNote("");
+      toast.success("Cashfree order created — opening checkout…");
+      window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to create Cashfree order");
+    } finally {
+      setCfCreating(false);
+    }
+  };
+
   // Simulate payment dialog state
   const [showSimulate, setShowSimulate] = useState(false);
   const [simSourceType, setSimSourceType] = useState<"qr" | "va">("qr");
@@ -887,6 +934,12 @@ export default function MerchantDeposits() {
               )}
             </Tooltip>
           </TooltipProvider>
+          {cashfreeEnabled && (
+            <Button size="sm" variant="outline" onClick={() => setShowCashfree(true)} className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/50">
+              <CreditCard className="w-4 h-4 mr-2" />
+              Pay via Cashfree
+            </Button>
+          )}
           <Button size="sm" onClick={() => setShowSimulate(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Simulate Payment
@@ -1552,6 +1605,74 @@ export default function MerchantDeposits() {
           </div>
         </div>
       )}
+
+      {/* Cashfree Payment Dialog */}
+      <Dialog open={showCashfree} onOpenChange={setShowCashfree}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-emerald-400" />
+              Pay via Cashfree
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Amount (₹) <span className="text-destructive">*</span></Label>
+              <Input
+                type="number"
+                placeholder="e.g. 5000"
+                min="1"
+                value={cfAmount}
+                onChange={e => setCfAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Customer Phone <span className="text-destructive">*</span></Label>
+              <Input
+                type="tel"
+                placeholder="e.g. 9876543210"
+                value={cfPhone}
+                onChange={e => setCfPhone(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Required by Cashfree for payment processing</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Customer Name <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                placeholder="e.g. John Doe"
+                value={cfName}
+                onChange={e => setCfName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Customer Email <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                type="email"
+                placeholder="e.g. john@example.com"
+                value={cfEmail}
+                onChange={e => setCfEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                placeholder="e.g. Order #123"
+                value={cfNote}
+                onChange={e => setCfNote(e.target.value)}
+              />
+            </div>
+            <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground">
+              A Cashfree payment order will be created and you will be redirected to Cashfree&apos;s hosted checkout page in a new tab. Once the customer completes payment, the deposit will appear in this list automatically.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCashfree(false)} disabled={cfCreating}>Cancel</Button>
+            <Button onClick={handleCashfreePay} disabled={cfCreating || !cfAmount || !cfPhone.trim()}>
+              {cfCreating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating…</> : "Create & Pay"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Simulate Payment Dialog */}
       <Dialog open={showSimulate} onOpenChange={setShowSimulate}>

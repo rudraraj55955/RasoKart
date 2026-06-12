@@ -19,7 +19,7 @@ const router = Router();
  *   Header: x-webhook-signature, x-webhook-timestamp
  */
 router.post("/cashfree-webhook", async (req, res) => {
-  const rawBody = JSON.stringify(req.body);
+  const rawBody = ((req as any).rawBody as Buffer | undefined)?.toString("utf8") ?? JSON.stringify(req.body);
   const body = req.body as Record<string, unknown>;
 
   const signature = req.headers["x-webhook-signature"] as string | undefined;

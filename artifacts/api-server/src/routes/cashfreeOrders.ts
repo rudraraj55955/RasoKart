@@ -96,7 +96,7 @@ router.post("/cashfree/create-order", requireAuth, async (req, res, next) => {
       currency,
       status: "created",
       rawPayload: raw,
-    });
+    }).onConflictDoNothing();
 
     res.json({
       orderId: parsed.order_id ?? orderId,
