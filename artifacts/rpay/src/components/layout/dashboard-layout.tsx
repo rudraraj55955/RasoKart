@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -220,6 +220,116 @@ function MerchantSidebar() {
   );
 }
 
+const ADMIN_NAV = [
+  {
+    group: "Overview",
+    items: [
+      { title: "Dashboard", icon: LayoutDashboard, href: "/admin/dashboard" },
+    ],
+  },
+  {
+    group: "Merchants",
+    items: [
+      { title: "Merchants", icon: Store, href: "/admin/merchants" },
+      { title: "Plans", icon: CreditCard, href: "/admin/plans" },
+      { title: "Invoices", icon: Receipt, href: "/admin/invoices" },
+    ],
+  },
+  {
+    group: "Payments",
+    items: [
+      { title: "Deposits", icon: ArrowDownLeft, href: "/admin/deposits" },
+      { title: "Withdrawals", icon: Landmark, href: "/admin/withdrawals" },
+      { title: "Settlements", icon: FileText, href: "/admin/settlements" },
+      { title: "Transactions", icon: ArrowRightLeft, href: "/admin/transactions" },
+      { title: "Balance Ledger", icon: BookMarked, href: "/admin/ledger" },
+    ],
+  },
+  {
+    group: "Instruments",
+    items: [
+      { title: "Dynamic QR", icon: QrCode, href: "/admin/qr-codes" },
+      { title: "Virtual Accounts", icon: Building2, href: "/admin/virtual-accounts" },
+      { title: "Payment Links", icon: Link2, href: "/admin/payment-links" },
+    ],
+  },
+  {
+    group: "Monitoring",
+    items: [
+      { title: "Webhook Logs", icon: Webhook, href: "/admin/webhook-logs" },
+      { title: "Callback Logs", icon: Activity, href: "/admin/callbacks" },
+      { title: "API Monitoring", icon: Activity, href: "/admin/api-monitoring" },
+    ],
+  },
+  {
+    group: "Control & Access",
+    items: [
+      { title: "Feature Control", icon: Sliders, href: "/admin/feature-control" },
+      { title: "Account Details", icon: CreditCard, href: "/admin/account-details" },
+      { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
+      { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
+      { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
+      { title: "Merchant Access", icon: LayoutGrid, href: "/admin/merchant-access" },
+    ],
+  },
+  {
+    group: "Finance",
+    items: [
+      { title: "Reconciliation", icon: GitMerge, href: "/admin/reconciliation" },
+    ],
+  },
+  {
+    group: "Administration",
+    items: [
+      { title: "Audit Logs", icon: Shield, href: "/admin/audit-logs" },
+      { title: "User Roles", icon: UserCog, href: "/admin/user-roles" },
+      { title: "Settings", icon: Settings, href: "/admin/settings" },
+    ],
+  },
+];
+
+function AdminSidebar() {
+  const [location] = useLocation();
+  const { data: complianceData } = useGetSecurityComplianceSummary();
+  const neverCount = complianceData?.neverCount ?? 0;
+
+  return (
+    <>
+      {ADMIN_NAV.map((group) => (
+        <SidebarGroup key={group.group}>
+          <SidebarGroupLabel>{group.group}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {group.items.map((item) => {
+                const isAuditLogs = item.href === "/admin/audit-logs";
+                const isActive = location === item.href || (isAuditLogs && location.startsWith("/admin/audit-logs"));
+                const linkHref = isAuditLogs && neverCount > 0
+                  ? "/admin/audit-logs?tab=compliance"
+                  : item.href;
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+                      <Link href={linkHref} className="flex items-center gap-3">
+                        <item.icon className="w-4 h-4 shrink-0" />
+                        <span className="flex-1">{item.title}</span>
+                        {isAuditLogs && neverCount > 0 && (
+                          <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none">
+                            {neverCount > 99 ? "99+" : neverCount}
+                          </span>
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+    </>
+  );
+}
+
 export function DashboardLayout({ children, publicMode = false }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
@@ -231,74 +341,6 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
     : location.startsWith("/merchant") ? "RasoKart Merchant"
     : location.startsWith("/agent") ? "RasoKart Agent"
     : "RasoKart";
-
-  const adminNav = [
-    {
-      group: "Overview",
-      items: [
-        { title: "Dashboard", icon: LayoutDashboard, href: "/admin/dashboard" },
-      ],
-    },
-    {
-      group: "Merchants",
-      items: [
-        { title: "Merchants", icon: Store, href: "/admin/merchants" },
-        { title: "Plans", icon: CreditCard, href: "/admin/plans" },
-        { title: "Invoices", icon: Receipt, href: "/admin/invoices" },
-      ],
-    },
-    {
-      group: "Payments",
-      items: [
-        { title: "Deposits", icon: ArrowDownLeft, href: "/admin/deposits" },
-        { title: "Withdrawals", icon: Landmark, href: "/admin/withdrawals" },
-        { title: "Settlements", icon: FileText, href: "/admin/settlements" },
-        { title: "Transactions", icon: ArrowRightLeft, href: "/admin/transactions" },
-        { title: "Balance Ledger", icon: BookMarked, href: "/admin/ledger" },
-      ],
-    },
-    {
-      group: "Instruments",
-      items: [
-        { title: "Dynamic QR", icon: QrCode, href: "/admin/qr-codes" },
-        { title: "Virtual Accounts", icon: Building2, href: "/admin/virtual-accounts" },
-        { title: "Payment Links", icon: Link2, href: "/admin/payment-links" },
-      ],
-    },
-    {
-      group: "Monitoring",
-      items: [
-        { title: "Webhook Logs", icon: Webhook, href: "/admin/webhook-logs" },
-        { title: "Callback Logs", icon: Activity, href: "/admin/callbacks" },
-        { title: "API Monitoring", icon: Activity, href: "/admin/api-monitoring" },
-      ],
-    },
-    {
-      group: "Control & Access",
-      items: [
-        { title: "Feature Control", icon: Sliders, href: "/admin/feature-control" },
-        { title: "Account Details", icon: CreditCard, href: "/admin/account-details" },
-        { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
-        { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
-        { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
-        { title: "Merchant Access", icon: LayoutGrid, href: "/admin/merchant-access" },
-      ],
-    },
-    {
-      group: "Finance",
-      items: [
-        { title: "Reconciliation", icon: GitMerge, href: "/admin/reconciliation" },
-      ],
-    },
-    {
-      group: "Administration",
-      items: [
-        { title: "Audit Logs", icon: Shield, href: "/admin/audit-logs" },
-        { title: "User Roles", icon: UserCog, href: "/admin/user-roles" },
-        { title: "Settings", icon: Settings, href: "/admin/settings" },
-      ],
-    },
-  ];
 
   const publicNav = [
     { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
@@ -337,25 +379,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
                 </SidebarGroupContent>
               </SidebarGroup>
             ) : isAdmin ? (
-              adminNav.map((group) => (
-                <SidebarGroup key={group.group}>
-                  <SidebarGroupLabel>{group.group}</SidebarGroupLabel>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {group.items.map((item) => (
-                        <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton asChild isActive={location === item.href} tooltip={item.title}>
-                            <Link href={item.href} className="flex items-center gap-3">
-                              <item.icon className="w-4 h-4" />
-                              <span>{item.title}</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              ))
+              <AdminSidebar />
             ) : (
               <MerchantSidebar />
             )}

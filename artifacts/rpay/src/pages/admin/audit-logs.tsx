@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearch } from "wouter";
 import {
   useListAdminAuditLogs, useGetAdminAuditLogStats,
   useListAuditReportSchedules, useCreateAuditReportSchedule,
@@ -2353,7 +2354,25 @@ const SYSTEM_CONFIG_SECTION_OPTIONS: { value: string; label: string }[] = [
   { value: "signature_failure_alert", label: "Signature Failure Alert" },
 ];
 
+const VALID_TABS = ["admin-actions", "security-events", "compliance"] as const;
+type AuditTab = typeof VALID_TABS[number];
+
+function getTabFromUrl(): AuditTab {
+  const fromSearch = new URLSearchParams(window.location.search).get("tab");
+  if (VALID_TABS.includes(fromSearch as AuditTab)) return fromSearch as AuditTab;
+  const hash = window.location.hash.replace(/^#/, "");
+  if (VALID_TABS.includes(hash as AuditTab)) return hash as AuditTab;
+  return "admin-actions";
+}
+
 export default function AdminAuditLogs() {
+  const urlSearch = useSearch();
+  const [activeTab, setActiveTab] = useState<AuditTab>(getTabFromUrl);
+
+  useEffect(() => {
+    setActiveTab(getTabFromUrl());
+  }, [urlSearch]);
+
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("all");
   const [targetType, setTargetType] = useState("all");
@@ -2494,7 +2513,7 @@ export default function AdminAuditLogs() {
         </Card>
       </button>
 
-      <Tabs defaultValue="admin-actions">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AuditTab)}>
         <TabsList className="mb-2">
           <TabsTrigger value="admin-actions" className="flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5" />
