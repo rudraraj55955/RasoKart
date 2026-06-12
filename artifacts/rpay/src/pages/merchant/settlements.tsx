@@ -75,10 +75,33 @@ interface CustomDatePreset {
   to: string;
 }
 
-const CUSTOM_DATE_PRESETS_KEY = "rasokart_custom_date_presets_settlements";
+const CUSTOM_DATE_PRESETS_KEY = "rasokart_custom_date_presets";
+const LEGACY_PRESETS_KEY_SETTLEMENTS = "rasokart_custom_date_presets_settlements";
 
 function loadCustomDatePresets(): CustomDatePreset[] {
   try {
+    const legacyRaw = localStorage.getItem(LEGACY_PRESETS_KEY_SETTLEMENTS);
+    if (legacyRaw) {
+      const legacy = JSON.parse(legacyRaw) as CustomDatePreset[];
+      if (Array.isArray(legacy) && legacy.length > 0) {
+        const sharedRaw = localStorage.getItem(CUSTOM_DATE_PRESETS_KEY);
+        const shared: CustomDatePreset[] = sharedRaw ? (JSON.parse(sharedRaw) as CustomDatePreset[]) : [];
+        const seen = new Set(shared.map((p) => p.id));
+        const seenSig = new Set(shared.map((p) => `${p.name}|${p.from}|${p.to}`));
+        const merged = [...shared];
+        for (const p of legacy) {
+          if (!seen.has(p.id) && !seenSig.has(`${p.name}|${p.from}|${p.to}`)) {
+            merged.push(p);
+            seen.add(p.id);
+            seenSig.add(`${p.name}|${p.from}|${p.to}`);
+          }
+        }
+        localStorage.setItem(CUSTOM_DATE_PRESETS_KEY, JSON.stringify(merged));
+        localStorage.removeItem(LEGACY_PRESETS_KEY_SETTLEMENTS);
+        return merged;
+      }
+      localStorage.removeItem(LEGACY_PRESETS_KEY_SETTLEMENTS);
+    }
     const raw = localStorage.getItem(CUSTOM_DATE_PRESETS_KEY);
     if (!raw) return [];
     return JSON.parse(raw) as CustomDatePreset[];
