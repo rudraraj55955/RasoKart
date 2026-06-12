@@ -563,7 +563,15 @@ function parseEventType(requestBody: string | null | undefined): string | null {
 }
 
 
-function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: CallbackLog | null; onClose: () => void; onRetry?: (id: number) => void; isRetrying?: boolean }) {
+function computeExpectedRetryAt(createdAt: string, attempts: number, effectiveDelays: [number, number, number]): Date {
+  let cumulative = 0;
+  for (let i = 0; i < attempts; i++) {
+    cumulative += i < 2 ? effectiveDelays[i] : effectiveDelays[2];
+  }
+  return new Date(new Date(createdAt).getTime() + cumulative * 1000);
+}
+
+function DeliveryDetailModal({ log, onClose, onRetry, isRetrying, effectiveDelays }: { log: CallbackLog | null; onClose: () => void; onRetry?: (id: number) => void; isRetrying?: boolean; effectiveDelays?: [number, number, number] }) {
   const copy = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard");
@@ -628,18 +636,32 @@ function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: Callb
           </div>
 
           {/* Next retry */}
-          {log.status === "pending_retry" && log.nextRetryAt != null && (
-            <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 text-amber-400">
-              <Clock className="w-4 h-4 shrink-0" />
-              <div>
-                <p className="text-xs font-medium">Next retry scheduled</p>
-                <p className="text-xs text-amber-400/70 font-mono">
-                  {formatDistanceToNow(new Date(log.nextRetryAt), { addSuffix: true })}
-                  {" "}— {new Date(log.nextRetryAt).toLocaleString()}
-                </p>
+          {log.status === "pending_retry" && (() => {
+            const retryDate = log.nextRetryAt != null
+              ? new Date(log.nextRetryAt)
+              : effectiveDelays != null
+                ? computeExpectedRetryAt(log.createdAt, log.attempts ?? 1, effectiveDelays)
+                : null;
+            const isEstimated = log.nextRetryAt == null && retryDate != null;
+            if (!retryDate) return null;
+            return (
+              <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 text-amber-400">
+                <Clock className="w-4 h-4 shrink-0" />
+                <div>
+                  <p className="text-xs font-medium">
+                    {isEstimated ? "Expected next retry" : "Next retry scheduled"}
+                  </p>
+                  <p className="text-xs text-amber-400/70 font-mono">
+                    {formatDistanceToNow(retryDate, { addSuffix: true })}
+                    {" "}— {retryDate.toLocaleString()}
+                  </p>
+                  {isEstimated && (
+                    <p className="text-[10px] text-amber-400/50 mt-0.5">Estimated from retry delay schedule · actual time may vary</p>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Request body */}
           <div>
@@ -1696,6 +1718,11 @@ onError: () => toast.error("Failed to send test event"),
         onClose={() => setSelectedLog(null)}
         onRetry={handleRetry}
         isRetrying={retryingId === selectedLog?.id}
+        effectiveDelays={[
+          retryDelay1 ?? (retryDefaults?.delay1 ?? 300),
+          retryDelay2 ?? (retryDefaults?.delay2 ?? 900),
+          retryDelay3 ?? (retryDefaults?.delay3 ?? 3600),
+        ]}
       />
 
       <Dialog open={!!newSecret} onOpenChange={() => setNewSecret(null)}>
