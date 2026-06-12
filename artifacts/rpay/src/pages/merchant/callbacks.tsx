@@ -150,7 +150,7 @@ function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) 
       <div className="flex items-center gap-1.5 mb-2">
         <ListOrdered className="w-3.5 h-3.5 text-muted-foreground/60" />
         <p className="text-xs text-muted-foreground/60 uppercase tracking-wider font-medium">
-          Attempt History{attempts.length > 0 ? ` · ${attempts.length}` : ""}
+          Attempt History{attempts.length > 1 ? ` · ${attempts.length}` : ""}
         </p>
       </div>
       {isLoading ? (
@@ -162,6 +162,8 @@ function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) 
         <p className="text-xs text-rose-400/70 italic px-1">Failed to load attempt history.</p>
       ) : attempts.length === 0 ? (
         <p className="text-xs text-muted-foreground/50 italic px-1">No per-attempt records — history is recorded for new deliveries going forward.</p>
+      ) : attempts.length === 1 ? (
+        <p className="text-xs text-muted-foreground/50 italic px-1">Only one attempt was made — no retry history to show.</p>
       ) : (
         <div className="space-y-2">
           {attempts.map(a => (
