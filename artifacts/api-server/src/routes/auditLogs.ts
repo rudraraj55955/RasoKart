@@ -609,6 +609,13 @@ router.get("/schedules", async (req, res) => {
         ORDER BY sent_at DESC
         LIMIT 1
       )`,
+      lastSuccessWasManualRetry: sql<boolean | null>`(
+        SELECT is_manual_retry FROM ${scheduledAuditReportLogsTable}
+        WHERE schedule_id = ${scheduledAuditReportsTable.id}
+        AND success = true
+        ORDER BY sent_at DESC
+        LIMIT 1
+      )`,
       sendCount: sql<number>`(
         SELECT COUNT(*) FROM ${scheduledAuditReportLogsTable}
         WHERE schedule_id = ${scheduledAuditReportsTable.id}
@@ -651,6 +658,7 @@ router.get("/schedules", async (req, res) => {
         nextRetryAt,
         retriesExhausted,
         lastDeliveryAttempts,
+        lastSuccessWasManualRetry: r.lastSuccessWasManualRetry === true,
       };
     }),
   });

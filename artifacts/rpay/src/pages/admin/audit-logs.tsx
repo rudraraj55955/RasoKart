@@ -1233,6 +1233,21 @@ function ScheduleRow({
                 Never sent
               </span>
             )}
+            {s.lastSuccessWasManualRetry && s.lastSendStatus === "ok" && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-400 cursor-default">
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      Recovered via manual retry
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    The last successful delivery was triggered manually by an admin using "Retry Now".
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {s.lastDeliveryAttempts > 1 && (
               <TooltipProvider>
                 <Tooltip>

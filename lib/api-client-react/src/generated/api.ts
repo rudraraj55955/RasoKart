@@ -14980,28 +14980,6 @@ export const runQrCleanup = async ( options?: RequestInit): Promise<QrCleanupRun
   }
 );}
 
-export const getGetQrCleanupHistoryUrl = () => {
-
-
-
-
-  return `/api/system-config/qr-cleanup/history`
-}
-
-/**
- * @summary Get QR code cleanup run history (last 10 runs, admin only)
- */
-export const getQrCleanupHistory = async ( options?: RequestInit): Promise<CleanupRunHistoryResponse> => {
-
-  return customFetch<CleanupRunHistoryResponse>(getGetQrCleanupHistoryUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
 
 
 
@@ -15049,6 +15027,31 @@ export const useRunQrCleanup = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRunQrCleanupMutationOptions(options));
     }
+
+export const getGetQrCleanupHistoryUrl = () => {
+
+
+
+
+  return `/api/system-config/qr-cleanup/history`
+}
+
+/**
+ * @summary Get QR code cleanup run history (last 10 runs, admin only)
+ */
+export const getQrCleanupHistory = async ( options?: RequestInit): Promise<CleanupRunHistoryResponse> => {
+
+  return customFetch<CleanupRunHistoryResponse>(getGetQrCleanupHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 
 
 export const getGetQrCleanupHistoryQueryKey = () => {

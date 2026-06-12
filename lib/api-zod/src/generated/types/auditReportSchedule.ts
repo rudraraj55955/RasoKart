@@ -41,6 +41,8 @@ export interface AuditReportSchedule {
   autoPauseAfterFailures: number;
   /** Total number of send attempts (initial + retries) for the most recent delivery cycle. 0 if the schedule has never been sent, 1 if the last delivery succeeded or failed on the first try, >1 if retries were needed. */
   lastDeliveryAttempts: number;
+  /** True when the most recent successful delivery was triggered manually by an admin via "Retry Now". Null/false when the last success was automatic or there has been no successful delivery. */
+  lastSuccessWasManualRetry?: boolean;
   createdAt: string;
   updatedAt: string;
 }
