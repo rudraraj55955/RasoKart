@@ -138,6 +138,11 @@ function AttemptCountTooltip({ logId, count, colorClass }: { logId: number; coun
   );
 }
 
+function tryParse(s: string | null | undefined): string | null {
+  if (!s) return null;
+  try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
+}
+
 function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) {
   const { data, isLoading, isError } = useGetWebhookLogAttempts(logId, {
     query: { enabled: open } as any,
@@ -185,13 +190,33 @@ function RetryHistorySection({ logId, open }: { logId: number; open: boolean }) 
                     {format(new Date(a.firedAt), "MMM d, HH:mm:ss")}
                   </span>
                 </div>
-                {a.responseBody && (
-                  <pre className="mt-1 text-xs text-muted-foreground/60 bg-background/30 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap line-clamp-3 border border-border/30">
-                    {a.responseBody}
-                  </pre>
+                {((a as any).requestBody != null || a.responseBody != null) && (
+                  <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(a as any).requestBody != null && (
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">Request</p>
+                          <CopyButton text={tryParse((a as any).requestBody)} label="Copy request" />
+                        </div>
+                        <pre className="text-xs text-muted-foreground/60 bg-background/30 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap line-clamp-3 border border-border/30">
+                          {tryParse((a as any).requestBody) || "—"}
+                        </pre>
+                      </div>
+                    )}
+                    {a.responseBody != null && (
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">Response</p>
+                          <CopyButton text={tryParse(a.responseBody)} label="Copy response" />
+                        </div>
+                        <pre className="text-xs text-muted-foreground/60 bg-background/30 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap line-clamp-3 border border-border/30">
+                          {tryParse(a.responseBody) || "—"}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-              <CopyButton text={a.responseBody} />
             </div>
           ))}
         </div>
@@ -356,10 +381,6 @@ function CallbackRow({ log, activeQrFilter, onFilterByQr, initialOpen, onDeepLin
     }
   }, [onDeepLinkCollapse]);
 
-  const tryParse = (s: string | null) => {
-    if (!s) return null;
-    try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
-  };
   return (
     <Collapsible open={open} onOpenChange={handleOpenChange}>
       <TableRow ref={rowRef} className="cursor-pointer" onClick={() => handleOpenChange(!open)}>
