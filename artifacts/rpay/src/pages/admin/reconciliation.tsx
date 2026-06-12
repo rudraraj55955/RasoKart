@@ -920,6 +920,7 @@ export default function AdminReconciliation() {
   const [forceResendAlertConfirmOpen, setForceResendAlertConfirmOpen] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const [emailFailureBannerDismissed, setEmailFailureBannerDismissed] = useState(false);
+  const [jumpToBannerDismissed, setJumpToBannerDismissed] = useState(false);
   const [sendReportRunId, setSendReportRunId] = useState<number | null>(null);
   const HISTORY_PAGE_SIZE = 15;
 
@@ -1614,6 +1615,30 @@ export default function AdminReconciliation() {
               </div>
             </DialogTitle>
           </DialogHeader>
+
+          {/* Jump-to-source-run banner */}
+          {markedRunId != null && selectedRunId !== markedRunId && !jumpToBannerDismissed && (
+            <div className="flex items-center gap-3 rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-xs">
+              <Link2 className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+              <span className="flex-1 text-violet-300">
+                Arrived via link to <span className="font-medium">Run #{markedRunId}</span> — you're now viewing a different run.
+              </span>
+              <button
+                onClick={() => setSelectedRunId(markedRunId)}
+                className="text-violet-300 hover:text-violet-100 font-medium transition-colors shrink-0 flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                Jump back
+              </button>
+              <button
+                onClick={() => setJumpToBannerDismissed(true)}
+                className="text-violet-400/60 hover:text-violet-300 transition-colors shrink-0 ml-1"
+                aria-label="Dismiss"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {selectedRun && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-border/50 pb-4">
