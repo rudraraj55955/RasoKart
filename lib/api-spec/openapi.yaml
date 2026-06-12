@@ -3430,7 +3430,7 @@ paths:
       parameters:
         - name: status
           in: query
-          description: "Filter by compliance status: all | exported | never"
+          description: "Filter by compliance status: all | exported | never | inactive"
           schema:
             type: string
       responses:
@@ -7906,13 +7906,18 @@ components:
           type: string
         lastExportedAt:
           type: ["string", "null"]
+        lastLoginAt:
+          type: ["string", "null"]
         status:
           type: string
           description: "exported | never"
+        isInactive:
+          type: boolean
+          description: "true when lastLoginAt is null or older than 90 days"
 
     SecurityComplianceSummaryResponse:
       type: object
-      required: [data, totalMerchants, exportedCount, neverCount]
+      required: [data, totalMerchants, exportedCount, neverCount, inactiveCount]
       properties:
         data:
           type: array
@@ -7923,6 +7928,8 @@ components:
         exportedCount:
           type: integer
         neverCount:
+          type: integer
+        inactiveCount:
           type: integer
 
     SecurityReminderRequest:

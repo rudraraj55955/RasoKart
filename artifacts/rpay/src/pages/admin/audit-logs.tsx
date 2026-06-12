@@ -2045,7 +2045,7 @@ function SecurityEventsPanel() {
 }
 
 function CompliancePanel() {
-  const [statusFilter, setStatusFilter] = useState<"all" | "exported" | "never">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "exported" | "never" | "inactive">("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
 
@@ -2059,6 +2059,21 @@ function CompliancePanel() {
   const totalMerchants = data?.totalMerchants ?? 0;
   const exportedCount = data?.exportedCount ?? 0;
   const neverCount = data?.neverCount ?? 0;
+  const inactiveCount = (data as any)?.inactiveCount ?? 0;
+
+  const FILTER_BUTTONS: { value: typeof statusFilter; label: string; activeClass: string }[] = [
+    { value: "all",      label: "All",           activeClass: "bg-primary/15 border-primary/40 text-primary" },
+    { value: "exported", label: "Reviewed",       activeClass: "bg-teal-500/15 border-teal-500/40 text-teal-300" },
+    { value: "never",    label: "Never reviewed", activeClass: "bg-amber-500/15 border-amber-500/40 text-amber-300" },
+    { value: "inactive", label: "Inactive (90d+)", activeClass: "bg-rose-500/15 border-rose-500/40 text-rose-300" },
+  ];
+
+  function filterLabel() {
+    if (statusFilter === "exported") return "reviewed";
+    if (statusFilter === "never") return "never reviewed";
+    if (statusFilter === "inactive") return "inactive";
+    return null;
+  }
 
   const neverRows = rows.filter((r: any) => r.status === "never");
   const selectableIds = neverRows.map((r: any) => r.merchantId as number);
@@ -2114,7 +2129,7 @@ function CompliancePanel() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="flex items-center gap-3 rounded-lg border border-border/40 bg-muted/10 px-4 py-3">
           <div className="flex items-center justify-center w-9 h-9 rounded-md bg-muted/20 border border-border/40 shrink-0">
             <Building2 className="w-4 h-4 text-muted-foreground" />
@@ -2142,6 +2157,15 @@ function CompliancePanel() {
             <p className="text-xs text-muted-foreground mt-0.5">Never reviewed</p>
           </div>
         </div>
+        <div className="flex items-center gap-3 rounded-lg border border-rose-500/20 bg-rose-500/5 px-4 py-3">
+          <div className="flex items-center justify-center w-9 h-9 rounded-md bg-rose-500/10 border border-rose-500/20 shrink-0">
+            <Clock className="w-4 h-4 text-rose-400" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-rose-400 leading-none">{inactiveCount}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Inactive (90d+)</p>
+          </div>
+        </div>
       </div>
 
       <Card>
@@ -2151,22 +2175,18 @@ function CompliancePanel() {
               <ClipboardCheck className="w-4 h-4 text-teal-400" />
               Security Review Status
             </CardTitle>
-            <div className="flex items-center gap-2 flex-wrap">
-              {(["all", "exported", "never"] as const).map(v => (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {FILTER_BUTTONS.map(({ value, label, activeClass }) => (
                 <button
-                  key={v}
-                  onClick={() => { setStatusFilter(v); setSelected(new Set()); }}
+                  key={value}
+                  onClick={() => { setStatusFilter(value); setSelected(new Set()); }}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition-colors border ${
-                    statusFilter === v
-                      ? v === "exported"
-                        ? "bg-teal-500/15 border-teal-500/40 text-teal-300"
-                        : v === "never"
-                        ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
-                        : "bg-primary/15 border-primary/40 text-primary"
+                    statusFilter === value
+                      ? activeClass
                       : "border-border/40 bg-transparent text-muted-foreground hover:text-foreground hover:border-border/70"
                   }`}
                 >
-                  {v === "all" ? "All" : v === "exported" ? "Reviewed" : "Never reviewed"}
+                  {label}
                 </button>
               ))}
               {canRemindSelected ? (
@@ -2220,6 +2240,7 @@ function CompliancePanel() {
                   <TableHead>Merchant</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Last Login</TableHead>
                   <TableHead>Last Export</TableHead>
                   <TableHead className="w-20" />
                 </TableRow>
@@ -2228,14 +2249,14 @@ function CompliancePanel() {
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 6 }).map((_, j) => (
+                      {Array.from({ length: 7 }).map((_, j) => (
                         <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
                       ))}
                     </TableRow>
                   ))
                 ) : !rows.length ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-14">
+                    <TableCell colSpan={7} className="text-center py-14">
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <ClipboardCheck className="w-8 h-8 opacity-30" />
                         <p className="text-sm">No merchants match this filter</p>
@@ -2246,7 +2267,7 @@ function CompliancePanel() {
                   const isNever = row.status === "never";
                   const isChecked = selected.has(row.merchantId);
                   return (
-                    <TableRow key={row.merchantId} className={isChecked ? "bg-amber-500/5" : undefined}>
+                    <TableRow key={row.merchantId} className={isChecked ? "bg-amber-500/5" : row.isInactive ? "bg-rose-500/5" : undefined}>
                       <TableCell className="pl-4">
                         {isNever && (
                           <Checkbox
@@ -2258,9 +2279,26 @@ function CompliancePanel() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="text-sm font-medium">{row.businessName}</p>
-                          <p className="text-xs text-muted-foreground font-mono">ID #{row.merchantId}</p>
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <p className="text-sm font-medium">{row.businessName}</p>
+                            <p className="text-xs text-muted-foreground font-mono">ID #{row.merchantId}</p>
+                          </div>
+                          {row.isInactive && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-1.5 py-0.5 text-xs font-medium text-rose-400">
+                                    <Clock className="w-2.5 h-2.5" />
+                                    Dormant
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  No login in the last 90 days
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{row.email}</TableCell>
@@ -2275,6 +2313,24 @@ function CompliancePanel() {
                             <AlertTriangle className="w-3 h-3" />
                             Never reviewed
                           </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {row.lastLoginAt ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className={`cursor-default ${row.isInactive ? "text-rose-400" : ""}`}>
+                                  {formatDistanceToNow(new Date(row.lastLoginAt), { addSuffix: true })}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                {format(new Date(row.lastLoginAt), "MMM d, yyyy HH:mm:ss")}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <span className="text-rose-400/70 italic">Never</span>
                         )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
@@ -2329,7 +2385,7 @@ function CompliancePanel() {
           <div className="px-6 py-3 border-t border-border/40 flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
               Showing {rows.length} of {totalMerchants} merchant{totalMerchants !== 1 ? "s" : ""}
-              {statusFilter !== "all" && ` (filtered: ${statusFilter === "exported" ? "reviewed" : "never reviewed"})`}
+              {statusFilter !== "all" && ` (filtered: ${filterLabel()})`}
             </p>
             {someSelected && (
               <p className="text-xs text-amber-400">

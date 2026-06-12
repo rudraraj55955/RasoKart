@@ -12,6 +12,10 @@ export interface SecurityComplianceSummaryItem {
   email: string;
   /** @nullable */
   lastExportedAt?: string | null;
+  /** @nullable */
+  lastLoginAt?: string | null;
   /** exported | never */
   status: string;
+  /** true when lastLoginAt is null or older than 90 days */
+  isInactive?: boolean;
 }

@@ -3375,7 +3375,7 @@ export const ListCredentialEventsResponse = zod.object({
  * @summary Get per-merchant security activity export compliance summary
  */
 export const GetSecurityComplianceSummaryQueryParams = zod.object({
-  "status": zod.coerce.string().optional().describe('Filter by compliance status: all | exported | never')
+  "status": zod.coerce.string().optional().describe('Filter by compliance status: all | exported | never | inactive')
 })
 
 export const GetSecurityComplianceSummaryResponse = zod.object({
@@ -3384,11 +3384,14 @@ export const GetSecurityComplianceSummaryResponse = zod.object({
   "businessName": zod.string(),
   "email": zod.string(),
   "lastExportedAt": zod.string().nullish(),
-  "status": zod.string().describe('exported | never')
+  "lastLoginAt": zod.string().nullish(),
+  "status": zod.string().describe('exported | never'),
+  "isInactive": zod.boolean().optional().describe('true when lastLoginAt is null or older than 90 days')
 })),
   "totalMerchants": zod.number(),
   "exportedCount": zod.number(),
-  "neverCount": zod.number()
+  "neverCount": zod.number(),
+  "inactiveCount": zod.number()
 })
 
 

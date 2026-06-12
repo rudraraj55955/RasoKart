@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, auditLogsTable, scheduledAuditReportsTable, scheduledAuditReportLogsTable, credentialEventsTable, merchantsTable } from "@workspace/db";
+import { db, auditLogsTable, scheduledAuditReportsTable, scheduledAuditReportLogsTable, credentialEventsTable, merchantsTable, usersTable } from "@workspace/db";
 import { eq, ilike, and, count, sql, or, gte, lte, desc, getTableColumns, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { sendScheduledReport, buildEmailHtml, getDateRange, getRetryDelayMs } from "../helpers/auditReportScheduler";
@@ -18,47 +18,73 @@ function ensureAdmin(req: any, res: any): boolean {
   return true;
 }
 
+const INACTIVE_DAYS = 90;
+
 router.get("/security-compliance", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
   const { status } = req.query as Record<string, string>;
 
-  const rows = await db
-    .select({
-      merchantId: merchantsTable.id,
-      businessName: merchantsTable.businessName,
-      email: merchantsTable.email,
-      lastExportedAt: sql<string | null>`(
-        SELECT MAX(${auditLogsTable.createdAt})
-        FROM ${auditLogsTable}
-        WHERE ${auditLogsTable.action} = 'security_activity_exported'
-          AND ${auditLogsTable.targetId} = ${merchantsTable.id}
-      )`,
-    })
-    .from(merchantsTable)
-    .orderBy(merchantsTable.businessName);
+  const rows = await db.execute<{
+    merchant_id: number;
+    business_name: string;
+    email: string;
+    last_exported_at: string | null;
+    last_login_at: string | null;
+  }>(sql`
+    SELECT
+      m.id AS merchant_id,
+      m.business_name,
+      m.email,
+      (
+        SELECT MAX(al.created_at)
+        FROM audit_logs al
+        WHERE al.action = 'security_activity_exported'
+          AND al.target_id = m.id
+      ) AS last_exported_at,
+      (
+        SELECT MAX(u.last_login_at)
+        FROM users u
+        WHERE u.merchant_id = m.id
+          AND u.role = 'merchant'
+      ) AS last_login_at
+    FROM merchants m
+    ORDER BY m.business_name
+  `).then(r => r.rows);
 
-  const mapped = rows.map(r => ({
-    merchantId: r.merchantId,
-    businessName: r.businessName,
-    email: r.email,
-    lastExportedAt: r.lastExportedAt ? new Date(r.lastExportedAt).toISOString() : null,
-    status: r.lastExportedAt ? "exported" : "never",
-  }));
+  const inactiveCutoff = new Date();
+  inactiveCutoff.setDate(inactiveCutoff.getDate() - INACTIVE_DAYS);
+
+  const mapped = rows.map(r => {
+    const lastLoginAt = r.last_login_at ? new Date(r.last_login_at).toISOString() : null;
+    const isInactive = !r.last_login_at || new Date(r.last_login_at) < inactiveCutoff;
+    return {
+      merchantId: r.merchant_id,
+      businessName: r.business_name,
+      email: r.email,
+      lastExportedAt: r.last_exported_at ? new Date(r.last_exported_at).toISOString() : null,
+      lastLoginAt,
+      status: r.last_exported_at ? "exported" : "never",
+      isInactive,
+    };
+  });
 
   const filtered =
     status === "exported" ? mapped.filter(r => r.status === "exported") :
     status === "never"    ? mapped.filter(r => r.status === "never") :
+    status === "inactive" ? mapped.filter(r => r.isInactive) :
     mapped;
 
-  const exportedCount = mapped.filter(r => r.status === "exported").length;
-  const neverCount    = mapped.filter(r => r.status === "never").length;
+  const exportedCount  = mapped.filter(r => r.status === "exported").length;
+  const neverCount     = mapped.filter(r => r.status === "never").length;
+  const inactiveCount  = mapped.filter(r => r.isInactive).length;
 
   res.json({
     data: filtered,
     totalMerchants: mapped.length,
     exportedCount,
     neverCount,
+    inactiveCount,
   });
 });
 

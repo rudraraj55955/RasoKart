@@ -8,7 +8,7 @@
 
 export type GetSecurityComplianceSummaryParams = {
 /**
- * Filter by compliance status: all | exported | never
+ * Filter by compliance status: all | exported | never | inactive
  */
 status?: string;
 };

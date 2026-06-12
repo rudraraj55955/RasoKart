@@ -1999,8 +1999,12 @@ export interface SecurityComplianceSummaryItem {
   email: string;
   /** @nullable */
   lastExportedAt?: string | null;
+  /** @nullable */
+  lastLoginAt?: string | null;
   /** exported | never */
   status: string;
+  /** true when lastLoginAt is null or older than 90 days */
+  isInactive?: boolean;
 }
 
 export interface SecurityComplianceSummaryResponse {
@@ -2008,6 +2012,7 @@ export interface SecurityComplianceSummaryResponse {
   totalMerchants: number;
   exportedCount: number;
   neverCount: number;
+  inactiveCount: number;
 }
 
 export interface SecurityReminderRequest {
@@ -3359,7 +3364,7 @@ eventType?: string;
 
 export type GetSecurityComplianceSummaryParams = {
 /**
- * Filter by compliance status: all | exported | never
+ * Filter by compliance status: all | exported | never | inactive
  */
 status?: string;
 };

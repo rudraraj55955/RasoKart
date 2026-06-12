@@ -20,6 +20,7 @@ export const usersTable = pgTable("users", {
   loginAlertEmails: boolean("login_alert_emails").notNull().default(true),
   lastSeenIp: text("last_seen_ip"),
   passwordUpdatedAt: timestamp("password_updated_at", { withTimezone: true }),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

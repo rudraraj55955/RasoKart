@@ -12,4 +12,5 @@ export interface SecurityComplianceSummaryResponse {
   totalMerchants: number;
   exportedCount: number;
   neverCount: number;
+  inactiveCount: number;
 }

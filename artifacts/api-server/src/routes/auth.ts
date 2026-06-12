@@ -4,6 +4,7 @@ import { db, usersTable, merchantsTable, credentialEventsTable } from "@workspac
 import { dbRateLimitStore } from "../lib/rateLimitStore";
 import { eq } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
+import { logger } from "../lib/logger";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
 import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
 
@@ -40,10 +41,18 @@ router.post("/login", loginLimiter, async (req, res, next) => {
     }
     const token = generateToken({ userId: user.id, role: user.role });
 
+    const loginIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+      ?? req.socket.remoteAddress
+      ?? null;
+
+    db.update(usersTable)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(usersTable.id, user.id))
+      .catch((err: unknown) => {
+        logger.warn({ err, userId: user.id }, "Failed to update lastLoginAt");
+      });
+
     if (user.role === "merchant" && user.merchantId) {
-      const loginIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
-        ?? req.socket.remoteAddress
-        ?? null;
       db.insert(credentialEventsTable).values({
         merchantId: user.merchantId,
         eventType: "merchant_login",
