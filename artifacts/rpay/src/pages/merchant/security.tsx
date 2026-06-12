@@ -624,7 +624,7 @@ export default function MerchantSecurity() {
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
     const results: any[] = [];
     let fetchPage = 1;
-    const FETCH_LIMIT = 200;
+    const FETCH_LIMIT = 100;
     while (true) {
       const qp = new URLSearchParams({ limit: String(FETCH_LIMIT), page: String(fetchPage) });
       if (params.status && params.status !== "all") qp.set("status", params.status);
@@ -635,7 +635,8 @@ export default function MerchantSecurity() {
       if (!res.ok) throw new Error("Failed to fetch callback logs");
       const json = await res.json();
       results.push(...json.data);
-      if (results.length >= json.total || json.data.length < FETCH_LIMIT) break;
+      const effectiveLimit: number = json.limit ?? FETCH_LIMIT;
+      if (results.length >= json.total || json.data.length < effectiveLimit) break;
       fetchPage++;
     }
     return results;
