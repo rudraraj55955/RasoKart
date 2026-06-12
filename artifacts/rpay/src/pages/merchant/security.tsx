@@ -222,9 +222,32 @@ function securityEventMeta(eventType: SecurityEventType) {
   }
 }
 
-function SecurityEventRow({ event }: { event: LocalSecurityEvent }) {
+function HighlightText({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-amber-400/30 text-amber-200 rounded-sm px-0.5 not-italic font-medium">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
+function SecurityEventRow({ event, highlight = "" }: { event: LocalSecurityEvent; highlight?: string }) {
   const meta = securityEventMeta(event.eventType);
   const isLogin = event.eventType === "merchant_login";
+  const descText =
+    isLogin
+      ? null
+      : event.keyPrefix
+      ? `${event.eventType === "api_key_generated" ? "API key generated" : event.eventType === "api_key_revoked" ? "API key revoked" : "Callback secret rotated"} (${event.keyPrefix})`
+      : event.eventType === "callback_secret_rotated"
+      ? "Callback signing secret rotated"
+      : meta.label;
   return (
     <div className="flex items-start gap-4 py-4">
       <div className="flex flex-col items-center gap-1 shrink-0">
@@ -240,35 +263,31 @@ function SecurityEventRow({ event }: { event: LocalSecurityEvent }) {
           </Badge>
           {event.keyPrefix && (
             <code className="text-xs font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
-              {event.keyPrefix}
+              <HighlightText text={event.keyPrefix} query={highlight} />
             </code>
           )}
         </div>
         {isLogin ? (
           <p className="text-sm text-muted-foreground">
-            Signed in{event.ipAddress ? <> from <code className="text-xs font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded">{event.ipAddress}</code></> : null}
+            Signed in{event.ipAddress ? <> from <code className="text-xs font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded"><HighlightText text={event.ipAddress} query={highlight} /></code></> : null}
           </p>
-        ) : event.keyPrefix ? (
+        ) : descText ? (
           <p className="text-sm text-muted-foreground">
-            {event.eventType === "api_key_generated" ? "API key generated" : event.eventType === "api_key_revoked" ? "API key revoked" : "Callback secret rotated"} ({event.keyPrefix})
+            <HighlightText text={descText} query={highlight} />
           </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {event.eventType === "callback_secret_rotated" ? "Callback signing secret rotated" : meta.label}
-          </p>
-        )}
+        ) : null}
         {!isLogin && (event.ipAddress || event.actorEmail) && (
           <div className="flex items-center gap-2 flex-wrap mt-1">
             {event.actorEmail && (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
                 <span className="text-muted-foreground/40">by</span>
-                <code className="font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded">{event.actorEmail}</code>
+                <code className="font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded"><HighlightText text={event.actorEmail} query={highlight} /></code>
               </span>
             )}
             {event.ipAddress && (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
                 <span className="text-muted-foreground/40">from</span>
-                <code className="font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded">{event.ipAddress}</code>
+                <code className="font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded"><HighlightText text={event.ipAddress} query={highlight} /></code>
               </span>
             )}
           </div>
@@ -1284,7 +1303,7 @@ export default function MerchantSecurity() {
           ) : (
             <div className="divide-y divide-border/40">
               {secPageSlice.map(event => (
-                <SecurityEventRow key={event.id} event={event} />
+                <SecurityEventRow key={event.id} event={event} highlight={secSearch} />
               ))}
             </div>
           )}
