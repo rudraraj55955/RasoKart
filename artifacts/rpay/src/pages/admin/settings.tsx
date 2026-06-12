@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench, GitBranch, Zap, FlaskConical, ChevronDown, ChevronUp } from "lucide-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench, GitBranch, Zap, FlaskConical, ChevronDown, ChevronUp, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -2382,6 +2382,10 @@ export default function AdminSettings() {
               <CardTitle className="text-base">Webhook Failure Alert History</CardTitle>
             </div>
             <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 border border-border/50 px-2.5 py-0.5 text-xs text-muted-foreground">
+                <Clock className="w-3 h-3 shrink-0" />
+                Cooldown: {currentWebhookAlertCooldownHours === 1 ? "1 hour" : `${currentWebhookAlertCooldownHours} hours`}
+              </span>
               {webhookAlertMerchants.length > 0 && (
                 <Select
                   value={webhookAlertMerchantFilter != null ? String(webhookAlertMerchantFilter) : "all"}
@@ -2417,6 +2421,7 @@ export default function AdminSettings() {
           </div>
           <CardDescription className="text-sm">
             A record of every webhook permanent failure alert email dispatched to admins. Tracks which merchant's webhook failed, the URL, attempt count, and which admins were notified.
+            Duplicate alerts for the same merchant are suppressed for {currentWebhookAlertCooldownHours === 1 ? "1 hour" : `${currentWebhookAlertCooldownHours} hours`} after each sent alert.
             {webhookAlertMerchantFilter != null && (
               <span className="ml-1 text-primary">
                 — filtered to {webhookAlertMerchantMap.get(webhookAlertMerchantFilter) ?? `Merchant #${webhookAlertMerchantFilter}`}
@@ -2432,43 +2437,73 @@ export default function AdminSettings() {
                 ? `No webhook failure alerts for ${webhookAlertMerchantMap.get(webhookAlertMerchantFilter) ?? `Merchant #${webhookAlertMerchantFilter}`}.`
                 : "No webhook failure alert emails have been sent yet."}
             </p>
-          ) : (
-            <div className="space-y-2">
-              {webhookAlertHistory.map((entry) => {
-                const merchantName = webhookAlertMerchantMap.get(entry.merchantId);
-                return (
-                  <div key={entry.id} className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium">
-                        {new Date(entry.sentAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                      </span>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <button
-                          className="hover:text-foreground transition-colors"
-                          title={`Filter by ${merchantName ?? `Merchant #${entry.merchantId}`}`}
-                          onClick={() => setWebhookAlertMerchantFilter(entry.merchantId)}
-                        >
-                          {merchantName ? (
-                            <span>{merchantName} <span className="opacity-60">(#{entry.merchantId})</span></span>
-                          ) : (
-                            <span>Merchant #{entry.merchantId}</span>
+          ) : (() => {
+            const now = Date.now();
+            const cooldownMs = currentWebhookAlertCooldownHours * 60 * 60 * 1000;
+            const latestPerMerchant = new Map<number, number>();
+            for (const entry of webhookAlertHistory) {
+              const t = new Date(entry.sentAt).getTime();
+              if (!latestPerMerchant.has(entry.merchantId) || t > latestPerMerchant.get(entry.merchantId)!) {
+                latestPerMerchant.set(entry.merchantId, t);
+              }
+            }
+            return (
+              <div className="space-y-2">
+                {webhookAlertHistory.map((entry) => {
+                  const merchantName = webhookAlertMerchantMap.get(entry.merchantId);
+                  const entryTime = new Date(entry.sentAt).getTime();
+                  const isLatestForMerchant = latestPerMerchant.get(entry.merchantId) === entryTime;
+                  const inCooldown = isLatestForMerchant && (now - entryTime) < cooldownMs;
+                  const cooldownExpiresAt = entryTime + cooldownMs;
+                  return (
+                    <div key={entry.id} className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">
+                          {new Date(entry.sentAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                        </span>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          {inCooldown && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-amber-400"
+                              title={`Cooldown active — new alerts for this merchant are suppressed until ${new Date(cooldownExpiresAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}
+                            >
+                              <Clock className="w-3 h-3 shrink-0" />
+                              Cooldown active
+                            </span>
                           )}
-                        </button>
-                        <span>{entry.attemptCount} attempt{entry.attemptCount !== 1 ? "s" : ""}</span>
-                        <span>{entry.recipientCount} recipient{entry.recipientCount !== 1 ? "s" : ""}</span>
+                          <button
+                            className="hover:text-foreground transition-colors"
+                            title={`Filter by ${merchantName ?? `Merchant #${entry.merchantId}`}`}
+                            onClick={() => setWebhookAlertMerchantFilter(entry.merchantId)}
+                          >
+                            {merchantName ? (
+                              <span>{merchantName} <span className="opacity-60">(#{entry.merchantId})</span></span>
+                            ) : (
+                              <span>Merchant #{entry.merchantId}</span>
+                            )}
+                          </button>
+                          <span>{entry.attemptCount} attempt{entry.attemptCount !== 1 ? "s" : ""}</span>
+                          <span>{entry.recipientCount} recipient{entry.recipientCount !== 1 ? "s" : ""}</span>
+                        </div>
                       </div>
+                      <p className="text-xs text-muted-foreground font-mono break-all">{entry.failedUrl}</p>
+                      {inCooldown && (
+                        <p className="text-xs text-amber-400/80">
+                          New failure alerts for {merchantName ?? `merchant #${entry.merchantId}`} are suppressed until{" "}
+                          {new Date(cooldownExpiresAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
+                        </p>
+                      )}
+                      {entry.recipientEmails.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Sent to: {entry.recipientEmails.join(", ")}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground font-mono break-all">{entry.failedUrl}</p>
-                    {entry.recipientEmails.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Sent to: {entry.recipientEmails.join(", ")}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
