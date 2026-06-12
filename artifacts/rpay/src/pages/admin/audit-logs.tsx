@@ -1000,14 +1000,13 @@ function ScheduleHistoryPanel({
   useEffect(() => {
     if (autoExpandedRef.current || cycles.length === 0) return;
     autoExpandedRef.current = true;
-    const autoExpand = new Set<string>();
-    for (const cycle of cycles) {
-      if (!cycle.overallSuccess && cycle.attempts.length > 1) {
-        autoExpand.add(cycle.cycleId);
-      }
-    }
-    if (autoExpand.size > 0) {
-      setExpandedCycles(autoExpand);
+    const mostRecent = [...cycles].sort(
+      (a, b) =>
+        new Date(b.initialAttempt.sentAt).getTime() -
+        new Date(a.initialAttempt.sentAt).getTime(),
+    )[0];
+    if (mostRecent && !mostRecent.overallSuccess) {
+      setExpandedCycles(new Set([mostRecent.cycleId]));
     }
   }, [cycles]);
 
