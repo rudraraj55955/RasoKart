@@ -1518,6 +1518,11 @@ export interface QrCode {
   status: QrCodeStatus;
   /** Number of times this QR code was used for a payment */
   scanCount: number;
+  /**
+     * EKQR client_txn_id if this QR was created via EKQR
+     * @nullable
+     */
+  ekqrOrderId?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -2905,6 +2910,60 @@ export interface EkqrSyncResult {
   qrStatus: string;
 }
 
+export type EkqrWebhookLogProcessingResult = typeof EkqrWebhookLogProcessingResult[keyof typeof EkqrWebhookLogProcessingResult];
+
+
+export const EkqrWebhookLogProcessingResult = {
+  credited: 'credited',
+  duplicate: 'duplicate',
+  ignored: 'ignored',
+  error: 'error',
+} as const;
+
+export interface EkqrWebhookLog {
+  id: number;
+  receivedAt: string;
+  clientTxnId: string;
+  qrCodeId?: number | null;
+  merchantId?: number | null;
+  /** Raw EKQR status string (SUCCESS|FAILED|PENDING) */
+  status?: string | null;
+  amount?: string | null;
+  rawPayload: string;
+  processingResult: EkqrWebhookLogProcessingResult;
+  errorMessage?: string | null;
+}
+
+export interface EkqrWebhookLogListResponse {
+  data: EkqrWebhookLog[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type EkqrTestWebhookResultProcessingResult = typeof EkqrTestWebhookResultProcessingResult[keyof typeof EkqrTestWebhookResultProcessingResult];
+
+
+export const EkqrTestWebhookResultProcessingResult = {
+  credited: 'credited',
+  duplicate: 'duplicate',
+  ignored: 'ignored',
+  error: 'error',
+} as const;
+
+export type EkqrTestWebhookResultSyntheticPayload = { [key: string]: unknown };
+
+export interface EkqrTestWebhookResult {
+  /** Synthetic client_txn_id used (TEST-{timestamp}) */
+  clientTxnId: string;
+  ekqrEnabled: boolean;
+  processingResult: EkqrTestWebhookResultProcessingResult;
+  errorMessage?: string | null;
+  /** ID of the ekqr_webhook_logs row written */
+  logId?: number | null;
+  syntheticPayload?: EkqrTestWebhookResultSyntheticPayload;
+}
+
 export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
@@ -3657,6 +3716,25 @@ export type UpdateGithubSyncConfigBody = {
   /** Cron expression for the sync schedule (e.g. "0 2 * * *") */
   schedule?: string;
 };
+
+export type ListEkqrWebhookLogsParams = {
+page?: number;
+limit?: number;
+processingResult?: ListEkqrWebhookLogsProcessingResult;
+merchantId?: number;
+dateFrom?: string;
+dateTo?: string;
+};
+
+export type ListEkqrWebhookLogsProcessingResult = typeof ListEkqrWebhookLogsProcessingResult[keyof typeof ListEkqrWebhookLogsProcessingResult];
+
+
+export const ListEkqrWebhookLogsProcessingResult = {
+  credited: 'credited',
+  duplicate: 'duplicate',
+  ignored: 'ignored',
+  error: 'error',
+} as const;
 
 export type EkqrPaymentWebhook200 = {
   success?: boolean;

@@ -39,3 +39,4 @@ export * from "./rateLimitHits";
 export * from "./signatureFailureAlertLogs";
 export * from "./webhookFailureAlertLogs";
 export * from "./storageCleanupRuns";
+export * from "./ekqrWebhookLogs";

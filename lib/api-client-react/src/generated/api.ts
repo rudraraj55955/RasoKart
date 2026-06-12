@@ -80,6 +80,8 @@ import type {
   EkqrPaymentWebhook200,
   EkqrSyncResult,
   EkqrTestResult,
+  EkqrTestWebhookResult,
+  EkqrWebhookLogListResponse,
   ErrorResponse,
   ExpiryCheckResult,
   ExportAdminAuditLogsCsvParams,
@@ -113,6 +115,7 @@ import type {
   ListAuditReportScheduleLogsParams,
   ListCallbackLogsParams,
   ListCredentialEventsParams,
+  ListEkqrWebhookLogsParams,
   ListInvoicesParams,
   ListLedgerEntriesParams,
   ListMerchantCredentialEventsParams,
@@ -17548,6 +17551,160 @@ export const useTestEkqrConnection = <TError = ErrorType<void>,
       > => {
       return useMutation(getTestEkqrConnectionMutationOptions(options));
     }
+
+export const getTestEkqrWebhookUrl = () => {
+
+
+
+
+  return `/api/system-config/ekqr/test-webhook`
+}
+
+/**
+ * @summary Fire a synthetic EKQR SUCCESS webhook through the processing pipeline
+ */
+export const testEkqrWebhook = async ( options?: RequestInit): Promise<EkqrTestWebhookResult> => {
+
+  return customFetch<EkqrTestWebhookResult>(getTestEkqrWebhookUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getTestEkqrWebhookMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testEkqrWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testEkqrWebhook>>, TError,void, TContext> => {
+
+const mutationKey = ['testEkqrWebhook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testEkqrWebhook>>, void> = () => {
+
+
+          return  testEkqrWebhook(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestEkqrWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof testEkqrWebhook>>>
+
+    export type TestEkqrWebhookMutationError = ErrorType<void>
+
+    /**
+ * @summary Fire a synthetic EKQR SUCCESS webhook through the processing pipeline
+ */
+export const useTestEkqrWebhook = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testEkqrWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testEkqrWebhook>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestEkqrWebhookMutationOptions(options));
+    }
+
+export const getListEkqrWebhookLogsUrl = (params?: ListEkqrWebhookLogsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ekqr/webhook-logs?${stringifiedParams}` : `/api/ekqr/webhook-logs`
+}
+
+/**
+ * @summary List EKQR incoming webhook log entries (admin only)
+ */
+export const listEkqrWebhookLogs = async (params?: ListEkqrWebhookLogsParams, options?: RequestInit): Promise<EkqrWebhookLogListResponse> => {
+
+  return customFetch<EkqrWebhookLogListResponse>(getListEkqrWebhookLogsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEkqrWebhookLogsQueryKey = (params?: ListEkqrWebhookLogsParams,) => {
+    return [
+    `/api/ekqr/webhook-logs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListEkqrWebhookLogsQueryOptions = <TData = Awaited<ReturnType<typeof listEkqrWebhookLogs>>, TError = ErrorType<void>>(params?: ListEkqrWebhookLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEkqrWebhookLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEkqrWebhookLogsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEkqrWebhookLogs>>> = ({ signal }) => listEkqrWebhookLogs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEkqrWebhookLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEkqrWebhookLogsQueryResult = NonNullable<Awaited<ReturnType<typeof listEkqrWebhookLogs>>>
+export type ListEkqrWebhookLogsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List EKQR incoming webhook log entries (admin only)
+ */
+
+export function useListEkqrWebhookLogs<TData = Awaited<ReturnType<typeof listEkqrWebhookLogs>>, TError = ErrorType<void>>(
+ params?: ListEkqrWebhookLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEkqrWebhookLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEkqrWebhookLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getSyncEkqrQrStatusUrl = (id: number,) => {
 

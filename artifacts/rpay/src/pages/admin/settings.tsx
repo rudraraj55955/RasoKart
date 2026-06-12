@@ -10,7 +10,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useGetCleanupStats, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, getGetEkqrConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useGetCleanupStats, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, useTestEkqrWebhook, getGetEkqrConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -229,6 +229,7 @@ export default function AdminSettings() {
   const [ekqrInitialized, setEkqrInitialized] = useState(false);
   const [showEkqrKey, setShowEkqrKey] = useState(false);
   const [ekqrTestResult, setEkqrTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [ekqrWebhookTestResult, setEkqrWebhookTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // SMTP config form state
   const [smtpHost, setSmtpHost] = useState("");
@@ -793,6 +794,22 @@ export default function AdminSettings() {
         else toast.error(`EKQR test failed: ${d.msg}`);
       },
       onError: (err: Error) => toast.error(err.message),
+    },
+  });
+
+  const { mutate: testEkqrWebhook, isPending: testingEkqrWebhook } = useTestEkqrWebhook({
+    mutation: {
+      onSuccess: (d: any) => {
+        const ok = d?.ok ?? true;
+        const msg = d?.msg ?? "Simulated webhook delivered";
+        setEkqrWebhookTestResult({ ok, msg });
+        if (ok) toast.success("Test webhook sent — check Webhook Logs");
+        else toast.error(`Test webhook failed: ${msg}`);
+      },
+      onError: (err: Error) => {
+        setEkqrWebhookTestResult({ ok: false, msg: err.message });
+        toast.error(err.message);
+      },
     },
   });
 
@@ -2500,13 +2517,25 @@ export default function AdminSettings() {
             </div>
           </div>
 
-          {/* Test result banner */}
+          {/* Test result banners */}
           {ekqrTestResult && (
             <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-md ${ekqrTestResult.ok ? "bg-green-500/10 text-green-400" : "bg-destructive/10 text-destructive"}`}>
               {ekqrTestResult.ok
                 ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                 : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
               {ekqrTestResult.ok ? "Connection successful" : ekqrTestResult.msg}
+            </div>
+          )}
+          {ekqrWebhookTestResult && (
+            <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-md ${ekqrWebhookTestResult.ok ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-destructive/10 text-destructive border border-destructive/20"}`}>
+              {ekqrWebhookTestResult.ok
+                ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+              <span>
+                {ekqrWebhookTestResult.ok
+                  ? <>Simulated webhook sent — visible in <a href="/admin/webhook-logs" className="underline underline-offset-2 font-medium">Webhook Logs → EKQR Incoming</a></>
+                  : ekqrWebhookTestResult.msg}
+              </span>
             </div>
           )}
 
@@ -2529,11 +2558,21 @@ export default function AdminSettings() {
               <FlaskConical className="w-3.5 h-3.5 mr-1.5" />
               {testingEkqr ? "Testing…" : "Test Connection"}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setEkqrWebhookTestResult(null); testEkqrWebhook(); }}
+              disabled={testingEkqrWebhook || !ekqrConfig?.apiKeySet}
+              title="Send a simulated EKQR webhook to this server to verify end-to-end processing"
+            >
+              <Zap className="w-3.5 h-3.5 mr-1.5" />
+              {testingEkqrWebhook ? "Sending…" : "Send Test Webhook"}
+            </Button>
             {!ekqrUnchanged && (
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => { setEkqrApiKey(""); setEkqrEnabled(currentEkqrEnabled); setEkqrTestResult(null); }}
+                onClick={() => { setEkqrApiKey(""); setEkqrEnabled(currentEkqrEnabled); setEkqrTestResult(null); setEkqrWebhookTestResult(null); }}
                 disabled={savingEkqr}
               >
                 Cancel

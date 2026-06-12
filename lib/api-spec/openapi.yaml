@@ -5540,6 +5540,74 @@ paths:
         "403":
           description: Forbidden
 
+  /system-config/ekqr/test-webhook:
+    post:
+      operationId: testEkqrWebhook
+      tags: [system-config]
+      summary: Fire a synthetic EKQR SUCCESS webhook through the processing pipeline
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Test webhook result with the written log entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EkqrTestWebhookResult"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /ekqr/webhook-logs:
+    get:
+      operationId: listEkqrWebhookLogs
+      tags: [system-config]
+      summary: List EKQR incoming webhook log entries (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: processingResult
+          in: query
+          schema:
+            type: string
+            enum: [credited, duplicate, ignored, error]
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Paginated list of EKQR webhook logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EkqrWebhookLogListResponse"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
   /qr-codes/{id}/ekqr-sync:
     post:
       operationId: syncEkqrQrStatus
@@ -7439,6 +7507,9 @@ components:
         scanCount:
           type: integer
           description: Number of times this QR code was used for a payment
+        ekqrOrderId:
+          type: ["string", "null"]
+          description: EKQR client_txn_id if this QR was created via EKQR
         createdAt:
           type: string
         updatedAt:
@@ -9285,3 +9356,74 @@ components:
         qrStatus:
           type: string
           description: Current QR code status in RasoKart
+
+    EkqrWebhookLog:
+      type: object
+      required: [id, receivedAt, clientTxnId, rawPayload, processingResult]
+      properties:
+        id:
+          type: integer
+        receivedAt:
+          type: string
+          format: date-time
+        clientTxnId:
+          type: string
+        qrCodeId:
+          type: integer
+          nullable: true
+        merchantId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          nullable: true
+          description: Raw EKQR status string (SUCCESS|FAILED|PENDING)
+        amount:
+          type: string
+          nullable: true
+        rawPayload:
+          type: string
+        processingResult:
+          type: string
+          enum: [credited, duplicate, ignored, error]
+        errorMessage:
+          type: string
+          nullable: true
+
+    EkqrWebhookLogListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EkqrWebhookLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    EkqrTestWebhookResult:
+      type: object
+      required: [clientTxnId, ekqrEnabled, processingResult]
+      properties:
+        clientTxnId:
+          type: string
+          description: Synthetic client_txn_id used (TEST-{timestamp})
+        ekqrEnabled:
+          type: boolean
+        processingResult:
+          type: string
+          enum: [credited, duplicate, ignored, error]
+        errorMessage:
+          type: string
+          nullable: true
+        logId:
+          type: integer
+          nullable: true
+          description: ID of the ekqr_webhook_logs row written
+        syntheticPayload:
+          type: object
+          additionalProperties: true

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
-import { useListQrCodes, useDeleteQrCode, useGetQrCodeStats, useBulkDeleteQrCodes, useGetQrCodeActivity } from "@workspace/api-client-react";
+import { useListQrCodes, useDeleteQrCode, useGetQrCodeStats, useBulkDeleteQrCodes, useGetQrCodeActivity, useSyncEkqrQrStatus } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { useMonitoringRefresh } from "@/hooks/use-monitoring-refresh";
-import { Search, Trash2, Download, QrCode, X, RefreshCw, ChevronDown, ChevronRight, Link2, Building2, Zap } from "lucide-react";
+import { Search, Trash2, Download, QrCode, X, RefreshCw, ChevronDown, ChevronRight, Link2, Building2, Zap, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { QRCodeCanvas } from "qrcode.react";
@@ -37,6 +37,7 @@ type AdminQrRow = {
   expiresAt?: string | null;
   status: string;
   scanCount: number;
+  ekqrOrderId?: string | null;
   createdAt: string;
 };
 
@@ -141,6 +142,24 @@ function PaymentActivity({ qrId }: { qrId: number }) {
 
 function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
   const [copied, setCopied] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const syncMutation = useSyncEkqrQrStatus();
+
+  const handleSync = useCallback(() => {
+    setSyncResult(null);
+    syncMutation.mutate({ id: qr.id }, {
+      onSuccess: (res) => {
+        const status = (res as any)?.parsed?.data?.status ?? (res as any)?.qrStatus ?? "unknown";
+        setSyncResult(`EKQR status: ${status}`);
+        toast.success(`EKQR sync — ${status}`);
+      },
+      onError: (err: any) => {
+        const msg = err?.message ?? "Sync failed";
+        setSyncResult(`Error: ${msg}`);
+        toast.error(msg);
+      },
+    });
+  }, [qr.id, syncMutation]);
 
   const handleDownload = useCallback(() => {
     const canvas = document.querySelector(`#admin-qr-inline-${qr.id} canvas`) as HTMLCanvasElement | null;
@@ -237,14 +256,30 @@ function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button size="sm" variant="outline" onClick={handleDownload} disabled={qr.status === "expired"} className="h-7 text-xs px-3">
                 <Download className="w-3.5 h-3.5 mr-1.5" />Download PNG
               </Button>
               <Button size="sm" variant="outline" onClick={handleCopyLink} className="h-7 text-xs px-3">
                 <Link2 className="w-3.5 h-3.5 mr-1.5" />{copied ? "Copied!" : "Copy Link"}
               </Button>
+              {qr.ekqrOrderId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSync}
+                  disabled={syncMutation.isPending}
+                  className="h-7 text-xs px-3 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                  title={`Sync EKQR status for order ${qr.ekqrOrderId}`}
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+                  {syncMutation.isPending ? "Syncing…" : "Sync Status"}
+                </Button>
+              )}
             </div>
+            {syncResult && (
+              <p className="text-xs text-yellow-400/80 mt-2 font-mono">{syncResult}</p>
+            )}
 
             <PaymentActivity qrId={qr.id} />
           </div>

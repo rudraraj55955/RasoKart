@@ -2655,6 +2655,7 @@ export const ListQrCodesResponse = zod.object({
   "expiresAt": zod.string().nullish(),
   "status": zod.enum(['active', 'inactive', 'expired', 'used']),
   "scanCount": zod.number().describe('Number of times this QR code was used for a payment'),
+  "ekqrOrderId": zod.string().nullish().describe('EKQR client_txn_id if this QR was created via EKQR'),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })),
@@ -2752,6 +2753,7 @@ export const GetQrCodeResponse = zod.object({
   "expiresAt": zod.string().nullish(),
   "status": zod.enum(['active', 'inactive', 'expired', 'used']),
   "scanCount": zod.number().describe('Number of times this QR code was used for a payment'),
+  "ekqrOrderId": zod.string().nullish().describe('EKQR client_txn_id if this QR was created via EKQR'),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
@@ -2785,6 +2787,7 @@ export const UpdateQrCodeResponse = zod.object({
   "expiresAt": zod.string().nullish(),
   "status": zod.enum(['active', 'inactive', 'expired', 'used']),
   "scanCount": zod.number().describe('Number of times this QR code was used for a payment'),
+  "ekqrOrderId": zod.string().nullish().describe('EKQR client_txn_id if this QR was created via EKQR'),
   "createdAt": zod.string(),
   "updatedAt": zod.string().optional()
 })
@@ -5180,6 +5183,53 @@ export const TestEkqrConnectionResponse = zod.object({
   "ok": zod.boolean().describe('Whether the EKQR API key is valid'),
   "msg": zod.string().describe('EKQR API response message'),
   "raw": zod.string().optional().describe('Raw EKQR API response body')
+})
+
+
+/**
+ * @summary Fire a synthetic EKQR SUCCESS webhook through the processing pipeline
+ */
+export const TestEkqrWebhookResponse = zod.object({
+  "clientTxnId": zod.string().describe('Synthetic client_txn_id used (TEST-{timestamp})'),
+  "ekqrEnabled": zod.boolean(),
+  "processingResult": zod.enum(['credited', 'duplicate', 'ignored', 'error']),
+  "errorMessage": zod.string().nullish(),
+  "logId": zod.number().nullish().describe('ID of the ekqr_webhook_logs row written'),
+  "syntheticPayload": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+
+/**
+ * @summary List EKQR incoming webhook log entries (admin only)
+ */
+export const listEkqrWebhookLogsQueryPageDefault = 1;
+export const listEkqrWebhookLogsQueryLimitDefault = 50;
+
+export const ListEkqrWebhookLogsQueryParams = zod.object({
+  "page": zod.coerce.number().default(listEkqrWebhookLogsQueryPageDefault),
+  "limit": zod.coerce.number().default(listEkqrWebhookLogsQueryLimitDefault),
+  "processingResult": zod.enum(['credited', 'duplicate', 'ignored', 'error']).optional(),
+  "merchantId": zod.coerce.number().optional(),
+  "dateFrom": zod.date().optional(),
+  "dateTo": zod.date().optional()
+})
+
+export const ListEkqrWebhookLogsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "receivedAt": zod.coerce.date(),
+  "clientTxnId": zod.string(),
+  "qrCodeId": zod.number().nullish(),
+  "merchantId": zod.number().nullish(),
+  "status": zod.string().nullish().describe('Raw EKQR status string (SUCCESS|FAILED|PENDING)'),
+  "amount": zod.string().nullish(),
+  "rawPayload": zod.string(),
+  "processingResult": zod.enum(['credited', 'duplicate', 'ignored', 'error']),
+  "errorMessage": zod.string().nullish()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
 })
 
 

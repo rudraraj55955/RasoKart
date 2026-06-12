@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useListCallbackLogs, useGetWebhookLogAttempts, useGetWebhookRetryPolicy } from "@workspace/api-client-react";
+import { useListCallbackLogs, useGetWebhookLogAttempts, useGetWebhookRetryPolicy, useListEkqrWebhookLogs } from "@workspace/api-client-react";
 import type { CallbackLogAttempt, WebhookRetryPolicy } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import { Activity, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Info, ListOrdered, Loader2, RefreshCw, Search, XCircle } from "lucide-react";
+import { Activity, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Info, ListOrdered, Loader2, RefreshCw, Search, XCircle, Zap } from "lucide-react";
 import { format } from "date-fns";
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -221,11 +221,226 @@ function WebhookRow({ log }: { log: any }) {
   );
 }
 
+function processingResultBadge(result: string) {
+  if (result === "credited") return <Badge className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">credited</Badge>;
+  if (result === "duplicate") return <Badge className="text-xs bg-amber-500/10 text-amber-400 border-amber-500/20">duplicate</Badge>;
+  if (result === "error") return <Badge className="text-xs bg-rose-500/10 text-rose-400 border-rose-500/20">error</Badge>;
+  return <Badge className="text-xs bg-muted/50 text-muted-foreground border-border/30">ignored</Badge>;
+}
+
+function EkqrWebhookRow({ log }: { log: any }) {
+  const [open, setOpen] = useState(false);
+
+  const tryParse = (s: string | null) => {
+    if (!s) return null;
+    try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
+  };
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <TableRow className="cursor-pointer" onClick={() => setOpen(!open)}>
+        <TableCell className="w-8">
+          {open
+            ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {format(new Date(log.receivedAt), "MMM d, HH:mm:ss")}
+        </TableCell>
+        <TableCell className="font-mono text-xs max-w-[160px]">
+          <span className="truncate block" title={log.clientTxnId}>{log.clientTxnId}</span>
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {log.merchantId != null ? `#${log.merchantId}` : <span className="italic">—</span>}
+        </TableCell>
+        <TableCell className="font-mono text-sm">
+          {log.amount != null ? `₹${parseFloat(log.amount).toLocaleString("en-IN")}` : <span className="text-muted-foreground text-xs">—</span>}
+        </TableCell>
+        <TableCell>
+          <Badge className="text-xs font-mono">{log.status ?? "—"}</Badge>
+        </TableCell>
+        <TableCell>{processingResultBadge(log.processingResult)}</TableCell>
+      </TableRow>
+      <CollapsibleContent asChild>
+        <TableRow>
+          <TableCell colSpan={7} className="bg-muted/20 pb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2 pt-2">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Raw Payload</p>
+                <pre className="text-xs bg-background/50 rounded p-3 overflow-x-auto border border-border/50 whitespace-pre-wrap max-h-64">
+                  {tryParse(log.rawPayload) || "—"}
+                </pre>
+              </div>
+              {(log.errorMessage || log.qrCodeId != null) && (
+                <div className="space-y-3">
+                  {log.qrCodeId != null && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">QR Code</p>
+                      <span className="font-mono text-xs text-foreground/80">#{log.qrCodeId}</span>
+                    </div>
+                  )}
+                  {log.errorMessage && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">Note</p>
+                      <p className="text-xs text-amber-400/80">{log.errorMessage}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </TableCell>
+        </TableRow>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function EkqrWebhookLogsTab() {
+  const [processingResult, setProcessingResult] = useState("all");
+  const [page, setPage] = useState(1);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const { data, isLoading } = useListEkqrWebhookLogs({
+    processingResult: processingResult === "all" ? undefined : (processingResult as any),
+    page,
+    limit: 50,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  });
+
+  const items = data?.data ?? [];
+  const total = data?.total ?? 0;
+
+  const creditedCount = items.filter(r => r.processingResult === "credited").length;
+  const ignoredCount = items.filter(r => r.processingResult === "ignored").length;
+  const errorCount = items.filter(r => r.processingResult === "error").length;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Activity className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total Received</p>
+                <p className="text-lg font-bold">{total}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Credited</p>
+                <p className="text-lg font-bold">{creditedCount}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center">
+                <XCircle className="w-4 h-4 text-rose-500" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Errors / Ignored</p>
+                <p className="text-lg font-bold">{errorCount + ignoredCount}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Select value={processingResult} onValueChange={v => { setProcessingResult(v); setPage(1); }}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Results" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Results</SelectItem>
+                <SelectItem value="credited">Credited</SelectItem>
+                <SelectItem value="duplicate">Duplicate</SelectItem>
+                <SelectItem value="ignored">Ignored</SelectItem>
+                <SelectItem value="error">Error</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Date range:</span>
+              <Input type="date" className="h-9 text-sm w-36" value={dateFrom}
+                onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+              <span className="text-xs text-muted-foreground">to</span>
+              <Input type="date" className="h-9 text-sm w-36" value={dateTo}
+                onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8"></TableHead>
+                  <TableHead>Received At</TableHead>
+                  <TableHead>Client Txn ID</TableHead>
+                  <TableHead>Merchant</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>EKQR Status</TableHead>
+                  <TableHead>Result</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 7 }).map((_, j) => (
+                        <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : !items.length ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                      <Zap className="w-6 h-6 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No EKQR webhook logs found</p>
+                    </TableCell>
+                  </TableRow>
+                ) : items.map((log: any) => (
+                  <EkqrWebhookRow key={log.id} log={log} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {total > 50 && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">{total} total logs</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 50 >= total}>Next</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminWebhookLogs() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [sigVerified, setSigVerified] = useState("all");
   const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<"outgoing" | "ekqr">("outgoing");
 
   const sigVerifiedParam = sigVerified === "all" ? undefined : (sigVerified as any);
 
@@ -246,134 +461,161 @@ export default function AdminWebhookLogs() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Webhook Logs</h1>
-          <p className="text-muted-foreground mt-1">Monitor webhook delivery attempts and failures</p>
+          <p className="text-muted-foreground mt-1">Monitor webhook delivery attempts and EKQR incoming events</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => exportCsv(items)}>Export CSV</Button>
+        {activeTab === "outgoing" && (
+          <Button variant="outline" size="sm" onClick={() => exportCsv(items)}>Export CSV</Button>
+        )}
       </div>
 
-      <RetryPolicyBanner />
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Activity className="w-4 h-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Total Deliveries</p>
-                <p className="text-lg font-bold">{total}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Successful</p>
-                <p className="text-lg font-bold">{successCount}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center">
-                <XCircle className="w-4 h-4 text-rose-500" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Failed</p>
-                <p className="text-lg font-bold">{failedCount}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Tab switcher */}
+      <div className="flex gap-1 border-b border-border/50">
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === "outgoing" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("outgoing")}
+        >
+          Outgoing Callbacks
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${activeTab === "ekqr" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("ekqr")}
+        >
+          <Zap className="w-3.5 h-3.5" />
+          EKQR Incoming
+        </button>
       </div>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Search by URL..."
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
-              />
-            </div>
-            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
-              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="success">Success</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sigVerified} onValueChange={v => { setSigVerified(v); setPage(1); }}>
-              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Signatures</SelectItem>
-                <SelectItem value="verified">Sig. Verified</SelectItem>
-                <SelectItem value="failed">Sig. Failed</SelectItem>
-                <SelectItem value="none">No Signature</SelectItem>
-              </SelectContent>
-            </Select>
+      {activeTab === "ekqr" ? (
+        <EkqrWebhookLogsTab />
+      ) : (
+        <>
+          <RetryPolicyBanner />
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="border-border/50 bg-card/50">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Activity className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Deliveries</p>
+                    <p className="text-lg font-bold">{total}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border/50 bg-card/50">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Successful</p>
+                    <p className="text-lg font-bold">{successCount}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border/50 bg-card/50">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center">
+                    <XCircle className="w-4 h-4 text-rose-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Failed</p>
+                    <p className="text-lg font-bold">{failedCount}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8"></TableHead>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Merchant</TableHead>
-                  <TableHead>Endpoint URL</TableHead>
-                  <TableHead>HTTP</TableHead>
-                  <TableHead>Attempts</TableHead>
-                  <TableHead>Signature</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <TableRow key={i}>
-                      {Array.from({ length: 9 }).map((_, j) => (
-                        <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
-                      ))}
+
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search by URL..."
+                    value={search}
+                    onChange={e => { setSearch(e.target.value); setPage(1); }}
+                  />
+                </div>
+                <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+                  <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="success">Success</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sigVerified} onValueChange={v => { setSigVerified(v); setPage(1); }}>
+                  <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Signatures</SelectItem>
+                    <SelectItem value="verified">Sig. Verified</SelectItem>
+                    <SelectItem value="failed">Sig. Failed</SelectItem>
+                    <SelectItem value="none">No Signature</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8"></TableHead>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Merchant</TableHead>
+                      <TableHead>Endpoint URL</TableHead>
+                      <TableHead>HTTP</TableHead>
+                      <TableHead>Attempts</TableHead>
+                      <TableHead>Signature</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Date</TableHead>
                     </TableRow>
-                  ))
-                ) : !items.length ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
-                      No webhook logs found
-                    </TableCell>
-                  </TableRow>
-                ) : items.map((c: any) => (
-                  <WebhookRow key={c.id} log={c} />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoading ? (
+                      Array.from({ length: 6 }).map((_, i) => (
+                        <TableRow key={i}>
+                          {Array.from({ length: 9 }).map((_, j) => (
+                            <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : !items.length ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center text-muted-foreground py-12">
+                          No webhook logs found
+                        </TableCell>
+                      </TableRow>
+                    ) : items.map((c: any) => (
+                      <WebhookRow key={c.id} log={c} />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
 
-      {total > 20 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">{total} total logs</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>
-            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 20 >= total}>Next</Button>
-          </div>
-        </div>
+          {total > 20 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">{total} total logs</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 20 >= total}>Next</Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

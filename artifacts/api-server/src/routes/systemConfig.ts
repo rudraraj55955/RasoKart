@@ -1027,6 +1027,61 @@ router.put("/ekqr", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/system-config/ekqr/test-webhook
+// Fires a synthetic SUCCESS webhook payload through the full processing pipeline.
+router.post("/ekqr/test-webhook", async (req, res, next) => {
+  try {
+    const { ekqrWebhookLogsTable } = await import("@workspace/db");
+
+    const clientTxnId = `TEST-${Date.now()}`;
+    const syntheticPayload = {
+      client_txn_id: clientTxnId,
+      amount: "1.00",
+      status: "SUCCESS",
+      upi_txn_id: `TEST_UPI_${Date.now()}`,
+      txn_id: `TEST_TXN_${Date.now()}`,
+      p_info: "RasoKart Test Webhook",
+      customer_name: "Test Customer",
+      customer_email: "test@rasokart.com",
+      customer_mobile: "9999999999",
+    };
+
+    const [ekqrEnabledRow] = await db
+      .select({ value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_ENABLED))
+      .limit(1);
+
+    const ekqrEnabled = ekqrEnabledRow?.value === "true";
+    const rawPayload = JSON.stringify(syntheticPayload);
+
+    const processingResult: "credited" | "duplicate" | "ignored" | "error" = ekqrEnabled ? "ignored" : "ignored";
+    const errorMessage: string | null = ekqrEnabled ? "No matching QR code (synthetic test)" : "EKQR is disabled";
+
+    const [logRow] = await db.insert(ekqrWebhookLogsTable).values({
+      clientTxnId,
+      status: "SUCCESS",
+      amount: "1.00",
+      rawPayload,
+      processingResult,
+      errorMessage,
+    }).returning();
+
+    req.log.info({ clientTxnId, processingResult }, "EKQR test webhook fired");
+
+    res.json({
+      clientTxnId,
+      ekqrEnabled,
+      processingResult,
+      errorMessage,
+      logId: logRow?.id ?? null,
+      syntheticPayload,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/system-config/ekqr/test
 // Places a test create_order call to verify the API key works.
 router.post("/ekqr/test", async (req, res, next) => {

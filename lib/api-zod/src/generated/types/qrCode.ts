@@ -30,6 +30,11 @@ export interface QrCode {
   status: QrCodeStatus;
   /** Number of times this QR code was used for a payment */
   scanCount: number;
+  /**
+     * EKQR client_txn_id if this QR was created via EKQR
+     * @nullable
+     */
+  ekqrOrderId?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
