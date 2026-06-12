@@ -2177,9 +2177,13 @@ function SecurityEventsPanel() {
   );
 }
 
+type ComplianceSortKey = "lastLoginAt" | "lastExportedAt";
+
 function CompliancePanel() {
   const [statusFilter, setStatusFilter] = useState<"all" | "exported" | "never" | "inactive">("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [sortKey, setSortKey] = useState<ComplianceSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useGetSecurityComplianceSummary(
@@ -2193,6 +2197,58 @@ function CompliancePanel() {
   const exportedCount = data?.exportedCount ?? 0;
   const neverCount = data?.neverCount ?? 0;
   const inactiveCount = (data as any)?.inactiveCount ?? 0;
+
+  const sortedRows = useMemo(() => {
+    if (!sortKey) return rows as any[];
+    return [...(rows as any[])].sort((a, b) => {
+      const av = a[sortKey] ? new Date(a[sortKey]).getTime() : -Infinity;
+      const bv = b[sortKey] ? new Date(b[sortKey]).getTime() : -Infinity;
+      return sortDir === "asc" ? av - bv : bv - av;
+    });
+  }, [rows, sortKey, sortDir]);
+
+  function handleSortToggle(key: ComplianceSortKey) {
+    if (sortKey === key) {
+      setSortDir(d => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
+
+  function handleExportCsv() {
+    function escapeCsv(val: string | null | undefined): string {
+      if (val == null) return "";
+      let s = String(val);
+      // Neutralize spreadsheet formula injection: prefix with a single quote
+      // when the value starts with =, +, -, @, tab, or carriage return so that
+      // Excel / Sheets treats it as plain text rather than a formula.
+      if (/^[=+\-@\t\r]/.test(s)) {
+        s = `'${s}`;
+      }
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    }
+    const header = ["Merchant ID", "Business Name", "Email", "Last Login At", "Last Export At", "Is Inactive"];
+    const csvRows = (rows as any[]).map(r => [
+      escapeCsv(String(r.merchantId)),
+      escapeCsv(r.businessName),
+      escapeCsv(r.email),
+      escapeCsv(r.lastLoginAt ?? null),
+      escapeCsv(r.lastExportedAt ?? null),
+      escapeCsv(r.isInactive ? "true" : "false"),
+    ].join(","));
+    const csv = [header.join(","), ...csvRows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `compliance-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   const FILTER_BUTTONS: { value: typeof statusFilter; label: string; activeClass: string }[] = [
     { value: "all",      label: "All",           activeClass: "bg-primary/15 border-primary/40 text-primary" },
@@ -2322,6 +2378,16 @@ function CompliancePanel() {
                   {label}
                 </button>
               ))}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-3 text-xs gap-1.5"
+                onClick={handleExportCsv}
+                disabled={isLoading || rows.length === 0}
+              >
+                <FileDown className="w-3 h-3" />
+                Export CSV
+              </Button>
               {canRemindSelected ? (
                 <Button
                   size="sm"
@@ -2373,8 +2439,34 @@ function CompliancePanel() {
                   <TableHead>Merchant</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Last Login</TableHead>
-                  <TableHead>Last Export</TableHead>
+                  <TableHead>
+                    <button
+                      onClick={() => handleSortToggle("lastLoginAt")}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors group"
+                    >
+                      Last Login
+                      {sortKey === "lastLoginAt"
+                        ? sortDir === "desc"
+                          ? <ChevronDown className="w-3.5 h-3.5" />
+                          : <ChevronUp className="w-3.5 h-3.5" />
+                        : <ChevronDown className="w-3.5 h-3.5 opacity-30 group-hover:opacity-60" />
+                      }
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      onClick={() => handleSortToggle("lastExportedAt")}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors group"
+                    >
+                      Last Export
+                      {sortKey === "lastExportedAt"
+                        ? sortDir === "desc"
+                          ? <ChevronDown className="w-3.5 h-3.5" />
+                          : <ChevronUp className="w-3.5 h-3.5" />
+                        : <ChevronDown className="w-3.5 h-3.5 opacity-30 group-hover:opacity-60" />
+                      }
+                    </button>
+                  </TableHead>
                   <TableHead className="w-20" />
                 </TableRow>
               </TableHeader>
@@ -2396,7 +2488,7 @@ function CompliancePanel() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : rows.map((row: any) => {
+                ) : sortedRows.map((row: any) => {
                   const isNever = row.status === "never";
                   const isChecked = selected.has(row.merchantId);
                   return (
