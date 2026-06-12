@@ -20,6 +20,7 @@ const QR_PROVIDERS = [
   { value: "yono_sbi",      label: "YONO SBI",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   { value: "hdfc_smarthub", label: "HDFC SmartHub",  color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   { value: "upi_id",        label: "UPI ID",         color: "bg-primary/10 text-primary border-primary/20" },
+  { value: "ekqr",          label: "EKQR / UPI",     color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
 ];
 
 function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }

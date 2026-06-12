@@ -13,8 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { Link } from "wouter";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search, GripVertical, Megaphone } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Users, Globe, RefreshCw, Search, GripVertical, Megaphone, Settings } from "lucide-react";
 import { RateLimitBanner, useRateLimit } from "@/components/ui/rate-limit-banner";
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -444,6 +445,13 @@ export default function AdminProviders() {
                       <TableCell className="text-sm text-muted-foreground">{p.sortOrder}</TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
+                          {p.slug === "ekqr" && (
+                            <Link href="/admin/settings">
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-teal-400 hover:text-teal-300" title="EKQR Settings">
+                                <Settings className="w-3.5 h-3.5" />
+                              </Button>
+                            </Link>
+                          )}
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Manage visibility" onClick={() => { setVisDrawer(p); setSelectedMerchants(new Set()); setMerchantSearch(""); }}>
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
