@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable } from "@workspace/db";
 import { dbRateLimitStore } from "../lib/rateLimitStore";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, count, desc } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
@@ -12,6 +12,8 @@ import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
 const router = Router();
 
 const JWT_SECRET = process.env.SESSION_SECRET || "rasokart-secret-key-change-in-production";
+
+const MAX_TRUSTED_IPS = 20;
 
 const loginLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
@@ -212,6 +214,16 @@ router.get("/trust-ip", async (req, res) => {
       .limit(1);
 
     if (existing.length === 0) {
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(merchantTrustedIpsTable)
+        .where(eq(merchantTrustedIpsTable.merchantId, user.merchantId));
+
+      if (total >= MAX_TRUSTED_IPS) {
+        res.status(429).send(htmlPage(false, `You have reached the maximum of ${MAX_TRUSTED_IPS} trusted IP addresses. Please remove some from your security settings before adding new ones.`));
+        return;
+      }
+
       await db.insert(merchantTrustedIpsTable).values({
         userId: user.id,
         merchantId: user.merchantId,
