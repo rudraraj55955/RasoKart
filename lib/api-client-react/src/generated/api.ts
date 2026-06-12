@@ -40,6 +40,7 @@ import type {
   AssignPlanInput,
   AuditReportEmailPreview,
   AuditReportRetentionConfig,
+  AuditReportRetentionRunResult,
   AuditReportSchedule,
   AuditReportScheduleInput,
   AuditReportScheduleListResponse,
@@ -15625,6 +15626,76 @@ export const useUpdateAuditReportRetentionConfig = <TError = ErrorType<ErrorResp
         TContext
       > => {
       return useMutation(getUpdateAuditReportRetentionConfigMutationOptions(options));
+    }
+
+export const getRunAuditReportRetentionCleanupUrl = () => {
+
+
+
+
+  return `/api/system-config/audit-report-retention/run`
+}
+
+/**
+ * @summary Immediately run the audit report log retention cleanup (admin only)
+ */
+export const runAuditReportRetentionCleanup = async ( options?: RequestInit): Promise<AuditReportRetentionRunResult> => {
+
+  return customFetch<AuditReportRetentionRunResult>(getRunAuditReportRetentionCleanupUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunAuditReportRetentionCleanupMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAuditReportRetentionCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runAuditReportRetentionCleanup>>, TError,void, TContext> => {
+
+const mutationKey = ['runAuditReportRetentionCleanup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runAuditReportRetentionCleanup>>, void> = () => {
+
+
+          return  runAuditReportRetentionCleanup(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunAuditReportRetentionCleanupMutationResult = NonNullable<Awaited<ReturnType<typeof runAuditReportRetentionCleanup>>>
+
+    export type RunAuditReportRetentionCleanupMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Immediately run the audit report log retention cleanup (admin only)
+ */
+export const useRunAuditReportRetentionCleanup = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAuditReportRetentionCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runAuditReportRetentionCleanup>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunAuditReportRetentionCleanupMutationOptions(options));
     }
 
 export const getGetCleanupStatsUrl = () => {

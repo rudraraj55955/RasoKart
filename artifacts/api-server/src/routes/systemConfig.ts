@@ -8,7 +8,7 @@ import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays, loadQrCleanupLastRun, runQrCleanup, loadQrCleanupHistory } from "../helpers/qrCleanupScheduler";
 import { loadVaCleanupRetentionDays, loadVaCleanupLastRun, runVaCleanup, loadVaCleanupHistory } from "../helpers/vaCleanupScheduler";
 import { loadTestEmailRetentionDays, runTestEmailRetentionCleanup } from "../helpers/testEmailRetentionScheduler";
-import { loadAuditReportLogRetentionDays } from "../helpers/auditReportRetentionScheduler";
+import { loadAuditReportLogRetentionDays, runAuditReportLogCleanup } from "../helpers/auditReportRetentionScheduler";
 import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 
 const router = Router();
@@ -465,6 +465,17 @@ router.post("/test-email-retention/run", async (req, res, next) => {
   try {
     const { deleted } = await runTestEmailRetentionCleanup();
     req.log.info({ deleted }, "Test email history retention cleanup triggered manually");
+    res.json({ deleted });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/system-config/audit-report-retention/run
+router.post("/audit-report-retention/run", async (req, res, next) => {
+  try {
+    const { deleted } = await runAuditReportLogCleanup();
+    req.log.info({ deleted }, "Audit report log retention cleanup triggered manually");
     res.json({ deleted });
   } catch (err) {
     next(err);

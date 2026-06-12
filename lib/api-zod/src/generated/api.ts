@@ -4760,6 +4760,14 @@ export const UpdateAuditReportRetentionConfigResponse = zod.object({
 
 
 /**
+ * @summary Immediately run the audit report log retention cleanup (admin only)
+ */
+export const RunAuditReportRetentionCleanupResponse = zod.object({
+  "deleted": zod.number().describe('Number of audit report log rows deleted by this cleanup run.')
+})
+
+
+/**
  * @summary Get last cleanup run time and rows deleted for each cleanup job (admin only)
  */
 export const GetCleanupStatsResponse = zod.object({

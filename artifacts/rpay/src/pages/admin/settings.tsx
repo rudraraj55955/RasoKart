@@ -10,7 +10,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useGetCleanupStats, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, useTestEkqrWebhook, getGetEkqrConfigQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, useTestEkqrWebhook, getGetEkqrConfigQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -596,6 +596,19 @@ export default function AdminSettings() {
         toast.info("Cleanup complete — no rows to delete.");
       } else {
         toast.success(`Cleanup complete — deleted ${res.deleted} test email history row${res.deleted === 1 ? "" : "s"}.`);
+      }
+    },
+    onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
+  });
+
+  const { mutate: runAuditReportRetentionCleanup, isPending: runningAuditReportCleanup } = useMutation({
+    mutationFn: () => apiPost("/system-config/audit-report-retention/run"),
+    onSuccess: (res: { deleted: number }) => {
+      qc.invalidateQueries({ queryKey: getGetCleanupStatsQueryKey() });
+      if (res.deleted === 0) {
+        toast.info("Cleanup complete — no rows to delete.");
+      } else {
+        toast.success(`Cleanup complete — deleted ${res.deleted} audit report log row${res.deleted === 1 ? "" : "s"}.`);
       }
     },
     onError: (err: Error) => toast.error(`Cleanup failed: ${err.message}`),
@@ -2018,6 +2031,15 @@ export default function AdminSettings() {
                 Cancel
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => runAuditReportRetentionCleanup()}
+              disabled={runningAuditReportCleanup || auditLogRetentionLoading}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+              {runningAuditReportCleanup ? "Running…" : "Run cleanup now"}
+            </Button>
           </div>
         </CardContent>
       </Card>

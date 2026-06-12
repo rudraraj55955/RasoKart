@@ -35,6 +35,7 @@ export * from './apiMonitoringStatsRecentErrorsItem';
 export * from './assignPlanInput';
 export * from './auditReportEmailPreview';
 export * from './auditReportRetentionConfig';
+export * from './auditReportRetentionRunResult';
 export * from './auditReportSchedule';
 export * from './auditReportScheduleFrequency';
 export * from './auditReportScheduleInput';

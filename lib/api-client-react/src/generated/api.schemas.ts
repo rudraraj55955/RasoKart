@@ -2654,6 +2654,11 @@ export interface AuditReportRetentionConfig {
   retentionDays: number;
 }
 
+export interface AuditReportRetentionRunResult {
+  /** Number of audit report log rows deleted by this cleanup run. */
+  deleted: number;
+}
+
 export interface CleanupJobStats {
   /** ISO timestamp of the last completed cleanup run, or null if never run. */
   lastRunAt?: string | null;

@@ -4867,6 +4867,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /system-config/audit-report-retention/run:
+    post:
+      operationId: runAuditReportRetentionCleanup
+      tags: [system-config]
+      summary: Immediately run the audit report log retention cleanup (admin only)
+      responses:
+        "200":
+          description: Cleanup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReportRetentionRunResult"
+
   /system-config/cleanup-stats:
     get:
       operationId: getCleanupStats
@@ -9047,6 +9060,14 @@ components:
           description: >
             Days to retain scheduled audit report delivery logs before auto-deleting them.
             Set to 0 to disable automatic cleanup.
+
+    AuditReportRetentionRunResult:
+      type: object
+      required: [deleted]
+      properties:
+        deleted:
+          type: integer
+          description: Number of audit report log rows deleted by this cleanup run.
 
     CleanupJobStats:
       type: object
