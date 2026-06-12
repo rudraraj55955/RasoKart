@@ -93,10 +93,6 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
 }
 
 function MerchantRoute({ component: Component }: { component: React.ComponentType }) {
-  const { user } = useAuth();
-  if (user?.merchantStatus === "suspended") {
-    return <MerchantSuspended />;
-  }
   return (
     <ProtectedRoute allowedRoles={[UserRole.merchant]}>
       <DashboardLayout>

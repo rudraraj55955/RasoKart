@@ -4,7 +4,7 @@ import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useG
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, X, Download } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, X, Download, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
@@ -12,6 +12,37 @@ import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { Card, CardContent } from "@/components/ui/card";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { InstallAppButton } from "@/components/ui/install-app-banner";
+
+function SuspensionBanner() {
+  const { user, logout } = useAuth();
+
+  if (user?.role !== UserRole.merchant || user?.merchantStatus !== "suspended") return null;
+
+  return (
+    <div className="border border-red-500/40 bg-red-950/20 rounded-lg mb-6 p-4 flex items-start gap-3">
+      <ShieldOff className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-red-400 font-semibold">Account Suspended</p>
+        <p className="text-xs text-red-400/80 mt-0.5 leading-relaxed">
+          Your merchant account has been suspended. Access to payments and account features is restricted.
+          Please contact our support team at{" "}
+          <a href="mailto:support@rasokart.com" className="underline underline-offset-2 hover:text-red-300">
+            support@rasokart.com
+          </a>{" "}
+          with your registered email address for assistance.
+        </p>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        className="border-red-500/30 text-red-400 hover:bg-red-500/10 shrink-0"
+        onClick={logout}
+      >
+        Sign Out
+      </Button>
+    </div>
+  );
+}
 
 const CALLBACK_BANNER_SESSION_KEY = "rasokart_callback_banner_dismissed";
 
@@ -426,6 +457,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
 
           {/* Page content */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
+            {!publicMode && !isAdmin && <SuspensionBanner />}
             {!publicMode && !isAdmin && <CallbackSecretBanner />}
             {children}
           </div>
