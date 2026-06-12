@@ -62,7 +62,7 @@ async function logPlanHistory(opts: {
 
 // GET /api/merchants
 router.get("/", requireAdmin, async (req, res) => {
-  const { status, search, page = "1", limit = "20", expiryStatus, rejectionReason, callbackSecretSet, loginAlertEmails } = req.query as Record<string, string>;
+  const { status, search, page = "1", limit = "20", expiryStatus, rejectionReason, callbackSecretSet, loginAlertEmails, securityEmailsDisabled } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -92,6 +92,14 @@ router.get("/", requireAdmin, async (req, res) => {
   } else if (loginAlertEmails === "true") {
     conditions.push(eq(usersTable.loginAlertEmails, true));
   }
+  if (securityEmailsDisabled === "true") {
+    conditions.push(or(
+      eq(usersTable.signatureFailureAlertEmails, false),
+      eq(usersTable.webhookFailureEmails, false),
+      eq(usersTable.apiKeyGeneratedEmails, false),
+      eq(usersTable.apiKeyRevokedEmails, false),
+    )!);
+  }
 
   const planConditions = [];
   if (expiryStatus === "expired") {
@@ -106,7 +114,7 @@ router.get("/", requireAdmin, async (req, res) => {
   const allConditions = [...conditions, ...planConditions];
   const where = allConditions.length > 0 ? and(...allConditions) : undefined;
 
-  const needsUserJoin = loginAlertEmails === "true" || loginAlertEmails === "false";
+  const needsUserJoin = loginAlertEmails === "true" || loginAlertEmails === "false" || securityEmailsDisabled === "true";
 
   let total: number;
   if (planConditions.length > 0 || needsUserJoin) {
@@ -129,6 +137,10 @@ router.get("/", requireAdmin, async (req, res) => {
       currentPlanStatus: merchantPlansTable.status,
       currentPlanExpiresAt: merchantPlansTable.expiresAt,
       loginAlertEmails: usersTable.loginAlertEmails,
+      signatureFailureAlertEmails: usersTable.signatureFailureAlertEmails,
+      webhookFailureEmails: usersTable.webhookFailureEmails,
+      apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
+      apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
     })
     .from(merchantsTable)
     .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
@@ -150,6 +162,10 @@ router.get("/", requireAdmin, async (req, res) => {
         currentPlanExpiresAt: expiresAt ? expiresAt.toISOString() : null,
         currentPlanIsExpired: isExpired,
         loginAlertEmails: r.loginAlertEmails ?? true,
+        signatureFailureAlertEmails: r.signatureFailureAlertEmails ?? true,
+        webhookFailureEmails: r.webhookFailureEmails ?? true,
+        apiKeyGeneratedEmails: r.apiKeyGeneratedEmails ?? true,
+        apiKeyRevokedEmails: r.apiKeyRevokedEmails ?? true,
       };
     }),
     total,
@@ -202,13 +218,27 @@ router.get("/:id", async (req, res) => {
     return;
   }
   const [row] = await db
-    .select({ merchant: merchantsTable, loginAlertEmails: usersTable.loginAlertEmails })
+    .select({
+      merchant: merchantsTable,
+      loginAlertEmails: usersTable.loginAlertEmails,
+      signatureFailureAlertEmails: usersTable.signatureFailureAlertEmails,
+      webhookFailureEmails: usersTable.webhookFailureEmails,
+      apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
+      apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
+    })
     .from(merchantsTable)
     .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
     .where(eq(merchantsTable.id, id))
     .limit(1);
   if (!row) { res.status(404).json({ error: "Merchant not found" }); return; }
-  res.json({ ...serializeMerchant(row.merchant), loginAlertEmails: row.loginAlertEmails ?? true });
+  res.json({
+    ...serializeMerchant(row.merchant),
+    loginAlertEmails: row.loginAlertEmails ?? true,
+    signatureFailureAlertEmails: row.signatureFailureAlertEmails ?? true,
+    webhookFailureEmails: row.webhookFailureEmails ?? true,
+    apiKeyGeneratedEmails: row.apiKeyGeneratedEmails ?? true,
+    apiKeyRevokedEmails: row.apiKeyRevokedEmails ?? true,
+  });
 });
 
 // PATCH /api/merchants/:id/branding  (merchant updates own, admin updates any)

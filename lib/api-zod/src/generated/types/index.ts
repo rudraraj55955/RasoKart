@@ -165,6 +165,7 @@ export * from './listMerchantsCallbackSecretSet';
 export * from './listMerchantsExpiryStatus';
 export * from './listMerchantsLoginAlertEmails';
 export * from './listMerchantsParams';
+export * from './listMerchantsSecurityEmailsDisabled';
 export * from './listMerchantsStatus';
 export * from './listMySecurityActivityParams';
 export * from './listNotificationsIsRead';

@@ -207,6 +207,7 @@ export default function AdminMerchants() {
   const [rejectionReasonFilter, setRejectionReasonFilter] = useState("");
   const [callbackSecretFilter, setCallbackSecretFilter] = useState<"" | "true" | "false">("");
   const [loginAlertFilter, setLoginAlertFilter] = useState<"" | "false">("");
+  const [securityEmailsDisabledFilter, setSecurityEmailsDisabledFilter] = useState<"" | "true">("");
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -230,7 +231,7 @@ export default function AdminMerchants() {
     },
     onError: () => toast.error("Logo upload failed"),
   });
-  const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string; callbackTimestampWindowSeconds?: number | null; loginAlertEmails?: boolean } | null>(null);
+  const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string; callbackTimestampWindowSeconds?: number | null; loginAlertEmails?: boolean; signatureFailureAlertEmails?: boolean; webhookFailureEmails?: boolean; apiKeyGeneratedEmails?: boolean; apiKeyRevokedEmails?: boolean } | null>(null);
   const [windowEditMode, setWindowEditMode] = useState(false);
   const [windowInput, setWindowInput] = useState("");
   const [retriesEditMode, setRetriesEditMode] = useState(false);
@@ -303,7 +304,7 @@ export default function AdminMerchants() {
   const [bulkUndoSecondsLeft, setBulkUndoSecondsLeft] = useState(0);
   const [bulkUndoUsed, setBulkUndoUsed] = useState(false);
 
-  const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined, callbackSecretSet: callbackSecretFilter as any || undefined, loginAlertEmails: loginAlertFilter as any || undefined });
+  const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined, callbackSecretSet: callbackSecretFilter as any || undefined, loginAlertEmails: loginAlertFilter as any || undefined, securityEmailsDisabled: securityEmailsDisabledFilter as any || undefined });
   const { data: plans } = useListPlans();
   const { data: currentMerchantPlan, isLoading: planLoading } = useGetMerchantPlan(
     assignPlanMerchant?.id ?? 0,
@@ -390,7 +391,7 @@ export default function AdminMerchants() {
   useEffect(() => {
     if (!deepLinkMerchant || deepLinkId == null || deepLinkOpenedRef.current) return;
     deepLinkOpenedRef.current = true;
-    openAssignPlan(deepLinkId, deepLinkMerchant.businessName, deepLinkMerchant.callbackTimestampWindowSeconds, deepLinkMerchant.loginAlertEmails);
+    openAssignPlan(deepLinkId, deepLinkMerchant.businessName, deepLinkMerchant.callbackTimestampWindowSeconds, deepLinkMerchant.loginAlertEmails, deepLinkMerchant.signatureFailureAlertEmails, deepLinkMerchant.webhookFailureEmails, deepLinkMerchant.apiKeyGeneratedEmails, deepLinkMerchant.apiKeyRevokedEmails);
   }, [deepLinkMerchant, deepLinkId]);
 
   // Scroll to Webhook Failure Alerts section when panel opens via badge click
@@ -625,8 +626,8 @@ export default function AdminMerchants() {
     });
   };
 
-  const openAssignPlan = (id: number, name: string, callbackTimestampWindowSeconds?: number | null, loginAlertEmails?: boolean) => {
-    setAssignPlanMerchant({ id, name, callbackTimestampWindowSeconds, loginAlertEmails });
+  const openAssignPlan = (id: number, name: string, callbackTimestampWindowSeconds?: number | null, loginAlertEmails?: boolean, signatureFailureAlertEmails?: boolean, webhookFailureEmails?: boolean, apiKeyGeneratedEmails?: boolean, apiKeyRevokedEmails?: boolean) => {
+    setAssignPlanMerchant({ id, name, callbackTimestampWindowSeconds, loginAlertEmails, signatureFailureAlertEmails, webhookFailureEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails });
     setWindowEditMode(false);
     setWindowInput("");
     setSelectedPlanId("");
@@ -1078,6 +1079,30 @@ export default function AdminMerchants() {
               Alerts Off
             </button>
           </div>
+          <div className="flex gap-1 flex-wrap items-center">
+            <span className="text-xs text-muted-foreground pr-1">Security Emails:</span>
+            <button
+              onClick={() => { setSecurityEmailsDisabledFilter(""); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                securityEmailsDisabledFilter === ""
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              Any
+            </button>
+            <button
+              onClick={() => { setSecurityEmailsDisabledFilter("true"); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                securityEmailsDisabledFilter === "true"
+                  ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              <BellOff className="w-3.5 h-3.5" />
+              Any Disabled
+            </button>
+          </div>
         </div>
         {(status === "rejected" || status === "all") && (
           <div className="relative max-w-sm">
@@ -1093,7 +1118,7 @@ export default function AdminMerchants() {
       </div>
 
       {/* Filter chips */}
-      {(!!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || !!callbackSecretFilter || !!loginAlertFilter) && (
+      {(!!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || !!callbackSecretFilter || !!loginAlertFilter || !!securityEmailsDisabledFilter) && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Filters:</span>
           {!!search && (
@@ -1188,6 +1213,19 @@ export default function AdminMerchants() {
                 onClick={() => { setLoginAlertFilter(""); setPage(1); }}
                 className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
                 aria-label="Clear login alert filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {securityEmailsDisabledFilter === "true" && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
+              <BellOff className="w-3 h-3" />
+              Security Email Disabled
+              <button
+                onClick={() => { setSecurityEmailsDisabledFilter(""); setPage(1); }}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
+                aria-label="Clear security emails filter"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -1339,7 +1377,7 @@ export default function AdminMerchants() {
                                   className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
                                   onClick={e => {
                                     e.stopPropagation();
-                                    openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails);
+                                    openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails, merchant.signatureFailureAlertEmails, merchant.webhookFailureEmails, merchant.apiKeyGeneratedEmails, merchant.apiKeyRevokedEmails);
                                     setScrollToAlerts(true);
                                   }}
                                   aria-label={`${webhookFailureCounts[merchant.id]} webhook failure alert${webhookFailureCounts[merchant.id] !== 1 ? "s" : ""}`}
@@ -1462,7 +1500,7 @@ export default function AdminMerchants() {
                           <ShieldCheck className="w-4 h-4 mr-1" /> Reinstate
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails)}>
+                      <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails, merchant.signatureFailureAlertEmails, merchant.webhookFailureEmails, merchant.apiKeyGeneratedEmails, merchant.apiKeyRevokedEmails)}>
                         <CreditCard className="w-4 h-4 mr-1" /> {merchant.currentPlanName ? "Change Plan" : "Assign Plan"}
                       </Button>
                       <Button size="sm" variant="ghost" className="text-violet-400 hover:bg-violet-500/10" onClick={() => openBranding(merchant)}>
@@ -2142,25 +2180,42 @@ export default function AdminMerchants() {
               </div>
             )}
 
-            {/* Login Alert Emails */}
+            {/* Security Email Preferences */}
             <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">
               <div className="flex items-center gap-2">
                 <BellOff className="w-4 h-4 text-muted-foreground shrink-0" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Login Alert Emails</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Security Email Preferences</p>
               </div>
-              {assignPlanMerchant?.loginAlertEmails === false ? (
-                <div className="flex items-center gap-2">
-                  <BellOff className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span className="text-xs text-amber-400 font-medium">Disabled</span>
-                  <span className="text-xs text-muted-foreground">— merchant will not receive login alerts</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="text-xs text-emerald-400 font-medium">Enabled</span>
-                  <span className="text-xs text-muted-foreground">— merchant receives login alerts</span>
-                </div>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { key: "loginAlertEmails", label: "Login Alerts" },
+                    { key: "signatureFailureAlertEmails", label: "Signature Failures" },
+                    { key: "webhookFailureEmails", label: "Webhook Failures" },
+                    { key: "apiKeyGeneratedEmails", label: "API Key Generated" },
+                    { key: "apiKeyRevokedEmails", label: "API Key Revoked" },
+                  ] as const
+                ).map(({ key, label }) => {
+                  const enabled = assignPlanMerchant?.[key] !== false;
+                  return (
+                    <span
+                      key={key}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border ${
+                        enabled
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                          : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                      }`}
+                    >
+                      {enabled ? (
+                        <CheckCircle className="w-3 h-3 shrink-0" />
+                      ) : (
+                        <BellOff className="w-3 h-3 shrink-0" />
+                      )}
+                      {label}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Callback Secret */}

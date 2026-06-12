@@ -42,5 +42,13 @@ export interface Merchant {
   currentPlanIsExpired?: boolean | null;
   /** Whether the merchant has enabled login alert emails. Defaults to true. */
   loginAlertEmails?: boolean;
+  /** Whether the merchant has enabled signature failure alert emails. Defaults to true. */
+  signatureFailureAlertEmails?: boolean;
+  /** Whether the merchant has enabled webhook failure alert emails. Defaults to true. */
+  webhookFailureEmails?: boolean;
+  /** Whether the merchant has enabled API key generated notification emails. Defaults to true. */
+  apiKeyGeneratedEmails?: boolean;
+  /** Whether the merchant has enabled API key revoked notification emails. Defaults to true. */
+  apiKeyRevokedEmails?: boolean;
   createdAt: string;
 }

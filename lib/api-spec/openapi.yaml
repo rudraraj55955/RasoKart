@@ -339,6 +339,12 @@ paths:
           schema:
             type: string
             enum: ["true", "false"]
+        - name: securityEmailsDisabled
+          in: query
+          description: When "true", return only merchants who have at least one security email alert disabled (signature failure, webhook failure, API key generated, or API key revoked).
+          schema:
+            type: string
+            enum: ["true"]
       responses:
         "200":
           description: List of merchants
@@ -6206,6 +6212,18 @@ components:
         loginAlertEmails:
           type: boolean
           description: Whether the merchant has enabled login alert emails. Defaults to true.
+        signatureFailureAlertEmails:
+          type: boolean
+          description: Whether the merchant has enabled signature failure alert emails. Defaults to true.
+        webhookFailureEmails:
+          type: boolean
+          description: Whether the merchant has enabled webhook failure alert emails. Defaults to true.
+        apiKeyGeneratedEmails:
+          type: boolean
+          description: Whether the merchant has enabled API key generated notification emails. Defaults to true.
+        apiKeyRevokedEmails:
+          type: boolean
+          description: Whether the merchant has enabled API key revoked notification emails. Defaults to true.
         createdAt:
           type: string
 

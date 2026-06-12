@@ -219,6 +219,14 @@ export interface Merchant {
   currentPlanIsExpired?: boolean | null;
   /** Whether the merchant has enabled login alert emails. Defaults to true. */
   loginAlertEmails?: boolean;
+  /** Whether the merchant has enabled signature failure alert emails. Defaults to true. */
+  signatureFailureAlertEmails?: boolean;
+  /** Whether the merchant has enabled webhook failure alert emails. Defaults to true. */
+  webhookFailureEmails?: boolean;
+  /** Whether the merchant has enabled API key generated notification emails. Defaults to true. */
+  apiKeyGeneratedEmails?: boolean;
+  /** Whether the merchant has enabled API key revoked notification emails. Defaults to true. */
+  apiKeyRevokedEmails?: boolean;
   createdAt: string;
 }
 
@@ -3122,6 +3130,10 @@ callbackSecretSet?: ListMerchantsCallbackSecretSet;
  * Filter by login alert email preference. "false" = alerts disabled, "true" = alerts enabled.
  */
 loginAlertEmails?: ListMerchantsLoginAlertEmails;
+/**
+ * When "true", return only merchants who have at least one security email alert disabled (signature failure, webhook failure, API key generated, or API key revoked).
+ */
+securityEmailsDisabled?: ListMerchantsSecurityEmailsDisabled;
 };
 
 export type ListMerchantsStatus = typeof ListMerchantsStatus[keyof typeof ListMerchantsStatus];
@@ -3156,6 +3168,13 @@ export type ListMerchantsLoginAlertEmails = typeof ListMerchantsLoginAlertEmails
 export const ListMerchantsLoginAlertEmails = {
   true: 'true',
   false: 'false',
+} as const;
+
+export type ListMerchantsSecurityEmailsDisabled = typeof ListMerchantsSecurityEmailsDisabled[keyof typeof ListMerchantsSecurityEmailsDisabled];
+
+
+export const ListMerchantsSecurityEmailsDisabled = {
+  true: 'true',
 } as const;
 
 export type GetMerchantsWebhookFailureCountsParams = {
