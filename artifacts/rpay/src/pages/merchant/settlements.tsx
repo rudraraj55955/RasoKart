@@ -18,10 +18,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Plus, CalendarRange, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, ChevronLeft, Clock, Plus, CalendarRange, X, Pencil, Trash2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getApiErrorMessage } from "@/lib/utils";
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { toast } from "sonner";
 
 const DATE_PRESETS = [
   {
@@ -110,11 +111,27 @@ export default function MerchantSettlements() {
   const [saveDatePresetNameError, setSaveDatePresetNameError] = useState("");
   const saveDatePresetNameRef = useRef<HTMLInputElement>(null);
 
+  // Rename state for custom date preset chips
+  const [renamingPresetId, setRenamingPresetId] = useState<string | null>(null);
+  const [renamePresetValue, setRenamePresetValue] = useState("");
+  const renamePresetInputRef = useRef<HTMLInputElement>(null);
+
+  // Drag-and-drop state for reordering custom date preset chips
+  const dragPresetIdRef = useRef<string | null>(null);
+  const [draggingPresetId, setDraggingPresetId] = useState<string | null>(null);
+  const [dragOverPresetId, setDragOverPresetId] = useState<string | null>(null);
+
   useEffect(() => {
     if (showSaveDatePreset) {
       setTimeout(() => saveDatePresetNameRef.current?.focus(), 50);
     }
   }, [showSaveDatePreset]);
+
+  useEffect(() => {
+    if (renamingPresetId) {
+      setTimeout(() => renamePresetInputRef.current?.focus(), 50);
+    }
+  }, [renamingPresetId]);
 
   const applyPreset = (preset: (typeof DATE_PRESETS)[number]) => {
     const { from, to } = preset.getRange();
@@ -184,7 +201,70 @@ export default function MerchantSettlements() {
     const updated = customDatePresets.filter(p => p.id !== id);
     setCustomDatePresets(updated);
     storeCustomDatePresets(updated);
+    if (renamingPresetId === id) setRenamingPresetId(null);
   };
+
+  const moveCustomDatePreset = (id: string, dir: -1 | 1) => {
+    const idx = customDatePresets.findIndex(p => p.id === id);
+    if (idx === -1) return;
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= customDatePresets.length) return;
+    const updated = [...customDatePresets];
+    [updated[idx], updated[newIdx]] = [updated[newIdx]!, updated[idx]!];
+    setCustomDatePresets(updated);
+    storeCustomDatePresets(updated);
+  };
+
+  const handlePresetDragStart = (id: string) => {
+    dragPresetIdRef.current = id;
+    setDraggingPresetId(id);
+  };
+  const handlePresetDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (dragPresetIdRef.current !== id) setDragOverPresetId(id);
+  };
+  const handlePresetDragLeave = () => { setDragOverPresetId(null); };
+  const handlePresetDrop = (targetId: string) => {
+    const sourceId = dragPresetIdRef.current;
+    setDragOverPresetId(null);
+    setDraggingPresetId(null);
+    dragPresetIdRef.current = null;
+    if (!sourceId || sourceId === targetId) return;
+    const fromIdx = customDatePresets.findIndex(p => p.id === sourceId);
+    const toIdx = customDatePresets.findIndex(p => p.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const updated = [...customDatePresets];
+    const [item] = updated.splice(fromIdx, 1);
+    updated.splice(toIdx, 0, item!);
+    setCustomDatePresets(updated);
+    storeCustomDatePresets(updated);
+  };
+  const handlePresetDragEnd = () => {
+    dragPresetIdRef.current = null;
+    setDraggingPresetId(null);
+    setDragOverPresetId(null);
+  };
+
+  const startRenamePreset = (preset: CustomDatePreset) => {
+    setRenamingPresetId(preset.id);
+    setRenamePresetValue(preset.name);
+  };
+
+  const commitRenamePreset = () => {
+    if (!renamingPresetId) return;
+    const trimmed = renamePresetValue.trim();
+    if (!trimmed) { setRenamingPresetId(null); return; }
+    if (customDatePresets.some(p => p.id !== renamingPresetId && p.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error("A preset with this name already exists.");
+      return;
+    }
+    const updated = customDatePresets.map(p => p.id === renamingPresetId ? { ...p, name: trimmed } : p);
+    setCustomDatePresets(updated);
+    storeCustomDatePresets(updated);
+    setRenamingPresetId(null);
+  };
+
+  const cancelRenamePreset = () => { setRenamingPresetId(null); };
 
   const isCustomDateRangeEntered = !!(dateFrom && dateTo);
   const isBuiltInPresetActive = DATE_PRESETS.some(p => {
@@ -343,40 +423,117 @@ export default function MerchantSettlements() {
                   {preset.label}
                 </Button>
               ))}
-              {customDatePresets.map(preset => (
+              {customDatePresets.map((preset, idx) => (
                 <span
                   key={preset.id}
-                  className={`group inline-flex items-center gap-1 rounded-md border text-xs font-medium transition-colors ${
+                  draggable={renamingPresetId !== preset.id}
+                  onDragStart={() => handlePresetDragStart(preset.id)}
+                  onDragOver={(e) => handlePresetDragOver(e, preset.id)}
+                  onDragLeave={handlePresetDragLeave}
+                  onDrop={() => handlePresetDrop(preset.id)}
+                  onDragEnd={handlePresetDragEnd}
+                  className={[
+                    "group inline-flex items-center gap-0.5 rounded-md border text-xs font-medium transition-colors select-none",
+                    renamingPresetId !== preset.id ? "cursor-grab active:cursor-grabbing" : "",
                     isCustomDatePresetActive(preset)
                       ? "border-primary/60 bg-primary/15 text-primary"
-                      : "border-sky-500/30 bg-sky-500/8 text-sky-300 hover:border-sky-500/60"
-                  }`}
+                      : "border-sky-500/30 bg-sky-500/8 text-sky-300 hover:border-sky-500/60",
+                    draggingPresetId === preset.id ? "opacity-40 scale-95" : "",
+                    dragOverPresetId === preset.id && draggingPresetId !== preset.id
+                      ? "ring-1 ring-sky-400 border-sky-500/60 bg-sky-500/15" : "",
+                  ].filter(Boolean).join(" ")}
                 >
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={() => applyCustomDatePreset(preset)}
-                          className="flex items-center gap-1 h-8 px-2.5 hover:text-sky-100 transition-colors"
-                        >
-                          <CalendarRange className="w-3 h-3 shrink-0" />
-                          {preset.name}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Query</p>
-                        <p className="font-mono text-xs">{preset.from} – {preset.to}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <button
-                    onClick={() => deleteCustomDatePreset(preset.id)}
-                    className="pr-1.5 rounded-r-md text-sky-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100 h-8 flex items-center"
-                    aria-label={`Remove preset "${preset.name}"`}
-                    title="Remove this preset"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                  {/* Move left */}
+                  {idx > 0 && (
+                    <button
+                      onClick={() => moveCustomDatePreset(preset.id, -1)}
+                      className="pl-1.5 pr-0.5 py-1 rounded-l-md text-sky-400/40 hover:text-sky-200 hover:bg-sky-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label="Move left"
+                      title="Move left"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                  )}
+                  {idx === 0 && <span className="pl-2" />}
+
+                  {renamingPresetId === preset.id ? (
+                    <input
+                      ref={renamePresetInputRef}
+                      className="w-28 bg-transparent border-b border-sky-400 text-sky-100 text-xs outline-none py-0.5 mx-1"
+                      value={renamePresetValue}
+                      onChange={e => setRenamePresetValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") commitRenamePreset();
+                        if (e.key === "Escape") cancelRenamePreset();
+                      }}
+                      onBlur={commitRenamePreset}
+                      maxLength={40}
+                    />
+                  ) : (
+                    <>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => applyCustomDatePreset(preset)}
+                              className="p-0.5 text-sky-300 hover:text-sky-100 transition-colors"
+                              title={`Apply: ${preset.from} – ${preset.to}`}
+                            >
+                              <CalendarRange className="w-3 h-3 shrink-0" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Date range</p>
+                            <p className="font-mono text-xs">{preset.from} – {preset.to}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <button
+                        onClick={() => startRenamePreset(preset)}
+                        className="px-0.5 py-1 hover:text-sky-100 transition-colors"
+                        title="Click to rename"
+                      >
+                        {preset.name}
+                      </button>
+                    </>
+                  )}
+
+                  {/* Rename icon */}
+                  {renamingPresetId !== preset.id && (
+                    <button
+                      onClick={() => startRenamePreset(preset)}
+                      className="p-0.5 text-sky-400/40 hover:text-sky-200 hover:bg-sky-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Rename preset "${preset.name}"`}
+                      title="Rename"
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+
+                  {/* Delete */}
+                  {renamingPresetId !== preset.id && (
+                    <button
+                      onClick={() => deleteCustomDatePreset(preset.id)}
+                      className="p-0.5 text-sky-400/40 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Remove preset "${preset.name}"`}
+                      title="Remove this preset"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+
+                  {/* Move right */}
+                  {idx < customDatePresets.length - 1 && renamingPresetId !== preset.id && (
+                    <button
+                      onClick={() => moveCustomDatePreset(preset.id, 1)}
+                      className="pr-1.5 pl-0.5 py-1 rounded-r-md text-sky-400/40 hover:text-sky-200 hover:bg-sky-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label="Move right"
+                      title="Move right"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  )}
+                  {idx === customDatePresets.length - 1 && renamingPresetId !== preset.id && <span className="pr-1" />}
                 </span>
               ))}
               <div className="flex items-center gap-2 ml-1">
