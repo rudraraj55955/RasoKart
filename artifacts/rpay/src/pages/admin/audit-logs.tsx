@@ -13,6 +13,7 @@ import {
   useGetAuditReportRetentionConfig,
   useGetSecurityComplianceSummary,
   useSendSecurityReviewReminder,
+  useCreateAdminAuditLog,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,8 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   test_email_sent:              { label: "Test Email Sent",              color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
   setting_updated:              { label: "Setting Updated",              color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   system_config_updated:        { label: "System Config Updated",        color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-  security_activity_exported:   { label: "Security Activity Exported",   color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  security_activity_exported:        { label: "Security Activity Exported",        color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  compliance_report_exported:        { label: "Compliance Report Exported",        color: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
   security_review_reminded:              { label: "Security Review Reminder Sent",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   audit_schedule_failure_acknowledged:   { label: "Schedule Failure Acknowledged",       color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
 };
@@ -2263,6 +2265,7 @@ function CompliancePanel() {
   );
 
   const remind = useSendSecurityReviewReminder();
+  const logExport = useCreateAdminAuditLog();
 
   const rows = data?.data ?? [];
   const totalMerchants = data?.totalMerchants ?? 0;
@@ -2329,6 +2332,17 @@ function CompliancePanel() {
     a.download = `compliance-report-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+
+    logExport.mutate({
+      data: {
+        action: "compliance_report_exported",
+        targetType: "compliance_report",
+        details: JSON.stringify({
+          rowCount: (rows as any[]).length,
+          statusFilter,
+        }),
+      },
+    });
   }
 
   const FILTER_BUTTONS: { value: typeof statusFilter; label: string; activeClass: string }[] = [
