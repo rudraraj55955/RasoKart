@@ -143,6 +143,7 @@ function buildCallbackCsvRows(data: any[]): string[][] {
     String(log.attempts),
     log.qrCodeId != null ? String(log.qrCodeId) : "",
     log.transactionId != null ? String(log.transactionId) : "",
+    "",
     log.createdAt,
   ]);
 }
@@ -158,12 +159,13 @@ function buildSecurityCsvRows(data: any[]): string[][] {
     "",
     "",
     ev.ipAddress ?? "",
+    ev.actorEmail ?? "",
     ev.occurredAt,
   ]);
 }
 
 function buildUnifiedCsvText(callbackData: any[], securityData: any[]): string {
-  const header = ["ID", "Source", "Event Type", "Status", "HTTP Status", "Signature", "Attempts", "QR Code ID", "IP / Transaction ID", "Date"];
+  const header = ["ID", "Source", "Event Type", "Status", "HTTP Status", "Signature", "Attempts", "QR Code ID", "IP / Transaction ID", "Actor Email", "Date"];
   const rows = [
     header,
     ...buildCallbackCsvRows(callbackData),
