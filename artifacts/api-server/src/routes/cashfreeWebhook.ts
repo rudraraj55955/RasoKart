@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, cashfreePaymentOrdersTable, cashfreePaymentLogsTable, transactionsTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyCashfreeWebhookSignature } from "../helpers/cashfree";
 
@@ -113,24 +113,31 @@ router.post("/cashfree-webhook", async (req, res) => {
 
     merchantId = cfOrder.merchantId;
 
-    // ── Idempotency: skip if already credited ─────────────────────────────
-    if (cfOrder.status === "paid") {
-      logger.info({ cashfreeOrderId }, "Cashfree webhook: order already credited — skipping");
+    // ── Atomic idempotency: conditional UPDATE returning changed rows ───────
+    // Only transitions status from non-paid → paid. Concurrent webhooks for the
+    // same order will find zero updated rows and be treated as duplicates.
+    const updated = await db
+      .update(cashfreePaymentOrdersTable)
+      .set({ status: "paid" })
+      .where(and(
+        eq(cashfreePaymentOrdersTable.cashfreeOrderId, cashfreeOrderId),
+        ne(cashfreePaymentOrdersTable.status, "paid"),
+      ))
+      .returning({ id: cashfreePaymentOrdersTable.id });
+
+    if (!updated.length) {
+      logger.info({ cashfreeOrderId }, "Cashfree webhook: order already credited (atomic check) — skipping");
       processingResult = "duplicate";
       errorMessage = "Order already credited";
       await insertLog({ eventType, cashfreeOrderId, merchantId, amount, status, rawPayload: rawBody, processingResult, errorMessage });
       return;
     }
 
-    // ── Mark order as paid ─────────────────────────────────────────────────
-    await db
-      .update(cashfreePaymentOrdersTable)
-      .set({ status: "paid" })
-      .where(eq(cashfreePaymentOrdersTable.cashfreeOrderId, cashfreeOrderId));
-
     // ── Insert deposit transaction ─────────────────────────────────────────
+    // UTR is deterministic: prefer cf_payment_id (stable across retries);
+    // fall back to cashfree_order_id (also stable). Never use Date.now().
     const paymentId = (payment?.["cf_payment_id"] as string | number | undefined)?.toString() ?? null;
-    const utr = paymentId ? `CF-${paymentId}` : `CF-${cashfreeOrderId}-${Date.now()}`;
+    const utr = paymentId ? `CF-${paymentId}` : `CF-${cashfreeOrderId}`;
     const paidAmount = amount ?? cfOrder.amount?.toString() ?? "0";
 
     await db.insert(transactionsTable).values({

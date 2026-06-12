@@ -14,9 +14,8 @@ import {
   useRenameMerchantSavedFilter,
   useReorderMerchantSavedFilters,
   useCreateCashfreeOrder,
-  useGetCashfreeConfig,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -757,8 +756,19 @@ export default function MerchantDeposits() {
   const [cfNote, setCfNote] = useState("");
   const [cfCreating, setCfCreating] = useState(false);
 
-  const { data: cashfreeConfig } = useGetCashfreeConfig();
-  const cashfreeEnabled = cashfreeConfig?.enabled ?? false;
+  const { data: cashfreeStatusData } = useQuery<{ enabled: boolean; env: string }>({
+    queryKey: ["/api/merchant/cashfree/status"],
+    queryFn: async () => {
+      const token = localStorage.getItem("rasokart_token");
+      const res = await fetch("/api/merchant/cashfree/status", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return { enabled: false, env: "test" };
+      return res.json() as Promise<{ enabled: boolean; env: string }>;
+    },
+    staleTime: 60_000,
+  });
+  const cashfreeEnabled = cashfreeStatusData?.enabled ?? false;
 
   const { mutateAsync: createCashfreeOrder } = useCreateCashfreeOrder();
 

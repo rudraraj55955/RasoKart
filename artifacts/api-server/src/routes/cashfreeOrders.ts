@@ -1,10 +1,32 @@
 import { Router } from "express";
 import { db, cashfreePaymentOrdersTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, ne, and } from "drizzle-orm";
 import { cashfreeCreateOrder, type CashfreeEnv } from "../helpers/cashfree";
 import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
+
+/**
+ * GET /api/merchant/cashfree/status
+ *
+ * Merchant-accessible endpoint (no admin required).
+ * Returns whether Cashfree is enabled and which environment it targets.
+ * Used by the merchant Deposits page to decide whether to show the "Pay via Cashfree" button.
+ */
+router.get("/cashfree/status", requireAuth, async (req, res, next) => {
+  try {
+    const rows = await db.select().from(systemConfigTable).where(
+      inArray(systemConfigTable.key, [SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED, SYSTEM_CONFIG_KEYS.CASHFREE_ENV])
+    );
+    const cfg = new Map(rows.map(r => [r.key, r.value]));
+    res.json({
+      enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED) === "true",
+      env: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENV) ?? "test",
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * POST /api/merchant/cashfree/create-order
@@ -87,7 +109,7 @@ router.post("/cashfree/create-order", requireAuth, async (req, res, next) => {
       return;
     }
 
-    // Save order to DB
+    // Save order to DB — idempotent on cashfree_order_id unique constraint
     await db.insert(cashfreePaymentOrdersTable).values({
       merchantId: user.merchantId,
       cashfreeOrderId: parsed.order_id ?? orderId,
