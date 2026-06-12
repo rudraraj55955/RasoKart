@@ -40,5 +40,7 @@ export interface Merchant {
   currentPlanExpiresAt?: string | null;
   /** @nullable */
   currentPlanIsExpired?: boolean | null;
+  /** Whether the merchant has enabled login alert emails. Defaults to true. */
+  loginAlertEmails?: boolean;
   createdAt: string;
 }

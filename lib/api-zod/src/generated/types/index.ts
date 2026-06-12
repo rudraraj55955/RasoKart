@@ -152,6 +152,7 @@ export * from './listMerchantSavedFilters200';
 export * from './listMerchantSavedFiltersParams';
 export * from './listMerchantsCallbackSecretSet';
 export * from './listMerchantsExpiryStatus';
+export * from './listMerchantsLoginAlertEmails';
 export * from './listMerchantsParams';
 export * from './listMerchantsStatus';
 export * from './listMySecurityActivityParams';

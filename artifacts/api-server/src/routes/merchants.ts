@@ -62,7 +62,7 @@ async function logPlanHistory(opts: {
 
 // GET /api/merchants
 router.get("/", requireAdmin, async (req, res) => {
-  const { status, search, page = "1", limit = "20", expiryStatus, rejectionReason, callbackSecretSet } = req.query as Record<string, string>;
+  const { status, search, page = "1", limit = "20", expiryStatus, rejectionReason, callbackSecretSet, loginAlertEmails } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -87,6 +87,11 @@ router.get("/", requireAdmin, async (req, res) => {
   } else if (callbackSecretSet === "false") {
     conditions.push(sql`${merchantsTable.callbackSecret} IS NULL`);
   }
+  if (loginAlertEmails === "false") {
+    conditions.push(eq(usersTable.loginAlertEmails, false));
+  } else if (loginAlertEmails === "true") {
+    conditions.push(eq(usersTable.loginAlertEmails, true));
+  }
 
   const planConditions = [];
   if (expiryStatus === "expired") {
@@ -101,13 +106,16 @@ router.get("/", requireAdmin, async (req, res) => {
   const allConditions = [...conditions, ...planConditions];
   const where = allConditions.length > 0 ? and(...allConditions) : undefined;
 
+  const needsUserJoin = loginAlertEmails === "true" || loginAlertEmails === "false";
+
   let total: number;
-  if (planConditions.length > 0) {
-    const [{ total: t }] = await db
+  if (planConditions.length > 0 || needsUserJoin) {
+    const q = db
       .select({ total: count() })
       .from(merchantsTable)
-      .leftJoin(merchantPlansTable, eq(merchantPlansTable.merchantId, merchantsTable.id))
-      .where(where);
+      .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
+      .leftJoin(merchantPlansTable, eq(merchantPlansTable.merchantId, merchantsTable.id));
+    const [{ total: t }] = await q.where(where);
     total = t;
   } else {
     const [{ total: t }] = await db.select({ total: count() }).from(merchantsTable).where(where);
@@ -120,8 +128,10 @@ router.get("/", requireAdmin, async (req, res) => {
       currentPlanName: plansTable.name,
       currentPlanStatus: merchantPlansTable.status,
       currentPlanExpiresAt: merchantPlansTable.expiresAt,
+      loginAlertEmails: usersTable.loginAlertEmails,
     })
     .from(merchantsTable)
+    .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
     .leftJoin(merchantPlansTable, eq(merchantPlansTable.merchantId, merchantsTable.id))
     .leftJoin(plansTable, eq(plansTable.id, merchantPlansTable.planId))
     .where(where)
@@ -139,6 +149,7 @@ router.get("/", requireAdmin, async (req, res) => {
         currentPlanStatus: r.currentPlanStatus ?? null,
         currentPlanExpiresAt: expiresAt ? expiresAt.toISOString() : null,
         currentPlanIsExpired: isExpired,
+        loginAlertEmails: r.loginAlertEmails ?? true,
       };
     }),
     total,
@@ -155,9 +166,14 @@ router.get("/:id", async (req, res) => {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  const [merchant] = await db.select().from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
-  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
-  res.json(serializeMerchant(merchant));
+  const [row] = await db
+    .select({ merchant: merchantsTable, loginAlertEmails: usersTable.loginAlertEmails })
+    .from(merchantsTable)
+    .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
+    .where(eq(merchantsTable.id, id))
+    .limit(1);
+  if (!row) { res.status(404).json({ error: "Merchant not found" }); return; }
+  res.json({ ...serializeMerchant(row.merchant), loginAlertEmails: row.loginAlertEmails ?? true });
 });
 
 // PATCH /api/merchants/:id/branding  (merchant updates own, admin updates any)

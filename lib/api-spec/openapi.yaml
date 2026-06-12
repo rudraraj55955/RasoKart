@@ -269,6 +269,12 @@ paths:
           schema:
             type: string
             enum: ["true", "false"]
+        - name: loginAlertEmails
+          in: query
+          description: Filter by login alert email preference. "false" = alerts disabled, "true" = alerts enabled.
+          schema:
+            type: string
+            enum: ["true", "false"]
       responses:
         "200":
           description: List of merchants
@@ -5951,6 +5957,9 @@ components:
           type: ["string", "null"]
         currentPlanIsExpired:
           type: ["boolean", "null"]
+        loginAlertEmails:
+          type: boolean
+          description: Whether the merchant has enabled login alert emails. Defaults to true.
         createdAt:
           type: string
 

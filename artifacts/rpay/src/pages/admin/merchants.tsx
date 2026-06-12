@@ -205,6 +205,7 @@ export default function AdminMerchants() {
   const [expiryStatus, setExpiryStatus] = useState<"" | "expiring" | "expired">("");
   const [rejectionReasonFilter, setRejectionReasonFilter] = useState("");
   const [callbackSecretFilter, setCallbackSecretFilter] = useState<"" | "true" | "false">("");
+  const [loginAlertFilter, setLoginAlertFilter] = useState<"" | "false">("");
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -228,7 +229,7 @@ export default function AdminMerchants() {
     },
     onError: () => toast.error("Logo upload failed"),
   });
-  const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string; callbackTimestampWindowSeconds?: number | null } | null>(null);
+  const [assignPlanMerchant, setAssignPlanMerchant] = useState<{ id: number; name: string; callbackTimestampWindowSeconds?: number | null; loginAlertEmails?: boolean } | null>(null);
   const [windowEditMode, setWindowEditMode] = useState(false);
   const [windowInput, setWindowInput] = useState("");
   const [retriesEditMode, setRetriesEditMode] = useState(false);
@@ -299,7 +300,7 @@ export default function AdminMerchants() {
   const [bulkUndoSecondsLeft, setBulkUndoSecondsLeft] = useState(0);
   const [bulkUndoUsed, setBulkUndoUsed] = useState(false);
 
-  const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined, callbackSecretSet: callbackSecretFilter as any || undefined });
+  const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined, callbackSecretSet: callbackSecretFilter as any || undefined, loginAlertEmails: loginAlertFilter as any || undefined });
   const { data: plans } = useListPlans();
   const { data: currentMerchantPlan, isLoading: planLoading } = useGetMerchantPlan(
     assignPlanMerchant?.id ?? 0,
@@ -386,7 +387,7 @@ export default function AdminMerchants() {
   useEffect(() => {
     if (!deepLinkMerchant || deepLinkId == null || deepLinkOpenedRef.current) return;
     deepLinkOpenedRef.current = true;
-    openAssignPlan(deepLinkId, deepLinkMerchant.businessName);
+    openAssignPlan(deepLinkId, deepLinkMerchant.businessName, deepLinkMerchant.callbackTimestampWindowSeconds, deepLinkMerchant.loginAlertEmails);
   }, [deepLinkMerchant, deepLinkId]);
 
   // Countdown timer for undo window
@@ -611,8 +612,8 @@ export default function AdminMerchants() {
     });
   };
 
-  const openAssignPlan = (id: number, name: string, callbackTimestampWindowSeconds?: number | null) => {
-    setAssignPlanMerchant({ id, name, callbackTimestampWindowSeconds });
+  const openAssignPlan = (id: number, name: string, callbackTimestampWindowSeconds?: number | null, loginAlertEmails?: boolean) => {
+    setAssignPlanMerchant({ id, name, callbackTimestampWindowSeconds, loginAlertEmails });
     setWindowEditMode(false);
     setWindowInput("");
     setSelectedPlanId("");
@@ -1031,6 +1032,30 @@ export default function AdminMerchants() {
               Secret Set
             </button>
           </div>
+          <div className="flex gap-1 flex-wrap items-center">
+            <span className="text-xs text-muted-foreground pr-1">Login Alerts:</span>
+            <button
+              onClick={() => { setLoginAlertFilter(""); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                loginAlertFilter === ""
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              Any
+            </button>
+            <button
+              onClick={() => { setLoginAlertFilter("false"); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                loginAlertFilter === "false"
+                  ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              <BellOff className="w-3.5 h-3.5" />
+              Alerts Off
+            </button>
+          </div>
         </div>
         {(status === "rejected" || status === "all") && (
           <div className="relative max-w-sm">
@@ -1046,7 +1071,7 @@ export default function AdminMerchants() {
       </div>
 
       {/* Filter chips */}
-      {(!!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || !!callbackSecretFilter) && (
+      {(!!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || !!callbackSecretFilter || !!loginAlertFilter) && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Filters:</span>
           {!!search && (
@@ -1128,6 +1153,19 @@ export default function AdminMerchants() {
                 onClick={() => { setCallbackSecretFilter(""); setPage(1); }}
                 className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-500/20 transition-colors"
                 aria-label="Clear callback secret filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {loginAlertFilter === "false" && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
+              <BellOff className="w-3 h-3" />
+              Login Alerts Off
+              <button
+                onClick={() => { setLoginAlertFilter(""); setPage(1); }}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
+                aria-label="Clear login alert filter"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -1363,7 +1401,7 @@ export default function AdminMerchants() {
                           <ShieldCheck className="w-4 h-4 mr-1" /> Reinstate
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds)}>
+                      <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails)}>
                         <CreditCard className="w-4 h-4 mr-1" /> {merchant.currentPlanName ? "Change Plan" : "Assign Plan"}
                       </Button>
                       <Button size="sm" variant="ghost" className="text-violet-400 hover:bg-violet-500/10" onClick={() => openBranding(merchant)}>
@@ -2042,6 +2080,27 @@ export default function AdminMerchants() {
                 <p className="text-xs">No plan currently assigned</p>
               </div>
             )}
+
+            {/* Login Alert Emails */}
+            <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <BellOff className="w-4 h-4 text-muted-foreground shrink-0" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Login Alert Emails</p>
+              </div>
+              {assignPlanMerchant?.loginAlertEmails === false ? (
+                <div className="flex items-center gap-2">
+                  <BellOff className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="text-xs text-amber-400 font-medium">Disabled</span>
+                  <span className="text-xs text-muted-foreground">— merchant will not receive login alerts</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-xs text-emerald-400 font-medium">Enabled</span>
+                  <span className="text-xs text-muted-foreground">— merchant receives login alerts</span>
+                </div>
+              )}
+            </div>
 
             {/* Callback Secret */}
             <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">

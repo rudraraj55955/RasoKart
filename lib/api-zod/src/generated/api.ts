@@ -166,7 +166,8 @@ export const ListMerchantsQueryParams = zod.object({
   "limit": zod.coerce.number().optional(),
   "expiryStatus": zod.enum(['expiring', 'expired']).optional(),
   "rejectionReason": zod.coerce.string().optional(),
-  "callbackSecretSet": zod.enum(['true', 'false']).optional().describe('Filter by whether merchants have a callback secret configured. \"true\" = secret set, \"false\" = no secret.')
+  "callbackSecretSet": zod.enum(['true', 'false']).optional().describe('Filter by whether merchants have a callback secret configured. \"true\" = secret set, \"false\" = no secret.'),
+  "loginAlertEmails": zod.enum(['true', 'false']).optional().describe('Filter by login alert email preference. \"false\" = alerts disabled, \"true\" = alerts enabled.')
 })
 
 export const ListMerchantsResponse = zod.object({
@@ -190,6 +191,7 @@ export const ListMerchantsResponse = zod.object({
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
   "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -225,6 +227,7 @@ export const GetMerchantResponse = zod.object({
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
   "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -299,6 +302,7 @@ export const ApproveMerchantResponse = zod.object({
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
   "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -334,6 +338,7 @@ export const RejectMerchantResponse = zod.object({
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
   "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -365,6 +370,7 @@ export const SuspendMerchantResponse = zod.object({
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
   "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -396,6 +402,7 @@ export const UnsuspendMerchantResponse = zod.object({
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
   "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -784,6 +791,7 @@ export const UpdateMerchantBrandingResponse = zod.object({
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
   "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -850,6 +858,7 @@ export const UpdateMerchantCallbackWindowResponse = zod.object({
   "currentPlanStatus": zod.string().nullish(),
   "currentPlanExpiresAt": zod.string().nullish(),
   "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 

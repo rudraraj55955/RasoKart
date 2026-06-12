@@ -217,6 +217,8 @@ export interface Merchant {
   currentPlanExpiresAt?: string | null;
   /** @nullable */
   currentPlanIsExpired?: boolean | null;
+  /** Whether the merchant has enabled login alert emails. Defaults to true. */
+  loginAlertEmails?: boolean;
   createdAt: string;
 }
 
@@ -3005,6 +3007,10 @@ rejectionReason?: string;
  * Filter by whether merchants have a callback secret configured. "true" = secret set, "false" = no secret.
  */
 callbackSecretSet?: ListMerchantsCallbackSecretSet;
+/**
+ * Filter by login alert email preference. "false" = alerts disabled, "true" = alerts enabled.
+ */
+loginAlertEmails?: ListMerchantsLoginAlertEmails;
 };
 
 export type ListMerchantsStatus = typeof ListMerchantsStatus[keyof typeof ListMerchantsStatus];
@@ -3029,6 +3035,14 @@ export type ListMerchantsCallbackSecretSet = typeof ListMerchantsCallbackSecretS
 
 
 export const ListMerchantsCallbackSecretSet = {
+  true: 'true',
+  false: 'false',
+} as const;
+
+export type ListMerchantsLoginAlertEmails = typeof ListMerchantsLoginAlertEmails[keyof typeof ListMerchantsLoginAlertEmails];
+
+
+export const ListMerchantsLoginAlertEmails = {
   true: 'true',
   false: 'false',
 } as const;

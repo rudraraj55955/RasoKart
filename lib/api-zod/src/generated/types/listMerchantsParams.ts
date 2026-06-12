@@ -7,6 +7,7 @@
  */
 import type { ListMerchantsCallbackSecretSet } from './listMerchantsCallbackSecretSet';
 import type { ListMerchantsExpiryStatus } from './listMerchantsExpiryStatus';
+import type { ListMerchantsLoginAlertEmails } from './listMerchantsLoginAlertEmails';
 import type { ListMerchantsStatus } from './listMerchantsStatus';
 
 export type ListMerchantsParams = {
@@ -20,4 +21,8 @@ rejectionReason?: string;
  * Filter by whether merchants have a callback secret configured. "true" = secret set, "false" = no secret.
  */
 callbackSecretSet?: ListMerchantsCallbackSecretSet;
+/**
+ * Filter by login alert email preference. "false" = alerts disabled, "true" = alerts enabled.
+ */
+loginAlertEmails?: ListMerchantsLoginAlertEmails;
 };
