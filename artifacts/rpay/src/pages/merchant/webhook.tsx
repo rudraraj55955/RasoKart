@@ -993,6 +993,12 @@ onError: () => toast.error("Failed to send test event"),
               </SelectContent>
             </Select>
           </div>
+          {maxRetries === 0 && (
+            <p className="text-xs text-muted-foreground/60 flex items-center gap-1.5 pl-0.5">
+              <span className="inline-block w-1 h-1 rounded-full bg-muted-foreground/40 shrink-0" />
+              No automatic retries are configured. Failed deliveries will not be reattempted.
+            </p>
+          )}
           {maxRetries > 0 && (
             <div className="space-y-3 pl-1">
               <div>
