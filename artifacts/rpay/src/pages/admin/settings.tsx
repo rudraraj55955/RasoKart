@@ -517,6 +517,7 @@ export default function AdminSettings() {
     onSuccess: (res: { expired: number; deleted: number }) => {
       setQrCleanupRunResult(res);
       qc.invalidateQueries({ queryKey: ["/api/system-config/qr-cleanup"] });
+      qc.invalidateQueries({ queryKey: ["qr-cleanup-history"] });
       if (res.expired === 0 && res.deleted === 0) {
         toast.info("Cleanup complete — nothing to clean up.");
       } else {
@@ -541,6 +542,7 @@ export default function AdminSettings() {
     onSuccess: (res: { closed: number; deleted: number }) => {
       setVaCleanupRunResult(res);
       qc.invalidateQueries({ queryKey: ["/api/system-config/va-cleanup"] });
+      qc.invalidateQueries({ queryKey: ["va-cleanup-history"] });
       if (res.closed === 0 && res.deleted === 0) {
         toast.info("Cleanup complete — nothing to clean up.");
       } else {
