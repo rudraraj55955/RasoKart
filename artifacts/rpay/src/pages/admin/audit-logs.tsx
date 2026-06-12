@@ -30,6 +30,7 @@ import {
   Users, Loader2, QrCode, Landmark,
   Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle, Settings,
   MonitorPlay, RefreshCw, KeyRound, RotateCcw, ClipboardCheck, AlertTriangle, Building2, BellRing,
+  ArrowUpRight,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1204,7 +1205,7 @@ function ScheduleRow({
   const [historyOpen, setHistoryOpen] = useState(false);
 
   return (
-    <div className={`rounded-lg border transition-colors ${
+    <div id={`schedule-row-${s.id}`} className={`rounded-lg border transition-colors ${
       s.isActive
         ? "border-violet-500/20 bg-violet-500/5"
         : "border-border/40 bg-muted/10 opacity-70"
@@ -1783,6 +1784,26 @@ function GlobalDeliveryHistoryPanel() {
     });
   }
 
+  function goToSchedule(scheduleId: number) {
+    const el = document.getElementById(`schedule-row-${scheduleId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.style.outline = "2px solid rgb(139 92 246)";
+    el.style.boxShadow = "0 0 0 4px rgba(139, 92, 246, 0.25)";
+    el.style.borderRadius = "8px";
+    el.style.transition = "outline 0ms, box-shadow 0ms";
+    setTimeout(() => {
+      el.style.transition = "outline 800ms ease, box-shadow 800ms ease";
+      el.style.outline = "2px solid transparent";
+      el.style.boxShadow = "0 0 0 4px rgba(139, 92, 246, 0)";
+      setTimeout(() => {
+        el.style.outline = "";
+        el.style.boxShadow = "";
+        el.style.transition = "";
+      }, 900);
+    }, 1400);
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -1866,42 +1887,68 @@ function GlobalDeliveryHistoryPanel() {
               const hasRetries = attempts.length > 1;
               const isOrphan = cycleId.startsWith("orphan-");
               return (
-                <div key={cycleId}>
-                  <button
-                    type="button"
-                    className="w-full flex items-center gap-3 px-6 py-2.5 text-left hover:bg-muted/10 transition-colors"
-                    onClick={() => toggleCycle(cycleId)}
-                  >
-                    <div className="shrink-0">
-                      {overallSuccess
-                        ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        : <XCircle className="w-4 h-4 text-rose-400" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-medium truncate">
-                          {format(new Date(newestAttempt.sentAt), "MMM d, yyyy 'at' HH:mm")}
-                        </span>
+                <div key={cycleId} className="group/cycle">
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      className="flex-1 flex items-center gap-3 px-6 py-2.5 text-left hover:bg-muted/10 transition-colors min-w-0"
+                      onClick={() => toggleCycle(cycleId)}
+                    >
+                      <div className="shrink-0">
                         {overallSuccess
-                          ? <span className="inline-flex items-center rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">Delivered</span>
-                          : <span className="inline-flex items-center rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">Failed</span>}
-                        {hasRetries && (
-                          <span className="inline-flex items-center rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
-                            {attempts.length} attempts
+                          ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          : <XCircle className="w-4 h-4 text-rose-400" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium truncate">
+                            {format(new Date(newestAttempt.sentAt), "MMM d, yyyy 'at' HH:mm")}
                           </span>
-                        )}
+                          {overallSuccess
+                            ? <span className="inline-flex items-center rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">Delivered</span>
+                            : <span className="inline-flex items-center rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">Failed</span>}
+                          {hasRetries && (
+                            <span className="inline-flex items-center rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                              {attempts.length} attempts
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                          {!isOrphan && <span className="font-mono opacity-60">{cycleId.slice(0, 8)}…</span>}
+                          <Mail className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{newestAttempt.scheduleEmail}</span>
+                          <span className="capitalize">{FREQUENCY_LABELS[newestAttempt.scheduleFrequency] ?? newestAttempt.scheduleFrequency}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                        {!isOrphan && <span className="font-mono opacity-60">{cycleId.slice(0, 8)}…</span>}
-                        <Mail className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{newestAttempt.scheduleEmail}</span>
-                        <span className="capitalize">{FREQUENCY_LABELS[newestAttempt.scheduleFrequency] ?? newestAttempt.scheduleFrequency}</span>
-                      </div>
+                    </button>
+                    <div className="flex items-center gap-0.5 pr-4 shrink-0">
+                      {!isOrphan && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={() => goToSchedule(newestAttempt.scheduleId)}
+                                className="p-1.5 rounded text-muted-foreground/40 hover:text-violet-400 hover:bg-violet-500/10 opacity-0 group-hover/cycle:opacity-100 transition-all focus-visible:opacity-100"
+                                aria-label="Go to schedule"
+                              >
+                                <ArrowUpRight className="w-3.5 h-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">Go to schedule</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleCycle(cycleId)}
+                        className="p-1.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label={isOpen ? "Collapse" : "Expand"}
+                      >
+                        {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
-                    <div className="shrink-0 text-muted-foreground">
-                      {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </div>
-                  </button>
+                  </div>
 
                   {isOpen && (
                     <div className="bg-muted/5 border-t border-border/20 divide-y divide-border/20">
