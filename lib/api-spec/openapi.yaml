@@ -1401,6 +1401,25 @@ paths:
       tags: [api-keys]
       summary: Get credential event history for API keys
       description: Returns a list of credential events derived from the merchant's API keys (creations and revocations). Merchant access only.
+      parameters:
+        - name: eventType
+          in: query
+          schema:
+            type: string
+            enum: [api_key_generated, api_key_revoked, callback_secret_rotated]
+          description: Filter by event type (api_key_generated, api_key_revoked, callback_secret_rotated)
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+          description: "Filter events on or after this date (YYYY-MM-DD)"
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+          description: "Filter events on or before this date (YYYY-MM-DD)"
       responses:
         "200":
           description: List of credential events

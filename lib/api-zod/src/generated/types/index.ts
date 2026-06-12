@@ -121,6 +121,8 @@ export * from './ledgerListResponse';
 export * from './listAccountDetailsParams';
 export * from './listAdminAuditLogsParams';
 export * from './listAllAuditReportScheduleLogsParams';
+export * from './listApiKeyHistoryEventType';
+export * from './listApiKeyHistoryParams';
 export * from './listAuditReportScheduleLogsParams';
 export * from './listCallbackLogsEventType';
 export * from './listCallbackLogsParams';

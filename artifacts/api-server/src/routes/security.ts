@@ -25,14 +25,15 @@ router.get("/events", async (req, res, next) => {
     if (eventType && eventType !== "all") {
       conditions.push(eq(credentialEventsTable.eventType, eventType));
     }
-    if (dateFrom) {
-      const from = new Date(dateFrom);
-      from.setUTCHours(0, 0, 0, 0);
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (dateFrom && dateRe.test(dateFrom)) {
+      const [y, m, d] = dateFrom.split("-").map(Number);
+      const from = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
       if (!isNaN(from.getTime())) conditions.push(gte(credentialEventsTable.createdAt, from));
     }
-    if (dateTo) {
-      const to = new Date(dateTo);
-      to.setUTCHours(23, 59, 59, 999);
+    if (dateTo && dateRe.test(dateTo)) {
+      const [y, m, d] = dateTo.split("-").map(Number);
+      const to = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
       if (!isNaN(to.getTime())) conditions.push(lte(credentialEventsTable.createdAt, to));
     }
 

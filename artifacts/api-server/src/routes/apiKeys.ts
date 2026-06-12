@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { db, apiKeysTable, merchantsTable, credentialEventsTable, usersTable } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import crypto from "crypto";
 import { sendApiKeyGeneratedEmail, sendApiKeyRevokedEmail, maskIp } from "../helpers/apiKeyEmail";
@@ -40,6 +40,30 @@ router.get("/history", async (req, res) => {
     return;
   }
 
+  const { eventType, from, to } = req.query as Record<string, string | undefined>;
+
+  const allowedTypes = ["api_key_generated", "api_key_revoked", "callback_secret_rotated"] as const;
+  const typeFilter = eventType && allowedTypes.includes(eventType as (typeof allowedTypes)[number])
+    ? [eventType as (typeof allowedTypes)[number]]
+    : allowedTypes;
+
+  const conditions: ReturnType<typeof eq>[] = [
+    eq(credentialEventsTable.merchantId, user.merchantId),
+    inArray(credentialEventsTable.eventType, typeFilter as unknown as string[]),
+  ];
+
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (from && dateRe.test(from)) {
+    const [y, m, d] = from.split("-").map(Number);
+    const fromDate = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+    if (!isNaN(fromDate.getTime())) conditions.push(gte(credentialEventsTable.createdAt, fromDate) as any);
+  }
+  if (to && dateRe.test(to)) {
+    const [y, m, d] = to.split("-").map(Number);
+    const toDate = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
+    if (!isNaN(toDate.getTime())) conditions.push(lte(credentialEventsTable.createdAt, toDate) as any);
+  }
+
   const rows = await db
     .select({
       eventType: credentialEventsTable.eventType,
@@ -49,25 +73,32 @@ router.get("/history", async (req, res) => {
       createdAt: credentialEventsTable.createdAt,
     })
     .from(credentialEventsTable)
-    .where(
-      and(
-        eq(credentialEventsTable.merchantId, user.merchantId),
-        inArray(credentialEventsTable.eventType, ["api_key_generated", "api_key_revoked"])
-      )
-    )
+    .where(and(...conditions))
     .orderBy(desc(credentialEventsTable.createdAt));
 
-  const events = rows.map(r => ({
-    eventType: r.eventType === "api_key_generated" ? "api_key_created" : "api_key_revoked",
-    occurredAt: r.createdAt.toISOString(),
-    keyPrefix: r.keyPrefix ?? null,
-    description: r.eventType === "api_key_generated"
-      ? `API key generated (${r.keyPrefix ?? ""})`
-      : `API key revoked (${r.keyPrefix ?? ""})`,
-    isRevoked: r.eventType === "api_key_revoked",
-    ipAddress: r.ipAddress ? maskIp(r.ipAddress) : null,
-    actorEmail: r.actorEmail ?? null,
-  }));
+  const events = rows.map(r => {
+    let mappedEventType: string;
+    let description: string;
+    if (r.eventType === "api_key_generated") {
+      mappedEventType = "api_key_created";
+      description = `API key generated (${r.keyPrefix ?? ""})`;
+    } else if (r.eventType === "api_key_revoked") {
+      mappedEventType = "api_key_revoked";
+      description = `API key revoked (${r.keyPrefix ?? ""})`;
+    } else {
+      mappedEventType = "callback_secret_rotated";
+      description = "Callback signing secret rotated";
+    }
+    return {
+      eventType: mappedEventType,
+      occurredAt: r.createdAt.toISOString(),
+      keyPrefix: r.keyPrefix ?? null,
+      description,
+      isRevoked: r.eventType === "api_key_revoked",
+      ipAddress: r.ipAddress ? maskIp(r.ipAddress) : null,
+      actorEmail: r.actorEmail ?? null,
+    };
+  });
 
   res.json({ data: events });
 });

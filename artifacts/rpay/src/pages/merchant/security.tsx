@@ -33,7 +33,7 @@ import {
   LogIn,
   Monitor,
 } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth, subMonths, parseISO, startOfDay, endOfDay, isBefore, isAfter } from "date-fns";
+import { format, subDays, startOfMonth, endOfMonth, subMonths, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -474,39 +474,27 @@ export default function MerchantSecurity() {
   const SEC_PAGE_SIZE = 20;
 
   const { data: secEventsData, isLoading: secEventsLoading } = useListSecurityEvents({
-    limit: 200,
-    page: 1,
+    limit: SEC_PAGE_SIZE,
+    page: secPage,
     eventType: secEventType === "all" ? undefined : (secEventType as any),
+    dateFrom: secDateFrom || undefined,
+    dateTo: secDateTo || undefined,
   });
 
-  const allSecEvents = useMemo<LocalSecurityEvent[]>(() => {
+  const secPageSlice = useMemo<LocalSecurityEvent[]>(() => {
     return (secEventsData?.data ?? []) as LocalSecurityEvent[];
   }, [secEventsData]);
 
-  const filteredSecEvents = useMemo(() => {
-    return allSecEvents.filter(ev => {
-      if (secDateFrom) {
-        const from = startOfDay(parseISO(secDateFrom));
-        if (isBefore(parseISO(ev.occurredAt), from)) return false;
-      }
-      if (secDateTo) {
-        const to = endOfDay(parseISO(secDateTo));
-        if (isAfter(parseISO(ev.occurredAt), to)) return false;
-      }
-      return true;
-    });
-  }, [allSecEvents, secDateFrom, secDateTo]);
-
-  const secTotalPages = Math.max(1, Math.ceil(filteredSecEvents.length / SEC_PAGE_SIZE));
-  const secPageSlice = filteredSecEvents.slice((secPage - 1) * SEC_PAGE_SIZE, secPage * SEC_PAGE_SIZE);
+  const secTotal = secEventsData?.total ?? 0;
+  const secTotalPages = Math.max(1, Math.ceil(secTotal / SEC_PAGE_SIZE));
 
   const anySecFilterActive = !!(secEventType !== "all" || secDateFrom || secDateTo);
 
   function handleExportCsv() {
-    if (!filteredLogs.length && !filteredSecEvents.length) return;
+    if (!filteredLogs.length && !secPageSlice.length) return;
     setExporting(true);
     try {
-      const csv = buildUnifiedCsvText(filteredLogs, filteredSecEvents);
+      const csv = buildUnifiedCsvText(filteredLogs, secPageSlice);
       const lines = csv.split("\n").filter(l => l.trim() !== "");
       const rowCount = Math.max(0, lines.length - 1);
       setLastExportCount(rowCount);
@@ -584,7 +572,7 @@ export default function MerchantSecurity() {
                 variant="outline"
                 size="sm"
                 onClick={handleExportCsv}
-                disabled={exporting || (!filteredLogs.length && !filteredSecEvents.length)}
+                disabled={exporting || (!filteredLogs.length && !secTotal)}
                 className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300 hover:border-sky-500/50"
               >
                 {exporting
@@ -1021,26 +1009,48 @@ export default function MerchantSecurity() {
 
       {/* Security event history */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+        <CardHeader className="pb-3 space-y-3">
+          <div className="flex items-center gap-2">
             <CardTitle className="text-base flex items-center gap-2 flex-1">
               <Shield className="w-4 h-4 text-muted-foreground" />
-              Auth &amp; Key Events
+              Credential Event History
             </CardTitle>
+            {anySecFilterActive && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                onClick={() => { setSecEventType("all"); setSecDateFrom(""); setSecDateTo(""); setSecPage(1); }}
+              >
+                <X className="w-3 h-3" />
+                Clear
+              </Button>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { value: "all", label: "All" },
+                { value: "api_key_generated", label: "Key Generated" },
+                { value: "api_key_revoked", label: "Key Revoked" },
+                { value: "callback_secret_rotated", label: "Secret Rotated" },
+              ].map(opt => (
+                <Button
+                  key={opt.value}
+                  variant={secEventType === opt.value ? "secondary" : "outline"}
+                  size="sm"
+                  className={`h-7 text-xs px-3 ${secEventType === opt.value ? "bg-violet-500/20 text-violet-300 border-violet-500/40 hover:bg-violet-500/30" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() => { setSecEventType(opt.value); setSecPage(1); }}
+                >
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Select value={secEventType} onValueChange={v => { setSecEventType(v); setSecPage(1); }}>
-                <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue placeholder="Event type" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Events</SelectItem>
-                  <SelectItem value="merchant_login">Login</SelectItem>
-                  <SelectItem value="api_key_generated">Key Generated</SelectItem>
-                  <SelectItem value="api_key_revoked">Key Revoked</SelectItem>
-                  <SelectItem value="callback_secret_rotated">Secret Rotated</SelectItem>
-                </SelectContent>
-              </Select>
+              <CalendarRange className="w-3.5 h-3.5 text-muted-foreground" />
               <Input
                 type="date"
-                className="w-[140px] h-8 text-xs [color-scheme:dark]"
+                className="w-[140px] h-7 text-xs [color-scheme:dark]"
                 value={secDateFrom}
                 onChange={e => { setSecDateFrom(e.target.value); setSecPage(1); }}
                 title="From date"
@@ -1048,27 +1058,16 @@ export default function MerchantSecurity() {
               <span className="text-muted-foreground text-xs">to</span>
               <Input
                 type="date"
-                className="w-[140px] h-8 text-xs [color-scheme:dark]"
+                className="w-[140px] h-7 text-xs [color-scheme:dark]"
                 value={secDateTo}
                 onChange={e => { setSecDateTo(e.target.value); setSecPage(1); }}
                 title="To date"
               />
-              {anySecFilterActive && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-xs gap-1 text-muted-foreground hover:text-foreground"
-                  onClick={() => { setSecEventType("all"); setSecDateFrom(""); setSecDateTo(""); setSecPage(1); }}
-                >
-                  <X className="w-3 h-3" />
-                  Clear
-                </Button>
-              )}
             </div>
           </div>
           {anySecFilterActive && (
-            <p className="text-xs text-muted-foreground mt-2">
-              <span className="font-semibold text-foreground">{filteredSecEvents.length.toLocaleString()}</span> event{filteredSecEvents.length !== 1 ? "s" : ""} match your filters
+            <p className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{secTotal.toLocaleString()}</span> event{secTotal !== 1 ? "s" : ""} match your filters
             </p>
           )}
         </CardHeader>
@@ -1099,7 +1098,7 @@ export default function MerchantSecurity() {
           {secTotalPages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/40">
               <p className="text-xs text-muted-foreground">
-                Showing {((secPage - 1) * SEC_PAGE_SIZE) + 1}–{Math.min(secPage * SEC_PAGE_SIZE, filteredSecEvents.length)} of {filteredSecEvents.length}
+                Showing {((secPage - 1) * SEC_PAGE_SIZE) + 1}–{Math.min(secPage * SEC_PAGE_SIZE, secTotal)} of {secTotal}
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setSecPage(p => Math.max(1, p - 1))} disabled={secPage === 1}>Previous</Button>

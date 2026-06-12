@@ -107,6 +107,7 @@ import type {
   ListAccountDetailsParams,
   ListAdminAuditLogsParams,
   ListAllAuditReportScheduleLogsParams,
+  ListApiKeyHistoryParams,
   ListAuditReportScheduleLogsParams,
   ListCallbackLogsParams,
   ListCredentialEventsParams,
@@ -4281,21 +4282,28 @@ export const useGenerateApiKey = <TError = ErrorType<unknown>,
       return useMutation(getGenerateApiKeyMutationOptions(options));
     }
 
-export const getListApiKeyHistoryUrl = () => {
+export const getListApiKeyHistoryUrl = (params?: ListApiKeyHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/api-keys/history`
+  return stringifiedParams.length > 0 ? `/api/api-keys/history?${stringifiedParams}` : `/api/api-keys/history`
 }
 
 /**
  * Returns a list of credential events derived from the merchant's API keys (creations and revocations). Merchant access only.
  * @summary Get credential event history for API keys
  */
-export const listApiKeyHistory = async ( options?: RequestInit): Promise<CredentialEventList> => {
+export const listApiKeyHistory = async (params?: ListApiKeyHistoryParams, options?: RequestInit): Promise<CredentialEventList> => {
 
-  return customFetch<CredentialEventList>(getListApiKeyHistoryUrl(),
+  return customFetch<CredentialEventList>(getListApiKeyHistoryUrl(params),
   {
     ...options,
     method: 'GET'
@@ -4308,23 +4316,23 @@ export const listApiKeyHistory = async ( options?: RequestInit): Promise<Credent
 
 
 
-export const getListApiKeyHistoryQueryKey = () => {
+export const getListApiKeyHistoryQueryKey = (params?: ListApiKeyHistoryParams,) => {
     return [
-    `/api/api-keys/history`
+    `/api/api-keys/history`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListApiKeyHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listApiKeyHistory>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listApiKeyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListApiKeyHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listApiKeyHistory>>, TError = ErrorType<void>>(params?: ListApiKeyHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listApiKeyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListApiKeyHistoryQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListApiKeyHistoryQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listApiKeyHistory>>> = ({ signal }) => listApiKeyHistory({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listApiKeyHistory>>> = ({ signal }) => listApiKeyHistory(params, { signal, ...requestOptions });
 
 
 
@@ -4342,11 +4350,11 @@ export type ListApiKeyHistoryQueryError = ErrorType<void>
  */
 
 export function useListApiKeyHistory<TData = Awaited<ReturnType<typeof listApiKeyHistory>>, TError = ErrorType<void>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listApiKeyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListApiKeyHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listApiKeyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListApiKeyHistoryQueryOptions(options)
+  const queryOptions = getListApiKeyHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
