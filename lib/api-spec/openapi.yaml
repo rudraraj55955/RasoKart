@@ -1512,6 +1512,22 @@ paths:
         "403":
           description: Merchant access only
 
+  /webhooks/retry-defaults:
+    get:
+      operationId: getWebhookRetryDefaults
+      tags: [webhooks]
+      summary: Get system default webhook retry delays (merchant)
+      description: Returns the platform-wide default delay schedule for webhook retries. Merchants use this to preview their retry timeline when per-webhook delay overrides are set to "System default".
+      responses:
+        "200":
+          description: System default retry delays
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookRetryDefaults"
+        "403":
+          description: Merchants only
+
   /webhooks/logs:
     get:
       operationId: getWebhookLogs
@@ -9136,6 +9152,23 @@ components:
           minimum: 1
           maximum: 168
           description: Number of hours to suppress duplicate webhook failure alert emails for the same merchant. Default is 1.
+
+    WebhookRetryDefaults:
+      type: object
+      required: [delay1, delay2, delay3]
+      properties:
+        delay1:
+          type: integer
+          minimum: 0
+          description: System default delay in seconds before the first retry (after the 1st failure).
+        delay2:
+          type: integer
+          minimum: 0
+          description: System default delay in seconds before the second retry (after the 2nd failure).
+        delay3:
+          type: integer
+          minimum: 0
+          description: System default delay in seconds before the third and subsequent retries.
 
     WebhookRetriesConfig:
       type: object

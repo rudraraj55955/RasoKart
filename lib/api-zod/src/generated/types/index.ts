@@ -345,6 +345,7 @@ export * from './webhookLogDayBucket';
 export * from './webhookLogEventStat';
 export * from './webhookLogStatsResponse';
 export * from './webhookRetriesConfig';
+export * from './webhookRetryDefaults';
 export * from './webhookRetryDelay';
 export * from './webhookRetryPolicy';
 export * from './webhookTestRequest';

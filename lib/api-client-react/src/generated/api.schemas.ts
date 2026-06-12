@@ -2789,6 +2789,24 @@ export interface WebhookFailureAlertConfig {
   cooldownHours: number;
 }
 
+export interface WebhookRetryDefaults {
+  /**
+     * System default delay in seconds before the first retry (after the 1st failure).
+     * @minimum 0
+     */
+  delay1: number;
+  /**
+     * System default delay in seconds before the second retry (after the 2nd failure).
+     * @minimum 0
+     */
+  delay2: number;
+  /**
+     * System default delay in seconds before the third and subsequent retries.
+     * @minimum 0
+     */
+  delay3: number;
+}
+
 export interface WebhookRetriesConfig {
   /**
      * Total maximum delivery attempts (1 initial + retries). Default is 4 (1 initial + 3 retries).

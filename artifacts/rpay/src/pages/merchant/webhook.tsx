@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { EVENT_TYPE_COLORS, EventTypeBadge } from "@/components/ui/event-type-badge";
-import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, WebhookTestRequestEventType } from "@workspace/api-client-react";
+import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, useGetWebhookRetryDefaults, WebhookTestRequestEventType } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
 import type { CallbackLog, WebhookLogDayBucket } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -714,6 +714,20 @@ function DeliveryDetailModal({ log, onClose, onRetry, isRetrying }: { log: Callb
   );
 }
 
+function formatDelaySeconds(secs: number): string {
+  if (secs === 0) return "immediately";
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  }
+  const h = Math.floor(secs / 3600);
+  const rem = secs % 3600;
+  const m = Math.floor(rem / 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 export default function MerchantWebhook() {
   const qc = useQueryClient();
   const { data: config, isLoading } = useGetWebhookConfig();
@@ -776,6 +790,7 @@ export default function MerchantWebhook() {
   const logStatsByEventType = Object.fromEntries(
     (logStatsData?.data ?? []).map(s => [s.eventType, s])
   );
+  const { data: retryDefaults } = useGetWebhookRetryDefaults();
   const updateMutation = useUpdateWebhookConfig();
   const rotateMutation = useRotateCallbackSecret();
   const testMutation = useSendWebhookTest();
@@ -1008,6 +1023,66 @@ onError: () => toast.error("Failed to send test event"),
                   ))}
                 </div>
               </div>
+
+              {/* Retry schedule preview */}
+              {(() => {
+                const sysDelay1 = retryDefaults?.delay1 ?? 300;
+                const sysDelay2 = retryDefaults?.delay2 ?? 900;
+                const sysDelay3 = retryDefaults?.delay3 ?? 3600;
+                const effectiveDelays = [
+                  retryDelay1 ?? sysDelay1,
+                  retryDelay2 ?? sysDelay2,
+                  retryDelay3 ?? sysDelay3,
+                ];
+                const rows: { attempt: number; waitSecs: number; cumulativeSecs: number; isDefault: boolean }[] = [];
+                let cumulative = 0;
+                for (let i = 0; i < maxRetries; i++) {
+                  const delaySec = i < 2 ? effectiveDelays[i] : effectiveDelays[2];
+                  const isDefault = i === 0 ? retryDelay1 == null : i === 1 ? retryDelay2 == null : retryDelay3 == null;
+                  cumulative += delaySec;
+                  rows.push({ attempt: i + 1, waitSecs: delaySec, cumulativeSecs: cumulative, isDefault });
+                }
+                return (
+                  <div className="rounded-lg border border-border/50 bg-muted/10 overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-muted/20">
+                      <Clock className="w-3.5 h-3.5 text-muted-foreground/70 shrink-0" />
+                      <span className="text-xs font-medium text-muted-foreground">Retry schedule preview</span>
+                      <span className="text-[10px] text-muted-foreground/50 ml-auto">read-only · updates live</span>
+                    </div>
+                    <div className="divide-y divide-border/30">
+                      <div className="flex items-center gap-3 px-3 py-2">
+                        <div className="w-5 h-5 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center shrink-0">
+                          <span className="text-[9px] font-bold text-primary">1</span>
+                        </div>
+                        <span className="text-xs text-foreground flex-1">Initial attempt</span>
+                        <span className="text-xs text-muted-foreground/60 font-mono">t = 0</span>
+                      </div>
+                      {rows.map((row) => (
+                        <div key={row.attempt} className="flex items-center gap-3 px-3 py-2">
+                          <div className="w-5 h-5 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                            <span className="text-[9px] font-bold text-amber-400">{row.attempt + 1}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs text-foreground">Retry #{row.attempt}</span>
+                            <span className="text-xs text-muted-foreground/60 ml-2">
+                              wait <span className="font-mono text-amber-400/80">{formatDelaySeconds(row.waitSecs)}</span>
+                              {row.isDefault && <span className="ml-1 text-muted-foreground/40">(system default)</span>}
+                            </span>
+                          </div>
+                          <span className="text-xs text-muted-foreground/60 font-mono shrink-0">
+                            t + {formatDelaySeconds(row.cumulativeSecs)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-3 py-1.5 bg-muted/10 border-t border-border/30">
+                      <p className="text-[10px] text-muted-foreground/50">
+                        If all {maxRetries} {maxRetries === 1 ? "retry" : "retries"} fail, the delivery is marked as permanently failed after <span className="font-mono text-muted-foreground/70">{formatDelaySeconds(rows[rows.length - 1]?.cumulativeSecs ?? 0)}</span> total.
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
           <div className="border-t border-border/50 pt-4 space-y-3">

@@ -1493,6 +1493,25 @@ export const ListSecurityEventsResponse = zod.object({
 
 
 /**
+ * Returns the platform-wide default delay schedule for webhook retries. Merchants use this to preview their retry timeline when per-webhook delay overrides are set to "System default".
+ * @summary Get system default webhook retry delays (merchant)
+ */
+export const getWebhookRetryDefaultsResponseDelay1Min = 0;
+
+export const getWebhookRetryDefaultsResponseDelay2Min = 0;
+
+export const getWebhookRetryDefaultsResponseDelay3Min = 0;
+
+
+
+export const GetWebhookRetryDefaultsResponse = zod.object({
+  "delay1": zod.number().min(getWebhookRetryDefaultsResponseDelay1Min).describe('System default delay in seconds before the first retry (after the 1st failure).'),
+  "delay2": zod.number().min(getWebhookRetryDefaultsResponseDelay2Min).describe('System default delay in seconds before the second retry (after the 2nd failure).'),
+  "delay3": zod.number().min(getWebhookRetryDefaultsResponseDelay3Min).describe('System default delay in seconds before the third and subsequent retries.')
+})
+
+
+/**
  * Returns the last N callback log entries for the merchant's webhook, ordered newest first.
  * @summary Get recent webhook delivery logs for the authenticated merchant
  */

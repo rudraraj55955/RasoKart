@@ -255,6 +255,7 @@ import type {
   WebhookHealthSummary,
   WebhookLogStatsResponse,
   WebhookRetriesConfig,
+  WebhookRetryDefaults,
   WebhookRetryPolicy,
   WebhookTestRequest,
   WebhookTestResult,
@@ -4592,6 +4593,84 @@ export function useListSecurityEvents<TData = Awaited<ReturnType<typeof listSecu
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListSecurityEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetWebhookRetryDefaultsUrl = () => {
+
+
+
+
+  return `/api/webhooks/retry-defaults`
+}
+
+/**
+ * Returns the platform-wide default delay schedule for webhook retries. Merchants use this to preview their retry timeline when per-webhook delay overrides are set to "System default".
+ * @summary Get system default webhook retry delays (merchant)
+ */
+export const getWebhookRetryDefaults = async ( options?: RequestInit): Promise<WebhookRetryDefaults> => {
+
+  return customFetch<WebhookRetryDefaults>(getGetWebhookRetryDefaultsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebhookRetryDefaultsQueryKey = () => {
+    return [
+    `/api/webhooks/retry-defaults`
+    ] as const;
+    }
+
+
+export const getGetWebhookRetryDefaultsQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookRetryDefaults>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookRetryDefaults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebhookRetryDefaultsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookRetryDefaults>>> = ({ signal }) => getWebhookRetryDefaults({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebhookRetryDefaults>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebhookRetryDefaultsQueryResult = NonNullable<Awaited<ReturnType<typeof getWebhookRetryDefaults>>>
+export type GetWebhookRetryDefaultsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get system default webhook retry delays (merchant)
+ */
+
+export function useGetWebhookRetryDefaults<TData = Awaited<ReturnType<typeof getWebhookRetryDefaults>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookRetryDefaults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebhookRetryDefaultsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

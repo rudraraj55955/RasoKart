@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, webhooksTable, callbackLogsTable, auditLogsTable } from "@workspace/db";
-import { and, count, eq, gte, lte, sql } from "drizzle-orm";
+import { db, webhooksTable, callbackLogsTable, auditLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { and, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { fireCallback } from "../helpers/callbackRetry";
 import crypto from "crypto";
@@ -120,6 +120,32 @@ async function assertSafeWebhookUrl(rawUrl: string): Promise<void> {
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
+
+// GET /api/webhooks/retry-defaults — system default retry delays (merchant-accessible)
+router.get("/retry-defaults", async (req, res, next) => {
+  try {
+    const keys = [
+      SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_1,
+      SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_2,
+      SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_3,
+    ];
+
+    const rows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(inArray(systemConfigTable.key, keys));
+
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+
+    res.json({
+      delay1: parseInt(map.get(SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_1) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_1]),
+      delay2: parseInt(map.get(SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_2) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_2]),
+      delay3: parseInt(map.get(SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_3) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_3]),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/webhooks/logs — recent delivery logs for the merchant
 router.get("/logs", async (req, res) => {
