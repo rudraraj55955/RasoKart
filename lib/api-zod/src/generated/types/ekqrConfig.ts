@@ -13,4 +13,6 @@ export interface EkqrConfig {
   apiKeyMasked: string;
   /** Whether EKQR gateway is enabled */
   enabled: boolean;
+  /** Whether a webhook signature secret has been configured */
+  webhookSecretSet: boolean;
 }

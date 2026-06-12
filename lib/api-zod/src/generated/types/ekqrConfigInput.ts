@@ -11,4 +11,6 @@ export interface EkqrConfigInput {
   apiKey?: string;
   /** Whether to enable/disable EKQR gateway */
   enabled?: boolean;
+  /** EKQR webhook signature secret (omit to leave unchanged, empty string to clear) */
+  webhookSecret?: string;
 }

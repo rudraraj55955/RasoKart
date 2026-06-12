@@ -2901,6 +2901,8 @@ export interface EkqrConfig {
   apiKeyMasked: string;
   /** Whether EKQR gateway is enabled */
   enabled: boolean;
+  /** Whether a webhook signature secret has been configured */
+  webhookSecretSet: boolean;
 }
 
 export interface EkqrConfigInput {
@@ -2908,6 +2910,8 @@ export interface EkqrConfigInput {
   apiKey?: string;
   /** Whether to enable/disable EKQR gateway */
   enabled?: boolean;
+  /** EKQR webhook signature secret (omit to leave unchanged, empty string to clear) */
+  webhookSecret?: string;
 }
 
 export interface EkqrTestResult {

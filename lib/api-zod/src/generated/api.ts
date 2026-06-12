@@ -5207,7 +5207,8 @@ export const GetGithubSyncStatusResponse = zod.object({
 export const GetEkqrConfigResponse = zod.object({
   "apiKeySet": zod.boolean().describe('Whether an EKQR API key has been configured'),
   "apiKeyMasked": zod.string().describe('Masked version of the API key (first 4 + last 4 chars visible)'),
-  "enabled": zod.boolean().describe('Whether EKQR gateway is enabled')
+  "enabled": zod.boolean().describe('Whether EKQR gateway is enabled'),
+  "webhookSecretSet": zod.boolean().describe('Whether a webhook signature secret has been configured')
 })
 
 
@@ -5216,13 +5217,15 @@ export const GetEkqrConfigResponse = zod.object({
  */
 export const UpdateEkqrConfigBody = zod.object({
   "apiKey": zod.string().optional().describe('EKQR API key (omit to leave unchanged)'),
-  "enabled": zod.boolean().optional().describe('Whether to enable\/disable EKQR gateway')
+  "enabled": zod.boolean().optional().describe('Whether to enable\/disable EKQR gateway'),
+  "webhookSecret": zod.string().optional().describe('EKQR webhook signature secret (omit to leave unchanged, empty string to clear)')
 })
 
 export const UpdateEkqrConfigResponse = zod.object({
   "apiKeySet": zod.boolean().describe('Whether an EKQR API key has been configured'),
   "apiKeyMasked": zod.string().describe('Masked version of the API key (first 4 + last 4 chars visible)'),
-  "enabled": zod.boolean().describe('Whether EKQR gateway is enabled')
+  "enabled": zod.boolean().describe('Whether EKQR gateway is enabled'),
+  "webhookSecretSet": zod.boolean().describe('Whether a webhook signature secret has been configured')
 })
 
 

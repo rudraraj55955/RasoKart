@@ -228,6 +228,8 @@ export default function AdminSettings() {
   const [ekqrEnabled, setEkqrEnabled] = useState(false);
   const [ekqrInitialized, setEkqrInitialized] = useState(false);
   const [showEkqrKey, setShowEkqrKey] = useState(false);
+  const [ekqrWebhookSecret, setEkqrWebhookSecret] = useState("");
+  const [showEkqrSecret, setShowEkqrSecret] = useState(false);
   const [ekqrTestResult, setEkqrTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [ekqrWebhookTestResult, setEkqrWebhookTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -777,13 +779,14 @@ export default function AdminSettings() {
   } as any);
 
   const currentEkqrEnabled = ekqrConfig?.enabled ?? false;
-  const ekqrUnchanged = ekqrApiKey === "" && ekqrEnabled === currentEkqrEnabled;
+  const ekqrUnchanged = ekqrApiKey === "" && ekqrWebhookSecret === "" && ekqrEnabled === currentEkqrEnabled;
 
   const { mutate: saveEkqrConfig, isPending: savingEkqr } = useUpdateEkqrConfig({
     mutation: {
       onSuccess: () => {
         toast.success("EKQR settings saved");
         setEkqrApiKey("");
+        setEkqrWebhookSecret("");
         setEkqrInitialized(false);
         qc.invalidateQueries({ queryKey: getGetEkqrConfigQueryKey() });
       },
@@ -2616,6 +2619,38 @@ export default function AdminSettings() {
             </div>
           </div>
 
+          {/* Webhook Secret input */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Webhook Signature Secret</Label>
+            <p className="text-xs text-muted-foreground">
+              {ekqrConfig?.webhookSecretSet
+                ? "A secret is configured — incoming webhooks are signature-verified. Enter a new value to rotate it, or clear the field and save to remove verification."
+                : "Optional. When set, EKQR webhook calls must include a valid HMAC-SHA256 signature or they will be rejected with 401."}
+            </p>
+            <div className="relative">
+              <Input
+                type={showEkqrSecret ? "text" : "password"}
+                placeholder={ekqrConfig?.webhookSecretSet ? "Enter new secret to rotate…" : "Enter webhook signature secret"}
+                value={ekqrWebhookSecret}
+                onChange={e => setEkqrWebhookSecret(e.target.value)}
+                className="h-8 text-xs pr-9 font-mono"
+              />
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowEkqrSecret(v => !v)}
+              >
+                {showEkqrSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            {ekqrConfig?.webhookSecretSet && (
+              <p className="text-xs text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                Signature verification active
+              </p>
+            )}
+          </div>
+
           {/* Test result banners */}
           {ekqrTestResult && (
             <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-md ${ekqrTestResult.ok ? "bg-green-500/10 text-green-400" : "bg-destructive/10 text-destructive"}`}>
@@ -2642,7 +2677,7 @@ export default function AdminSettings() {
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               size="sm"
-              onClick={() => saveEkqrConfig({ data: { ...(ekqrApiKey ? { apiKey: ekqrApiKey } : {}), enabled: ekqrEnabled } })}
+              onClick={() => saveEkqrConfig({ data: { ...(ekqrApiKey ? { apiKey: ekqrApiKey } : {}), ...(ekqrWebhookSecret !== "" ? { webhookSecret: ekqrWebhookSecret } : {}), enabled: ekqrEnabled } })}
               disabled={savingEkqr || ekqrLoading || ekqrUnchanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
@@ -2671,7 +2706,7 @@ export default function AdminSettings() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => { setEkqrApiKey(""); setEkqrEnabled(currentEkqrEnabled); setEkqrTestResult(null); setEkqrWebhookTestResult(null); }}
+                onClick={() => { setEkqrApiKey(""); setEkqrWebhookSecret(""); setEkqrEnabled(currentEkqrEnabled); setEkqrTestResult(null); setEkqrWebhookTestResult(null); }}
                 disabled={savingEkqr}
               >
                 Cancel

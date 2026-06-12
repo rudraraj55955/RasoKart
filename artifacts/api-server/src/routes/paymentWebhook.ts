@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, qrCodesTable, transactionsTable, qrPaymentEventsTable, merchantsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, ekqrWebhookLogsTable, callbackLogsTable, callbackLogAttemptsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { ekqrClientTxnId } from "../helpers/ekqr";
+import { ekqrClientTxnId, verifyEkqrWebhookSignature } from "../helpers/ekqr";
 
 const router = Router();
 
@@ -24,6 +24,25 @@ router.post("/", async (req, res) => {
   const body = req.body as Record<string, string>;
 
   const { client_txn_id, amount, status, upi_txn_id, txn_id } = body;
+
+  // ── Signature verification ──────────────────────────────────────────────
+  // If EKQR_WEBHOOK_SECRET is configured, verify the HMAC-SHA256 `hash` field
+  // before doing anything else. Reject unauthenticated requests immediately.
+  const [secretRow] = await db
+    .select({ value: systemConfigTable.value })
+    .from(systemConfigTable)
+    .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET))
+    .limit(1);
+
+  const webhookSecret = secretRow?.value ?? "";
+  if (webhookSecret) {
+    const valid = verifyEkqrWebhookSignature(body, webhookSecret);
+    if (!valid) {
+      req.log.warn({ client_txn_id }, "EKQR webhook rejected: invalid signature");
+      res.status(401).json({ error: "Invalid webhook signature" });
+      return;
+    }
+  }
 
   req.log.info({ client_txn_id, status }, "EKQR payment webhook received");
 

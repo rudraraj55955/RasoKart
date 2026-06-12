@@ -9380,7 +9380,7 @@ components:
 
     EkqrConfig:
       type: object
-      required: [apiKeySet, apiKeyMasked, enabled]
+      required: [apiKeySet, apiKeyMasked, enabled, webhookSecretSet]
       properties:
         apiKeySet:
           type: boolean
@@ -9391,6 +9391,9 @@ components:
         enabled:
           type: boolean
           description: Whether EKQR gateway is enabled
+        webhookSecretSet:
+          type: boolean
+          description: Whether a webhook signature secret has been configured
 
     EkqrConfigInput:
       type: object
@@ -9401,6 +9404,9 @@ components:
         enabled:
           type: boolean
           description: Whether to enable/disable EKQR gateway
+        webhookSecret:
+          type: string
+          description: EKQR webhook signature secret (omit to leave unchanged, empty string to clear)
 
     EkqrTestResult:
       type: object

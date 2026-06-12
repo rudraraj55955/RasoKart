@@ -34,6 +34,7 @@ export const SYSTEM_CONFIG_KEYS = {
   VA_CLEANUP_LAST_DELETED: "va_cleanup_last_deleted",
   EKQR_API_KEY: "ekqr_api_key",
   EKQR_ENABLED: "ekqr_enabled",
+  EKQR_WEBHOOK_SECRET: "ekqr_webhook_secret",
   WEBHOOK_FAILURE_ALERT_COOLDOWN_HOURS: "webhook_failure_alert_cooldown_hours",
 } as const;
 

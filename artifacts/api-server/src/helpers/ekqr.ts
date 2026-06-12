@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import { logger } from "../lib/logger";
 
 export const EKQR_CREATE_ORDER_URL = "https://api.ekqr.in/api/create_order";
@@ -98,4 +99,36 @@ export function ekqrFormatDate(d: Date): string {
 /** Build the client_txn_id for an EKQR order, given our QR code ID */
 export function ekqrClientTxnId(qrCodeId: number): string {
   return `EKQR-${qrCodeId}`;
+}
+
+/**
+ * Verify an EKQR webhook signature.
+ *
+ * EKQR includes a `hash` field in the webhook body computed as:
+ *   HMAC-SHA256(client_txn_id + "|" + txn_id + "|" + amount + "|" + status, webhookSecret)
+ *
+ * Returns true if the signature matches, false if missing or invalid.
+ * When no webhookSecret is configured this function should not be called.
+ */
+export function verifyEkqrWebhookSignature(
+  body: Record<string, string>,
+  webhookSecret: string,
+): boolean {
+  const incomingHash = body["hash"];
+  if (!incomingHash) return false;
+
+  const canonical = [
+    body["client_txn_id"] ?? "",
+    body["txn_id"] ?? "",
+    body["amount"] ?? "",
+    body["status"] ?? "",
+  ].join("|");
+
+  const expected = createHmac("sha256", webhookSecret).update(canonical).digest("hex");
+
+  try {
+    return timingSafeEqual(Buffer.from(incomingHash, "utf8"), Buffer.from(expected, "utf8"));
+  } catch {
+    return false;
+  }
 }
