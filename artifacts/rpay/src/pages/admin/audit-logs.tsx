@@ -70,7 +70,8 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   setting_updated:              { label: "Setting Updated",              color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   system_config_updated:        { label: "System Config Updated",        color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   security_activity_exported:   { label: "Security Activity Exported",   color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
-  security_review_reminded:     { label: "Security Review Reminder Sent", color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  security_review_reminded:              { label: "Security Review Reminder Sent",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  audit_schedule_failure_acknowledged:   { label: "Schedule Failure Acknowledged",       color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);

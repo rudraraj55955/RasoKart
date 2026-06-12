@@ -842,6 +842,20 @@ router.patch("/schedules/:id", async (req, res) => {
 
   if (!updated) { res.status(404).json({ error: "Schedule not found" }); return; }
 
+  if (acknowledgeFailure === true) {
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "audit_schedule_failure_acknowledged",
+      targetType: "audit_logs",
+      targetId: id,
+      details: JSON.stringify({
+        scheduleId: id,
+        recipientEmail: updated.recipientEmail,
+      }),
+    });
+  }
+
   const [{ sendCount, successCount }] = await db
     .select({
       sendCount: sql<number>`COUNT(*)`,
