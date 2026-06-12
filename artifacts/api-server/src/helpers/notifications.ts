@@ -11,7 +11,8 @@ export type NotificationType =
   | "webhook_failure"
   | "reconciliation_email_failure"
   | "scheduled_report_retry_success"
-  | "scheduled_report_auto_paused";
+  | "scheduled_report_auto_paused"
+  | "merchant_dormant";
 
 export interface CreateNotificationInput {
   userId: number;

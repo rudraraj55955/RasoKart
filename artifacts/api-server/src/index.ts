@@ -14,6 +14,7 @@ import { initPlanRenewalScheduler } from "./helpers/planRenewalScheduler";
 import { initRateLimitCleanupScheduler } from "./helpers/rateLimitCleanupScheduler";
 import { initTestEmailRetentionScheduler } from "./helpers/testEmailRetentionScheduler";
 import { initAuditReportRetentionScheduler } from "./helpers/auditReportRetentionScheduler";
+import { initDormantMerchantScheduler, runDormantMerchantScan } from "./helpers/dormantMerchantScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -68,6 +69,7 @@ async function main() {
   initRateLimitCleanupScheduler();
   initTestEmailRetentionScheduler();
   initAuditReportRetentionScheduler();
+  initDormantMerchantScheduler();
   scheduleCallbackRetryWorker();
 
   // Startup sweep: immediately scan all active connections so merchants receive
@@ -75,6 +77,12 @@ async function main() {
   // was down at the start of the month. The dedup indexes make this idempotent.
   runProviderLimitAlertScan().catch((err) => {
     logger.warn({ err }, "Startup provider limit sweep failed");
+  });
+
+  // Startup sweep: scan for newly dormant merchants so admins are alerted even
+  // when the server was down at the scheduled run time. Dedup keys make this safe.
+  runDormantMerchantScan().catch((err) => {
+    logger.warn({ err }, "Startup dormant merchant sweep failed");
   });
 
   app.listen(port, (err) => {

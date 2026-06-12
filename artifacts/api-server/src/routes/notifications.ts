@@ -4,6 +4,7 @@ import { eq, and, desc, count, lt, gte, or, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { createBulkNotifications, createNotification } from "../helpers/notifications";
 import { runProviderLimitAlertScan } from "../helpers/providerLimitScheduler";
+import { runDormantMerchantScan } from "../helpers/dormantMerchantScheduler";
 
 const router = Router();
 router.use(requireAuth);
@@ -228,6 +229,21 @@ router.get("/check-expiry", requireAdmin, async (req, res, next) => {
     await runProviderLimitAlertScan();
 
     res.json({ message: "Expiry check complete", notificationsSent: notifications.length, expiringCount: activePlans.length, expiredCount: justExpired.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/notifications/check-dormant (admin only — scans for newly dormant merchants and sends alerts)
+router.get("/check-dormant", requireAdmin, async (req, res, next) => {
+  try {
+    const result = await runDormantMerchantScan();
+    res.json({
+      message: "Dormant merchant scan complete",
+      checked: result.checked,
+      notified: result.notified,
+      adminCount: result.adminCount,
+    });
   } catch (err) {
     next(err);
   }

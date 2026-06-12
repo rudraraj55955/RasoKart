@@ -8,7 +8,7 @@ export const notificationsTable = pgTable("notifications", {
   // settlement_approved | settlement_rejected | settlement_paid
   // plan_expiring | plan_expired | limit_exceeded | system_notice
   // provider_limit_warning | provider_limit_reached | provider_limit_reset
-  // scheduled_report_retry_success
+  // scheduled_report_retry_success | merchant_dormant
   title: text("title").notNull(),
   body: text("body").notNull(),
   metadata: jsonb("metadata"),
@@ -41,6 +41,16 @@ export const notificationsTable = pgTable("notifications", {
       sql`((metadata->>'currentMonthKey'))`,
     )
     .where(sql`type = 'provider_limit_reset'`),
+  // Dedup index: at most one merchant_dormant alert per admin user per dormancy
+  // event (keyed by dedupeKey = "merchant_dormant_<merchantId>_<thresholdDate>").
+  // onConflictDoNothing() in runDormantMerchantScan() relies on this.
+  uniqueIndex("notifications_merchant_dormant_dedup_idx")
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'dedupeKey'))`,
+    )
+    .where(sql`type = 'merchant_dormant'`),
 ]);
 
 export type Notification = typeof notificationsTable.$inferSelect;
