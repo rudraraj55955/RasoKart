@@ -1278,11 +1278,17 @@ export default function AdminReconciliation() {
                         <tr
                           key={run.id}
                           ref={isHighlighted ? highlightRowRef : null}
-                          className={`group hover:bg-muted/30 transition-colors duration-700${isHighlighted ? " bg-primary/10 ring-1 ring-inset ring-primary/40" : ""}${isMarked ? " border-l-2 border-l-violet-500/50" : ""}`}
+                          className={`group hover:bg-muted/30 transition-colors duration-700${isHighlighted ? " bg-primary/10 ring-1 ring-inset ring-primary/40" : ""}${isMarked ? " border-l-2 border-l-violet-500/50 cursor-pointer" : ""}`}
+                          onClick={isMarked ? () => setSelectedRunId(run.id) : undefined}
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5 font-medium">
                               #{run.id}
+                              {isMarked && (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-px rounded border bg-violet-500/10 text-violet-400 border-violet-500/30 font-medium leading-none select-none" title="Click row to re-open this source run">
+                                  ↩ source
+                                </span>
+                              )}
                               {run.triggeredBy === "auto" ? (
                                 <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-violet-500/10 text-violet-400 border-violet-500/30 gap-1">
                                   <Zap className="w-2.5 h-2.5" /> Auto
@@ -1343,7 +1349,7 @@ export default function AdminReconciliation() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1" onClick={isMarked ? e => e.stopPropagation() : undefined}>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
