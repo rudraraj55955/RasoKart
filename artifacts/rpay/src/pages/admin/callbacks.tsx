@@ -308,7 +308,19 @@ function CallbackRow({ log }: { log: any }) {
           </div>
         </TableCell>
         <TableCell><span className={`font-mono text-sm ${log.httpStatus === 200 ? "text-emerald-500" : "text-rose-500"}`}>{log.httpStatus || "—"}</span></TableCell>
-        <TableCell className="text-center">{log.attempts}</TableCell>
+        <TableCell className="text-center">
+          <span className={`font-mono text-sm font-semibold ${
+            log.status === "success" && (log.attempts ?? 1) === 1
+              ? "text-emerald-400"
+              : log.status === "success" && (log.attempts ?? 1) > 1
+              ? "text-amber-400"
+              : log.status === "pending_retry"
+              ? "text-amber-400"
+              : log.status === "failed"
+              ? "text-rose-400"
+              : "text-foreground"
+          }`}>{log.attempts}</span>
+        </TableCell>
         <TableCell><SignatureVerifiedBadge value={log.signatureVerified} /></TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {isPendingRetry && log.nextRetryAt ? (

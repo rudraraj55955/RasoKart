@@ -205,9 +205,17 @@ function WebhookRow({ log }: { log: any }) {
         </TableCell>
         <TableCell><span className={httpClass}>{httpText}</span></TableCell>
         <TableCell>
-          <Badge variant={log.attempts > 2 ? "destructive" : "secondary"} className="text-xs">
-            {log.attempts}x
-          </Badge>
+          <span className={`font-mono text-sm font-semibold ${
+            log.status === "success" && (log.attempts ?? 1) === 1
+              ? "text-emerald-400"
+              : log.status === "success" && (log.attempts ?? 1) > 1
+              ? "text-amber-400"
+              : log.status === "pending_retry"
+              ? "text-amber-400"
+              : log.status === "failed"
+              ? "text-rose-400"
+              : "text-foreground"
+          }`}>{log.attempts}</span>
         </TableCell>
         <TableCell><SignatureVerifiedBadge value={log.signatureVerified} /></TableCell>
         <TableCell><StatusBadge status={log.status} /></TableCell>
