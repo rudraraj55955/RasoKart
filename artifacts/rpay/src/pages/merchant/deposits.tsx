@@ -386,6 +386,18 @@ export default function MerchantDeposits() {
   const { mutateAsync: renameFilterMutation } = useRenameMerchantSavedFilter();
   const { mutateAsync: reorderFilterMutation } = useReorderMerchantSavedFilters();
 
+  // Server-side date preset sync
+  const PRESET_CONTEXT = "merchant_deposits_date_presets";
+  const presetsInitialized = useRef(false);
+  const { data: serverPresetsData, isSuccess: serverPresetsLoaded } = useListMerchantSavedFilters(
+    { context: PRESET_CONTEXT },
+    { query: { staleTime: Infinity, retry: false } as any },
+  );
+  const { mutateAsync: createPresetMutation } = useCreateMerchantSavedFilter();
+  const { mutateAsync: deletePresetMutation } = useDeleteMerchantSavedFilter();
+  const { mutateAsync: renamePresetMutation } = useRenameMerchantSavedFilter();
+  const { mutateAsync: reorderPresetMutation } = useReorderMerchantSavedFilters();
+
   useEffect(() => {
     if (!serverFiltersLoaded || filtersInitialized.current) return;
     filtersInitialized.current = true;
@@ -419,6 +431,45 @@ export default function MerchantDeposits() {
       }
     }
   }, [serverFiltersLoaded, serverFiltersData]);
+
+  useEffect(() => {
+    if (!serverPresetsLoaded || presetsInitialized.current) return;
+    presetsInitialized.current = true;
+    const serverPresets: CustomDatePreset[] = (serverPresetsData?.data ?? []).map(f => ({
+      id: String(f.id),
+      name: f.name,
+      from: (f.filterData as Record<string, string>)["from"] ?? "",
+      to: (f.filterData as Record<string, string>)["to"] ?? "",
+    }));
+    if (serverPresets.length > 0) {
+      setCustomDatePresets(serverPresets);
+      storeCustomDatePresets(serverPresets);
+    } else {
+      const local = loadCustomDatePresets();
+      if (local.length > 0) {
+        (async () => {
+          const imported: CustomDatePreset[] = [];
+          for (const p of local) {
+            try {
+              const created = await createPresetMutation({
+                data: { name: p.name, rawInput: `${p.from} to ${p.to}`, filterData: { from: p.from, to: p.to }, context: PRESET_CONTEXT },
+              });
+              imported.push({
+                id: String(created.id),
+                name: created.name,
+                from: (created.filterData as Record<string, string>)["from"] ?? p.from,
+                to: (created.filterData as Record<string, string>)["to"] ?? p.to,
+              });
+            } catch { /* skip duplicates or errors */ }
+          }
+          if (imported.length > 0) {
+            setCustomDatePresets(imported);
+            storeCustomDatePresets(imported);
+          }
+        })();
+      }
+    }
+  }, [serverPresetsLoaded, serverPresetsData]);
 
   useEffect(() => {
     if (showSaveDatePreset) {
@@ -473,7 +524,7 @@ export default function MerchantDeposits() {
     setShowSaveDatePreset(true);
   };
 
-  const confirmSaveDatePreset = () => {
+  const confirmSaveDatePreset = async () => {
     const trimmed = saveDatePresetName.trim();
     if (!trimmed) {
       setSaveDatePresetNameError("Please enter a name for this preset.");
@@ -488,15 +539,22 @@ export default function MerchantDeposits() {
       saveDatePresetNameRef.current?.focus();
       return;
     }
-    const newPreset: CustomDatePreset = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: trimmed,
-      from: dateFrom,
-      to: dateTo,
-    };
-    const updated = [...customDatePresets, newPreset];
-    setCustomDatePresets(updated);
-    storeCustomDatePresets(updated);
+    try {
+      const created = await createPresetMutation({
+        data: { name: trimmed, rawInput: `${dateFrom} to ${dateTo}`, filterData: { from: dateFrom, to: dateTo }, context: PRESET_CONTEXT },
+      });
+      const newPreset: CustomDatePreset = {
+        id: String(created.id),
+        name: created.name,
+        from: (created.filterData as Record<string, string>)["from"] ?? dateFrom,
+        to: (created.filterData as Record<string, string>)["to"] ?? dateTo,
+      };
+      const updated = [...customDatePresets, newPreset];
+      setCustomDatePresets(updated);
+      storeCustomDatePresets(updated);
+    } catch {
+      toast.error("Failed to save preset. Please try again.");
+    }
     setShowSaveDatePreset(false);
     setSaveDatePresetName("");
     setSaveDatePresetNameError("");
@@ -508,14 +566,20 @@ export default function MerchantDeposits() {
     setSaveDatePresetNameError("");
   };
 
-  const deleteCustomDatePreset = (id: string) => {
+  const deleteCustomDatePreset = async (id: string) => {
     const updated = customDatePresets.filter(p => p.id !== id);
     setCustomDatePresets(updated);
     storeCustomDatePresets(updated);
     if (renamingPresetId === id) setRenamingPresetId(null);
+    const numericId = parseInt(id);
+    if (!isNaN(numericId)) {
+      try {
+        await deletePresetMutation({ id: numericId });
+      } catch { /* optimistic delete already applied locally */ }
+    }
   };
 
-  const moveCustomDatePreset = (id: string, dir: -1 | 1) => {
+  const moveCustomDatePreset = async (id: string, dir: -1 | 1) => {
     const idx = customDatePresets.findIndex(p => p.id === id);
     if (idx === -1) return;
     const newIdx = idx + dir;
@@ -524,6 +588,10 @@ export default function MerchantDeposits() {
     [updated[idx], updated[newIdx]] = [updated[newIdx]!, updated[idx]!];
     setCustomDatePresets(updated);
     storeCustomDatePresets(updated);
+    const ids = updated.map(p => parseInt(p.id)).filter(n => !isNaN(n));
+    try {
+      await reorderPresetMutation({ data: { ids, context: PRESET_CONTEXT } });
+    } catch { /* optimistic reorder already applied locally */ }
   };
 
   const handlePresetDragStart = (id: string) => {
@@ -549,6 +617,8 @@ export default function MerchantDeposits() {
     updated.splice(toIdx, 0, item!);
     setCustomDatePresets(updated);
     storeCustomDatePresets(updated);
+    const ids = updated.map(p => parseInt(p.id)).filter(n => !isNaN(n));
+    reorderPresetMutation({ data: { ids, context: PRESET_CONTEXT } }).catch(() => {});
   };
   const handlePresetDragEnd = () => {
     dragPresetIdRef.current = null;
@@ -561,7 +631,7 @@ export default function MerchantDeposits() {
     setRenamePresetValue(preset.name);
   };
 
-  const commitRenamePreset = () => {
+  const commitRenamePreset = async () => {
     if (!renamingPresetId) return;
     const trimmed = renamePresetValue.trim();
     if (!trimmed) { setRenamingPresetId(null); return; }
@@ -573,6 +643,12 @@ export default function MerchantDeposits() {
     setCustomDatePresets(updated);
     storeCustomDatePresets(updated);
     setRenamingPresetId(null);
+    const numericId = parseInt(renamingPresetId);
+    if (!isNaN(numericId)) {
+      try {
+        await renamePresetMutation({ id: numericId, data: { name: trimmed } });
+      } catch { /* optimistic rename already applied locally */ }
+    }
   };
 
   const cancelRenamePreset = () => { setRenamingPresetId(null); };
