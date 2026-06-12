@@ -333,7 +333,7 @@ router.post("/runs/:id/email-logs/resend-alert", async (req, res, next) => {
     const [run] = await db.select().from(reconciliationRunsTable).where(eq(reconciliationRunsTable.id, runId)).limit(1);
     if (!run) { res.status(404).json({ error: "Run not found" }); return; }
 
-    await notifyAdminsOfUnmatchedItems(runId);
+    const result = await notifyAdminsOfUnmatchedItems(runId);
 
     await db.insert(auditLogsTable).values({
       adminId: user.id,
@@ -341,11 +341,16 @@ router.post("/runs/:id/email-logs/resend-alert", async (req, res, next) => {
       action: "reconciliation_alert_email_resent",
       targetType: "reconciliation_run",
       targetId: runId,
-      details: JSON.stringify({ runId }),
+      details: JSON.stringify({ runId, skipped: result.skipped, ...(result.skipped ? { reason: result.reason } : {}) }),
       ipAddress: (req as any).ip ?? null,
     });
 
-    res.json({ ok: true });
+    if (result.skipped) {
+      res.json({ ok: true, skipped: true, reason: result.reason });
+      return;
+    }
+
+    res.json({ ok: true, skipped: false });
   } catch (err) {
     next(err);
   }

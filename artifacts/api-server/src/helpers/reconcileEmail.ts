@@ -222,7 +222,11 @@ export function buildUnmatchedAlertHtml(run: typeof reconciliationRunsTable.$inf
 </html>`;
 }
 
-export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void> {
+export type NotifyAdminsResult =
+  | { skipped: false }
+  | { skipped: true; reason: "no_recipients" };
+
+export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<NotifyAdminsResult> {
   try {
     const [run] = await db
       .select()
@@ -232,12 +236,12 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
 
     if (!run) {
       logger.warn({ runId }, "Reconciliation run not found for unmatched-items admin alert");
-      return;
+      return { skipped: false };
     }
 
     if ((run.totalUnmatched ?? 0) === 0) {
       logger.info({ runId }, "No unmatched items — skipping admin unmatched-items alert email");
-      return;
+      return { skipped: false };
     }
 
     const admins = await db
@@ -251,7 +255,7 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
 
     if (admins.length === 0) {
       logger.info({ runId }, "No active admins found — skipping unmatched-items alert emails");
-      return;
+      return { skipped: true, reason: "no_recipients" };
     }
 
     const html = buildUnmatchedAlertHtml(run);
@@ -283,6 +287,8 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
       { runId, totalAdmins: admins.length, sent, failed },
       "Admin unmatched-items alert emails dispatched"
     );
+
+    return { skipped: false };
   } catch (err) {
     logger.error({ err, runId }, "Failed to send admin unmatched-items alert emails");
 
@@ -297,6 +303,8 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<void>
     } catch (logErr) {
       logger.error({ logErr, runId }, "Failed to write email log for unmatched-items alert");
     }
+
+    return { skipped: false };
   }
 }
 

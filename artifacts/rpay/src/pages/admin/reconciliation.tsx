@@ -856,8 +856,12 @@ export default function AdminReconciliation() {
 
   const resendAlertEmailMutation = useMutation({
     mutationFn: () => apiPost(`/reconciliation/runs/${selectedRunId}/email-logs/resend-alert`, {}),
-    onSuccess: () => {
-      toast.success("Alert email resent");
+    onSuccess: (data: any) => {
+      if (data?.skipped && data?.reason === "no_recipients") {
+        toast.warning("No recipients — enable reconciliation alerts on at least one admin account");
+      } else {
+        toast.success("Alert email resent");
+      }
       qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
     },
     onError: (err: any) => toast.error(`Resend failed: ${err.message}`),
