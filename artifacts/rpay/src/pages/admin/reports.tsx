@@ -1246,6 +1246,7 @@ function DeliveryHistoryPanel() {
   const [dateTo, setDateTo] = useState("");
   const [timelinePreset, setTimelinePreset] = useState<string | null>(null);
   const [reEnabling, setReEnabling] = useState<number | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
 
   const params = {
     merchantId: merchantFilter !== "all" ? parseInt(merchantFilter) : undefined,
@@ -1373,6 +1374,17 @@ function DeliveryHistoryPanel() {
     }
     return map;
   }, [logs]);
+
+  const sortedLogs = useMemo(() => {
+    if (!sortDir) return logs;
+    return [...logs].sort((a, b) => {
+      const ra = merchantSuccessRates.get(a.merchantId);
+      const rb = merchantSuccessRates.get(b.merchantId);
+      const pctA = ra && ra.total > 0 ? ra.success / ra.total : 0;
+      const pctB = rb && rb.total > 0 ? rb.success / rb.total : 0;
+      return sortDir === "asc" ? pctA - pctB : pctB - pctA;
+    });
+  }, [logs, merchantSuccessRates, sortDir]);
 
   const showCharts = !isLoading && logs.length > 0;
 
@@ -1629,7 +1641,22 @@ function DeliveryHistoryPanel() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Attempted At</TableHead>
-                  <TableHead>Merchant</TableHead>
+                  <TableHead>
+                    <button
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
+                      onClick={() => setSortDir((d) => d === null ? "asc" : d === "asc" ? "desc" : null)}
+                      title="Sort by success rate"
+                    >
+                      Merchant
+                      {sortDir === "asc" ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-primary" />
+                      ) : sortDir === "desc" ? (
+                        <ChevronDown className="w-3.5 h-3.5 text-primary" />
+                      ) : (
+                        <ChevronsUpDown className="w-3.5 h-3.5 opacity-40" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Triggered By</TableHead>
                   <TableHead>Frequency</TableHead>
@@ -1641,7 +1668,7 @@ function DeliveryHistoryPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.map((log) => (
+                {sortedLogs.map((log) => (
                   <TableRow key={log.id} className={!log.success ? "bg-red-950/10 hover:bg-red-950/20" : undefined}>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
