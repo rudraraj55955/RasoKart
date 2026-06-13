@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
 import {
   useGetTransactionReport,
@@ -14,6 +15,8 @@ import {
   useDeleteReportSchedule,
   useSendReportNow,
   useReenableReportSchedule,
+  getGetTransactionReportCountQueryOptions,
+  getGetSettlementReportCountQueryOptions,
 } from "@workspace/api-client-react";
 import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
 import { useQueryClient } from "@tanstack/react-query";
@@ -662,6 +665,46 @@ export default function MerchantReports() {
   const txStats = txData?.stats;
   const settlements = stlData?.data ?? [];
   const stlStats = stlData?.stats;
+
+  // Build ordered list of all date ranges for preset count badges
+  const txCountNonDateFilters = {
+    type: type !== "all" ? (type as "deposit" | "withdrawal") : undefined,
+    status: txStatus !== "all" ? (txStatus as "pending" | "success" | "failed") : undefined,
+    connectionProvider: connectionProvider !== "all" ? (connectionProvider as "phonepe" | "paytm" | "bharatpe" | "yono_sbi" | "hdfc_smarthub" | "upi_id") : undefined,
+    source: source !== "all" ? (source as "qr_code" | "virtual_account" | "payment_link" | "direct") : undefined,
+  };
+  const stlCountNonDateFilters = {
+    status: stlStatus !== "all" ? (stlStatus as "pending" | "processing" | "approved" | "rejected" | "paid" | "cancelled") : undefined,
+  };
+
+  const txPresetRanges = [
+    ...DATE_PRESETS.map((p) => { const r = p.getRange(); return { key: p.label, from: r.from, to: r.to }; }),
+    ...customDatePresets.map((p) => ({ key: p.id, from: p.from, to: p.to })),
+  ];
+  const stlPresetRanges = [
+    ...DATE_PRESETS.map((p) => { const r = p.getRange(); return { key: p.label, from: r.from, to: r.to }; }),
+    ...customDatePresets.map((p) => ({ key: p.id, from: p.from, to: p.to })),
+  ];
+
+  const txCountResults = useQueries({
+    queries: txPresetRanges.map(({ from, to }) =>
+      getGetTransactionReportCountQueryOptions({ dateFrom: from, dateTo: to, ...txCountNonDateFilters })
+    ),
+  });
+  const stlCountResults = useQueries({
+    queries: stlPresetRanges.map(({ from, to }) =>
+      getGetSettlementReportCountQueryOptions({ dateFrom: from, dateTo: to, ...stlCountNonDateFilters })
+    ),
+  });
+
+  const txCountMap: Record<string, { count: number | undefined; loading: boolean }> = {};
+  txPresetRanges.forEach((r, i) => {
+    txCountMap[r.key] = { count: txCountResults[i]?.data?.count, loading: txCountResults[i]?.isLoading ?? false };
+  });
+  const stlCountMap: Record<string, { count: number | undefined; loading: boolean }> = {};
+  stlPresetRanges.forEach((r, i) => {
+    stlCountMap[r.key] = { count: stlCountResults[i]?.data?.count, loading: stlCountResults[i]?.isLoading ?? false };
+  });
 
   useEffect(() => {
     if (!serverFiltersLoaded || filtersInitialized.current) return;
@@ -1382,19 +1425,29 @@ export default function MerchantReports() {
         <TabsContent value="transactions" className="space-y-6">
           <div className="flex items-center justify-end gap-2 flex-wrap">
             <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-md border border-border/50">
-              {DATE_PRESETS.map((p) => (
-                <Button
-                  key={p.label}
-                  variant={txActivePreset === p.label ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-7 text-xs px-2.5"
-                  onClick={() => applyTxPreset(p)}
-                >
-                  {p.label}
-                </Button>
-              ))}
+              {DATE_PRESETS.map((p) => {
+                const txCnt = txCountMap[p.label];
+                return (
+                  <Button
+                    key={p.label}
+                    variant={txActivePreset === p.label ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-7 text-xs px-2.5"
+                    onClick={() => applyTxPreset(p)}
+                  >
+                    {p.label}
+                    {txCnt?.loading ? (
+                      <Loader2 className="w-2.5 h-2.5 ml-1 animate-spin opacity-40" />
+                    ) : txCnt?.count !== undefined ? (
+                      <span className="ml-1 opacity-50 font-normal tabular-nums">· {txCnt.count.toLocaleString("en-IN")}</span>
+                    ) : null}
+                  </Button>
+                );
+              })}
             </div>
-            {customDatePresets.map((preset, idx) => (
+            {customDatePresets.map((preset, idx) => {
+              const txCnt = txCountMap[preset.id];
+              return (
               <span
                 key={preset.id}
                 draggable={renamingPresetId !== preset.id}
@@ -1436,7 +1489,14 @@ export default function MerchantReports() {
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                    <button onClick={() => startRenamePreset(preset)} className="px-0.5 py-1 hover:text-sky-100 transition-colors" title="Click to rename">{preset.name}</button>
+                    <button onClick={() => startRenamePreset(preset)} className="px-0.5 py-1 hover:text-sky-100 transition-colors" title="Click to rename">
+                      {preset.name}
+                      {txCnt?.loading ? (
+                        <Loader2 className="w-2.5 h-2.5 ml-0.5 animate-spin opacity-40 inline" />
+                      ) : txCnt?.count !== undefined ? (
+                        <span className="ml-0.5 opacity-50 font-normal tabular-nums">· {txCnt.count.toLocaleString("en-IN")}</span>
+                      ) : null}
+                    </button>
                   </>
                 )}
                 {renamingPresetId !== preset.id && (
@@ -1456,7 +1516,8 @@ export default function MerchantReports() {
                 )}
                 {idx === customDatePresets.length - 1 && renamingPresetId !== preset.id && <span className="pr-1" />}
               </span>
-            ))}
+            );
+            })}
           </div>
 
           {/* Tx Filters */}
@@ -1925,18 +1986,28 @@ export default function MerchantReports() {
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <CalendarRange className="w-4 h-4 text-muted-foreground shrink-0" />
-                {DATE_PRESETS.map((p) => (
-                  <Button
-                    key={p.label}
-                    variant={stlActivePreset === p.label ? "secondary" : "outline"}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => applyStlPreset(p)}
-                  >
-                    {p.label}
-                  </Button>
-                ))}
-                {customDatePresets.map((preset, idx) => (
+                {DATE_PRESETS.map((p) => {
+                  const stlCnt = stlCountMap[p.label];
+                  return (
+                    <Button
+                      key={p.label}
+                      variant={stlActivePreset === p.label ? "secondary" : "outline"}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => applyStlPreset(p)}
+                    >
+                      {p.label}
+                      {stlCnt?.loading ? (
+                        <Loader2 className="w-2.5 h-2.5 ml-1 animate-spin opacity-40" />
+                      ) : stlCnt?.count !== undefined ? (
+                        <span className="ml-1 opacity-50 font-normal tabular-nums">· {stlCnt.count.toLocaleString("en-IN")}</span>
+                      ) : null}
+                    </Button>
+                  );
+                })}
+                {customDatePresets.map((preset, idx) => {
+                  const stlCnt = stlCountMap[preset.id];
+                  return (
                   <span
                     key={preset.id}
                     draggable={renamingPresetId !== preset.id}
@@ -1978,7 +2049,14 @@ export default function MerchantReports() {
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        <button onClick={() => startRenamePreset(preset)} className="px-0.5 py-1 hover:text-sky-100 transition-colors" title="Click to rename">{preset.name}</button>
+                        <button onClick={() => startRenamePreset(preset)} className="px-0.5 py-1 hover:text-sky-100 transition-colors" title="Click to rename">
+                          {preset.name}
+                          {stlCnt?.loading ? (
+                            <Loader2 className="w-2.5 h-2.5 ml-0.5 animate-spin opacity-40 inline" />
+                          ) : stlCnt?.count !== undefined ? (
+                            <span className="ml-0.5 opacity-50 font-normal tabular-nums">· {stlCnt.count.toLocaleString("en-IN")}</span>
+                          ) : null}
+                        </button>
                       </>
                     )}
                     {renamingPresetId !== preset.id && (
@@ -1998,7 +2076,8 @@ export default function MerchantReports() {
                     )}
                     {idx === customDatePresets.length - 1 && renamingPresetId !== preset.id && <span className="pr-1" />}
                   </span>
-                ))}
+                );
+                })}
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

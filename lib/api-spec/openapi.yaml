@@ -1482,6 +1482,97 @@ paths:
         "401":
           description: Unauthorized
 
+  /reports/transactions/count:
+    get:
+      operationId: getTransactionReportCount
+      tags: [reports]
+      summary: Return a lightweight record count for transaction filter params (no data rows)
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [deposit, withdrawal, all]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, success, failed, all]
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+          description: Admin only — scope to a specific merchant
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: connectionProvider
+          in: query
+          schema:
+            type: string
+            enum: [phonepe, paytm, bharatpe, yono_sbi, hdfc_smarthub, upi_id]
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [qr_code, virtual_account, payment_link, direct]
+      responses:
+        "200":
+          description: Record count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+        "401":
+          description: Unauthorized
+
+  /reports/settlements/count:
+    get:
+      operationId: getSettlementReportCount
+      tags: [reports]
+      summary: Return a lightweight record count for settlement filter params (no data rows)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, processing, approved, rejected, paid, cancelled, all]
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+          description: Admin only — scope to a specific merchant
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Record count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+        "401":
+          description: Unauthorized
+
   /reports/schedule:
     get:
       operationId: getReportSchedule

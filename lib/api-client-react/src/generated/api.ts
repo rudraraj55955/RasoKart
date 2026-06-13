@@ -121,8 +121,12 @@ import type {
   GetRoutingLogsParams,
   GetRoutingMetricsParams,
   GetSecurityComplianceSummaryParams,
+  GetSettlementReportCount200,
+  GetSettlementReportCountParams,
   GetSettlementReportParams,
   GetSignatureFailureAlertHistoryParams,
+  GetTransactionReportCount200,
+  GetTransactionReportCountParams,
   GetTransactionReportParams,
   GetVirtualAccountBalanceHistoryParams,
   GetWebhookFailureAlertHistoryParams,
@@ -4322,6 +4326,174 @@ export function useGetTransactionReport<TData = Awaited<ReturnType<typeof getTra
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetTransactionReportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetTransactionReportCountUrl = (params?: GetTransactionReportCountParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/transactions/count?${stringifiedParams}` : `/api/reports/transactions/count`
+}
+
+/**
+ * @summary Return a lightweight record count for transaction filter params (no data rows)
+ */
+export const getTransactionReportCount = async (params?: GetTransactionReportCountParams, options?: RequestInit): Promise<GetTransactionReportCount200> => {
+
+  return customFetch<GetTransactionReportCount200>(getGetTransactionReportCountUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTransactionReportCountQueryKey = (params?: GetTransactionReportCountParams,) => {
+    return [
+    `/api/reports/transactions/count`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTransactionReportCountQueryOptions = <TData = Awaited<ReturnType<typeof getTransactionReportCount>>, TError = ErrorType<void>>(params?: GetTransactionReportCountParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTransactionReportCount>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTransactionReportCountQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTransactionReportCount>>> = ({ signal }) => getTransactionReportCount(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTransactionReportCount>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTransactionReportCountQueryResult = NonNullable<Awaited<ReturnType<typeof getTransactionReportCount>>>
+export type GetTransactionReportCountQueryError = ErrorType<void>
+
+
+/**
+ * @summary Return a lightweight record count for transaction filter params (no data rows)
+ */
+
+export function useGetTransactionReportCount<TData = Awaited<ReturnType<typeof getTransactionReportCount>>, TError = ErrorType<void>>(
+ params?: GetTransactionReportCountParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTransactionReportCount>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTransactionReportCountQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetSettlementReportCountUrl = (params?: GetSettlementReportCountParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/settlements/count?${stringifiedParams}` : `/api/reports/settlements/count`
+}
+
+/**
+ * @summary Return a lightweight record count for settlement filter params (no data rows)
+ */
+export const getSettlementReportCount = async (params?: GetSettlementReportCountParams, options?: RequestInit): Promise<GetSettlementReportCount200> => {
+
+  return customFetch<GetSettlementReportCount200>(getGetSettlementReportCountUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSettlementReportCountQueryKey = (params?: GetSettlementReportCountParams,) => {
+    return [
+    `/api/reports/settlements/count`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSettlementReportCountQueryOptions = <TData = Awaited<ReturnType<typeof getSettlementReportCount>>, TError = ErrorType<void>>(params?: GetSettlementReportCountParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSettlementReportCount>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSettlementReportCountQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSettlementReportCount>>> = ({ signal }) => getSettlementReportCount(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSettlementReportCount>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSettlementReportCountQueryResult = NonNullable<Awaited<ReturnType<typeof getSettlementReportCount>>>
+export type GetSettlementReportCountQueryError = ErrorType<void>
+
+
+/**
+ * @summary Return a lightweight record count for settlement filter params (no data rows)
+ */
+
+export function useGetSettlementReportCount<TData = Awaited<ReturnType<typeof getSettlementReportCount>>, TError = ErrorType<void>>(
+ params?: GetSettlementReportCountParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSettlementReportCount>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSettlementReportCountQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

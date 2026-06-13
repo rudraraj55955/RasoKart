@@ -4172,6 +4172,91 @@ export const GetTransactionReportSource = {
   direct: 'direct',
 } as const;
 
+export type GetTransactionReportCountParams = {
+type?: GetTransactionReportCountType;
+status?: GetTransactionReportCountStatus;
+/**
+ * Admin only — scope to a specific merchant
+ */
+merchantId?: number;
+dateFrom?: string;
+dateTo?: string;
+connectionProvider?: GetTransactionReportCountConnectionProvider;
+source?: GetTransactionReportCountSource;
+};
+
+export type GetTransactionReportCountType = typeof GetTransactionReportCountType[keyof typeof GetTransactionReportCountType];
+
+
+export const GetTransactionReportCountType = {
+  deposit: 'deposit',
+  withdrawal: 'withdrawal',
+  all: 'all',
+} as const;
+
+export type GetTransactionReportCountStatus = typeof GetTransactionReportCountStatus[keyof typeof GetTransactionReportCountStatus];
+
+
+export const GetTransactionReportCountStatus = {
+  pending: 'pending',
+  success: 'success',
+  failed: 'failed',
+  all: 'all',
+} as const;
+
+export type GetTransactionReportCountConnectionProvider = typeof GetTransactionReportCountConnectionProvider[keyof typeof GetTransactionReportCountConnectionProvider];
+
+
+export const GetTransactionReportCountConnectionProvider = {
+  phonepe: 'phonepe',
+  paytm: 'paytm',
+  bharatpe: 'bharatpe',
+  yono_sbi: 'yono_sbi',
+  hdfc_smarthub: 'hdfc_smarthub',
+  upi_id: 'upi_id',
+} as const;
+
+export type GetTransactionReportCountSource = typeof GetTransactionReportCountSource[keyof typeof GetTransactionReportCountSource];
+
+
+export const GetTransactionReportCountSource = {
+  qr_code: 'qr_code',
+  virtual_account: 'virtual_account',
+  payment_link: 'payment_link',
+  direct: 'direct',
+} as const;
+
+export type GetTransactionReportCount200 = {
+  count: number;
+};
+
+export type GetSettlementReportCountParams = {
+status?: GetSettlementReportCountStatus;
+/**
+ * Admin only — scope to a specific merchant
+ */
+merchantId?: number;
+dateFrom?: string;
+dateTo?: string;
+};
+
+export type GetSettlementReportCountStatus = typeof GetSettlementReportCountStatus[keyof typeof GetSettlementReportCountStatus];
+
+
+export const GetSettlementReportCountStatus = {
+  pending: 'pending',
+  processing: 'processing',
+  approved: 'approved',
+  rejected: 'rejected',
+  paid: 'paid',
+  cancelled: 'cancelled',
+  all: 'all',
+} as const;
+
+export type GetSettlementReportCount200 = {
+  count: number;
+};
+
 export type GetReportSchedule200 = {
   schedule: ReportSchedule | null;
 };

@@ -1475,6 +1475,39 @@ export const GetTransactionReportResponse = zod.object({
 
 
 /**
+ * @summary Return a lightweight record count for transaction filter params (no data rows)
+ */
+export const GetTransactionReportCountQueryParams = zod.object({
+  "type": zod.enum(['deposit', 'withdrawal', 'all']).optional(),
+  "status": zod.enum(['pending', 'success', 'failed', 'all']).optional(),
+  "merchantId": zod.coerce.number().optional().describe('Admin only — scope to a specific merchant'),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "connectionProvider": zod.enum(['phonepe', 'paytm', 'bharatpe', 'yono_sbi', 'hdfc_smarthub', 'upi_id']).optional(),
+  "source": zod.enum(['qr_code', 'virtual_account', 'payment_link', 'direct']).optional()
+})
+
+export const GetTransactionReportCountResponse = zod.object({
+  "count": zod.number()
+})
+
+
+/**
+ * @summary Return a lightweight record count for settlement filter params (no data rows)
+ */
+export const GetSettlementReportCountQueryParams = zod.object({
+  "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled', 'all']).optional(),
+  "merchantId": zod.coerce.number().optional().describe('Admin only — scope to a specific merchant'),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional()
+})
+
+export const GetSettlementReportCountResponse = zod.object({
+  "count": zod.number()
+})
+
+
+/**
  * @summary Get the merchant's own report schedule
  */
 export const getReportScheduleResponseScheduleOneDayOfWeekMin = 0;

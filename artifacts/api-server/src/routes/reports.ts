@@ -224,6 +224,103 @@ router.get("/settlements", async (req, res, next) => {
   }
 });
 
+// GET /api/reports/transactions/count
+// Returns a lightweight count of matching transactions (no data rows).
+router.get("/transactions/count", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { type, status, merchantId, dateFrom, dateTo, connectionProvider, source } = req.query as Record<string, string>;
+
+    const conditions = [];
+    if (user.role !== "admin") {
+      conditions.push(eq(transactionsTable.merchantId, user.merchantId!));
+    } else if (merchantId) {
+      conditions.push(eq(transactionsTable.merchantId, parseInt(merchantId as string)));
+    }
+    if (type && type !== "all") conditions.push(eq(transactionsTable.type, type));
+    if (status && status !== "all") conditions.push(eq(transactionsTable.status, status));
+    if (connectionProvider) {
+      const matchingConnectionIds = db
+        .select({ id: merchantConnectionsTable.id })
+        .from(merchantConnectionsTable)
+        .where(eq(merchantConnectionsTable.provider, connectionProvider));
+      conditions.push(
+        or(
+          inArray(transactionsTable.connectionId, matchingConnectionIds),
+          eq(transactionsTable.provider, connectionProvider)
+        )!
+      );
+    }
+    if (source) {
+      switch (source) {
+        case "qr_code":
+          conditions.push(isNotNull(transactionsTable.qrCodeId));
+          break;
+        case "virtual_account":
+          conditions.push(isNotNull(transactionsTable.virtualAccountId));
+          break;
+        case "payment_link":
+          conditions.push(isNotNull(transactionsTable.paymentLinkId));
+          break;
+        case "direct":
+          conditions.push(isNull(transactionsTable.qrCodeId));
+          conditions.push(isNull(transactionsTable.virtualAccountId));
+          conditions.push(isNull(transactionsTable.paymentLinkId));
+          break;
+      }
+    }
+    if (dateFrom) conditions.push(gte(transactionsTable.createdAt, new Date(dateFrom)));
+    if (dateTo) {
+      const endOfDay = new Date(dateTo);
+      endOfDay.setHours(23, 59, 59, 999);
+      conditions.push(lte(transactionsTable.createdAt, endOfDay));
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const [row] = await db
+      .select({ count: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(transactionsTable)
+      .where(where);
+
+    res.json({ count: Number(row?.count ?? 0) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/settlements/count
+// Returns a lightweight count of matching settlements (no data rows).
+router.get("/settlements/count", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { status, merchantId, dateFrom, dateTo } = req.query as Record<string, string>;
+
+    const conditions = [];
+    if (user.role !== "admin") {
+      conditions.push(eq(settlementsTable.merchantId, user.merchantId!));
+    } else if (merchantId) {
+      conditions.push(eq(settlementsTable.merchantId, parseInt(merchantId as string)));
+    }
+    if (status && status !== "all") conditions.push(eq(settlementsTable.status, status));
+    if (dateFrom) conditions.push(gte(settlementsTable.createdAt, new Date(dateFrom)));
+    if (dateTo) {
+      const endOfDay = new Date(dateTo);
+      endOfDay.setHours(23, 59, 59, 999);
+      conditions.push(lte(settlementsTable.createdAt, endOfDay));
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const [row] = await db
+      .select({ count: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(settlementsTable)
+      .where(where);
+
+    res.json({ count: Number(row?.count ?? 0) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Merchant: own schedule ───────────────────────────────────────────────────
 
 // GET /api/reports/schedule — merchant: get own schedule
