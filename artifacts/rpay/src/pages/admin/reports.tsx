@@ -353,7 +353,8 @@ function ScheduledReportsPanel() {
   const now = new Date();
   const statusCounts = {
     active: schedules.filter((s) => s.isActive).length,
-    paused: schedules.filter((s) => !s.isActive).length,
+    paused: schedules.filter((s) => !s.isActive && s.consecutiveFailures === 0).length,
+    autoPaused: schedules.filter((s) => !s.isActive && s.consecutiveFailures > 0).length,
   };
 
   const frequencyCounts = {
@@ -371,7 +372,8 @@ function ScheduledReportsPanel() {
     const q = search.trim().toLowerCase();
     if (q && !s.businessName.toLowerCase().includes(q) && !s.merchantEmail.toLowerCase().includes(q)) return false;
     if (statusFilter === "active" && !s.isActive) return false;
-    if (statusFilter === "paused" && s.isActive) return false;
+    if (statusFilter === "paused" && (s.isActive || s.consecutiveFailures > 0)) return false;
+    if (statusFilter === "auto-paused" && (s.isActive || s.consecutiveFailures === 0)) return false;
     if (statusFilter === "overdue") {
       if (!s.isActive) return false;
       const nextDue = getNextDue(s.lastSentAt, s.frequency);
@@ -475,6 +477,31 @@ function ScheduledReportsPanel() {
           <p className="text-xs text-muted-foreground">
             All merchants with an active report schedule — admin can pause, delete, trigger immediate delivery, or set a custom next run date.
           </p>
+          {schedules.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                onClick={() => setStatusFilter("active")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${statusFilter === "active" ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40" : "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                Active: {statusCounts.active}
+              </button>
+              <button
+                onClick={() => setStatusFilter("paused")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${statusFilter === "paused" ? "bg-muted/60 text-foreground ring-1 ring-border" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground shrink-0" />
+                Paused: {statusCounts.paused}
+              </button>
+              <button
+                onClick={() => setStatusFilter("auto-paused")}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${statusFilter === "auto-paused" ? "bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40" : "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20"}`}
+              >
+                <PauseCircle className="w-3 h-3 shrink-0" />
+                Auto-paused: {statusCounts.autoPaused}
+              </button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           {/* Filter bar */}
@@ -496,6 +523,16 @@ function ScheduledReportsPanel() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="paused">Paused</SelectItem>
+                <SelectItem value="auto-paused">
+                  <span className="flex items-center gap-1.5">
+                    Auto-paused
+                    {statusCounts.autoPaused > 0 && (
+                      <span className="inline-flex items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-semibold px-1.5 min-w-[18px] h-[18px] leading-none">
+                        {statusCounts.autoPaused}
+                      </span>
+                    )}
+                  </span>
+                </SelectItem>
                 <SelectItem value="overdue">
                   <span className="flex items-center gap-1.5">
                     Overdue
