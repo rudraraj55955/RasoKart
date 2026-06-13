@@ -46,6 +46,8 @@ import {
   Trash2,
   ToggleLeft,
   ToggleRight,
+  Search,
+  X,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
@@ -127,6 +129,10 @@ function ScheduledReportsPanel() {
   const del = useDeleteAdminMerchantReportSchedule();
   const sendNow = useSendAdminMerchantReportNow();
 
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [frequencyFilter, setFrequencyFilter] = useState("all");
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getListMerchantReportSchedulesQueryOptions().queryKey });
   };
@@ -153,6 +159,23 @@ function ScheduledReportsPanel() {
     }
   };
 
+  const filteredSchedules = schedules.filter((s) => {
+    const q = search.trim().toLowerCase();
+    if (q && !s.businessName.toLowerCase().includes(q) && !s.merchantEmail.toLowerCase().includes(q)) return false;
+    if (statusFilter === "active" && !s.isActive) return false;
+    if (statusFilter === "paused" && s.isActive) return false;
+    if (frequencyFilter !== "all" && s.frequency !== frequencyFilter) return false;
+    return true;
+  });
+
+  const hasFilters = search.trim() !== "" || statusFilter !== "all" || frequencyFilter !== "all";
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setFrequencyFilter("all");
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -165,6 +188,45 @@ function ScheduledReportsPanel() {
         </p>
       </CardHeader>
       <CardContent className="p-0">
+        {/* Filter bar */}
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-1 border-b border-border">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search by merchant or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-8 w-[130px] text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="paused">Paused</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={frequencyFilter} onValueChange={setFrequencyFilter}>
+            <SelectTrigger className="h-8 w-[130px] text-xs">
+              <SelectValue placeholder="Frequency" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Frequencies</SelectItem>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+            </SelectContent>
+          </Select>
+          {hasFilters && (
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs gap-1 text-muted-foreground" onClick={clearFilters}>
+              <X className="w-3.5 h-3.5" />
+              Clear
+            </Button>
+          )}
+        </div>
+
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -174,6 +236,12 @@ function ScheduledReportsPanel() {
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
             <CalendarClock className="w-10 h-10 opacity-20" />
             <p className="text-sm">No merchants have configured a report schedule yet</p>
+          </div>
+        ) : filteredSchedules.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+            <Search className="w-10 h-10 opacity-20" />
+            <p className="text-sm">No schedules match your filters</p>
+            <Button variant="link" size="sm" className="text-xs" onClick={clearFilters}>Clear filters</Button>
           </div>
         ) : (
           <Table>
@@ -190,7 +258,7 @@ function ScheduledReportsPanel() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {schedules.map((s) => (
+              {filteredSchedules.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium text-sm">{s.businessName}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{s.merchantEmail}</TableCell>
