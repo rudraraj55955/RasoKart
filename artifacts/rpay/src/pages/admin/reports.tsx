@@ -116,7 +116,7 @@ function settlementStatusColor(s: string) {
 function getNextDue(lastSentAt: string | null | undefined, frequency: string): Date | null {
   if (!lastSentAt) return null;
   const last = new Date(lastSentAt);
-  const days = frequency === "monthly" ? 28 : 7;
+  const days = frequency === "monthly" ? 28 : frequency === "daily" ? 1 : 7;
   return new Date(last.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
@@ -218,6 +218,7 @@ function ScheduledReportsPanel() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Frequencies</SelectItem>
+              <SelectItem value="daily">Daily</SelectItem>
               <SelectItem value="weekly">Weekly</SelectItem>
               <SelectItem value="monthly">Monthly</SelectItem>
             </SelectContent>
