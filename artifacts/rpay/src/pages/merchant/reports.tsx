@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormatBadge } from "@/components/ui/format-badge";
+import { FrequencyBadge } from "@/components/ui/frequency-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -649,8 +650,8 @@ function SchedulePanel() {
                         <TableCell className="py-2 text-xs text-muted-foreground whitespace-nowrap">
                           {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
                         </TableCell>
-                        <TableCell className="py-2 text-xs text-muted-foreground capitalize">
-                          {log.frequency ?? schedule.frequency}
+                        <TableCell className="py-2">
+                          <FrequencyBadge frequency={log.frequency ?? schedule.frequency} />
                         </TableCell>
                         <TableCell className="py-2">
                           {(() => {
