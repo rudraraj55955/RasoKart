@@ -157,6 +157,10 @@ const STL_STATUS_KEY = "rasokart_reports_stl_status";
 const HISTORY_FORMAT_FILTER_KEY = "rasokart_schedule_history_format_filter";
 const HISTORY_DATE_FROM_KEY = "rasokart_schedule_history_date_from";
 const HISTORY_DATE_TO_KEY = "rasokart_schedule_history_date_to";
+const SCHEDULE_FREQUENCY_KEY = "rasokart_schedule_frequency";
+const SCHEDULE_FORMAT_KEY = "rasokart_schedule_format";
+const SCHEDULE_DAY_OF_WEEK_KEY = "rasokart_schedule_day_of_week";
+const SCHEDULE_DAY_OF_MONTH_KEY = "rasokart_schedule_day_of_month";
 
 interface CustomDatePreset {
   id: string;
@@ -312,8 +316,28 @@ function SchedulePanel() {
     setHasInitialized(true);
   }
   if (!hasInitialized && !scheduleLoading && !schedule) {
+    try {
+      const savedFreq = localStorage.getItem(SCHEDULE_FREQUENCY_KEY);
+      if (savedFreq === "weekly" || savedFreq === "monthly") setFrequency(savedFreq);
+      const savedFormat = localStorage.getItem(SCHEDULE_FORMAT_KEY);
+      if (savedFormat === "xlsx" || savedFormat === "pdf") setFileFormat(savedFormat);
+      const savedDow = localStorage.getItem(SCHEDULE_DAY_OF_WEEK_KEY);
+      if (savedDow !== null) setDayOfWeek(parseInt(savedDow));
+      const savedDom = localStorage.getItem(SCHEDULE_DAY_OF_MONTH_KEY);
+      if (savedDom !== null) setDayOfMonth(parseInt(savedDom));
+    } catch {}
     setHasInitialized(true);
   }
+
+  useEffect(() => {
+    if (!hasInitialized) return;
+    try {
+      localStorage.setItem(SCHEDULE_FREQUENCY_KEY, frequency);
+      localStorage.setItem(SCHEDULE_FORMAT_KEY, fileFormat);
+      if (dayOfWeek !== null) localStorage.setItem(SCHEDULE_DAY_OF_WEEK_KEY, String(dayOfWeek));
+      if (dayOfMonth !== null) localStorage.setItem(SCHEDULE_DAY_OF_MONTH_KEY, String(dayOfMonth));
+    } catch {}
+  }, [hasInitialized, frequency, fileFormat, dayOfWeek, dayOfMonth]);
 
   const upsert = useUpsertReportSchedule();
   const deleteMut = useDeleteReportSchedule();
