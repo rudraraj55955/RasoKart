@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { FormatBadge } from "@/components/ui/format-badge";
+import { FrequencyBadge } from "@/components/ui/frequency-badge";
 import {
   Dialog,
   DialogContent,
@@ -448,13 +449,7 @@ function ScheduledReportsPanel() {
                   <TableCell className="font-medium text-sm">{s.businessName}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{s.merchantEmail}</TableCell>
                   <TableCell>
-                    {s.frequency === "weekly" ? (
-                      <Badge className="text-xs capitalize bg-amber-600/20 text-amber-400 border border-amber-600/30 hover:bg-amber-600/20">Weekly</Badge>
-                    ) : s.frequency === "monthly" ? (
-                      <Badge className="text-xs capitalize bg-sky-600/20 text-sky-400 border border-sky-600/30 hover:bg-sky-600/20">Monthly</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs capitalize">{s.frequency}</Badge>
-                    )}
+                    <FrequencyBadge frequency={s.frequency} />
                   </TableCell>
                   <TableCell>
                     <FormatBadge format={s.format} />
