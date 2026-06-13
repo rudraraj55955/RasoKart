@@ -988,11 +988,23 @@ router.patch("/schedules/:merchantId/reenable", requireAdmin, async (req, res, n
       .returning();
 
     const admin = (req as any).user;
+
+    // Record delivery log entry noting the admin-initiated resume
+    await db.insert(reportDeliveryLogsTable).values({
+      scheduleId: existing.id,
+      merchantId: mid,
+      success: true,
+      isAutoPause: false,
+      outcome: "re-enabled by admin",
+      triggeredBy: "manual",
+    });
+
+    // Audit log for traceability
     await db.insert(auditLogsTable).values({
       adminId: admin.id,
       adminEmail: admin.email,
       action: "report_schedule_reenabled",
-      targetType: "merchant",
+      targetType: "report_schedule",
       targetId: mid,
       details: JSON.stringify({
         merchantId: mid,

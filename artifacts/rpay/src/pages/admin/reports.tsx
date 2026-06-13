@@ -626,7 +626,7 @@ function ScheduledReportsPanel() {
             Scheduled Report Delivery
           </div>
           <p className="text-xs text-muted-foreground">
-            All merchants with an active report schedule — admin can pause, delete, trigger immediate delivery, or set a custom next run date.
+            All merchants with an active report schedule — admin can resume auto-paused schedules, pause, delete, trigger immediate delivery, or set a custom next run date.
           </p>
           {schedules.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -909,12 +909,12 @@ function ScheduledReportsPanel() {
                           className="h-7 px-2 text-xs gap-1 text-amber-400 hover:text-amber-300"
                           onClick={() => handleReenable(s.merchantId, s.businessName)}
                           disabled={reenable.isPending}
-                          title={`Re-enable auto-paused schedule (${s.consecutiveFailures} failure${s.consecutiveFailures !== 1 ? "s" : ""})`}
+                          title={`Resume auto-paused schedule on behalf of merchant (${s.consecutiveFailures} consecutive failure${s.consecutiveFailures !== 1 ? "s" : ""})`}
                         >
                           {reenable.isPending
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <RotateCcw className="w-3.5 h-3.5" />}
-                          <span className="hidden sm:inline">Re-enable</span>
+                          Resume
                         </Button>
                       )}
                       <Button
@@ -1718,12 +1718,12 @@ function DeliveryHistoryPanel() {
                           className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
                           onClick={() => handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`)}
                           disabled={reEnabling === log.merchantId}
-                          title="Re-enable this merchant's report schedule"
+                          title="Resume this merchant's auto-paused report schedule"
                         >
                           {reEnabling === log.merchantId
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <ToggleRight className="w-3.5 h-3.5" />}
-                          Re-enable
+                          Resume
                         </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
