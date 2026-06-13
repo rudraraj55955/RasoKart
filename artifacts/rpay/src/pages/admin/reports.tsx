@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { FormatBadge } from "@/components/ui/format-badge";
 import {
   Dialog,
   DialogContent,
@@ -449,13 +450,7 @@ function ScheduledReportsPanel() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {s.format === "xlsx" ? (
-                      <Badge className="text-xs uppercase bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/20">XLSX</Badge>
-                    ) : s.format === "pdf" ? (
-                      <Badge className="text-xs uppercase bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/20">PDF</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs uppercase">{s.format}</Badge>
-                    )}
+                    <FormatBadge format={s.format} />
                   </TableCell>
                   <TableCell>
                     <span className={`text-xs font-medium ${s.isActive ? "text-emerald-400" : "text-muted-foreground"}`}>
@@ -713,13 +708,7 @@ function ReportHistoryPanel() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {s.format === "xlsx" ? (
-                      <Badge className="text-xs uppercase bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/20">XLSX</Badge>
-                    ) : s.format === "pdf" ? (
-                      <Badge className="text-xs uppercase bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/20">PDF</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs uppercase">{s.format}</Badge>
-                    )}
+                    <FormatBadge format={s.format} />
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {s.lastSentAt ? (
