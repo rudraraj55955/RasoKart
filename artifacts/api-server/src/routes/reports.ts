@@ -849,6 +849,17 @@ router.delete("/schedules/:merchantId", requireAdmin, async (req, res, next) => 
       ipAddress: req.ip ?? null,
     });
 
+    const [u] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.merchantId, mid)).limit(1);
+    if (u) {
+      createNotification({
+        userId: u.id,
+        type: "report_schedule_deleted",
+        title: "Report Schedule Removed",
+        body: "An admin has removed your scheduled report. You will no longer receive automated reports unless a new schedule is set up.",
+        metadata: { merchantId: mid },
+      }).catch(() => {});
+    }
+
     res.json({ ok: true });
   } catch (err) {
     next(err);
