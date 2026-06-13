@@ -18,7 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { ShieldCheck, Upload, Trash2, Loader2, FileText, CheckCircle2, Clock, XCircle, AlertTriangle, Eye } from "lucide-react";
+import { ShieldCheck, Upload, Trash2, Loader2, FileText, CheckCircle2, Clock, XCircle, AlertTriangle, Eye, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -39,7 +39,15 @@ function statusBadge(status: string) {
   return <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30">Pending Review</Badge>;
 }
 
-function DocRow({ doc, onDelete }: { doc: KycDocument; onDelete: (id: number) => void }) {
+function DocRow({
+  doc,
+  onDelete,
+  onResubmit,
+}: {
+  doc: KycDocument;
+  onDelete: (id: number) => void;
+  onResubmit: (docType: string) => void;
+}) {
   const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
   const typeLabel = DOC_TYPES.find(d => d.value === doc.docType)?.label ?? doc.docType;
   const fileUrl = doc.fileUrl.startsWith("/") ? `${base}/api/storage${doc.fileUrl}` : doc.fileUrl;
@@ -54,38 +62,65 @@ function DocRow({ doc, onDelete }: { doc: KycDocument; onDelete: (id: number) =>
     }
   }
 
+  const isRejected = doc.status === "rejected";
+
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50 bg-card/50">
-      <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium">{typeLabel}</span>
-          {statusBadge(doc.status)}
+    <div className={`rounded-lg border bg-card/50 overflow-hidden ${isRejected ? "border-rose-500/40" : "border-border/50"}`}>
+      <div className="flex items-center gap-3 p-3">
+        <FileText className={`w-4 h-4 shrink-0 ${isRejected ? "text-rose-400" : "text-muted-foreground"}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium">{typeLabel}</span>
+            {statusBadge(doc.status)}
+          </div>
+          {doc.fileName && <p className="text-xs text-muted-foreground truncate mt-0.5">{doc.fileName}</p>}
+          <p className="text-xs text-muted-foreground mt-0.5">Submitted {format(new Date(doc.createdAt), "dd MMM yyyy")}</p>
         </div>
-        {doc.fileName && <p className="text-xs text-muted-foreground truncate mt-0.5">{doc.fileName}</p>}
-        {doc.adminNote && (
-          <p className="text-xs text-rose-400 mt-1">Note: {doc.adminNote}</p>
-        )}
-        <p className="text-xs text-muted-foreground mt-0.5">Submitted {format(new Date(doc.createdAt), "dd MMM yyyy")}</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <a href={fileUrl} target="_blank" rel="noopener noreferrer">
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
+              <Eye className="w-4 h-4" />
+            </Button>
+          </a>
+          {doc.status === "pending" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-rose-400/60 hover:text-rose-400"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            </Button>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <a href={fileUrl} target="_blank" rel="noopener noreferrer">
-          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground">
-            <Eye className="w-4 h-4" />
-          </Button>
-        </a>
-        {doc.status === "pending" && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 w-8 p-0 text-rose-400/60 hover:text-rose-400"
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-          </Button>
-        )}
-      </div>
+
+      {/* Rejection reason banner */}
+      {isRejected && (
+        <div className="border-t border-rose-500/30 bg-rose-950/30 px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <XCircle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-rose-300 mb-0.5">Rejection reason</p>
+              <p className="text-xs text-rose-200/80">
+                {doc.adminNote ?? "No reason provided. Please resubmit with the correct document."}
+              </p>
+            </div>
+          </div>
+          <div className="mt-2.5 flex justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 text-xs border-rose-500/40 text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
+              onClick={() => onResubmit(doc.docType)}
+            >
+              <RefreshCw className="w-3 h-3" />
+              Resubmit
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -138,7 +173,6 @@ export default function MerchantVerification() {
         data: { name: selectedFile.name, size: selectedFile.size, contentType: selectedFile.type },
       });
 
-      // Upload directly to presigned URL
       const uploadRes = await fetch(uploadURL, {
         method: "PUT",
         headers: { "Content-Type": selectedFile.type },
@@ -174,14 +208,23 @@ export default function MerchantVerification() {
     }
   }
 
-  function openUpload() {
-    setDocType("");
+  function openUpload(prefilledType?: string) {
+    setDocType(prefilledType ?? "");
     setSelectedFile(null);
     setShowUpload(true);
   }
 
-  const submittedTypes = new Set(docs.filter(d => d.status !== "rejected").map(d => d.docType));
-  const availableDocTypes = DOC_TYPES.filter(dt => !submittedTypes.has(dt.value));
+  // Types blocked from new upload: already pending or approved (rejected ones can be resubmitted)
+  const blockedTypes = new Set(docs.filter(d => d.status !== "rejected").map(d => d.docType));
+  const availableDocTypes = DOC_TYPES.filter(dt => !blockedTypes.has(dt.value));
+
+  // Determine overall KYC status
+  const hasRejections = (summary?.rejectedCount ?? 0) > 0;
+  const isVerified = summary?.isVerified ?? false;
+  const hasPending = (summary?.pendingCount ?? 0) > 0;
+
+  // Banner variant: verified → emerald, action required → rose, pending → amber
+  const bannerVariant = isVerified ? "verified" : hasRejections ? "action_required" : "pending";
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -190,21 +233,44 @@ export default function MerchantVerification() {
         <p className="text-muted-foreground mt-1">Submit identity and business documents to verify your account.</p>
       </div>
 
-      {/* Status Banner */}
+      {/* Overall Status Banner */}
       {summary && (
-        <Alert className={summary.isVerified
-          ? "border-emerald-500/40 bg-emerald-950/20"
-          : "border-amber-500/40 bg-amber-950/20"
+        <Alert className={
+          bannerVariant === "verified"
+            ? "border-emerald-500/40 bg-emerald-950/20"
+            : bannerVariant === "action_required"
+            ? "border-rose-500/40 bg-rose-950/20"
+            : "border-amber-500/40 bg-amber-950/20"
         }>
-          {summary.isVerified
-            ? <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            : <AlertTriangle className="w-4 h-4 text-amber-400" />
-          }
-          <AlertDescription className={summary.isVerified ? "text-emerald-300" : "text-amber-300"}>
-            {summary.isVerified
-              ? "Your account is fully verified. All required documents have been approved."
-              : `${summary.approvedCount} of ${summary.requiredDocTypes.length} required documents approved. Complete all to get verified.`
-            }
+          {bannerVariant === "verified" ? (
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          ) : bannerVariant === "action_required" ? (
+            <XCircle className="w-4 h-4 text-rose-400" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+          )}
+          <AlertDescription className={
+            bannerVariant === "verified"
+              ? "text-emerald-300"
+              : bannerVariant === "action_required"
+              ? "text-rose-300"
+              : "text-amber-300"
+          }>
+            {bannerVariant === "verified" && (
+              "Your account is fully verified. All required documents have been approved."
+            )}
+            {bannerVariant === "action_required" && (
+              <>
+                <span className="font-semibold">Action Required —</span>{" "}
+                {summary.rejectedCount === 1
+                  ? "1 document was rejected."
+                  : `${summary.rejectedCount} documents were rejected.`}{" "}
+                Review the rejection reason(s) below and resubmit the correct documents.
+              </>
+            )}
+            {bannerVariant === "pending" && (
+              `${summary.approvedCount} of ${summary.requiredDocTypes.length} required documents approved.${hasPending ? " Documents are under review." : " Upload all required documents to get verified."}`
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -220,23 +286,31 @@ export default function MerchantVerification() {
             const approved = submitted.find(d => d.status === "approved");
             const pending = submitted.find(d => d.status === "pending");
             const rejected = submitted.find(d => d.status === "rejected");
+            const latestRejected = rejected && !approved && !pending ? rejected : null;
 
             return (
-              <div key={dt.value} className="flex items-start gap-3">
-                <div className="mt-0.5 shrink-0">
-                  {approved ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  ) : pending ? (
-                    <Clock className="w-4 h-4 text-amber-400" />
-                  ) : rejected ? (
-                    <XCircle className="w-4 h-4 text-rose-400" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium">{dt.label}</p>
-                  <p className="text-xs text-muted-foreground">{dt.description}</p>
+              <div key={dt.value}>
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 shrink-0">
+                    {approved ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    ) : pending ? (
+                      <Clock className="w-4 h-4 text-amber-400" />
+                    ) : rejected ? (
+                      <XCircle className="w-4 h-4 text-rose-400" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{dt.label}</p>
+                    <p className="text-xs text-muted-foreground">{dt.description}</p>
+                    {latestRejected?.adminNote && (
+                      <p className="text-xs text-rose-400 mt-1">
+                        Rejected: {latestRejected.adminNote}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -249,7 +323,7 @@ export default function MerchantVerification() {
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Submitted Documents</CardTitle>
           {availableDocTypes.length > 0 && (
-            <Button size="sm" onClick={openUpload} className="gap-1.5">
+            <Button size="sm" onClick={() => openUpload()} className="gap-1.5">
               <Upload className="w-3.5 h-3.5" />
               Upload Document
             </Button>
@@ -264,7 +338,7 @@ export default function MerchantVerification() {
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
               <p className="text-sm">No documents submitted yet.</p>
-              <Button size="sm" className="mt-3 gap-1.5" onClick={openUpload}>
+              <Button size="sm" className="mt-3 gap-1.5" onClick={() => openUpload()}>
                 <Upload className="w-3.5 h-3.5" />
                 Upload Your First Document
               </Button>
@@ -272,18 +346,25 @@ export default function MerchantVerification() {
           ) : (
             <div className="space-y-2">
               {docs.map(doc => (
-                <DocRow key={doc.id} doc={doc} onDelete={handleDelete} />
+                <DocRow key={doc.id} doc={doc} onDelete={handleDelete} onResubmit={openUpload} />
               ))}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Upload Dialog */}
-      <Dialog open={showUpload} onOpenChange={setShowUpload}>
+      {/* Upload / Resubmit Dialog */}
+      <Dialog open={showUpload} onOpenChange={open => {
+        if (!open) { setDocType(""); setSelectedFile(null); }
+        setShowUpload(open);
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload KYC Document</DialogTitle>
+            <DialogTitle>
+              {docType && docs.some(d => d.docType === docType && d.status === "rejected")
+                ? "Resubmit KYC Document"
+                : "Upload KYC Document"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -336,7 +417,11 @@ export default function MerchantVerification() {
               Cancel
             </Button>
             <Button onClick={handleUploadAndSubmit} disabled={!docType || !selectedFile || uploading}>
-              {uploading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Uploading…</> : "Submit Document"}
+              {uploading
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Uploading…</>
+                : docs.some(d => d.docType === docType && d.status === "rejected")
+                ? "Resubmit Document"
+                : "Submit Document"}
             </Button>
           </DialogFooter>
         </DialogContent>
