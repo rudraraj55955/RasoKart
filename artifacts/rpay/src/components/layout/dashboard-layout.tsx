@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -356,10 +356,26 @@ const ADMIN_NAV = [
   },
 ];
 
+function getScheduleNextDue(lastSentAt: string | null | undefined, frequency: string): Date | null {
+  if (!lastSentAt) return null;
+  const last = new Date(lastSentAt);
+  const days = frequency === "monthly" ? 28 : frequency === "daily" ? 1 : 7;
+  return new Date(last.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
 function AdminSidebar() {
   const [location] = useLocation();
   const { data: complianceData } = useGetSecurityComplianceSummary();
   const neverCount = complianceData?.neverCount ?? 0;
+
+  const { data: schedulesData } = useListMerchantReportSchedules();
+  const schedules = schedulesData?.schedules ?? [];
+  const now = new Date();
+  const overdueScheduleCount = schedules.filter((s) => {
+    if (!s.isActive) return false;
+    const nextDue = getScheduleNextDue(s.lastSentAt, s.frequency);
+    return nextDue != null && nextDue < now;
+  }).length;
 
   return (
     <>
@@ -370,6 +386,7 @@ function AdminSidebar() {
             <SidebarMenu>
               {group.items.map((item) => {
                 const isAuditLogs = item.href === "/admin/audit-logs";
+                const isReports = item.href === "/admin/reports";
                 const isActive = location === item.href || (isAuditLogs && location.startsWith("/admin/audit-logs"));
                 const linkHref = isAuditLogs && neverCount > 0
                   ? "/admin/audit-logs?tab=compliance"
@@ -383,6 +400,11 @@ function AdminSidebar() {
                         {isAuditLogs && neverCount > 0 && (
                           <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none">
                             {neverCount > 99 ? "99+" : neverCount}
+                          </span>
+                        )}
+                        {isReports && overdueScheduleCount > 0 && (
+                          <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none">
+                            {overdueScheduleCount > 99 ? "99+" : overdueScheduleCount}
                           </span>
                         )}
                       </Link>
