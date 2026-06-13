@@ -892,10 +892,10 @@ export default function MerchantDeposits() {
         : `https://sandbox.cashfree.com/pg/view/sessions/${sessionId}`;
       setShowCashfree(false);
       setCfAmount(""); setCfPhone(""); setCfName(""); setCfEmail(""); setCfNote("");
-      toast.success("Cashfree order created — opening checkout…");
+      toast.success("Payment order created — opening checkout…");
       window.open(checkoutUrl, "_blank", "noopener,noreferrer");
     } catch (err: any) {
-      toast.error(err?.message ?? "Failed to create Cashfree order");
+      toast.error(err?.message ?? "Failed to create payment order");
     } finally {
       setCfCreating(false);
     }
@@ -1046,7 +1046,7 @@ export default function MerchantDeposits() {
           {cashfreeEnabled && (
             <Button size="sm" variant="outline" onClick={() => setShowCashfree(true)} className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/50">
               <CreditCard className="w-4 h-4 mr-2" />
-              Pay via Cashfree
+              Pay via RasoKart
             </Button>
           )}
           <Button size="sm" onClick={() => setShowSimulate(true)}>
@@ -1715,13 +1715,13 @@ export default function MerchantDeposits() {
         </div>
       )}
 
-      {/* Cashfree Payment Dialog */}
+      {/* Payment Dialog */}
       <Dialog open={showCashfree} onOpenChange={setShowCashfree}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-emerald-400" />
-              Pay via Cashfree
+              Pay via RasoKart
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -1743,7 +1743,7 @@ export default function MerchantDeposits() {
                 value={cfPhone}
                 onChange={e => setCfPhone(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Required by Cashfree for payment processing</p>
+              <p className="text-xs text-muted-foreground">Required for payment processing</p>
             </div>
             <div className="space-y-2">
               <Label>Customer Name <span className="text-muted-foreground text-xs">(optional)</span></Label>
@@ -1771,7 +1771,7 @@ export default function MerchantDeposits() {
               />
             </div>
             <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground">
-              A Cashfree payment order will be created and you will be redirected to Cashfree&apos;s hosted checkout page in a new tab. Once the customer completes payment, the deposit will appear in this list automatically.
+              A RasoKart payment order will be created and you will be redirected to RasoKart&apos;s hosted checkout page in a new tab. Once the customer completes payment, the deposit will appear in this list automatically.
             </div>
           </div>
           <DialogFooter>
