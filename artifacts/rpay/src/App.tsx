@@ -56,6 +56,7 @@ import AdminModuleControl from "@/pages/admin/module-control";
 import AdminWallets from "@/pages/admin/wallets";
 import AdminWalletDetail from "@/pages/admin/wallet-detail";
 import AdminSupportTickets from "@/pages/admin/support-tickets";
+import AdminMerchantVerifications from "@/pages/admin/merchant-verifications";
 import PayPage from "@/pages/pay";
 import QrPayPage from "@/pages/qr-pay";
 import VaPayPage from "@/pages/va-pay";
@@ -183,6 +184,7 @@ function Router() {
       <Route path="/admin/wallets/:merchantId"><AdminRoute component={AdminWalletDetail} /></Route>
       <Route path="/admin/wallets"><AdminRoute component={AdminWallets} /></Route>
       <Route path="/admin/kyc-review"><AdminRoute component={AdminKycReview} /></Route>
+      <Route path="/admin/merchant-verifications"><AdminRoute component={AdminMerchantVerifications} /></Route>
       <Route path="/admin/reports"><AdminRoute component={AdminReports} /></Route>
       <Route path="/admin/support-tickets"><AdminRoute component={AdminSupportTickets} /></Route>
 

@@ -3989,6 +3989,227 @@ export interface SupportTicketStats {
   total: number;
 }
 
+export interface SuccessResponse {
+  success: boolean;
+}
+
+export type MerchantVerificationStatus = typeof MerchantVerificationStatus[keyof typeof MerchantVerificationStatus];
+
+
+export const MerchantVerificationStatus = {
+  pending: 'pending',
+  under_review: 'under_review',
+  approved: 'approved',
+  rejected: 'rejected',
+  needs_info: 'needs_info',
+  suspended: 'suspended',
+} as const;
+
+export interface MerchantVerification {
+  id: number;
+  merchantId: number;
+  status: MerchantVerificationStatus;
+  businessName?: string | null;
+  ownerName?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+  pan?: string | null;
+  gst?: string | null;
+  businessType?: string | null;
+  websiteUrl?: string | null;
+  address?: string | null;
+  expectedMonthlyVolume?: string | null;
+  useCase?: string | null;
+  bankAccountName?: string | null;
+  bankAccountNumber?: string | null;
+  ifscCode?: string | null;
+  upiId?: string | null;
+  adminNote?: string | null;
+  reviewedBy?: number | null;
+  reviewedAt?: string | null;
+  submittedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MerchantDocumentDocType = typeof MerchantDocumentDocType[keyof typeof MerchantDocumentDocType];
+
+
+export const MerchantDocumentDocType = {
+  pan: 'pan',
+  gst: 'gst',
+  bank_statement: 'bank_statement',
+  address_proof: 'address_proof',
+  business_registration: 'business_registration',
+  cancelled_cheque: 'cancelled_cheque',
+  other: 'other',
+} as const;
+
+export interface MerchantDocument {
+  id: number;
+  verificationId: number;
+  merchantId: number;
+  docType: MerchantDocumentDocType;
+  fileUrl: string;
+  fileName?: string | null;
+  createdAt: string;
+}
+
+export interface GetMyVerificationResponse {
+  verification: MerchantVerification | null;
+}
+
+export interface VerificationResponse {
+  verification: MerchantVerification;
+}
+
+export interface VerificationDocumentsResponse {
+  documents: MerchantDocument[];
+}
+
+export interface VerificationDocumentResponse {
+  document: MerchantDocument;
+}
+
+export type SubmitVerificationInputBusinessType = typeof SubmitVerificationInputBusinessType[keyof typeof SubmitVerificationInputBusinessType];
+
+
+export const SubmitVerificationInputBusinessType = {
+  sole_proprietorship: 'sole_proprietorship',
+  partnership: 'partnership',
+  private_limited: 'private_limited',
+  llp: 'llp',
+  other: 'other',
+} as const;
+
+export type SubmitVerificationInputExpectedMonthlyVolume = typeof SubmitVerificationInputExpectedMonthlyVolume[keyof typeof SubmitVerificationInputExpectedMonthlyVolume];
+
+
+export const SubmitVerificationInputExpectedMonthlyVolume = {
+  '<1L': '<1L',
+  '1L-10L': '1L-10L',
+  '10L-1Cr': '10L-1Cr',
+  '>1Cr': '>1Cr',
+} as const;
+
+export interface SubmitVerificationInput {
+  businessName?: string;
+  ownerName?: string;
+  mobile?: string;
+  email?: string;
+  pan?: string;
+  gst?: string;
+  businessType?: SubmitVerificationInputBusinessType;
+  websiteUrl?: string;
+  address?: string;
+  expectedMonthlyVolume?: SubmitVerificationInputExpectedMonthlyVolume;
+  useCase?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  ifscCode?: string;
+  upiId?: string;
+}
+
+export type AddVerificationDocumentInputDocType = typeof AddVerificationDocumentInputDocType[keyof typeof AddVerificationDocumentInputDocType];
+
+
+export const AddVerificationDocumentInputDocType = {
+  pan: 'pan',
+  gst: 'gst',
+  bank_statement: 'bank_statement',
+  address_proof: 'address_proof',
+  business_registration: 'business_registration',
+  cancelled_cheque: 'cancelled_cheque',
+  other: 'other',
+} as const;
+
+export interface AddVerificationDocumentInput {
+  docType: AddVerificationDocumentInputDocType;
+  fileUrl: string;
+  fileName?: string;
+}
+
+export type AdminUpdateVerificationStatusInputStatus = typeof AdminUpdateVerificationStatusInputStatus[keyof typeof AdminUpdateVerificationStatusInputStatus];
+
+
+export const AdminUpdateVerificationStatusInputStatus = {
+  pending: 'pending',
+  under_review: 'under_review',
+  approved: 'approved',
+  rejected: 'rejected',
+  needs_info: 'needs_info',
+  suspended: 'suspended',
+} as const;
+
+export interface AdminUpdateVerificationStatusInput {
+  status: AdminUpdateVerificationStatusInputStatus;
+  adminNote?: string;
+}
+
+export type AdminVerificationListItemStatus = typeof AdminVerificationListItemStatus[keyof typeof AdminVerificationListItemStatus];
+
+
+export const AdminVerificationListItemStatus = {
+  pending: 'pending',
+  under_review: 'under_review',
+  approved: 'approved',
+  rejected: 'rejected',
+  needs_info: 'needs_info',
+  suspended: 'suspended',
+} as const;
+
+export type AdminVerificationListItemMerchant = {
+  id: number;
+  businessName: string;
+  email: string;
+  status: string;
+  verificationStatus: string;
+};
+
+export interface AdminVerificationListItem {
+  id: number;
+  merchantId: number;
+  status: AdminVerificationListItemStatus;
+  businessName?: string | null;
+  ownerName?: string | null;
+  pan?: string | null;
+  gst?: string | null;
+  businessType?: string | null;
+  bankAccountNumber?: string | null;
+  adminNote?: string | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  merchant: AdminVerificationListItemMerchant;
+}
+
+export interface AdminVerificationListResponse {
+  data: AdminVerificationListItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AdminVerificationDetailResponse {
+  verification: MerchantVerification;
+  documents: MerchantDocument[];
+}
+
+export type AdminVerificationStatsResponseStats = {
+  pending: number;
+  under_review: number;
+  approved: number;
+  rejected: number;
+  needs_info: number;
+  suspended: number;
+  total: number;
+};
+
+export interface AdminVerificationStatsResponse {
+  stats: AdminVerificationStatsResponseStats;
+}
+
 export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
@@ -5306,5 +5527,25 @@ export const ListSupportTicketsStatus = {
   open: 'open',
   'in-progress': 'in-progress',
   resolved: 'resolved',
+} as const;
+
+export type AdminListVerificationsParams = {
+status?: AdminListVerificationsStatus;
+search?: string;
+page?: number;
+limit?: number;
+};
+
+export type AdminListVerificationsStatus = typeof AdminListVerificationsStatus[keyof typeof AdminListVerificationsStatus];
+
+
+export const AdminListVerificationsStatus = {
+  all: 'all',
+  pending: 'pending',
+  under_review: 'under_review',
+  approved: 'approved',
+  rejected: 'rejected',
+  needs_info: 'needs_info',
+  suspended: 'suspended',
 } as const;
 

@@ -46,6 +46,7 @@ import walletsRouter from "./wallets";
 import kycRouter from "./kyc";
 import reportsRouter from "./reports";
 import supportRouter from "./support";
+import verificationRouter from "./verification";
 
 const router: IRouter = Router();
 
@@ -96,5 +97,6 @@ router.use("/wallets", walletsRouter);
 router.use("/kyc", kycRouter);
 router.use("/reports", reportsRouter);
 router.use("/support", supportRouter);
+router.use("/verification", verificationRouter);
 
 export default router;

@@ -184,6 +184,52 @@ async function migrate() {
       created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS wallet_charges_merchant_idx ON wallet_charges(merchant_id);
+
+    -- ── merchant_verifications ──────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS merchant_verifications (
+      id                       SERIAL PRIMARY KEY,
+      merchant_id              INTEGER NOT NULL UNIQUE REFERENCES merchants(id) ON DELETE CASCADE,
+      status                   TEXT NOT NULL DEFAULT 'pending',
+      business_name            TEXT,
+      owner_name               TEXT,
+      mobile                   TEXT,
+      email                    TEXT,
+      pan                      TEXT,
+      gst                      TEXT,
+      business_type            TEXT,
+      website_url              TEXT,
+      address                  TEXT,
+      expected_monthly_volume  TEXT,
+      use_case                 TEXT,
+      bank_account_name        TEXT,
+      bank_account_number      TEXT,
+      ifsc_code                TEXT,
+      upi_id                   TEXT,
+      admin_note               TEXT,
+      reviewed_by              INTEGER,
+      reviewed_at              TIMESTAMPTZ,
+      submitted_at             TIMESTAMPTZ,
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS merchant_verifications_merchant_id_idx ON merchant_verifications(merchant_id);
+    CREATE INDEX IF NOT EXISTS merchant_verifications_status_idx ON merchant_verifications(status);
+
+    -- ── merchant_documents ─────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS merchant_documents (
+      id               SERIAL PRIMARY KEY,
+      verification_id  INTEGER NOT NULL REFERENCES merchant_verifications(id) ON DELETE CASCADE,
+      merchant_id      INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      doc_type         TEXT NOT NULL,
+      file_url         TEXT NOT NULL,
+      file_name        TEXT,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS merchant_documents_verification_id_idx ON merchant_documents(verification_id);
+    CREATE INDEX IF NOT EXISTS merchant_documents_merchant_id_idx ON merchant_documents(merchant_id);
+
+    -- ── merchants: add verification_status column ───────────────────────────────
+    ALTER TABLE merchants ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending';
   `);
 
   console.log("DB migrations complete.");

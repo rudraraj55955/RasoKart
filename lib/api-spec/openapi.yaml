@@ -71,6 +71,8 @@ tags:
     description: Transaction report generation for merchants and admins
   - name: support
     description: Merchant support ticket system
+  - name: verification
+    description: Merchant KYC/AML verification application system
 paths:
   /healthz:
     get:
@@ -7718,6 +7720,304 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SupportTicketStats"
+
+  /verification:
+    get:
+      operationId: getMyVerification
+      tags: [verification]
+      summary: Get own verification application (merchant)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Verification application or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetMyVerificationResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verification/submit:
+    post:
+      operationId: submitVerification
+      tags: [verification]
+      summary: Submit or update KYC verification application (merchant)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitVerificationInput"
+      responses:
+        "200":
+          description: Updated verification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verification/documents:
+    get:
+      operationId: listVerificationDocuments
+      tags: [verification]
+      summary: List own verification documents (merchant)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationDocumentsResponse"
+    post:
+      operationId: addVerificationDocument
+      tags: [verification]
+      summary: Attach a document to verification application (merchant)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddVerificationDocumentInput"
+      responses:
+        "201":
+          description: Document attached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationDocumentResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verification/documents/upload-url:
+    post:
+      operationId: requestVerificationUploadUrl
+      tags: [verification]
+      summary: Get presigned upload URL for verification document (merchant)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KycUploadUrlRequest"
+      responses:
+        "200":
+          description: Upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycUploadUrlResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verification/documents/{id}:
+    delete:
+      operationId: deleteVerificationDocument
+      tags: [verification]
+      summary: Delete own verification document (merchant)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verification/admin/list:
+    get:
+      operationId: adminListVerifications
+      tags: [verification]
+      summary: List all merchant verifications (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, pending, under_review, approved, rejected, needs_info, suspended]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Verification list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminVerificationListResponse"
+
+  /verification/admin/stats:
+    get:
+      operationId: adminGetVerificationStats
+      tags: [verification]
+      summary: Get verification status counts (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Stats by status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminVerificationStatsResponse"
+
+  /verification/admin/{merchantId}:
+    get:
+      operationId: adminGetVerification
+      tags: [verification]
+      summary: Get full verification details for a merchant (admin, unmasked)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Verification + documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminVerificationDetailResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verification/admin/{merchantId}/status:
+    put:
+      operationId: adminUpdateVerificationStatus
+      tags: [verification]
+      summary: Update verification status (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateVerificationStatusInput"
+      responses:
+        "200":
+          description: Updated verification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verification/admin/{merchantId}/documents:
+    get:
+      operationId: adminListVerificationDocuments
+      tags: [verification]
+      summary: List verification documents for a merchant (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationDocumentsResponse"
+
+  /verification/admin/{merchantId}/documents/{docId}:
+    delete:
+      operationId: adminDeleteVerificationDocument
+      tags: [verification]
+      summary: Delete a verification document (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: docId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
 components:
   schemas:
     KycUploadUrlRequest:
@@ -12909,4 +13209,301 @@ components:
           type: integer
         total:
           type: integer
+
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+    MerchantVerification:
+      type: object
+      required: [id, merchantId, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        status:
+          type: string
+          enum: [pending, under_review, approved, rejected, needs_info, suspended]
+        businessName:
+          type: string
+          nullable: true
+        ownerName:
+          type: string
+          nullable: true
+        mobile:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        pan:
+          type: string
+          nullable: true
+        gst:
+          type: string
+          nullable: true
+        businessType:
+          type: string
+          nullable: true
+        websiteUrl:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        expectedMonthlyVolume:
+          type: string
+          nullable: true
+        useCase:
+          type: string
+          nullable: true
+        bankAccountName:
+          type: string
+          nullable: true
+        bankAccountNumber:
+          type: string
+          nullable: true
+        ifscCode:
+          type: string
+          nullable: true
+        upiId:
+          type: string
+          nullable: true
+        adminNote:
+          type: string
+          nullable: true
+        reviewedBy:
+          type: integer
+          nullable: true
+        reviewedAt:
+          type: string
+          nullable: true
+        submittedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    MerchantDocument:
+      type: object
+      required: [id, verificationId, merchantId, docType, fileUrl, createdAt]
+      properties:
+        id:
+          type: integer
+        verificationId:
+          type: integer
+        merchantId:
+          type: integer
+        docType:
+          type: string
+          enum: [pan, gst, bank_statement, address_proof, business_registration, cancelled_cheque, other]
+        fileUrl:
+          type: string
+        fileName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    GetMyVerificationResponse:
+      type: object
+      required: [verification]
+      properties:
+        verification:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/MerchantVerification"
+
+    VerificationResponse:
+      type: object
+      required: [verification]
+      properties:
+        verification:
+          $ref: "#/components/schemas/MerchantVerification"
+
+    VerificationDocumentsResponse:
+      type: object
+      required: [documents]
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/MerchantDocument"
+
+    VerificationDocumentResponse:
+      type: object
+      required: [document]
+      properties:
+        document:
+          $ref: "#/components/schemas/MerchantDocument"
+
+    SubmitVerificationInput:
+      type: object
+      properties:
+        businessName:
+          type: string
+        ownerName:
+          type: string
+        mobile:
+          type: string
+        email:
+          type: string
+        pan:
+          type: string
+        gst:
+          type: string
+        businessType:
+          type: string
+          enum: [sole_proprietorship, partnership, private_limited, llp, other]
+        websiteUrl:
+          type: string
+        address:
+          type: string
+        expectedMonthlyVolume:
+          type: string
+          enum: ["<1L", "1L-10L", "10L-1Cr", ">1Cr"]
+        useCase:
+          type: string
+        bankAccountName:
+          type: string
+        bankAccountNumber:
+          type: string
+        ifscCode:
+          type: string
+        upiId:
+          type: string
+
+    AddVerificationDocumentInput:
+      type: object
+      required: [docType, fileUrl]
+      properties:
+        docType:
+          type: string
+          enum: [pan, gst, bank_statement, address_proof, business_registration, cancelled_cheque, other]
+        fileUrl:
+          type: string
+        fileName:
+          type: string
+
+    AdminUpdateVerificationStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, under_review, approved, rejected, needs_info, suspended]
+        adminNote:
+          type: string
+
+    AdminVerificationListItem:
+      type: object
+      required: [id, merchantId, status, createdAt, updatedAt, merchant]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        status:
+          type: string
+          enum: [pending, under_review, approved, rejected, needs_info, suspended]
+        businessName:
+          type: string
+          nullable: true
+        ownerName:
+          type: string
+          nullable: true
+        pan:
+          type: string
+          nullable: true
+        gst:
+          type: string
+          nullable: true
+        businessType:
+          type: string
+          nullable: true
+        bankAccountNumber:
+          type: string
+          nullable: true
+        adminNote:
+          type: string
+          nullable: true
+        submittedAt:
+          type: string
+          nullable: true
+        reviewedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        merchant:
+          type: object
+          required: [id, businessName, email, status, verificationStatus]
+          properties:
+            id:
+              type: integer
+            businessName:
+              type: string
+            email:
+              type: string
+            status:
+              type: string
+            verificationStatus:
+              type: string
+
+    AdminVerificationListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminVerificationListItem"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    AdminVerificationDetailResponse:
+      type: object
+      required: [verification, documents]
+      properties:
+        verification:
+          $ref: "#/components/schemas/MerchantVerification"
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/MerchantDocument"
+
+    AdminVerificationStatsResponse:
+      type: object
+      required: [stats]
+      properties:
+        stats:
+          type: object
+          required: [pending, under_review, approved, rejected, needs_info, suspended, total]
+          properties:
+            pending:
+              type: integer
+            under_review:
+              type: integer
+            approved:
+              type: integer
+            rejected:
+              type: integer
+            needs_info:
+              type: integer
+            suspended:
+              type: integer
+            total:
+              type: integer
 

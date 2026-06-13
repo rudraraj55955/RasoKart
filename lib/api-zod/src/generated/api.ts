@@ -1801,7 +1801,9 @@ export const GetAdminReportDeliveryHistoryResponse = zod.object({
   "attemptedAt": zod.string().describe('ISO timestamp of the delivery attempt'),
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
-  "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused')
+  "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
+  "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)')
 }).and(zod.object({
   "businessName": zod.string().nullish().describe('Merchant\'s business name'),
   "merchantEmail": zod.string().nullish().describe('Merchant\'s email address')
@@ -1846,7 +1848,9 @@ export const GetAdminMerchantReportScheduleHistoryResponse = zod.object({
   "attemptedAt": zod.string().describe('ISO timestamp of the delivery attempt'),
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
-  "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused')
+  "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
+  "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)')
 }))
 })
 
@@ -6978,6 +6982,320 @@ export const GetSupportTicketStatsResponse = zod.object({
   "inProgress": zod.number(),
   "resolved": zod.number(),
   "total": zod.number()
+})
+
+
+/**
+ * @summary Get own verification application (merchant)
+ */
+export const GetMyVerificationResponse = zod.object({
+  "verification": zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "status": zod.enum(['pending', 'under_review', 'approved', 'rejected', 'needs_info', 'suspended']),
+  "businessName": zod.string().nullish(),
+  "ownerName": zod.string().nullish(),
+  "mobile": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "pan": zod.string().nullish(),
+  "gst": zod.string().nullish(),
+  "businessType": zod.string().nullish(),
+  "websiteUrl": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "expectedMonthlyVolume": zod.string().nullish(),
+  "useCase": zod.string().nullish(),
+  "bankAccountName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "ifscCode": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "adminNote": zod.string().nullish(),
+  "reviewedBy": zod.number().nullish(),
+  "reviewedAt": zod.string().nullish(),
+  "submittedAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).nullable()
+})
+
+
+/**
+ * @summary Submit or update KYC verification application (merchant)
+ */
+export const SubmitVerificationBody = zod.object({
+  "businessName": zod.string().optional(),
+  "ownerName": zod.string().optional(),
+  "mobile": zod.string().optional(),
+  "email": zod.string().optional(),
+  "pan": zod.string().optional(),
+  "gst": zod.string().optional(),
+  "businessType": zod.enum(['sole_proprietorship', 'partnership', 'private_limited', 'llp', 'other']).optional(),
+  "websiteUrl": zod.string().optional(),
+  "address": zod.string().optional(),
+  "expectedMonthlyVolume": zod.enum(['<1L', '1L-10L', '10L-1Cr', '>1Cr']).optional(),
+  "useCase": zod.string().optional(),
+  "bankAccountName": zod.string().optional(),
+  "bankAccountNumber": zod.string().optional(),
+  "ifscCode": zod.string().optional(),
+  "upiId": zod.string().optional()
+})
+
+export const SubmitVerificationResponse = zod.object({
+  "verification": zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "status": zod.enum(['pending', 'under_review', 'approved', 'rejected', 'needs_info', 'suspended']),
+  "businessName": zod.string().nullish(),
+  "ownerName": zod.string().nullish(),
+  "mobile": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "pan": zod.string().nullish(),
+  "gst": zod.string().nullish(),
+  "businessType": zod.string().nullish(),
+  "websiteUrl": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "expectedMonthlyVolume": zod.string().nullish(),
+  "useCase": zod.string().nullish(),
+  "bankAccountName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "ifscCode": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "adminNote": zod.string().nullish(),
+  "reviewedBy": zod.number().nullish(),
+  "reviewedAt": zod.string().nullish(),
+  "submittedAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+})
+
+
+/**
+ * @summary List own verification documents (merchant)
+ */
+export const ListVerificationDocumentsResponse = zod.object({
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "verificationId": zod.number(),
+  "merchantId": zod.number(),
+  "docType": zod.enum(['pan', 'gst', 'bank_statement', 'address_proof', 'business_registration', 'cancelled_cheque', 'other']),
+  "fileUrl": zod.string(),
+  "fileName": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Attach a document to verification application (merchant)
+ */
+export const AddVerificationDocumentBody = zod.object({
+  "docType": zod.enum(['pan', 'gst', 'bank_statement', 'address_proof', 'business_registration', 'cancelled_cheque', 'other']),
+  "fileUrl": zod.string(),
+  "fileName": zod.string().optional()
+})
+
+
+/**
+ * @summary Get presigned upload URL for verification document (merchant)
+ */
+export const RequestVerificationUploadUrlBody = zod.object({
+  "name": zod.string(),
+  "size": zod.number(),
+  "contentType": zod.string()
+})
+
+export const RequestVerificationUploadUrlResponse = zod.object({
+  "uploadURL": zod.string(),
+  "objectPath": zod.string()
+})
+
+
+/**
+ * @summary Delete own verification document (merchant)
+ */
+export const DeleteVerificationDocumentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteVerificationDocumentResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary List all merchant verifications (admin)
+ */
+export const AdminListVerificationsQueryParams = zod.object({
+  "status": zod.enum(['all', 'pending', 'under_review', 'approved', 'rejected', 'needs_info', 'suspended']).optional(),
+  "search": zod.coerce.string().optional(),
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional()
+})
+
+export const AdminListVerificationsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "status": zod.enum(['pending', 'under_review', 'approved', 'rejected', 'needs_info', 'suspended']),
+  "businessName": zod.string().nullish(),
+  "ownerName": zod.string().nullish(),
+  "pan": zod.string().nullish(),
+  "gst": zod.string().nullish(),
+  "businessType": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "adminNote": zod.string().nullish(),
+  "submittedAt": zod.string().nullish(),
+  "reviewedAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "merchant": zod.object({
+  "id": zod.number(),
+  "businessName": zod.string(),
+  "email": zod.string(),
+  "status": zod.string(),
+  "verificationStatus": zod.string()
+})
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Get verification status counts (admin)
+ */
+export const AdminGetVerificationStatsResponse = zod.object({
+  "stats": zod.object({
+  "pending": zod.number(),
+  "under_review": zod.number(),
+  "approved": zod.number(),
+  "rejected": zod.number(),
+  "needs_info": zod.number(),
+  "suspended": zod.number(),
+  "total": zod.number()
+})
+})
+
+
+/**
+ * @summary Get full verification details for a merchant (admin, unmasked)
+ */
+export const AdminGetVerificationParams = zod.object({
+  "merchantId": zod.coerce.number()
+})
+
+export const AdminGetVerificationResponse = zod.object({
+  "verification": zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "status": zod.enum(['pending', 'under_review', 'approved', 'rejected', 'needs_info', 'suspended']),
+  "businessName": zod.string().nullish(),
+  "ownerName": zod.string().nullish(),
+  "mobile": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "pan": zod.string().nullish(),
+  "gst": zod.string().nullish(),
+  "businessType": zod.string().nullish(),
+  "websiteUrl": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "expectedMonthlyVolume": zod.string().nullish(),
+  "useCase": zod.string().nullish(),
+  "bankAccountName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "ifscCode": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "adminNote": zod.string().nullish(),
+  "reviewedBy": zod.number().nullish(),
+  "reviewedAt": zod.string().nullish(),
+  "submittedAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}),
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "verificationId": zod.number(),
+  "merchantId": zod.number(),
+  "docType": zod.enum(['pan', 'gst', 'bank_statement', 'address_proof', 'business_registration', 'cancelled_cheque', 'other']),
+  "fileUrl": zod.string(),
+  "fileName": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Update verification status (admin)
+ */
+export const AdminUpdateVerificationStatusParams = zod.object({
+  "merchantId": zod.coerce.number()
+})
+
+export const AdminUpdateVerificationStatusBody = zod.object({
+  "status": zod.enum(['pending', 'under_review', 'approved', 'rejected', 'needs_info', 'suspended']),
+  "adminNote": zod.string().optional()
+})
+
+export const AdminUpdateVerificationStatusResponse = zod.object({
+  "verification": zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "status": zod.enum(['pending', 'under_review', 'approved', 'rejected', 'needs_info', 'suspended']),
+  "businessName": zod.string().nullish(),
+  "ownerName": zod.string().nullish(),
+  "mobile": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "pan": zod.string().nullish(),
+  "gst": zod.string().nullish(),
+  "businessType": zod.string().nullish(),
+  "websiteUrl": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "expectedMonthlyVolume": zod.string().nullish(),
+  "useCase": zod.string().nullish(),
+  "bankAccountName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "ifscCode": zod.string().nullish(),
+  "upiId": zod.string().nullish(),
+  "adminNote": zod.string().nullish(),
+  "reviewedBy": zod.number().nullish(),
+  "reviewedAt": zod.string().nullish(),
+  "submittedAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+})
+
+
+/**
+ * @summary List verification documents for a merchant (admin)
+ */
+export const AdminListVerificationDocumentsParams = zod.object({
+  "merchantId": zod.coerce.number()
+})
+
+export const AdminListVerificationDocumentsResponse = zod.object({
+  "documents": zod.array(zod.object({
+  "id": zod.number(),
+  "verificationId": zod.number(),
+  "merchantId": zod.number(),
+  "docType": zod.enum(['pan', 'gst', 'bank_statement', 'address_proof', 'business_registration', 'cancelled_cheque', 'other']),
+  "fileUrl": zod.string(),
+  "fileName": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Delete a verification document (admin)
+ */
+export const AdminDeleteVerificationDocumentParams = zod.object({
+  "merchantId": zod.coerce.number(),
+  "docId": zod.coerce.number()
+})
+
+export const AdminDeleteVerificationDocumentResponse = zod.object({
+  "success": zod.boolean()
 })
 
 

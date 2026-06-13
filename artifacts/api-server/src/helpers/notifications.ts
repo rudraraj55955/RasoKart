@@ -16,7 +16,8 @@ export type NotificationType =
   | "report_schedule_next_run_updated"
   | "merchant_dormant"
   | "kyc_approved"
-  | "kyc_rejected";
+  | "kyc_rejected"
+  | "kyc_status_updated";
 
 export interface CreateNotificationInput {
   userId: number;

@@ -29,6 +29,7 @@ import {
   credentialEventsTable,
   merchantWalletsTable,
   walletLedgerTable,
+  merchantVerificationsTable,
 } from "@workspace/db";
 
 const PLAN_TIERS = [
@@ -1102,6 +1103,77 @@ export async function seed() {
       }
     }
     console.log("Merchant wallets seeded");
+  }
+
+  // ── Merchant Verifications (demo data) ─────────────────────────────────────
+  if (m1) {
+    const [existingV1] = await db
+      .select({ id: merchantVerificationsTable.id })
+      .from(merchantVerificationsTable)
+      .where(eq(merchantVerificationsTable.merchantId, m1.id))
+      .limit(1);
+    if (!existingV1) {
+      const now = new Date();
+      await db.insert(merchantVerificationsTable).values({
+        merchantId: m1.id,
+        status: "approved",
+        businessName: "Demo Business Pvt Ltd",
+        ownerName: "Demo Owner",
+        mobile: "+91 9876543210",
+        email: "merchant@demo.com",
+        pan: "ABCDE1234F",
+        gst: "07ABCDE1234F1Z5",
+        businessType: "private_limited",
+        websiteUrl: "https://demo.example.com",
+        address: "123, Demo Street, Mumbai, Maharashtra - 400001",
+        expectedMonthlyVolume: "10L-1Cr",
+        useCase: "Online retail payments and subscription billing for SaaS products",
+        bankAccountName: "Demo Business Pvt Ltd",
+        bankAccountNumber: "1234567890123456",
+        ifscCode: "HDFC0001234",
+        upiId: "demo@hdfc",
+        adminNote: "Verified on onboarding",
+        submittedAt: now,
+        reviewedAt: now,
+      });
+      await db.update(merchantsTable).set({ verificationStatus: "approved" }).where(eq(merchantsTable.id, m1.id));
+      console.log("Demo merchant 1 verification seeded");
+    }
+  }
+
+  if (m2) {
+    const [existingV2] = await db
+      .select({ id: merchantVerificationsTable.id })
+      .from(merchantVerificationsTable)
+      .where(eq(merchantVerificationsTable.merchantId, m2.id))
+      .limit(1);
+    if (!existingV2) {
+      const now = new Date();
+      await db.insert(merchantVerificationsTable).values({
+        merchantId: m2.id,
+        status: "approved",
+        businessName: "Merchant Two Enterprises",
+        ownerName: "Merchant Two",
+        mobile: "+91 9988776655",
+        email: "merchant2@demo.com",
+        pan: "XYZAB9876G",
+        gst: "27XYZAB9876G1Z1",
+        businessType: "sole_proprietorship",
+        websiteUrl: "https://merchant2.example.com",
+        address: "456, Business Park, Pune, Maharashtra - 411001",
+        expectedMonthlyVolume: "1L-10L",
+        useCase: "E-commerce platform payments and vendor payouts",
+        bankAccountName: "Merchant Two Enterprises",
+        bankAccountNumber: "9876543210987654",
+        ifscCode: "ICIC0005678",
+        upiId: "merchant2@icici",
+        adminNote: "Verified on onboarding",
+        submittedAt: now,
+        reviewedAt: now,
+      });
+      await db.update(merchantsTable).set({ verificationStatus: "approved" }).where(eq(merchantsTable.id, m2.id));
+      console.log("Demo merchant 2 verification seeded");
+    }
   }
 
   console.log("Seed complete.");

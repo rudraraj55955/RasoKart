@@ -63,3 +63,5 @@ export * from "./supportTickets";
 export * from "./kycReviewHistory";
 export * from "./reportSchedules";
 export * from "./reportDeliveryLogs";
+export * from "./merchantVerifications";
+export * from "./merchantDocuments";
