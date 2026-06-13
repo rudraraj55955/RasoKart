@@ -234,8 +234,10 @@ async function main() {
   }
 }
 
-main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`GITHUB_SYNC: ${message}`);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`GITHUB_SYNC: ${message}`);
+    process.exit(1);
+  });
