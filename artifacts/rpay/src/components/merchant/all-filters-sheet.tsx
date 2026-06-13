@@ -12,6 +12,7 @@ import {
   Layers,
   ArrowDownLeft,
   ArrowUpRight,
+  BarChart3,
   BookmarkCheck,
   ChevronLeft,
   ChevronRight,
@@ -38,7 +39,7 @@ interface SavedFilter {
   rawInput: string;
 }
 
-type PageKey = "deposits" | "transactions";
+type PageKey = "deposits" | "transactions" | "reports";
 
 const PAGE_META: Record<PageKey, { label: string; context: string; color: string; iconClass: string }> = {
   deposits: {
@@ -52,6 +53,12 @@ const PAGE_META: Record<PageKey, { label: string; context: string; color: string
     context: "merchant_transactions",
     color: "violet",
     iconClass: "text-violet-400",
+  },
+  reports: {
+    label: "Reports",
+    context: "merchant_reports",
+    color: "sky",
+    iconClass: "text-sky-400",
   },
 };
 
@@ -144,25 +151,29 @@ function GroupSection({
   onDragEnd,
 }: GroupSectionProps) {
   const meta = PAGE_META[pageKey];
-  const borderColor = pageKey === "deposits" ? "border-emerald-500/20" : "border-violet-500/20";
-  const bgColor = pageKey === "deposits" ? "bg-emerald-500/5" : "bg-violet-500/5";
-  const chipBorder = pageKey === "deposits" ? "border-emerald-500/30" : "border-violet-500/30";
-  const chipBg = pageKey === "deposits" ? "bg-emerald-500/8" : "bg-violet-500/8";
-  const chipText = pageKey === "deposits" ? "text-emerald-300" : "text-violet-300";
-  const chipHover = pageKey === "deposits" ? "hover:border-emerald-500/60" : "hover:border-violet-500/60";
-  const chipRingHover = pageKey === "deposits" ? "ring-emerald-400 border-emerald-500/60 bg-emerald-500/15" : "ring-violet-400 border-violet-500/60 bg-violet-500/15";
-  const arrowColor = pageKey === "deposits" ? "text-emerald-400/40 hover:text-emerald-200" : "text-violet-400/40 hover:text-violet-200";
-  const pencilColor = pageKey === "deposits" ? "text-emerald-400/40 hover:text-emerald-200 hover:bg-emerald-500/10" : "text-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10";
-  const renameBorder = pageKey === "deposits" ? "border-emerald-400" : "border-violet-400";
-  const renameFg = pageKey === "deposits" ? "text-emerald-100" : "text-violet-100";
-  const bookmarkFg = pageKey === "deposits" ? "text-emerald-300 hover:text-emerald-100" : "text-violet-300 hover:text-violet-100";
+  const isDeposits = pageKey === "deposits";
+  const isReports = pageKey === "reports";
+  const borderColor = isDeposits ? "border-emerald-500/20" : isReports ? "border-sky-500/20" : "border-violet-500/20";
+  const bgColor = isDeposits ? "bg-emerald-500/5" : isReports ? "bg-sky-500/5" : "bg-violet-500/5";
+  const chipBorder = isDeposits ? "border-emerald-500/30" : isReports ? "border-sky-500/30" : "border-violet-500/30";
+  const chipBg = isDeposits ? "bg-emerald-500/8" : isReports ? "bg-sky-500/8" : "bg-violet-500/8";
+  const chipText = isDeposits ? "text-emerald-300" : isReports ? "text-sky-300" : "text-violet-300";
+  const chipHover = isDeposits ? "hover:border-emerald-500/60" : isReports ? "hover:border-sky-500/60" : "hover:border-violet-500/60";
+  const chipRingHover = isDeposits ? "ring-emerald-400 border-emerald-500/60 bg-emerald-500/15" : isReports ? "ring-sky-400 border-sky-500/60 bg-sky-500/15" : "ring-violet-400 border-violet-500/60 bg-violet-500/15";
+  const arrowColor = isDeposits ? "text-emerald-400/40 hover:text-emerald-200" : isReports ? "text-sky-400/40 hover:text-sky-200" : "text-violet-400/40 hover:text-violet-200";
+  const pencilColor = isDeposits ? "text-emerald-400/40 hover:text-emerald-200 hover:bg-emerald-500/10" : isReports ? "text-sky-400/40 hover:text-sky-200 hover:bg-sky-500/10" : "text-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10";
+  const renameBorder = isDeposits ? "border-emerald-400" : isReports ? "border-sky-400" : "border-violet-400";
+  const renameFg = isDeposits ? "text-emerald-100" : isReports ? "text-sky-100" : "text-violet-100";
+  const bookmarkFg = isDeposits ? "text-emerald-300 hover:text-emerald-100" : isReports ? "text-sky-300 hover:text-sky-100" : "text-violet-300 hover:text-violet-100";
 
   return (
     <div className={`rounded-xl border ${borderColor} ${bgColor} p-4`}>
       <div className="flex items-center gap-2 mb-3">
         {pageKey === "deposits"
           ? <ArrowDownLeft className={`w-4 h-4 ${meta.iconClass}`} />
-          : <ArrowUpRight className={`w-4 h-4 ${meta.iconClass}`} />}
+          : pageKey === "reports"
+            ? <BarChart3 className={`w-4 h-4 ${meta.iconClass}`} />
+            : <ArrowUpRight className={`w-4 h-4 ${meta.iconClass}`} />}
         <h3 className="text-sm font-semibold">{meta.label}</h3>
         <span className="text-xs text-muted-foreground ml-auto">
           {loading ? "…" : `${filters.length} filter${filters.length !== 1 ? "s" : ""}`}
@@ -298,9 +309,14 @@ export function AllFiltersSheet({ open, onOpenChange }: AllFiltersSheetProps) {
     { context: "merchant_transactions" },
     { query: { enabled: open, staleTime: 0 } as any },
   );
+  const { data: reportsData, isLoading: reportsLoading, isSuccess: reportsLoaded } = useListMerchantSavedFilters(
+    { context: "merchant_reports" },
+    { query: { enabled: open, staleTime: 0 } as any },
+  );
 
   const [deposits, setDeposits] = useState<SavedFilter[]>([]);
   const [txs, setTxs] = useState<SavedFilter[]>([]);
+  const [reports, setReports] = useState<SavedFilter[]>([]);
 
   useEffect(() => {
     if (depositLoaded && depositData) {
@@ -328,6 +344,19 @@ export function AllFiltersSheet({ open, onOpenChange }: AllFiltersSheetProps) {
     }
   }, [txLoaded, txData]);
 
+  useEffect(() => {
+    if (reportsLoaded && reportsData) {
+      setReports(
+        (reportsData.data ?? []).map(f => ({
+          id: String(f.id),
+          name: f.name,
+          filter: f.filterData as SmartFilter,
+          rawInput: f.rawInput,
+        })),
+      );
+    }
+  }, [reportsLoaded, reportsData]);
+
   const { mutateAsync: deleteMutation } = useDeleteMerchantSavedFilter();
   const { mutateAsync: renameMutation } = useRenameMerchantSavedFilter();
   const { mutateAsync: reorderMutation } = useReorderMerchantSavedFilters();
@@ -347,9 +376,10 @@ export function AllFiltersSheet({ open, onOpenChange }: AllFiltersSheetProps) {
     }
   }, [renamingId]);
 
-  const getGroupState = (group: PageKey) => (group === "deposits" ? deposits : txs);
+  const getGroupState = (group: PageKey) => (group === "deposits" ? deposits : group === "reports" ? reports : txs);
   const setGroupState = (group: PageKey, filters: SavedFilter[]) => {
     if (group === "deposits") setDeposits(filters);
+    else if (group === "reports") setReports(filters);
     else setTxs(filters);
   };
 
@@ -393,7 +423,7 @@ export function AllFiltersSheet({ open, onOpenChange }: AllFiltersSheetProps) {
     const trimmed = renameValue.trim();
     if (!trimmed) { setRenamingId(null); return; }
 
-    const group: PageKey = deposits.some(f => f.id === renamingId) ? "deposits" : "transactions";
+    const group: PageKey = deposits.some(f => f.id === renamingId) ? "deposits" : reports.some(f => f.id === renamingId) ? "reports" : "transactions";
     const list = getGroupState(group);
 
     if (list.some(f => f.id !== renamingId && f.name.toLowerCase() === trimmed.toLowerCase())) {
@@ -464,7 +494,7 @@ export function AllFiltersSheet({ open, onOpenChange }: AllFiltersSheetProps) {
 
   const makeGroupProps = (group: PageKey): Omit<GroupSectionProps, "pageKey"> => ({
     filters: getGroupState(group),
-    loading: group === "deposits" ? depositLoading : txLoading,
+    loading: group === "deposits" ? depositLoading : group === "reports" ? reportsLoading : txLoading,
     renamingId,
     renameValue,
     renameInputRef,
@@ -492,7 +522,7 @@ export function AllFiltersSheet({ open, onOpenChange }: AllFiltersSheetProps) {
             Manage All Saved Filters
           </SheetTitle>
           <p className="text-sm text-muted-foreground">
-            View, rename, reorder, and delete saved filters across your Deposits and Transactions pages.
+            View, rename, reorder, and delete saved filters across your Deposits, Transactions, and Reports pages.
             Reordering here updates each page independently.
           </p>
         </SheetHeader>
@@ -500,6 +530,7 @@ export function AllFiltersSheet({ open, onOpenChange }: AllFiltersSheetProps) {
         <div className="space-y-4">
           <GroupSection pageKey="deposits" {...makeGroupProps("deposits")} />
           <GroupSection pageKey="transactions" {...makeGroupProps("transactions")} />
+          <GroupSection pageKey="reports" {...makeGroupProps("reports")} />
         </div>
       </SheetContent>
     </Sheet>

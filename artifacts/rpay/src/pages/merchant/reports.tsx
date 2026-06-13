@@ -1,5 +1,15 @@
-import { useState, useCallback } from "react";
-import { useGetTransactionReport, useGetSettlementReport, useListMerchantConnections } from "@workspace/api-client-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  useGetTransactionReport,
+  useGetSettlementReport,
+  useListMerchantConnections,
+  useListMerchantSavedFilters,
+  useCreateMerchantSavedFilter,
+  useDeleteMerchantSavedFilter,
+  useRenameMerchantSavedFilter,
+  useReorderMerchantSavedFilters,
+} from "@workspace/api-client-react";
+import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,6 +39,14 @@ import {
   Hash,
   Wallet,
   TrendingUp,
+  Bookmark,
+  BookmarkCheck,
+  Pencil,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Layers,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
@@ -76,6 +94,34 @@ const PROVIDERS = [
   { value: "upi_id", label: "UPI ID" },
 ];
 
+interface ReportsFilterData {
+  dateFrom?: string;
+  dateTo?: string;
+  type?: string;
+  status?: string;
+  connectionProvider?: string;
+  source?: string;
+}
+
+interface ReportsSavedFilter {
+  id: string;
+  name: string;
+  filterData: ReportsFilterData;
+  rawInput: string;
+}
+
+function buildReportsRawInput(fd: ReportsFilterData): string {
+  const parts: string[] = [];
+  if (fd.type) parts.push(fd.type.charAt(0).toUpperCase() + fd.type.slice(1));
+  if (fd.status) parts.push(fd.status.charAt(0).toUpperCase() + fd.status.slice(1));
+  if (fd.source) parts.push(fd.source.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
+  if (fd.connectionProvider) parts.push(fd.connectionProvider.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
+  if (fd.dateFrom && fd.dateTo) parts.push(`${fd.dateFrom} – ${fd.dateTo}`);
+  else if (fd.dateFrom) parts.push(`From ${fd.dateFrom}`);
+  else if (fd.dateTo) parts.push(`Until ${fd.dateTo}`);
+  return parts.length > 0 ? parts.join(" · ") : "All filters";
+}
+
 function fmt(amount: number) {
   return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -115,6 +161,31 @@ export default function MerchantReports() {
   const [stlActivePreset, setStlActivePreset] = useState<string | null>(null);
   const [stlExporting, setStlExporting] = useState<"pdf" | "xlsx" | null>(null);
 
+  // Saved filters state
+  const FILTER_CONTEXT = "merchant_reports";
+  const filtersInitialized = useRef(false);
+  const [savedFilters, setSavedFilters] = useState<ReportsSavedFilter[]>([]);
+  const [showAllFilters, setShowAllFilters] = useState(false);
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveFilterName, setSaveFilterName] = useState("");
+  const [saveFilterNameError, setSaveFilterNameError] = useState("");
+  const saveNameInputRef = useRef<HTMLInputElement>(null);
+  const dragIdRef = useRef<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: serverFiltersData, isSuccess: serverFiltersLoaded } = useListMerchantSavedFilters(
+    { context: FILTER_CONTEXT },
+    { query: { staleTime: Infinity, retry: false } as any },
+  );
+  const { mutateAsync: createFilterMutation } = useCreateMerchantSavedFilter();
+  const { mutateAsync: deleteFilterMutation } = useDeleteMerchantSavedFilter();
+  const { mutateAsync: renameFilterMutation } = useRenameMerchantSavedFilter();
+  const { mutateAsync: reorderFilterMutation } = useReorderMerchantSavedFilters();
+
   useListMerchantConnections();
 
   const txParams = {
@@ -141,6 +212,26 @@ export default function MerchantReports() {
   const settlements = stlData?.data ?? [];
   const stlStats = stlData?.stats;
 
+  useEffect(() => {
+    if (!serverFiltersLoaded) return;
+    const serverFilters: ReportsSavedFilter[] = (serverFiltersData?.data ?? []).map((f) => ({
+      id: String(f.id),
+      name: f.name,
+      filterData: f.filterData as ReportsFilterData,
+      rawInput: f.rawInput,
+    }));
+    setSavedFilters(serverFilters);
+    filtersInitialized.current = true;
+  }, [serverFiltersData]);
+
+  useEffect(() => {
+    if (showSaveInput) setTimeout(() => saveNameInputRef.current?.focus(), 50);
+  }, [showSaveInput]);
+
+  useEffect(() => {
+    if (renamingId) setTimeout(() => renameInputRef.current?.focus(), 50);
+  }, [renamingId]);
+
   const applyTxPreset = (preset: typeof DATE_PRESETS[number]) => {
     const range = preset.getRange();
     setTxDateFrom(range.from);
@@ -154,6 +245,130 @@ export default function MerchantReports() {
     setStlDateTo(range.to);
     setStlActivePreset(preset.label);
   };
+
+  const applySavedFilter = (saved: ReportsSavedFilter) => {
+    const fd = saved.filterData;
+    setTxDateFrom(fd.dateFrom ?? format(startOfMonth(new Date()), "yyyy-MM-dd"));
+    setTxDateTo(fd.dateTo ?? format(new Date(), "yyyy-MM-dd"));
+    setType(fd.type ?? "all");
+    setTxStatus(fd.status ?? "all");
+    setConnectionProvider(fd.connectionProvider ?? "all");
+    setSource(fd.source ?? "all");
+    setTxActivePreset(null);
+    setShowSaveInput(false);
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+  };
+
+  const currentFilterData: ReportsFilterData = {
+    dateFrom: txDateFrom || undefined,
+    dateTo: txDateTo || undefined,
+    type: type !== "all" ? type : undefined,
+    status: txStatus !== "all" ? txStatus : undefined,
+    connectionProvider: connectionProvider !== "all" ? connectionProvider : undefined,
+    source: source !== "all" ? source : undefined,
+  };
+
+  const hasAnyFilter = type !== "all" || txStatus !== "all" || connectionProvider !== "all" || source !== "all";
+
+  const isCurrentFilterSaved = hasAnyFilter && savedFilters.some(
+    (f) => JSON.stringify(f.filterData) === JSON.stringify(currentFilterData),
+  );
+
+  const openSaveInput = () => {
+    setSaveFilterName("");
+    setSaveFilterNameError("");
+    setShowSaveInput(true);
+  };
+
+  const confirmSaveFilter = async () => {
+    const trimmed = saveFilterName.trim();
+    if (!trimmed) { setSaveFilterNameError("Please enter a name."); saveNameInputRef.current?.focus(); return; }
+    if (savedFilters.some((f) => f.name.toLowerCase() === trimmed.toLowerCase())) {
+      setSaveFilterNameError("A filter with this name already exists."); saveNameInputRef.current?.focus(); return;
+    }
+    const rawInput = buildReportsRawInput(currentFilterData);
+    try {
+      const created = await createFilterMutation({
+        data: { name: trimmed, rawInput, filterData: currentFilterData as Record<string, unknown>, context: FILTER_CONTEXT },
+      });
+      const newFilter: ReportsSavedFilter = {
+        id: String(created.id),
+        name: created.name,
+        filterData: created.filterData as ReportsFilterData,
+        rawInput: created.rawInput,
+      };
+      setSavedFilters((prev) => [...prev, newFilter]);
+      setShowSaveInput(false);
+      setSaveFilterName("");
+      setSaveFilterNameError("");
+    } catch {
+      toast.error("Failed to save filter. Please try again.");
+    }
+  };
+
+  const cancelSaveFilter = () => { setShowSaveInput(false); setSaveFilterName(""); setSaveFilterNameError(""); };
+
+  const deleteSavedFilter = async (id: string) => {
+    setSavedFilters((prev) => prev.filter((f) => f.id !== id));
+    if (renamingId === id) setRenamingId(null);
+    const numericId = parseInt(id);
+    if (!isNaN(numericId)) {
+      try { await deleteFilterMutation({ id: numericId }); } catch { /* optimistic */ }
+    }
+  };
+
+  const moveSavedFilter = async (id: string, dir: -1 | 1) => {
+    setSavedFilters((prev) => {
+      const idx = prev.findIndex((f) => f.id === id);
+      if (idx === -1) return prev;
+      const newIdx = idx + dir;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const updated = [...prev];
+      [updated[idx], updated[newIdx]] = [updated[newIdx]!, updated[idx]!];
+      const ids = updated.map((f) => parseInt(f.id)).filter((n) => !isNaN(n));
+      reorderFilterMutation({ data: { ids, context: FILTER_CONTEXT } }).catch(() => {});
+      return updated;
+    });
+  };
+
+  const handleDragStart = (id: string) => { dragIdRef.current = id; setDraggingId(id); };
+  const handleDragOver = (e: React.DragEvent, id: string) => { e.preventDefault(); if (dragIdRef.current !== id) setDragOverId(id); };
+  const handleDragLeave = () => { setDragOverId(null); };
+  const handleDrop = (targetId: string) => {
+    const sourceId = dragIdRef.current;
+    setDragOverId(null); setDraggingId(null); dragIdRef.current = null;
+    if (!sourceId || sourceId === targetId) return;
+    setSavedFilters((prev) => {
+      const fromIdx = prev.findIndex((f) => f.id === sourceId);
+      const toIdx = prev.findIndex((f) => f.id === targetId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const updated = [...prev];
+      const [item] = updated.splice(fromIdx, 1);
+      updated.splice(toIdx, 0, item!);
+      const ids = updated.map((f) => parseInt(f.id)).filter((n) => !isNaN(n));
+      reorderFilterMutation({ data: { ids, context: FILTER_CONTEXT } }).catch(() => {});
+      return updated;
+    });
+  };
+  const handleDragEnd = () => { dragIdRef.current = null; setDraggingId(null); setDragOverId(null); };
+
+  const startRename = (saved: ReportsSavedFilter) => { setRenamingId(saved.id); setRenameValue(saved.name); };
+  const commitRename = async () => {
+    if (!renamingId) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) { setRenamingId(null); return; }
+    if (savedFilters.some((f) => f.id !== renamingId && f.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error("A filter with this name already exists."); return;
+    }
+    setSavedFilters((prev) => prev.map((f) => f.id === renamingId ? { ...f, name: trimmed } : f));
+    setRenamingId(null);
+    const numericId = parseInt(renamingId);
+    if (!isNaN(numericId)) {
+      try { await renameFilterMutation({ id: numericId, data: { name: trimmed } }); } catch { /* optimistic */ }
+    }
+  };
+  const cancelRename = () => { setRenamingId(null); };
 
   // ── Transaction exports ───────────────────────────────────────────────────
   const exportTxExcel = useCallback(async () => {
@@ -485,9 +700,19 @@ export default function MerchantReports() {
           {/* Tx Filters */}
           <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Filter className="w-4 h-4" />
-                Filters
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Filter className="w-4 h-4" />
+                  Filters
+                </div>
+                <button
+                  onClick={() => setShowAllFilters(true)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  title="View and manage saved report filters"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  Manage saved filters
+                </button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -505,6 +730,100 @@ export default function MerchantReports() {
                   </Button>
                 ))}
               </div>
+
+              {/* Saved filter chips */}
+              {savedFilters.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-medium">Saved:</span>
+                  {savedFilters.map((saved, idx) => (
+                    <span
+                      key={saved.id}
+                      draggable={renamingId !== saved.id}
+                      onDragStart={() => handleDragStart(saved.id)}
+                      onDragOver={(e) => handleDragOver(e, saved.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={() => handleDrop(saved.id)}
+                      onDragEnd={handleDragEnd}
+                      className={[
+                        "group inline-flex items-center gap-0.5 rounded-full border border-sky-500/30 bg-sky-500/8 text-xs font-medium text-sky-300 hover:border-sky-500/60 transition-colors select-none",
+                        renamingId !== saved.id ? "cursor-grab active:cursor-grabbing" : "",
+                        draggingId === saved.id ? "opacity-40 scale-95" : "",
+                        dragOverId === saved.id && draggingId !== saved.id ? "ring-1 ring-sky-400 border-sky-500/60 bg-sky-500/15" : "",
+                      ].filter(Boolean).join(" ")}
+                    >
+                      {idx > 0 && (
+                        <button
+                          onClick={() => moveSavedFilter(saved.id, -1)}
+                          className="pl-1.5 pr-0.5 py-1 rounded-l-full text-sky-400/40 hover:text-sky-200 hover:bg-sky-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                          aria-label="Move left"
+                          title="Move left"
+                        >
+                          <ChevronLeft className="w-3 h-3" />
+                        </button>
+                      )}
+                      {idx === 0 && <span className="pl-2" />}
+
+                      {renamingId === saved.id ? (
+                        <input
+                          ref={renameInputRef}
+                          className="w-28 bg-transparent border-b border-sky-400 text-sky-100 text-xs outline-none py-0.5 mx-1"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitRename();
+                            if (e.key === "Escape") cancelRename();
+                          }}
+                          onBlur={commitRename}
+                          maxLength={40}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => applySavedFilter(saved)}
+                          className="flex items-center gap-1 px-1 py-1 hover:text-sky-100 transition-colors"
+                          title={`Apply: ${saved.rawInput}`}
+                        >
+                          <BookmarkCheck className="w-3 h-3 shrink-0" />
+                          {saved.name}
+                        </button>
+                      )}
+
+                      {renamingId !== saved.id && (
+                        <button
+                          onClick={() => startRename(saved)}
+                          className="p-0.5 text-sky-400/40 hover:text-sky-200 hover:bg-sky-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                          aria-label={`Rename "${saved.name}"`}
+                          title="Rename"
+                        >
+                          <Pencil className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+
+                      {renamingId !== saved.id && (
+                        <button
+                          onClick={() => deleteSavedFilter(saved.id)}
+                          className="pr-1.5 p-0.5 rounded-r-full text-sky-400/40 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                          aria-label={`Delete saved filter "${saved.name}"`}
+                          title="Delete this saved filter"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+
+                      {idx < savedFilters.length - 1 && renamingId !== saved.id && (
+                        <button
+                          onClick={() => moveSavedFilter(saved.id, 1)}
+                          className="pr-1.5 pl-0.5 py-1 rounded-r-full text-sky-400/40 hover:text-sky-200 hover:bg-sky-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                          aria-label="Move right"
+                          title="Move right"
+                        >
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+                      )}
+                      {idx === savedFilters.length - 1 && renamingId !== saved.id && <span className="pr-1" />}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <div className="space-y-1">
@@ -580,8 +899,55 @@ export default function MerchantReports() {
                   </Select>
                 </div>
               </div>
+
+              {/* Save filter bar */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {hasAnyFilter && !isCurrentFilterSaved && !showSaveInput && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs border-sky-500/40 text-sky-300 hover:bg-sky-500/10 hover:text-sky-200"
+                    onClick={openSaveInput}
+                    title="Save this filter combination for quick access"
+                  >
+                    <Bookmark className="w-3.5 h-3.5 mr-1.5" />Save current filters
+                  </Button>
+                )}
+                {hasAnyFilter && isCurrentFilterSaved && (
+                  <span className="inline-flex items-center gap-1 text-xs text-sky-400/60 font-medium">
+                    <BookmarkCheck className="w-3.5 h-3.5" />Saved
+                  </span>
+                )}
+                {showSaveInput && (
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1">
+                      <Input
+                        ref={saveNameInputRef}
+                        className="h-7 text-xs max-w-[240px]"
+                        placeholder="Name this filter preset…"
+                        value={saveFilterName}
+                        onChange={(e) => { setSaveFilterName(e.target.value); setSaveFilterNameError(""); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") confirmSaveFilter();
+                          if (e.key === "Escape") cancelSaveFilter();
+                        }}
+                        maxLength={40}
+                      />
+                      {saveFilterNameError && (
+                        <p className="mt-1 text-xs text-rose-400">{saveFilterNameError}</p>
+                      )}
+                    </div>
+                    <Button size="sm" className="h-7 text-xs shrink-0" onClick={confirmSaveFilter}>Save</Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs shrink-0 px-2" onClick={cancelSaveFilter}>
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
+
+          <AllFiltersSheet open={showAllFilters} onOpenChange={setShowAllFilters} />
 
           {/* Tx Stats */}
           {txStats && (
