@@ -987,6 +987,23 @@ router.patch("/schedules/:merchantId/reenable", requireAdmin, async (req, res, n
       .where(eq(reportSchedulesTable.merchantId, mid))
       .returning();
 
+    const admin = (req as any).user;
+    await db.insert(auditLogsTable).values({
+      adminId: admin.id,
+      adminEmail: admin.email,
+      action: "report_schedule_reenabled",
+      targetType: "merchant",
+      targetId: mid,
+      details: JSON.stringify({
+        merchantId: mid,
+        previousConsecutiveFailures: existing.consecutiveFailures,
+        consecutiveFailuresReset: 0,
+        frequency: existing.frequency,
+        format: existing.format,
+      }),
+      ipAddress: req.ip ?? null,
+    });
+
     const [u] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.merchantId, mid)).limit(1);
     if (u) {
       createNotification({
