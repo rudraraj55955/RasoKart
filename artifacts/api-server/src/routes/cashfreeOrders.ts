@@ -75,7 +75,7 @@ router.post("/cashfree/create-order", requireAuth, async (req, res, next) => {
     const cfg = new Map(rows.map(r => [r.key, r.value]));
 
     if (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED) !== "true") {
-      res.status(400).json({ error: "Cashfree payment gateway is not enabled" });
+      res.status(400).json({ error: "Payment gateway is not enabled" });
       return;
     }
 
@@ -84,7 +84,7 @@ router.post("/cashfree/create-order", requireAuth, async (req, res, next) => {
     const env = (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENV) ?? "test") as CashfreeEnv;
 
     if (!clientId || !clientSecret) {
-      res.status(400).json({ error: "Cashfree credentials are not configured" });
+      res.status(400).json({ error: "Payment gateway credentials are not configured" });
       return;
     }
 
@@ -105,7 +105,7 @@ router.post("/cashfree/create-order", requireAuth, async (req, res, next) => {
 
     if (!parsed.payment_session_id) {
       req.log.warn({ parsed, raw }, "Cashfree create-order failed");
-      res.status(502).json({ error: parsed.message ?? "Failed to create Cashfree order" });
+      res.status(502).json({ error: parsed.message ?? "Failed to create payment order" });
       return;
     }
 

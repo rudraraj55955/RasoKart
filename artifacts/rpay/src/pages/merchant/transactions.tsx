@@ -96,16 +96,20 @@ const STATUS_KEYWORDS: Record<string, "pending" | "success" | "failed"> = {
 };
 
 const PROVIDER_KEYWORDS: Record<string, string> = {
-  phonepe: "phonepe",
-  paytm: "paytm",
-  bharatpe: "bharatpe",
+  upi: "upi_id",
+  upi_id: "upi_id",
+  collect: "phonepe",
+  wallet: "paytm",
+  merchant: "bharatpe",
+  bank: "yono_sbi",
   yono: "yono_sbi",
   yono_sbi: "yono_sbi",
   hdfc: "hdfc_smarthub",
   hdfc_smarthub: "hdfc_smarthub",
   smartpay: "hdfc_smarthub",
-  upi: "upi_id",
-  upi_id: "upi_id",
+  phonepe: "phonepe",
+  paytm: "paytm",
+  bharatpe: "bharatpe",
 };
 
 function parseDateToken(token: string, now: Date): Pick<SmartFilter, "dateFrom" | "dateTo"> | null {
@@ -314,12 +318,23 @@ function parseSmartQuery(raw: string): SmartFilter | null {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  phonepe: "PhonePe",
-  paytm: "Paytm",
-  bharatpe: "BharatPe",
-  yono_sbi: "YONO SBI",
-  hdfc_smarthub: "HDFC SmartHub",
-  upi_id: "UPI",
+  upi_id:        "UPI Direct",
+  google_pay:    "RasoKart UPI",
+  phonepe:       "RasoKart Collect",
+  paytm:         "RasoKart Wallet",
+  bharatpe:      "RasoKart Merchant",
+  freecharge:    "RasoKart Pay",
+  amazon_pay:    "RasoKart Digital",
+  yono_sbi:      "Bank UPI",
+  sbi_yono:      "Bank UPI",
+  hdfc_smarthub: "Bank SmartQR",
+  icici_eazypay: "Bank QR",
+  axis_pay:      "Bank QR",
+  kotak_smart:   "Bank Smart Collect",
+  razorpay:      "RasoKart Gateway",
+  cashfree:      "RasoKart Payments",
+  payu:          "RasoKart Gateway Plus",
+  ekqr:          "RasoKart QR Gateway",
 };
 
 function formatProvider(p: string | null | undefined): string {
@@ -338,12 +353,13 @@ function ProviderBadge({ provider }: { provider: string | null | undefined }) {
 }
 
 const PROVIDERS = [
-  { value: "phonepe", label: "PhonePe" },
-  { value: "paytm", label: "Paytm" },
-  { value: "bharatpe", label: "BharatPe" },
-  { value: "yono_sbi", label: "YONO SBI" },
-  { value: "hdfc_smarthub", label: "HDFC SmartHub" },
-  { value: "upi_id", label: "UPI" },
+  { value: "upi_id",        label: "UPI Direct" },
+  { value: "google_pay",    label: "RasoKart UPI" },
+  { value: "phonepe",       label: "RasoKart Collect" },
+  { value: "paytm",         label: "RasoKart Wallet" },
+  { value: "bharatpe",      label: "RasoKart Merchant" },
+  { value: "yono_sbi",      label: "Bank UPI" },
+  { value: "hdfc_smarthub", label: "Bank SmartQR" },
 ] as const;
 
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
@@ -1276,7 +1292,7 @@ export default function MerchantTransactions() {
               <Input
                 ref={smartInputRef}
                 className="pl-9"
-                placeholder="Try: phonepe deposits  ·  failed deposits  ·  pending >500  ·  deposits this week  ·  today"
+                placeholder="Try: upi deposits  ·  failed deposits  ·  pending >500  ·  deposits this week  ·  collect this week"
                 value={smartInput}
                 onChange={e => { setSmartInput(e.target.value); setSmartError(""); }}
                 onKeyDown={e => { if (e.key === "Enter") applySmartSearch(); }}
@@ -1335,7 +1351,7 @@ export default function MerchantTransactions() {
             <p className="mt-2 text-xs text-amber-400">{smartError}</p>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
-            Type: <span className="font-mono text-foreground/60">deposit</span>, <span className="font-mono text-foreground/60">withdrawal</span> — Status: <span className="font-mono text-foreground/60">pending</span>, <span className="font-mono text-foreground/60">success</span>, <span className="font-mono text-foreground/60">failed</span> — Amount: <span className="font-mono text-foreground/60">{">500"}</span>, <span className="font-mono text-foreground/60">{"200-999"}</span> — Date: <span className="font-mono text-foreground/60">today</span>, <span className="font-mono text-foreground/60">this week</span>, <span className="font-mono text-foreground/60">this month</span> — Provider: <span className="font-mono text-foreground/60">phonepe</span>, <span className="font-mono text-foreground/60">paytm</span>, <span className="font-mono text-foreground/60">upi</span>, <span className="font-mono text-foreground/60">hdfc</span> — Combine freely: <span className="font-mono text-foreground/60">phonepe deposits this week</span>
+            Type: <span className="font-mono text-foreground/60">deposit</span>, <span className="font-mono text-foreground/60">withdrawal</span> — Status: <span className="font-mono text-foreground/60">pending</span>, <span className="font-mono text-foreground/60">success</span>, <span className="font-mono text-foreground/60">failed</span> — Amount: <span className="font-mono text-foreground/60">{">500"}</span>, <span className="font-mono text-foreground/60">{"200-999"}</span> — Date: <span className="font-mono text-foreground/60">today</span>, <span className="font-mono text-foreground/60">this week</span>, <span className="font-mono text-foreground/60">this month</span> — Provider: <span className="font-mono text-foreground/60">upi</span>, <span className="font-mono text-foreground/60">collect</span>, <span className="font-mono text-foreground/60">wallet</span>, <span className="font-mono text-foreground/60">bank</span> — Combine freely: <span className="font-mono text-foreground/60">collect deposits this week</span>
           </p>
         </CardContent>
       </Card>

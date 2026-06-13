@@ -43,12 +43,23 @@ type QrRow = {
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
-  phonepe: "PhonePe Business",
-  paytm: "Paytm Business",
-  bharatpe: "BharatPe",
-  yono_sbi: "YONO SBI",
-  hdfc_smarthub: "HDFC SmartHub",
-  upi_id: "UPI ID",
+  upi_id:        "UPI Direct",
+  google_pay:    "RasoKart UPI",
+  phonepe:       "RasoKart Collect",
+  paytm:         "RasoKart Wallet",
+  bharatpe:      "RasoKart Merchant",
+  freecharge:    "RasoKart Pay",
+  amazon_pay:    "RasoKart Digital",
+  yono_sbi:      "Bank UPI",
+  sbi_yono:      "Bank UPI",
+  hdfc_smarthub: "Bank SmartQR",
+  icici_eazypay: "Bank QR",
+  axis_pay:      "Bank QR",
+  kotak_smart:   "Bank Smart Collect",
+  razorpay:      "RasoKart Gateway",
+  cashfree:      "RasoKart Payments",
+  payu:          "RasoKart Gateway Plus",
+  ekqr:          "RasoKart QR Gateway",
 };
 
 const PROVIDER_VPA_SUFFIX: Record<string, string> = {

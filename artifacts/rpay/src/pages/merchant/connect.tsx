@@ -32,8 +32,57 @@ const ICONS: Record<string, React.ReactNode> = {
   bharatpe:      <Store className="w-7 h-7 text-green-400" />,
   freecharge:    <Zap className="w-7 h-7 text-rose-400" />,
   yono_sbi:      <Landmark className="w-7 h-7 text-red-400" />,
+  sbi_yono:      <Landmark className="w-7 h-7 text-red-400" />,
   hdfc_smarthub: <Building className="w-7 h-7 text-yellow-400" />,
 };
+
+const PROVIDER_WHITE_LABEL: Record<string, string> = {
+  google_pay:    "RasoKart UPI",
+  phonepe:       "RasoKart Collect",
+  paytm:         "RasoKart Wallet",
+  bharatpe:      "RasoKart Merchant",
+  freecharge:    "RasoKart Pay",
+  amazon_pay:    "RasoKart Digital",
+  mobikwik:      "Mobile Wallet",
+  sbi_yono:      "Bank UPI",
+  yono_sbi:      "Bank UPI",
+  hdfc_smarthub: "Bank SmartQR",
+  icici_eazypay: "Bank QR",
+  axis_pay:      "Bank QR",
+  kotak_smart:   "Bank Smart Collect",
+  razorpay:      "RasoKart Gateway",
+  cashfree:      "RasoKart Payments",
+  payu:          "RasoKart Gateway Plus",
+  ekqr:          "RasoKart QR Gateway",
+};
+
+const PROVIDER_WHITE_LABEL_DESC: Record<string, string> = {
+  google_pay:    "Fast UPI collections for your business",
+  phonepe:       "QR-based UPI merchant payments",
+  paytm:         "UPI, wallet, and net banking collections",
+  bharatpe:      "Zero MDR UPI collections via QR",
+  freecharge:    "UPI collections — launching soon",
+  amazon_pay:    "UPI merchant checkout — launching soon",
+  mobikwik:      "Mobile wallet payment gateway — launching soon",
+  sbi_yono:      "Bank merchant collection account",
+  yono_sbi:      "Bank merchant collection account",
+  hdfc_smarthub: "All-in-one bank merchant solution",
+  icici_eazypay: "Bank merchant collection gateway",
+  axis_pay:      "Bank merchant payment gateway",
+  kotak_smart:   "Bank merchant digital payments",
+  razorpay:      "Full-stack payment gateway — cards, UPI, wallets",
+  cashfree:      "Multi-mode payment gateway",
+  payu:          "Merchant payment gateway",
+  ekqr:          "Dynamic QR & auto-credit deposits",
+};
+
+function wlName(slug: string, name: string): string {
+  return PROVIDER_WHITE_LABEL[slug] ?? name;
+}
+
+function wlDesc(slug: string, desc?: string | null): string | null {
+  return PROVIDER_WHITE_LABEL_DESC[slug] ?? desc ?? null;
+}
 
 function ProviderIcon({ slug }: { slug: string }) {
   return ICONS[slug] ?? <Zap className="w-7 h-7 text-muted-foreground" />;
@@ -125,7 +174,7 @@ export default function MerchantConnect() {
                             <ProviderIcon slug={conn.provider} />
                           </div>
                           <div>
-                            <p className="text-sm font-semibold capitalize">{conn.provider.replace(/_/g, " ")}</p>
+                            <p className="text-sm font-semibold">{PROVIDER_WHITE_LABEL[conn.provider] ?? conn.provider.replace(/_/g, " ")}</p>
                             <p className="text-xs text-muted-foreground">Provider connection</p>
                           </div>
                         </div>
@@ -213,7 +262,7 @@ export default function MerchantConnect() {
                             <ProviderIcon slug={p.slug} />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <CardTitle className="text-base truncate">{p.name}</CardTitle>
+                            <CardTitle className="text-base truncate">{wlName(p.slug, p.name)}</CardTitle>
                             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                               <Badge variant="outline" className={`text-xs ${cmeta.color}`}>{cmeta.label}</Badge>
                               <Badge variant="outline" className={`text-xs ${smeta.color}`}>{smeta.label}</Badge>
@@ -222,9 +271,9 @@ export default function MerchantConnect() {
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-3">
-                        {p.description && (
-                          <p className="text-xs text-muted-foreground leading-relaxed">{p.description}</p>
-                        )}
+                        {wlDesc(p.slug, p.description) ? (
+                          <p className="text-xs text-muted-foreground leading-relaxed">{wlDesc(p.slug, p.description)}</p>
+                        ) : null}
                         <Button
                           size="sm"
                           className="w-full"
@@ -257,7 +306,7 @@ export default function MerchantConnect() {
                             <ProviderIcon slug={p.slug} />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <CardTitle className="text-base text-muted-foreground truncate">{p.name}</CardTitle>
+                            <CardTitle className="text-base text-muted-foreground truncate">{wlName(p.slug, p.name)}</CardTitle>
                             <div className="flex items-center gap-1.5 mt-1">
                               <Badge variant="outline" className={`text-xs ${cmeta.color}`}>{cmeta.label}</Badge>
                               <Badge variant="outline" className="text-xs bg-sky-500/10 text-sky-400 border-sky-500/30">Coming Soon</Badge>
@@ -266,9 +315,9 @@ export default function MerchantConnect() {
                         </div>
                       </CardHeader>
                       <CardContent>
-                        {p.description && (
-                          <p className="text-xs text-muted-foreground mb-3">{p.description}</p>
-                        )}
+                        {wlDesc(p.slug, p.description) ? (
+                          <p className="text-xs text-muted-foreground mb-3">{wlDesc(p.slug, p.description)}</p>
+                        ) : null}
                         <Button size="sm" className="w-full" variant="outline" disabled>
                           Coming Soon
                         </Button>
@@ -288,19 +337,19 @@ export default function MerchantConnect() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {connectDialog && <ProviderIcon slug={connectDialog.slug} />}
-              Connect {connectDialog?.name}
+              Connect {connectDialog ? wlName(connectDialog.slug, connectDialog.name) : ""}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="p-4 rounded-lg bg-muted/30 border border-border/50">
               <p className="text-sm text-muted-foreground">
-                Provider connection setup is coming soon. Your admin will configure the integration credentials for <strong>{connectDialog?.name}</strong>.
+                Provider connection setup is coming soon. Your admin will configure the integration credentials for <strong>{connectDialog ? wlName(connectDialog.slug, connectDialog.name) : ""}</strong>.
               </p>
             </div>
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Provider</Label>
-                <p className="text-sm font-medium">{connectDialog?.name}</p>
+                <p className="text-sm font-medium">{connectDialog ? wlName(connectDialog.slug, connectDialog.name) : ""}</p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Category</Label>
