@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useReenableReportSchedule } from "@workspace/api-client-react";
+import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useReenableReportSchedule, useGetReportSchedule } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone, RefreshCw, ExternalLink, Calendar, PlayCircle } from "lucide-react";
+import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone, RefreshCw, ExternalLink, Calendar, PlayCircle, CheckCircle2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -94,6 +94,8 @@ export default function NotificationsPage() {
   const markAll = useMarkAllNotificationsRead();
   const markOne = useMarkNotificationRead();
   const reenable = useReenableReportSchedule();
+  const { data: scheduleData } = useGetReportSchedule();
+  const scheduleIsActive = scheduleData?.schedule?.isActive ?? false;
 
   function handleTabChange(v: string) {
     setTab(v as "all" | "unread");
@@ -134,6 +136,7 @@ export default function NotificationsPage() {
     reenable.mutate(undefined, {
       onSuccess: () => {
         toast.success("Schedule re-enabled — your reports will resume as normal.");
+        qc.invalidateQueries({ queryKey: ["/api/reports/schedule"] });
         if (!isRead) {
           markOne.mutate({ id: notifId }, {
             onSuccess: () => {
@@ -256,16 +259,23 @@ export default function NotificationsPage() {
                       <p className="text-sm text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
                       {isAutoPaused && (
                         <div className="mt-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs gap-1.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/60"
-                            onClick={(e) => handleReenable(e, n.id, n.isRead)}
-                            disabled={reenable.isPending}
-                          >
-                            <PlayCircle className="w-3.5 h-3.5" />
-                            Re-enable schedule
-                          </Button>
+                          {scheduleIsActive ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400/80">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Already active
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/60"
+                              onClick={(e) => handleReenable(e, n.id, n.isRead)}
+                              disabled={reenable.isPending}
+                            >
+                              <PlayCircle className="w-3.5 h-3.5" />
+                              Re-enable schedule
+                            </Button>
+                          )}
                         </div>
                       )}
                       <p className="text-[11px] text-muted-foreground/60 mt-1">
