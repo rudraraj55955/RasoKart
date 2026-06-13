@@ -96,6 +96,7 @@ const TARGET_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "reconciliation_item",label: "Reconciliation Item" },
   { value: "system_config",      label: "System Config" },
   { value: "audit_logs",         label: "Audit Logs" },
+  { value: "report_schedule",    label: "Report Schedule" },
 ];
 
 const FILTER_LABELS: Record<string, string> = {

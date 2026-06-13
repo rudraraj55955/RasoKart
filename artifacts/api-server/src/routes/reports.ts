@@ -779,7 +779,7 @@ router.put("/schedules/:merchantId", requireAdmin, async (req, res, next) => {
         adminId: admin.id,
         adminEmail: admin.email,
         action: nextRunAt === null ? "report_schedule_override_cleared" : "report_schedule_override_set",
-        targetType: "merchant",
+        targetType: "report_schedule",
         targetId: mid,
         details: JSON.stringify({
           merchantId: mid,
