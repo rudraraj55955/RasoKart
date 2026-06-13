@@ -16,6 +16,7 @@ export const usersTable = pgTable("users", {
   signatureFailureAlertEmails: boolean("signature_failure_alert_emails").notNull().default(true),
   webhookFailureEmails: boolean("webhook_failure_emails").notNull().default(true),
   ekqrSyncAlertEmails: boolean("ekqr_sync_alert_emails").notNull().default(true),
+  reportFailureAlertEmails: boolean("report_failure_alert_emails").notNull().default(true),
   apiKeyGeneratedEmails: boolean("api_key_generated_emails").notNull().default(true),
   apiKeyRevokedEmails: boolean("api_key_revoked_emails").notNull().default(true),
   loginAlertEmails: boolean("login_alert_emails").notNull().default(true),

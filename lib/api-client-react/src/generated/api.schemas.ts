@@ -231,6 +231,7 @@ export interface User {
   settlementStateEmails?: boolean;
   signatureFailureAlertEmails?: boolean;
   webhookFailureEmails?: boolean;
+  reportFailureAlertEmails?: boolean;
   apiKeyGeneratedEmails?: boolean;
   apiKeyRevokedEmails?: boolean;
   loginAlertEmails?: boolean;
@@ -4225,6 +4226,7 @@ export type UpdateMyPreferencesBody = {
   settlementStateEmails?: boolean;
   signatureFailureAlertEmails?: boolean;
   webhookFailureEmails?: boolean;
+  reportFailureAlertEmails?: boolean;
   apiKeyGeneratedEmails?: boolean;
   apiKeyRevokedEmails?: boolean;
   loginAlertEmails?: boolean;

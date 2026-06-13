@@ -5365,28 +5365,6 @@ export const getAdminReportDeliveryHistory = async (params?: GetAdminReportDeliv
   }
 );}
 
-export const getReenableAdminMerchantReportScheduleUrl = (merchantId: number,) => {
-
-
-
-
-  return `/api/reports/schedules/${merchantId}/reenable`
-}
-
-/**
- * @summary Admin — re-enable a merchant's auto-paused report schedule (resets consecutiveFailures, sets isActive=true)
- */
-export const reenableAdminMerchantReportSchedule = async (merchantId: number, options?: RequestInit): Promise<ReenableAdminMerchantReportSchedule200> => {
-
-  return customFetch<ReenableAdminMerchantReportSchedule200>(getReenableAdminMerchantReportScheduleUrl(merchantId),
-  {
-    ...options,
-    method: 'PATCH'
-
-
-  }
-);}
-
 
 
 
@@ -5438,6 +5416,31 @@ export function useGetAdminReportDeliveryHistory<TData = Awaited<ReturnType<type
 
 
 
+
+
+
+
+export const getReenableAdminMerchantReportScheduleUrl = (merchantId: number,) => {
+
+
+
+
+  return `/api/reports/schedules/${merchantId}/reenable`
+}
+
+/**
+ * @summary Admin — re-enable a merchant's auto-paused report schedule (resets consecutiveFailures, sets isActive=true)
+ */
+export const reenableAdminMerchantReportSchedule = async (merchantId: number, options?: RequestInit): Promise<ReenableAdminMerchantReportSchedule200> => {
+
+  return customFetch<ReenableAdminMerchantReportSchedule200>(getReenableAdminMerchantReportScheduleUrl(merchantId),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
 
 
 

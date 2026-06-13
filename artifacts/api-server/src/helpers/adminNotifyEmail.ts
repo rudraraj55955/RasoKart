@@ -10,7 +10,7 @@ function formatAmount(val: string | number | null | undefined): string {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails"): Promise<string[]> {
+async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "reportFailureAlertEmails"): Promise<string[]> {
   const admins = await db
     .select({ email: usersTable.email })
     .from(usersTable)
@@ -403,6 +403,120 @@ export async function notifyAdminsOfSettlementStateChange(opts: {
     );
   } catch (err) {
     logger.error({ err, settlementId: opts.settlementId }, "Failed to send admin settlement state change emails");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Report schedule auto-pause emails
+// ---------------------------------------------------------------------------
+
+function buildReportScheduleAutoPausedHtml(opts: {
+  merchantName: string;
+  merchantId: number;
+  frequency: string;
+  consecutiveFailures: number;
+  autoPauseAfterFailures: number;
+}): string {
+  const { merchantName, merchantId, frequency, consecutiveFailures, autoPauseAfterFailures } = opts;
+  const freqLabel = frequency.charAt(0).toUpperCase() + frequency.slice(1);
+  const reportsLink = `${APP_DOMAIN}/admin/reports?merchantId=${merchantId}`;
+  const smtpSettingsLink = `${APP_DOMAIN}/admin/settings`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #7c2d12; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — Report Schedule Auto-Paused</h1>
+      <p style="margin: 4px 0 0; color: #fed7aa; font-size: 13px;">Repeated delivery failures triggered an automatic pause</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #fb923c; font-size: 14px; font-weight: 600;">
+        ⚠️ ${merchantName}'s ${freqLabel.toLowerCase()} report schedule has been automatically paused after ${consecutiveFailures} consecutive delivery failures.
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        This typically indicates an SMTP misconfiguration on the platform. Please review the SMTP settings and re-enable the schedule from the merchant's Reports page.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 50%;">Merchant</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${merchantName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Report Frequency</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">${freqLabel}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Consecutive Failures</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #f87171; font-weight: 600;">${consecutiveFailures} of ${autoPauseAfterFailures}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Status</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #fb923c; font-weight: 600;">Auto-Paused</td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin-bottom: 16px;">
+        <a href="${reportsLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          View Merchant Reports
+        </a>
+      </div>
+
+      <p style="margin: 0 0 16px; color: #71717a; font-size: 12px; text-align: center;">
+        Or check <a href="${smtpSettingsLink}" style="color: #818cf8;">SMTP Settings</a> to resolve the delivery issue.
+      </p>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${reportsLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This alert was sent by RasoKart. To stop receiving report schedule failure emails, update your notification preferences in Admin Settings.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function notifyAdminsOfReportScheduleAutoPaused(opts: {
+  merchantId: number;
+  merchantName: string;
+  frequency: string;
+  consecutiveFailures: number;
+  autoPauseAfterFailures: number;
+}): Promise<void> {
+  try {
+    const recipients = await getAdminEmails("reportFailureAlertEmails");
+
+    if (recipients.length === 0) {
+      logger.info({ merchantId: opts.merchantId }, "No admins opted in to report schedule failure emails — skipping");
+      return;
+    }
+
+    const html = buildReportScheduleAutoPausedHtml(opts);
+    const freqLabel = opts.frequency.charAt(0).toUpperCase() + opts.frequency.slice(1);
+    const subject = `[RasoKart] ⚠️ Report Schedule Auto-Paused — ${opts.merchantName} (${freqLabel})`;
+
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+
+    logger.info(
+      { merchantId: opts.merchantId, totalAdmins: recipients.length, sent, failed },
+      "Admin report schedule auto-pause emails dispatched"
+    );
+  } catch (err) {
+    logger.error({ err, merchantId: opts.merchantId }, "Failed to send admin report schedule auto-pause emails");
   }
 }
 

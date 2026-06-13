@@ -178,6 +178,8 @@ paths:
                   type: boolean
                 webhookFailureEmails:
                   type: boolean
+                reportFailureAlertEmails:
+                  type: boolean
                 apiKeyGeneratedEmails:
                   type: boolean
                 apiKeyRevokedEmails:
@@ -8472,6 +8474,8 @@ components:
         signatureFailureAlertEmails:
           type: boolean
         webhookFailureEmails:
+          type: boolean
+        reportFailureAlertEmails:
           type: boolean
         apiKeyGeneratedEmails:
           type: boolean

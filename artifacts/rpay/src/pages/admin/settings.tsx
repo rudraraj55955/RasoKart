@@ -252,6 +252,7 @@ export default function AdminSettings() {
   const settlementStateEnabled = me?.settlementStateEmails ?? true;
   const signatureFailureEnabled = me?.signatureFailureAlertEmails ?? true;
   const webhookFailureEnabled = me?.webhookFailureEmails ?? true;
+  const reportFailureEnabled = (me as any)?.reportFailureAlertEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -2691,6 +2692,28 @@ export default function AdminSettings() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               You will not receive emails when merchant webhooks permanently fail.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Report schedule auto-pause emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an email when a merchant's scheduled report is automatically paused after repeated delivery failures.
+              </p>
+            </div>
+            <Switch
+              checked={reportFailureEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { reportFailureAlertEmails: val } as any })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!reportFailureEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive emails when merchant report schedules are auto-paused.
             </p>
           )}
         </CardContent>

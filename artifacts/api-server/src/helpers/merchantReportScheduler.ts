@@ -6,6 +6,7 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
 import { createNotification, createBulkNotifications } from "./notifications";
+import { notifyAdminsOfReportScheduleAutoPaused } from "./adminNotifyEmail";
 
 let scheduledTask: ScheduledTask | null = null;
 
@@ -477,6 +478,14 @@ async function handleReportFailure(
         },
       })));
     }
+
+    await notifyAdminsOfReportScheduleAutoPaused({
+      merchantId: schedule.merchantId,
+      merchantName,
+      frequency: schedule.frequency,
+      consecutiveFailures: newConsecutiveFailures,
+      autoPauseAfterFailures: schedule.autoPauseAfterFailures,
+    });
   }
 }
 
