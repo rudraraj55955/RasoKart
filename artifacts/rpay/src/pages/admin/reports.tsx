@@ -1386,6 +1386,14 @@ function DeliveryHistoryPanel() {
     });
   }, [logs, merchantSuccessRates, sortDir]);
 
+  const timelineSuccessRate = useMemo(() => {
+    if (timelineChartData.length === 0) return null;
+    const total = timelineChartData.reduce((s, d) => s + d.success + d.failed, 0);
+    if (total === 0) return null;
+    const success = timelineChartData.reduce((s, d) => s + d.success, 0);
+    return Math.round((success / total) * 100);
+  }, [timelineChartData]);
+
   const showCharts = !isLoading && logs.length > 0;
 
   return (
@@ -1569,6 +1577,20 @@ function DeliveryHistoryPanel() {
                 <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
                   <CalendarDays className="w-3.5 h-3.5 text-primary" />
                   Delivery Timeline — {timelineWindow.label}
+                  {timelineSuccessRate != null && (
+                    <span
+                      className={[
+                        "ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none",
+                        timelineSuccessRate >= 90
+                          ? "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30"
+                          : timelineSuccessRate >= 75
+                          ? "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30"
+                          : "bg-red-500/15 text-red-400 ring-1 ring-red-500/30",
+                      ].join(" ")}
+                    >
+                      {timelineSuccessRate}% delivered
+                    </span>
+                  )}
                 </p>
                 <ResponsiveContainer width="100%" height={Math.max(120, merchantChartData.length * 36)}>
                   <BarChart
