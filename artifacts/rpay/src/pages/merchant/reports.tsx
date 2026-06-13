@@ -193,6 +193,24 @@ function settlementStatusColor(s: string) {
   return "text-muted-foreground";
 }
 
+const DOW_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+function domLabel(day: number): string {
+  if (day === 1 || day === 21) return `${day}st`;
+  if (day === 2 || day === 22) return `${day}nd`;
+  if (day === 3 || day === 23) return `${day}rd`;
+  return `${day}th`;
+}
+
+function scheduleSendOnLabel(schedule: { frequency: string; dayOfWeek?: number | null; dayOfMonth?: number | null }): string {
+  if (schedule.frequency === "weekly") {
+    if (schedule.dayOfWeek != null) return `Sends every ${DOW_LABELS[schedule.dayOfWeek]}`;
+    return "Sends on a rolling 7-day cadence";
+  }
+  if (schedule.dayOfMonth != null) return `Sends on the ${domLabel(schedule.dayOfMonth)} of each month`;
+  return "Sends on a rolling 30-day cadence";
+}
+
 function SchedulePanel() {
   const queryClient = useQueryClient();
   const { data: scheduleData, isLoading: scheduleLoading } = useGetReportSchedule();
@@ -200,11 +218,15 @@ function SchedulePanel() {
 
   const [frequency, setFrequency] = useState<"weekly" | "monthly">("weekly");
   const [fileFormat, setFileFormat] = useState<"xlsx" | "pdf">("xlsx");
+  const [dayOfWeek, setDayOfWeek] = useState<number | null>(1);
+  const [dayOfMonth, setDayOfMonth] = useState<number | null>(1);
   const [hasInitialized, setHasInitialized] = useState(false);
 
   if (!hasInitialized && !scheduleLoading && schedule) {
     setFrequency(schedule.frequency as "weekly" | "monthly");
     setFileFormat(schedule.format as "xlsx" | "pdf");
+    setDayOfWeek((schedule as any).dayOfWeek ?? 1);
+    setDayOfMonth((schedule as any).dayOfMonth ?? 1);
     setHasInitialized(true);
   }
   if (!hasInitialized && !scheduleLoading && !schedule) {
@@ -219,8 +241,11 @@ function SchedulePanel() {
     queryClient.invalidateQueries({ queryKey: ["/api/reports/schedule"] });
 
   const handleSave = () => {
+    const data: Record<string, unknown> = { frequency, format: fileFormat, isActive: true };
+    if (frequency === "weekly") data["dayOfWeek"] = dayOfWeek;
+    else data["dayOfMonth"] = dayOfMonth;
     upsert.mutate(
-      { data: { frequency, format: fileFormat, isActive: true } },
+      { data: data as Parameters<typeof upsert.mutate>[0]["data"] },
       {
         onSuccess: () => {
           toast.success("Report schedule saved");
@@ -261,7 +286,7 @@ function SchedulePanel() {
         toast.success(`Report sent to ${(data as any).to}`);
         invalidate();
       },
-      onError: () => toast.error("Failed to send u2014 check SMTP settings"),
+      onError: () => toast.error("Failed to send — check SMTP settings"),
     });
   };
 
@@ -332,8 +357,45 @@ function SchedulePanel() {
           </div>
         </div>
 
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Send on</Label>
+          {frequency === "weekly" ? (
+            <Select
+              value={String(dayOfWeek ?? 1)}
+              onValueChange={(v) => setDayOfWeek(parseInt(v))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DOW_LABELS.map((label, idx) => (
+                  <SelectItem key={idx} value={String(idx)}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select
+              value={String(dayOfMonth ?? 1)}
+              onValueChange={(v) => setDayOfMonth(parseInt(v))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                  <SelectItem key={d} value={String(d)}>{domLabel(d)} of the month</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
         {schedule && (
           <div className="rounded-lg bg-muted/40 border border-border/60 px-4 py-3 text-sm space-y-1.5">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <CalendarDays className="w-3.5 h-3.5 shrink-0 text-primary" />
+              <span className="text-xs">{scheduleSendOnLabel(schedule as any)}</span>
+            </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Mail className="w-3.5 h-3.5 shrink-0" />
               <span className="text-xs">Report emailed to your registered merchant email address</span>
@@ -349,7 +411,7 @@ function SchedulePanel() {
             {!schedule.lastSentAt && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock className="w-3.5 h-3.5 shrink-0" />
-                <span className="text-xs">No report sent yet u2014 first report will go out on the next scheduled run</span>
+                <span className="text-xs">No report sent yet — first report will go out on the next scheduled run</span>
               </div>
             )}
           </div>

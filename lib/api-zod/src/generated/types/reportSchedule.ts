@@ -15,6 +15,20 @@ export interface ReportSchedule {
   format: ReportScheduleFormat;
   isActive: boolean;
   /**
+     * Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.
+     * @minimum 0
+     * @maximum 6
+     * @nullable
+     */
+  dayOfWeek?: number | null;
+  /**
+     * Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.
+     * @minimum 1
+     * @maximum 28
+     * @nullable
+     */
+  dayOfMonth?: number | null;
+  /**
      * ISO timestamp of last successful send
      * @nullable
      */

@@ -12,4 +12,16 @@ export type UpsertReportScheduleBody = {
   frequency?: UpsertReportScheduleBodyFrequency;
   format?: UpsertReportScheduleBodyFormat;
   isActive?: boolean;
+  /**
+     * Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat)
+     * @minimum 0
+     * @maximum 6
+     */
+  dayOfWeek?: number;
+  /**
+     * Day of month for monthly reports (1–28)
+     * @minimum 1
+     * @maximum 28
+     */
+  dayOfMonth?: number;
 };

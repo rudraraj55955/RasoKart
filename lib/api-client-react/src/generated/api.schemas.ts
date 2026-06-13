@@ -659,6 +659,20 @@ export interface ReportSchedule {
   format: ReportScheduleFormat;
   isActive: boolean;
   /**
+     * Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.
+     * @minimum 0
+     * @maximum 6
+     * @nullable
+     */
+  dayOfWeek?: number | null;
+  /**
+     * Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.
+     * @minimum 1
+     * @maximum 28
+     * @nullable
+     */
+  dayOfMonth?: number | null;
+  /**
      * ISO timestamp of last successful send
      * @nullable
      */
@@ -708,6 +722,20 @@ export interface AdminReportSchedule {
   frequency: AdminReportScheduleFrequency;
   format: AdminReportScheduleFormat;
   isActive: boolean;
+  /**
+     * Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.
+     * @minimum 0
+     * @maximum 6
+     * @nullable
+     */
+  dayOfWeek?: number | null;
+  /**
+     * Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.
+     * @minimum 1
+     * @maximum 28
+     * @nullable
+     */
+  dayOfMonth?: number | null;
   /**
      * ISO timestamp of last successful send
      * @nullable
@@ -4168,6 +4196,18 @@ export type UpsertReportScheduleBody = {
   frequency?: UpsertReportScheduleBodyFrequency;
   format?: UpsertReportScheduleBodyFormat;
   isActive?: boolean;
+  /**
+     * Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat)
+     * @minimum 0
+     * @maximum 6
+     */
+  dayOfWeek?: number;
+  /**
+     * Day of month for monthly reports (1–28)
+     * @minimum 1
+     * @maximum 28
+     */
+  dayOfMonth?: number;
 };
 
 export type UpsertReportSchedule200 = {
@@ -4211,6 +4251,18 @@ export type UpsertAdminMerchantReportScheduleBody = {
   frequency?: UpsertAdminMerchantReportScheduleBodyFrequency;
   format?: UpsertAdminMerchantReportScheduleBodyFormat;
   isActive?: boolean;
+  /**
+     * Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat)
+     * @minimum 0
+     * @maximum 6
+     */
+  dayOfWeek?: number;
+  /**
+     * Day of month for monthly reports (1–28)
+     * @minimum 1
+     * @maximum 28
+     */
+  dayOfMonth?: number;
 };
 
 export type UpsertAdminMerchantReportSchedule200 = {

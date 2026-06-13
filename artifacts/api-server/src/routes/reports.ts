@@ -256,10 +256,12 @@ router.put("/schedule", async (req, res, next) => {
       return;
     }
 
-    const { frequency, format, isActive } = req.body as {
+    const { frequency, format, isActive, dayOfWeek, dayOfMonth } = req.body as {
       frequency?: string;
       format?: string;
       isActive?: boolean;
+      dayOfWeek?: number;
+      dayOfMonth?: number;
     };
 
     if (frequency && !["weekly", "monthly"].includes(frequency)) {
@@ -270,8 +272,16 @@ router.put("/schedule", async (req, res, next) => {
       res.status(400).json({ error: "format must be 'xlsx' or 'pdf'" });
       return;
     }
+    if (dayOfWeek !== undefined && (typeof dayOfWeek !== "number" || dayOfWeek < 0 || dayOfWeek > 6)) {
+      res.status(400).json({ error: "dayOfWeek must be 0–6" });
+      return;
+    }
+    if (dayOfMonth !== undefined && (typeof dayOfMonth !== "number" || dayOfMonth < 1 || dayOfMonth > 28)) {
+      res.status(400).json({ error: "dayOfMonth must be 1–28" });
+      return;
+    }
 
-    const schedule = await upsertSchedule(user.merchantId!, { frequency, format, isActive });
+    const schedule = await upsertSchedule(user.merchantId!, { frequency, format, isActive, dayOfWeek, dayOfMonth });
     res.json({ schedule });
   } catch (err) {
     next(err);
@@ -398,10 +408,12 @@ router.put("/schedules/:merchantId", requireAdmin, async (req, res, next) => {
       return;
     }
 
-    const { frequency, format, isActive } = req.body as {
+    const { frequency, format, isActive, dayOfWeek, dayOfMonth } = req.body as {
       frequency?: string;
       format?: string;
       isActive?: boolean;
+      dayOfWeek?: number;
+      dayOfMonth?: number;
     };
 
     if (frequency && !["weekly", "monthly"].includes(frequency)) {
@@ -410,6 +422,14 @@ router.put("/schedules/:merchantId", requireAdmin, async (req, res, next) => {
     }
     if (format && !["xlsx", "pdf"].includes(format)) {
       res.status(400).json({ error: "format must be 'xlsx' or 'pdf'" });
+      return;
+    }
+    if (dayOfWeek !== undefined && (typeof dayOfWeek !== "number" || dayOfWeek < 0 || dayOfWeek > 6)) {
+      res.status(400).json({ error: "dayOfWeek must be 0–6" });
+      return;
+    }
+    if (dayOfMonth !== undefined && (typeof dayOfMonth !== "number" || dayOfMonth < 1 || dayOfMonth > 28)) {
+      res.status(400).json({ error: "dayOfMonth must be 1–28" });
       return;
     }
 
@@ -424,7 +444,7 @@ router.put("/schedules/:merchantId", requireAdmin, async (req, res, next) => {
       return;
     }
 
-    const schedule = await upsertSchedule(mid, { frequency, format, isActive });
+    const schedule = await upsertSchedule(mid, { frequency, format, isActive, dayOfWeek, dayOfMonth });
     res.json({ schedule });
   } catch (err) {
     next(err);
@@ -498,7 +518,7 @@ router.post("/schedules/:merchantId/send-now", requireAdmin, async (req, res, ne
 
 async function upsertSchedule(
   merchantId: number,
-  patch: { frequency?: string; format?: string; isActive?: boolean },
+  patch: { frequency?: string; format?: string; isActive?: boolean; dayOfWeek?: number; dayOfMonth?: number },
 ): Promise<typeof reportSchedulesTable.$inferSelect> {
   const now = new Date();
   const [existing] = await db
@@ -507,13 +527,26 @@ async function upsertSchedule(
     .where(eq(reportSchedulesTable.merchantId, merchantId))
     .limit(1);
 
+  // Determine effective frequency for normalization
+  const effectiveFrequency = patch.frequency ?? existing?.frequency ?? "weekly";
+
   if (existing) {
+    // When frequency is set to weekly, clear dayOfMonth (and vice versa) to keep records consistent
+    const dayWeekValue = patch.dayOfWeek !== undefined
+      ? patch.dayOfWeek
+      : effectiveFrequency === "weekly" ? existing.dayOfWeek : null;
+    const dayMonthValue = patch.dayOfMonth !== undefined
+      ? patch.dayOfMonth
+      : effectiveFrequency === "monthly" ? existing.dayOfMonth : null;
+
     const [updated] = await db
       .update(reportSchedulesTable)
       .set({
         ...(patch.frequency !== undefined ? { frequency: patch.frequency } : {}),
         ...(patch.format !== undefined ? { format: patch.format } : {}),
         ...(patch.isActive !== undefined ? { isActive: patch.isActive } : {}),
+        dayOfWeek: effectiveFrequency === "weekly" ? dayWeekValue : null,
+        dayOfMonth: effectiveFrequency === "monthly" ? dayMonthValue : null,
         updatedAt: now,
       })
       .where(eq(reportSchedulesTable.merchantId, merchantId))
@@ -525,9 +558,11 @@ async function upsertSchedule(
     .insert(reportSchedulesTable)
     .values({
       merchantId,
-      frequency: patch.frequency ?? "weekly",
+      frequency: effectiveFrequency,
       format: patch.format ?? "xlsx",
       isActive: patch.isActive ?? true,
+      dayOfWeek: effectiveFrequency === "weekly" ? (patch.dayOfWeek ?? null) : null,
+      dayOfMonth: effectiveFrequency === "monthly" ? (patch.dayOfMonth ?? null) : null,
       updatedAt: now,
     })
     .returning();

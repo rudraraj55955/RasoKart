@@ -20,11 +20,36 @@ function getDateRange(frequency: string): { dateFrom: Date; dateTo: Date } {
   return { dateFrom, dateTo };
 }
 
-function isDue(frequency: string, lastSentAt: Date | null): boolean {
-  if (!lastSentAt) return true;
+function isDue(schedule: typeof reportSchedulesTable.$inferSelect, lastSentAt: Date | null): boolean {
   const now = new Date();
-  const diffDays = (now.getTime() - lastSentAt.getTime()) / (1000 * 60 * 60 * 24);
-  return frequency === "weekly" ? diffDays >= 6.9 : diffDays >= 28;
+
+  if (schedule.frequency === "weekly") {
+    if (schedule.dayOfWeek != null) {
+      // Must be the configured day of week (even for first-ever send)
+      if (now.getDay() !== schedule.dayOfWeek) return false;
+      if (!lastSentAt) return true;
+      // Prevent double-sends within the same week
+      const diffDays = (now.getTime() - lastSentAt.getTime()) / (1000 * 60 * 60 * 24);
+      return diffDays >= 6;
+    }
+    // Rolling 7-day cadence
+    if (!lastSentAt) return true;
+    const diffDays = (now.getTime() - lastSentAt.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= 6.9;
+  } else {
+    if (schedule.dayOfMonth != null) {
+      // Must be the configured day of month (even for first-ever send)
+      if (now.getDate() !== schedule.dayOfMonth) return false;
+      if (!lastSentAt) return true;
+      // Prevent double-sends within the same month
+      const diffDays = (now.getTime() - lastSentAt.getTime()) / (1000 * 60 * 60 * 24);
+      return diffDays >= 27;
+    }
+    // Rolling 30-day cadence
+    if (!lastSentAt) return true;
+    const diffDays = (now.getTime() - lastSentAt.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= 28;
+  }
 }
 
 type TxRow = {
@@ -411,7 +436,7 @@ async function runDueReports(): Promise<void> {
         .from(reportSchedulesTable)
         .where(eq(reportSchedulesTable.id, schedule.id))
         .limit(1);
-      if (!isDue(schedule.frequency, fresh?.lastSentAt ?? schedule.lastSentAt)) continue;
+      if (!isDue(schedule, fresh?.lastSentAt ?? schedule.lastSentAt)) continue;
 
       await sendMerchantReport(schedule, email, businessName).catch(err => {
         logger.error({ err, scheduleId: schedule.id }, "Merchant report scheduler send failed");

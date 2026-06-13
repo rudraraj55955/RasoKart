@@ -1523,6 +1523,16 @@ paths:
                   enum: [xlsx, pdf]
                 isActive:
                   type: boolean
+                dayOfWeek:
+                  type: integer
+                  minimum: 0
+                  maximum: 6
+                  description: Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat)
+                dayOfMonth:
+                  type: integer
+                  minimum: 1
+                  maximum: 28
+                  description: Day of month for monthly reports (1–28)
       responses:
         "200":
           description: Updated report schedule
@@ -1663,6 +1673,16 @@ paths:
                   enum: [xlsx, pdf]
                 isActive:
                   type: boolean
+                dayOfWeek:
+                  type: integer
+                  minimum: 0
+                  maximum: 6
+                  description: Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat)
+                dayOfMonth:
+                  type: integer
+                  minimum: 1
+                  maximum: 28
+                  description: Day of month for monthly reports (1–28)
       responses:
         "200":
           description: Updated schedule
@@ -8261,6 +8281,16 @@ components:
           enum: [xlsx, pdf]
         isActive:
           type: boolean
+        dayOfWeek:
+          type: ["integer", "null"]
+          minimum: 0
+          maximum: 6
+          description: Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.
+        dayOfMonth:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 28
+          description: Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.
         lastSentAt:
           type: ["string", "null"]
           description: ISO timestamp of last successful send
@@ -8320,6 +8350,16 @@ components:
           enum: [xlsx, pdf]
         isActive:
           type: boolean
+        dayOfWeek:
+          type: ["integer", "null"]
+          minimum: 0
+          maximum: 6
+          description: Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.
+        dayOfMonth:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 28
+          description: Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.
         lastSentAt:
           type: ["string", "null"]
           description: ISO timestamp of last successful send

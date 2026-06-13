@@ -1477,6 +1477,13 @@ export const GetTransactionReportResponse = zod.object({
 /**
  * @summary Get the merchant's own report schedule
  */
+export const getReportScheduleResponseScheduleOneDayOfWeekMin = 0;
+export const getReportScheduleResponseScheduleOneDayOfWeekMax = 6;
+
+export const getReportScheduleResponseScheduleOneDayOfMonthMax = 28;
+
+
+
 export const GetReportScheduleResponse = zod.object({
   "schedule": zod.union([zod.object({
   "id": zod.number(),
@@ -1484,6 +1491,8 @@ export const GetReportScheduleResponse = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']),
   "format": zod.enum(['xlsx', 'pdf']),
   "isActive": zod.boolean(),
+  "dayOfWeek": zod.number().min(getReportScheduleResponseScheduleOneDayOfWeekMin).max(getReportScheduleResponseScheduleOneDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
+  "dayOfMonth": zod.number().min(1).max(getReportScheduleResponseScheduleOneDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -1494,11 +1503,27 @@ export const GetReportScheduleResponse = zod.object({
 /**
  * @summary Create or update the merchant's report schedule
  */
+export const upsertReportScheduleBodyDayOfWeekMin = 0;
+export const upsertReportScheduleBodyDayOfWeekMax = 6;
+
+export const upsertReportScheduleBodyDayOfMonthMax = 28;
+
+
+
 export const UpsertReportScheduleBody = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']).optional(),
   "format": zod.enum(['xlsx', 'pdf']).optional(),
-  "isActive": zod.boolean().optional()
+  "isActive": zod.boolean().optional(),
+  "dayOfWeek": zod.number().min(upsertReportScheduleBodyDayOfWeekMin).max(upsertReportScheduleBodyDayOfWeekMax).optional().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat)'),
+  "dayOfMonth": zod.number().min(1).max(upsertReportScheduleBodyDayOfMonthMax).optional().describe('Day of month for monthly reports (1–28)')
 })
+
+export const upsertReportScheduleResponseScheduleDayOfWeekMin = 0;
+export const upsertReportScheduleResponseScheduleDayOfWeekMax = 6;
+
+export const upsertReportScheduleResponseScheduleDayOfMonthMax = 28;
+
+
 
 export const UpsertReportScheduleResponse = zod.object({
   "schedule": zod.object({
@@ -1507,6 +1532,8 @@ export const UpsertReportScheduleResponse = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']),
   "format": zod.enum(['xlsx', 'pdf']),
   "isActive": zod.boolean(),
+  "dayOfWeek": zod.number().min(upsertReportScheduleResponseScheduleDayOfWeekMin).max(upsertReportScheduleResponseScheduleDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
+  "dayOfMonth": zod.number().min(1).max(upsertReportScheduleResponseScheduleDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -1534,6 +1561,13 @@ export const SendReportNowResponse = zod.object({
 /**
  * @summary Admin — list all merchants' report schedules
  */
+export const listMerchantReportSchedulesResponseSchedulesItemDayOfWeekMin = 0;
+export const listMerchantReportSchedulesResponseSchedulesItemDayOfWeekMax = 6;
+
+export const listMerchantReportSchedulesResponseSchedulesItemDayOfMonthMax = 28;
+
+
+
 export const ListMerchantReportSchedulesResponse = zod.object({
   "schedules": zod.array(zod.object({
   "id": zod.number(),
@@ -1543,6 +1577,8 @@ export const ListMerchantReportSchedulesResponse = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']),
   "format": zod.enum(['xlsx', 'pdf']),
   "isActive": zod.boolean(),
+  "dayOfWeek": zod.number().min(listMerchantReportSchedulesResponseSchedulesItemDayOfWeekMin).max(listMerchantReportSchedulesResponseSchedulesItemDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
+  "dayOfMonth": zod.number().min(1).max(listMerchantReportSchedulesResponseSchedulesItemDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -1557,6 +1593,13 @@ export const GetAdminMerchantReportScheduleParams = zod.object({
   "merchantId": zod.coerce.number()
 })
 
+export const getAdminMerchantReportScheduleResponseScheduleOneDayOfWeekMin = 0;
+export const getAdminMerchantReportScheduleResponseScheduleOneDayOfWeekMax = 6;
+
+export const getAdminMerchantReportScheduleResponseScheduleOneDayOfMonthMax = 28;
+
+
+
 export const GetAdminMerchantReportScheduleResponse = zod.object({
   "schedule": zod.union([zod.object({
   "id": zod.number(),
@@ -1564,6 +1607,8 @@ export const GetAdminMerchantReportScheduleResponse = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']),
   "format": zod.enum(['xlsx', 'pdf']),
   "isActive": zod.boolean(),
+  "dayOfWeek": zod.number().min(getAdminMerchantReportScheduleResponseScheduleOneDayOfWeekMin).max(getAdminMerchantReportScheduleResponseScheduleOneDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
+  "dayOfMonth": zod.number().min(1).max(getAdminMerchantReportScheduleResponseScheduleOneDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -1578,11 +1623,27 @@ export const UpsertAdminMerchantReportScheduleParams = zod.object({
   "merchantId": zod.coerce.number()
 })
 
+export const upsertAdminMerchantReportScheduleBodyDayOfWeekMin = 0;
+export const upsertAdminMerchantReportScheduleBodyDayOfWeekMax = 6;
+
+export const upsertAdminMerchantReportScheduleBodyDayOfMonthMax = 28;
+
+
+
 export const UpsertAdminMerchantReportScheduleBody = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']).optional(),
   "format": zod.enum(['xlsx', 'pdf']).optional(),
-  "isActive": zod.boolean().optional()
+  "isActive": zod.boolean().optional(),
+  "dayOfWeek": zod.number().min(upsertAdminMerchantReportScheduleBodyDayOfWeekMin).max(upsertAdminMerchantReportScheduleBodyDayOfWeekMax).optional().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat)'),
+  "dayOfMonth": zod.number().min(1).max(upsertAdminMerchantReportScheduleBodyDayOfMonthMax).optional().describe('Day of month for monthly reports (1–28)')
 })
+
+export const upsertAdminMerchantReportScheduleResponseScheduleDayOfWeekMin = 0;
+export const upsertAdminMerchantReportScheduleResponseScheduleDayOfWeekMax = 6;
+
+export const upsertAdminMerchantReportScheduleResponseScheduleDayOfMonthMax = 28;
+
+
 
 export const UpsertAdminMerchantReportScheduleResponse = zod.object({
   "schedule": zod.object({
@@ -1591,6 +1652,8 @@ export const UpsertAdminMerchantReportScheduleResponse = zod.object({
   "frequency": zod.enum(['weekly', 'monthly']),
   "format": zod.enum(['xlsx', 'pdf']),
   "isActive": zod.boolean(),
+  "dayOfWeek": zod.number().min(upsertAdminMerchantReportScheduleResponseScheduleDayOfWeekMin).max(upsertAdminMerchantReportScheduleResponseScheduleDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
+  "dayOfMonth": zod.number().min(1).max(upsertAdminMerchantReportScheduleResponseScheduleDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
