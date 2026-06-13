@@ -1,3 +1,5 @@
+import { db, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { sendMail } from "./mailer";
 import { logger } from "../lib/logger";
 
@@ -81,11 +83,33 @@ export function buildReportScheduleUpdatedHtml(opts: {
 }
 
 export async function sendReportScheduleUpdatedEmail(opts: {
+  merchantId: number;
   to: string;
   businessName: string;
   nextRunAt: string | null;
 }): Promise<void> {
-  const { to, businessName, nextRunAt } = opts;
+  const { merchantId, to, businessName, nextRunAt } = opts;
+
+  try {
+    const [user] = await db
+      .select({ reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails })
+      .from(usersTable)
+      .where(eq(usersTable.merchantId, merchantId))
+      .limit(1);
+
+    if (!user) {
+      logger.info({ merchantId }, "No user found for merchant — skipping report schedule email");
+      return;
+    }
+
+    if (!user.reportScheduleChangedEmails) {
+      logger.info({ merchantId }, "Merchant opted out of report schedule changed emails — skipping");
+      return;
+    }
+  } catch (err) {
+    logger.error({ err, merchantId }, "Failed to check merchant report schedule email preference — skipping");
+    return;
+  }
 
   const formattedDate = nextRunAt
     ? new Date(nextRunAt).toLocaleString("en-IN", {
@@ -103,6 +127,6 @@ export async function sendReportScheduleUpdatedEmail(opts: {
 
   const sent = await sendMail({ to, subject, html });
   if (!sent) {
-    logger.warn({ to, businessName }, "Report schedule update email could not be sent (SMTP not configured or failed)");
+    logger.warn({ to, businessName, merchantId }, "Report schedule update email could not be sent (SMTP not configured or failed)");
   }
 }

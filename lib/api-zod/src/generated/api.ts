@@ -43,6 +43,8 @@ export const LoginResponse = zod.object({
   "apiKeyGeneratedEmails": zod.boolean().optional(),
   "apiKeyRevokedEmails": zod.boolean().optional(),
   "loginAlertEmails": zod.boolean().optional(),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "createdAt": zod.string()
 })
 })
@@ -81,6 +83,8 @@ export const GetMeResponse = zod.object({
   "apiKeyGeneratedEmails": zod.boolean().optional(),
   "apiKeyRevokedEmails": zod.boolean().optional(),
   "loginAlertEmails": zod.boolean().optional(),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -97,7 +101,9 @@ export const UpdateMyPreferencesBody = zod.object({
   "reportFailureAlertEmails": zod.boolean().optional(),
   "apiKeyGeneratedEmails": zod.boolean().optional(),
   "apiKeyRevokedEmails": zod.boolean().optional(),
-  "loginAlertEmails": zod.boolean().optional()
+  "loginAlertEmails": zod.boolean().optional(),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an admin changes their report schedule.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state.')
 })
 
 export const UpdateMyPreferencesResponse = zod.object({
@@ -117,6 +123,8 @@ export const UpdateMyPreferencesResponse = zod.object({
   "apiKeyGeneratedEmails": zod.boolean().optional(),
   "apiKeyRevokedEmails": zod.boolean().optional(),
   "loginAlertEmails": zod.boolean().optional(),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -2875,6 +2883,8 @@ export const ListUsersResponse = zod.object({
   "apiKeyGeneratedEmails": zod.boolean().optional(),
   "apiKeyRevokedEmails": zod.boolean().optional(),
   "loginAlertEmails": zod.boolean().optional(),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -2925,6 +2935,8 @@ export const UpdateUserResponse = zod.object({
   "apiKeyGeneratedEmails": zod.boolean().optional(),
   "apiKeyRevokedEmails": zod.boolean().optional(),
   "loginAlertEmails": zod.boolean().optional(),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "createdAt": zod.string()
 })
 

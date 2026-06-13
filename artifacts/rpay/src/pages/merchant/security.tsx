@@ -396,6 +396,8 @@ export default function MerchantSecurity() {
   const apiKeyRevokedEnabled = me?.apiKeyRevokedEmails ?? true;
   const signatureFailureAlertEnabled = me?.signatureFailureAlertEmails ?? true;
   const loginAlertEnabled = me?.loginAlertEmails ?? true;
+  const reportScheduleChangedEnabled = me?.reportScheduleChangedEmails ?? true;
+  const settlementStateChangedEnabled = me?.settlementStateChangedEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -1744,6 +1746,66 @@ export default function MerchantSecurity() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5 px-1">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
               You will not be notified when your account is accessed from a new IP address.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Admin Action Email Notifications */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Bell className="w-4 h-4 text-muted-foreground" />
+            Email Notifications
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Choose which admin-triggered events send you an email notification.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-sm font-medium">Report schedule changed</p>
+              </div>
+              <p className="text-xs text-muted-foreground pl-5">
+                Receive an email when an admin updates or resets your automated report delivery schedule.
+              </p>
+            </div>
+            <Switch
+              checked={reportScheduleChangedEnabled}
+              onCheckedChange={val => updatePrefs({ data: { reportScheduleChangedEmails: val } })}
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!reportScheduleChangedEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5 px-1">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive emails when your report schedule is changed by an admin.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-sm font-medium">Settlement state changed</p>
+              </div>
+              <p className="text-xs text-muted-foreground pl-5">
+                Receive an email whenever your settlement request is processed, approved, rejected, or paid.
+              </p>
+            </div>
+            <Switch
+              checked={settlementStateChangedEnabled}
+              onCheckedChange={val => updatePrefs({ data: { settlementStateChangedEmails: val } })}
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!settlementStateChangedEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5 px-1">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive emails when your settlement status changes.
             </p>
           )}
         </CardContent>

@@ -829,8 +829,9 @@ router.put("/schedules/:merchantId", requireAdmin, async (req, res, next) => {
           metadata: { nextRunAt: nextRunAt ?? null },
         }).catch(() => {});
       }
-      // Send email to merchant alongside the in-app notification
+      // Send email to merchant alongside the in-app notification (respects opt-out preference)
       sendReportScheduleUpdatedEmail({
+        merchantId: merchant.id,
         to: merchant.email,
         businessName: merchant.businessName,
         nextRunAt: nextRunAt ?? null,

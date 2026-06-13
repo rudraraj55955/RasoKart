@@ -20,6 +20,8 @@ export const usersTable = pgTable("users", {
   apiKeyGeneratedEmails: boolean("api_key_generated_emails").notNull().default(true),
   apiKeyRevokedEmails: boolean("api_key_revoked_emails").notNull().default(true),
   loginAlertEmails: boolean("login_alert_emails").notNull().default(true),
+  reportScheduleChangedEmails: boolean("report_schedule_changed_emails").notNull().default(true),
+  settlementStateChangedEmails: boolean("settlement_state_changed_emails").notNull().default(true),
   lastSeenIp: text("last_seen_ip"),
   passwordUpdatedAt: timestamp("password_updated_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),

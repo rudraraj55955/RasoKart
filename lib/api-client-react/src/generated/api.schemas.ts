@@ -235,6 +235,10 @@ export interface User {
   apiKeyGeneratedEmails?: boolean;
   apiKeyRevokedEmails?: boolean;
   loginAlertEmails?: boolean;
+  /** Whether the merchant wants an email when an admin changes their report schedule. Defaults to true. */
+  reportScheduleChangedEmails?: boolean;
+  /** Whether the merchant wants an email when their settlement request changes state. Defaults to true. */
+  settlementStateChangedEmails?: boolean;
   createdAt: string;
 }
 
@@ -4237,6 +4241,10 @@ export type UpdateMyPreferencesBody = {
   apiKeyGeneratedEmails?: boolean;
   apiKeyRevokedEmails?: boolean;
   loginAlertEmails?: boolean;
+  /** Whether the merchant wants an email when an admin changes their report schedule. */
+  reportScheduleChangedEmails?: boolean;
+  /** Whether the merchant wants an email when their settlement request changes state. */
+  settlementStateChangedEmails?: boolean;
 };
 
 export type ListMerchantsParams = {

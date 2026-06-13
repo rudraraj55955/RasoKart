@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireModule } from "../middlewares/checkModule";
 import { createNotification } from "../helpers/notifications";
 import { notifyAdminsOfSettlementStateChange } from "../helpers/adminNotifyEmail";
+import { notifyMerchantOfSettlementStateChange } from "../helpers/merchantNotifyEmail";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
 
 const settlementCreateLimiter = makeRateLimiter({
@@ -29,6 +30,11 @@ async function getUserIdForMerchant(merchantId: number): Promise<number | null> 
 async function getMerchantName(merchantId: number): Promise<string> {
   const [m] = await db.select({ businessName: merchantsTable.businessName }).from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);
   return m?.businessName ?? `Merchant #${merchantId}`;
+}
+
+async function getMerchantContact(merchantId: number): Promise<{ email: string; businessName: string }> {
+  const [m] = await db.select({ email: merchantsTable.email, businessName: merchantsTable.businessName }).from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);
+  return { email: m?.email ?? "", businessName: m?.businessName ?? `Merchant #${merchantId}` };
 }
 
 const router = Router();
@@ -310,16 +316,28 @@ router.post("/:id/process", requireAdmin, async (req, res) => {
   res.json(mapSettlement(updated));
 
   // Notify opted-in admins of state change (fire-and-forget)
-  void getMerchantName(s.merchantId).then(merchantName =>
+  void getMerchantContact(s.merchantId).then(({ email, businessName }) => {
     notifyAdminsOfSettlementStateChange({
       settlementId: id,
-      merchantName,
+      merchantName: businessName,
       referenceNumber: updated.referenceNumber ?? null,
       newStatus: "processing",
       amount: updated.requestedAmount ?? updated.amount,
       note: remark,
-    })
-  ).catch(() => {});
+    }).catch(() => {});
+    if (email) {
+      notifyMerchantOfSettlementStateChange({
+        merchantId: s.merchantId,
+        merchantEmail: email,
+        businessName,
+        settlementId: id,
+        newStatus: "processing",
+        amount: updated.requestedAmount ?? updated.amount,
+        referenceNumber: updated.referenceNumber ?? null,
+        adminRemark: remark,
+      }).catch(() => {});
+    }
+  }).catch(() => {});
 });
 
 // POST /api/settlements/:id/approve  (admin: processing → approved, deduct balance atomically)
@@ -404,7 +422,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     return;
   }
 
-  // Settlement approved — notify the merchant
+  // Settlement approved — notify the merchant (in-app)
   void getUserIdForMerchant(s.merchantId).then(uid => {
     if (uid) createNotification({
       userId: uid,
@@ -417,17 +435,29 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
 
   res.json(mapSettlement(updated));
 
-  // Notify opted-in admins of state change (fire-and-forget)
-  void getMerchantName(s.merchantId).then(merchantName =>
+  // Notify opted-in admins and merchant of state change (fire-and-forget)
+  void getMerchantContact(s.merchantId).then(({ email, businessName }) => {
     notifyAdminsOfSettlementStateChange({
       settlementId: id,
-      merchantName,
+      merchantName: businessName,
       referenceNumber: updated.referenceNumber ?? null,
       newStatus: "approved",
       amount: updated.requestedAmount ?? updated.amount,
       note: remark,
-    })
-  ).catch(() => {});
+    }).catch(() => {});
+    if (email) {
+      notifyMerchantOfSettlementStateChange({
+        merchantId: s.merchantId,
+        merchantEmail: email,
+        businessName,
+        settlementId: id,
+        newStatus: "approved",
+        amount: updated.requestedAmount ?? updated.amount,
+        referenceNumber: updated.referenceNumber ?? null,
+        adminRemark: remark,
+      }).catch(() => {});
+    }
+  }).catch(() => {});
 });
 
 // POST /api/settlements/:id/reject  (admin: pending|processing → rejected)
@@ -455,7 +485,7 @@ router.post("/:id/reject", requireAdmin, async (req, res) => {
     return;
   }
 
-  // Settlement rejected — notify the merchant
+  // Settlement rejected — notify the merchant (in-app)
   void getUserIdForMerchant(s.merchantId).then(uid => {
     if (uid) createNotification({
       userId: uid,
@@ -468,17 +498,29 @@ router.post("/:id/reject", requireAdmin, async (req, res) => {
 
   res.json(mapSettlement(updated));
 
-  // Notify opted-in admins of state change (fire-and-forget)
-  void getMerchantName(s.merchantId).then(merchantName =>
+  // Notify opted-in admins and merchant of state change (fire-and-forget)
+  void getMerchantContact(s.merchantId).then(({ email, businessName }) => {
     notifyAdminsOfSettlementStateChange({
       settlementId: id,
-      merchantName,
+      merchantName: businessName,
       referenceNumber: updated.referenceNumber ?? null,
       newStatus: "rejected",
       amount: updated.requestedAmount ?? updated.amount,
       note: remark,
-    })
-  ).catch(() => {});
+    }).catch(() => {});
+    if (email) {
+      notifyMerchantOfSettlementStateChange({
+        merchantId: s.merchantId,
+        merchantEmail: email,
+        businessName,
+        settlementId: id,
+        newStatus: "rejected",
+        amount: updated.requestedAmount ?? updated.amount,
+        referenceNumber: updated.referenceNumber ?? null,
+        adminRemark: remark,
+      }).catch(() => {});
+    }
+  }).catch(() => {});
 });
 
 // POST /api/settlements/:id/hold  (admin: processing → pending)
@@ -546,7 +588,7 @@ router.post("/:id/mark-paid", requireAdmin, async (req, res) => {
     return;
   }
 
-  // Settlement paid — notify the merchant
+  // Settlement paid — notify the merchant (in-app)
   void getUserIdForMerchant(s.merchantId).then(uid => {
     if (uid) createNotification({
       userId: uid,
@@ -559,17 +601,29 @@ router.post("/:id/mark-paid", requireAdmin, async (req, res) => {
 
   res.json(mapSettlement(updated));
 
-  // Notify opted-in admins of state change (fire-and-forget)
-  void getMerchantName(s.merchantId).then(merchantName =>
+  // Notify opted-in admins and merchant of state change (fire-and-forget)
+  void getMerchantContact(s.merchantId).then(({ email, businessName }) => {
     notifyAdminsOfSettlementStateChange({
       settlementId: id,
-      merchantName,
+      merchantName: businessName,
       referenceNumber: updated.referenceNumber ?? null,
       newStatus: "paid",
       amount: updated.requestedAmount ?? updated.amount,
       note: remark,
-    })
-  ).catch(() => {});
+    }).catch(() => {});
+    if (email) {
+      notifyMerchantOfSettlementStateChange({
+        merchantId: s.merchantId,
+        merchantEmail: email,
+        businessName,
+        settlementId: id,
+        newStatus: "paid",
+        amount: updated.requestedAmount ?? updated.amount,
+        referenceNumber: updated.referenceNumber ?? null,
+        adminRemark: remark,
+      }).catch(() => {});
+    }
+  }).catch(() => {});
 });
 
 export default router;

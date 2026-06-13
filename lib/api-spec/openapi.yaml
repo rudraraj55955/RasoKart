@@ -186,6 +186,12 @@ paths:
                   type: boolean
                 loginAlertEmails:
                   type: boolean
+                reportScheduleChangedEmails:
+                  type: boolean
+                  description: Whether the merchant wants an email when an admin changes their report schedule.
+                settlementStateChangedEmails:
+                  type: boolean
+                  description: Whether the merchant wants an email when their settlement request changes state.
       responses:
         "200":
           description: Updated preferences
@@ -8530,6 +8536,12 @@ components:
           type: boolean
         loginAlertEmails:
           type: boolean
+        reportScheduleChangedEmails:
+          type: boolean
+          description: Whether the merchant wants an email when an admin changes their report schedule. Defaults to true.
+        settlementStateChangedEmails:
+          type: boolean
+          description: Whether the merchant wants an email when their settlement request changes state. Defaults to true.
         createdAt:
           type: string
 
