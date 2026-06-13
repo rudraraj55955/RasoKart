@@ -184,6 +184,21 @@ function ScheduledReportsPanel() {
   };
 
   const now = new Date();
+  const statusCounts = {
+    active: schedules.filter((s) => s.isActive).length,
+    paused: schedules.filter((s) => !s.isActive).length,
+  };
+
+  const frequencyCounts = {
+    daily: schedules.filter((s) => (s.frequency as string) === "daily").length,
+    weekly: schedules.filter((s) => (s.frequency as string) === "weekly").length,
+    monthly: schedules.filter((s) => (s.frequency as string) === "monthly").length,
+  };
+
+  const formatCounts = {
+    xlsx: schedules.filter((s) => s.format === "xlsx").length,
+    pdf: schedules.filter((s) => s.format === "pdf").length,
+  };
 
   const filteredSchedules = schedules.filter((s) => {
     const q = search.trim().toLowerCase();
@@ -269,9 +284,9 @@ function ScheduledReportsPanel() {
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
+              <SelectItem value="all">All Statuses ({schedules.length})</SelectItem>
+              <SelectItem value="active">Active ({statusCounts.active})</SelectItem>
+              <SelectItem value="paused">Paused ({statusCounts.paused})</SelectItem>
               <SelectItem value="overdue">
                 <span className="flex items-center gap-1.5">
                   Overdue
@@ -289,10 +304,10 @@ function ScheduledReportsPanel() {
               <SelectValue placeholder="Frequency" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Frequencies</SelectItem>
-              <SelectItem value="daily">Daily</SelectItem>
-              <SelectItem value="weekly">Weekly</SelectItem>
-              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="all">All Frequencies ({schedules.length})</SelectItem>
+              <SelectItem value="daily">Daily ({frequencyCounts.daily})</SelectItem>
+              <SelectItem value="weekly">Weekly ({frequencyCounts.weekly})</SelectItem>
+              <SelectItem value="monthly">Monthly ({frequencyCounts.monthly})</SelectItem>
             </SelectContent>
           </Select>
           <Select value={formatFilter} onValueChange={setFormatFilter}>
@@ -300,9 +315,9 @@ function ScheduledReportsPanel() {
               <SelectValue placeholder="Format" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Formats</SelectItem>
-              <SelectItem value="xlsx">XLSX</SelectItem>
-              <SelectItem value="pdf">PDF</SelectItem>
+              <SelectItem value="all">All Formats ({schedules.length})</SelectItem>
+              <SelectItem value="xlsx">XLSX ({formatCounts.xlsx})</SelectItem>
+              <SelectItem value="pdf">PDF ({formatCounts.pdf})</SelectItem>
             </SelectContent>
           </Select>
           {hasFilters && (
