@@ -4,6 +4,7 @@ import { eq, and, count, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { recordUploadIntent, consumeUploadIntent } from "../lib/uploadIntentStore";
+import { createNotification } from "../helpers/notifications";
 
 const router = Router();
 router.use(requireAuth);
@@ -223,6 +224,36 @@ router.patch("/:id/review", requireAdmin, async (req, res) => {
     })
     .where(eq(merchantKycTable.id, id))
     .returning();
+
+  // Notify the merchant about the review decision
+  const docTypeLabels: Record<string, string> = {
+    pan: "PAN Card",
+    gst: "GST Certificate",
+    bank_details: "Bank Details",
+    business_proof: "Business Proof",
+  };
+  const docLabel = docTypeLabels[doc.docType] ?? doc.docType;
+
+  const [merchantUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.merchantId, doc.merchantId))
+    .limit(1);
+
+  if (merchantUser) {
+    const isApproved = status === "approved";
+    await createNotification({
+      userId: merchantUser.id,
+      type: isApproved ? "kyc_approved" : "kyc_rejected",
+      title: isApproved ? `KYC Document Approved` : `KYC Document Rejected`,
+      body: isApproved
+        ? `Your ${docLabel} document has been approved.`
+        : `Your ${docLabel} document was rejected.${adminNote ? ` Reason: ${adminNote}` : " Please resubmit with the correct document."}`,
+      metadata: { kycId: updated.id, docType: doc.docType, docLabel },
+    }).catch((err: unknown) => {
+      req.log.error({ err }, "Failed to create KYC review notification");
+    });
+  }
 
   res.json(serializeKycDoc(updated));
 });

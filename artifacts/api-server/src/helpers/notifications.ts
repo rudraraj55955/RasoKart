@@ -12,7 +12,9 @@ export type NotificationType =
   | "reconciliation_email_failure"
   | "scheduled_report_retry_success"
   | "scheduled_report_auto_paused"
-  | "merchant_dormant";
+  | "merchant_dormant"
+  | "kyc_approved"
+  | "kyc_rejected";
 
 export interface CreateNotificationInput {
   userId: number;
