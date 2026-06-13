@@ -32,14 +32,19 @@ export interface CreateNotificationInput {
   metadata?: Record<string, unknown>;
 }
 
-export async function createNotification(input: CreateNotificationInput) {
-  const [row] = await db.insert(notificationsTable).values({
+export async function createNotification(input: CreateNotificationInput, opts?: { onConflictDoNothing?: boolean }) {
+  const query = db.insert(notificationsTable).values({
     userId: input.userId,
     type: input.type,
     title: input.title,
     body: input.body,
     metadata: input.metadata ?? null,
-  }).returning();
+  });
+  if (opts?.onConflictDoNothing) {
+    const [row] = await query.onConflictDoNothing().returning();
+    return row;
+  }
+  const [row] = await query.returning();
   return row;
 }
 

@@ -441,7 +441,7 @@ async function handleReportFailure(
         title: "Scheduled Report Auto-Paused",
         body: `Your ${freqLabel.toLowerCase()} transaction report schedule has been automatically paused after ${schedule.autoPauseAfterFailures} consecutive delivery failures. This is typically caused by an SMTP misconfiguration on the platform. Please contact your platform administrator to check the SMTP settings at ${smtpSettingsUrl}, then re-enable the schedule from your Reports page.`,
         metadata: { scheduleId: schedule.id, frequency: schedule.frequency, consecutiveFailures: newConsecutiveFailures, autoPauseAfterFailures: schedule.autoPauseAfterFailures, smtpSettingsUrl },
-      });
+      }, { onConflictDoNothing: true });
     } else {
       await createNotification({
         userId: merchantUser.id,
@@ -449,7 +449,7 @@ async function handleReportFailure(
         title: "Scheduled Report Delivery Failed",
         body: `Your ${freqLabel.toLowerCase()} transaction report could not be delivered (attempt ${newConsecutiveFailures} of ${schedule.autoPauseAfterFailures}). This is typically caused by an SMTP misconfiguration — please contact your platform administrator to verify the SMTP settings at ${smtpSettingsUrl}. The schedule will be automatically paused after ${schedule.autoPauseAfterFailures} consecutive failures.`,
         metadata: { scheduleId: schedule.id, frequency: schedule.frequency, consecutiveFailures: newConsecutiveFailures, autoPauseAfterFailures: schedule.autoPauseAfterFailures, smtpSettingsUrl },
-      });
+      }, { onConflictDoNothing: true });
     }
   }
 

@@ -72,6 +72,28 @@ export const notificationsTable = pgTable("notifications", {
       sql`((metadata->>'scheduleId'))`,
     )
     .where(sql`type = 'report_schedule_auto_paused_admin' AND is_read = false`),
+  // Dedup index: at most one scheduled_report_failure alert per merchant user per
+  // schedule per consecutive-failure count. Prevents duplicate "attempt N of M"
+  // alerts if the scheduler fires twice before the counter increments.
+  // onConflictDoNothing() in handleReportFailure() relies on this.
+  uniqueIndex("notifications_scheduled_report_failure_dedup_idx")
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'scheduleId'))`,
+      sql`((metadata->>'consecutiveFailures'))`,
+    )
+    .where(sql`type = 'scheduled_report_failure'`),
+  // Dedup index: at most one scheduled_report_auto_paused alert per merchant user
+  // per schedule auto-pause event (keyed by scheduleId in metadata).
+  // onConflictDoNothing() in handleReportFailure() relies on this.
+  uniqueIndex("notifications_scheduled_report_auto_paused_dedup_idx")
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'scheduleId'))`,
+    )
+    .where(sql`type = 'scheduled_report_auto_paused'`),
 ]);
 
 export type Notification = typeof notificationsTable.$inferSelect;
