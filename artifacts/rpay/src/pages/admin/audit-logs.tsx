@@ -75,6 +75,9 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   compliance_report_exported:        { label: "Compliance Report Exported",        color: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
   security_review_reminded:              { label: "Security Review Reminder Sent",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   audit_schedule_failure_acknowledged:   { label: "Schedule Failure Acknowledged",       color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  report_schedule_created:               { label: "Report Schedule Created",              color: "bg-primary/10 text-primary border-primary/20" },
+  report_schedule_updated:               { label: "Report Schedule Updated",              color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  report_schedule_reenabled:             { label: "Report Schedule Re-enabled",           color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
   report_schedule_override_set:          { label: "Report Schedule Next-Run Overridden",  color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
   report_schedule_override_cleared:      { label: "Report Schedule Override Cleared",     color: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
   report_schedule_deleted:               { label: "Report Schedule Deleted",              color: "bg-red-500/10 text-red-400 border-red-500/20" },
@@ -883,6 +886,159 @@ function SettingUpdatedDetails({ log }: { log: any }) {
   );
 }
 
+function ReportScheduleCreatedDetails({ log }: { log: any }) {
+  let parsed: {
+    merchantId?: number | null;
+    businessName?: string | null;
+    frequency?: string | null;
+    format?: string | null;
+    nextRunAt?: string | null;
+  } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const FREQUENCY_LABELS_LOCAL: Record<string, string> = {
+    daily: "Daily",
+    weekly: "Weekly",
+    monthly: "Monthly",
+  };
+  const FORMAT_LABELS: Record<string, string> = {
+    xlsx: "XLSX",
+    csv: "CSV",
+    pdf: "PDF",
+    json: "JSON",
+  };
+
+  const freqLabel = parsed.frequency ? (FREQUENCY_LABELS_LOCAL[parsed.frequency] ?? parsed.frequency) : null;
+  const fmtLabel = parsed.format ? (FORMAT_LABELS[parsed.format] ?? parsed.format.toUpperCase()) : null;
+
+  let nextRunFormatted: string | null = null;
+  if (parsed.nextRunAt) {
+    try { nextRunFormatted = format(parseISO(parsed.nextRunAt), "MMM d, yyyy 'at' HH:mm"); } catch { nextRunFormatted = parsed.nextRunAt; }
+  }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<CalendarIcon className="w-5 h-5 text-primary" />}
+        title="Report schedule created"
+        subtitle={parsed.businessName ? `Merchant: ${parsed.businessName}` : undefined}
+        colorClass="bg-primary/10 border-primary/20"
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {parsed.businessName && <DetailRow label="Merchant" value={parsed.businessName} />}
+        {parsed.merchantId != null && (
+          <DetailRow label="Merchant ID" value={<span className="font-mono">#{parsed.merchantId}</span>} />
+        )}
+        {freqLabel && <DetailRow label="Frequency" value={freqLabel} />}
+        {fmtLabel && <DetailRow label="Report format" value={fmtLabel} />}
+        {nextRunFormatted && <DetailRow label="First run" value={<span className="font-mono">{nextRunFormatted}</span>} />}
+      </div>
+    </div>
+  );
+}
+
+function ReportScheduleUpdatedDetails({ log }: { log: any }) {
+  let parsed: {
+    merchantId?: number | null;
+    businessName?: string | null;
+    frequency?: string | null;
+    format?: string | null;
+    nextRunAt?: string | null;
+  } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const FREQUENCY_LABELS_LOCAL: Record<string, string> = {
+    daily: "Daily",
+    weekly: "Weekly",
+    monthly: "Monthly",
+  };
+  const FORMAT_LABELS: Record<string, string> = {
+    xlsx: "XLSX",
+    csv: "CSV",
+    pdf: "PDF",
+    json: "JSON",
+  };
+
+  const freqLabel = parsed.frequency ? (FREQUENCY_LABELS_LOCAL[parsed.frequency] ?? parsed.frequency) : null;
+  const fmtLabel = parsed.format ? (FORMAT_LABELS[parsed.format] ?? parsed.format.toUpperCase()) : null;
+
+  let nextRunFormatted: string | null = null;
+  if (parsed.nextRunAt) {
+    try { nextRunFormatted = format(parseISO(parsed.nextRunAt), "MMM d, yyyy 'at' HH:mm"); } catch { nextRunFormatted = parsed.nextRunAt; }
+  }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<PencilLine className="w-5 h-5 text-amber-400" />}
+        title="Report schedule updated"
+        subtitle={parsed.businessName ? `Merchant: ${parsed.businessName}` : undefined}
+        colorClass="bg-amber-500/10 border-amber-500/20"
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {parsed.businessName && <DetailRow label="Merchant" value={parsed.businessName} />}
+        {parsed.merchantId != null && (
+          <DetailRow label="Merchant ID" value={<span className="font-mono">#{parsed.merchantId}</span>} />
+        )}
+        {freqLabel && <DetailRow label="Frequency" value={freqLabel} />}
+        {fmtLabel && <DetailRow label="Report format" value={fmtLabel} />}
+        {nextRunFormatted && <DetailRow label="Next run" value={<span className="font-mono">{nextRunFormatted}</span>} />}
+      </div>
+    </div>
+  );
+}
+
+function ReportScheduleReenabledDetails({ log }: { log: any }) {
+  let parsed: {
+    merchantId?: number | null;
+    businessName?: string | null;
+    frequency?: string | null;
+    format?: string | null;
+    nextRunAt?: string | null;
+  } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const FREQUENCY_LABELS_LOCAL: Record<string, string> = {
+    daily: "Daily",
+    weekly: "Weekly",
+    monthly: "Monthly",
+  };
+  const FORMAT_LABELS: Record<string, string> = {
+    xlsx: "XLSX",
+    csv: "CSV",
+    pdf: "PDF",
+    json: "JSON",
+  };
+
+  const freqLabel = parsed.frequency ? (FREQUENCY_LABELS_LOCAL[parsed.frequency] ?? parsed.frequency) : null;
+  const fmtLabel = parsed.format ? (FORMAT_LABELS[parsed.format] ?? parsed.format.toUpperCase()) : null;
+
+  let nextRunFormatted: string | null = null;
+  if (parsed.nextRunAt) {
+    try { nextRunFormatted = format(parseISO(parsed.nextRunAt), "MMM d, yyyy 'at' HH:mm"); } catch { nextRunFormatted = parsed.nextRunAt; }
+  }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<RefreshCw className="w-5 h-5 text-emerald-400" />}
+        title="Report schedule re-enabled"
+        subtitle={parsed.businessName ? `Merchant: ${parsed.businessName}` : undefined}
+        colorClass="bg-emerald-500/10 border-emerald-500/20"
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {parsed.businessName && <DetailRow label="Merchant" value={parsed.businessName} />}
+        {parsed.merchantId != null && (
+          <DetailRow label="Merchant ID" value={<span className="font-mono">#{parsed.merchantId}</span>} />
+        )}
+        {freqLabel && <DetailRow label="Frequency" value={freqLabel} />}
+        {fmtLabel && <DetailRow label="Report format" value={fmtLabel} />}
+        {nextRunFormatted && <DetailRow label="Next run" value={<span className="font-mono">{nextRunFormatted}</span>} />}
+      </div>
+    </div>
+  );
+}
+
 function ReportScheduleOverrideSetDetails({ log }: { log: any }) {
   let parsed: {
     merchantId?: number | null;
@@ -1073,6 +1229,12 @@ function ActionDetails({ log }: { log: any }) {
       return <TestEmailSentDetails log={log} />;
     case "setting_updated":
       return <SettingUpdatedDetails log={log} />;
+    case "report_schedule_created":
+      return <ReportScheduleCreatedDetails log={log} />;
+    case "report_schedule_updated":
+      return <ReportScheduleUpdatedDetails log={log} />;
+    case "report_schedule_reenabled":
+      return <ReportScheduleReenabledDetails log={log} />;
     case "report_schedule_override_set":
       return <ReportScheduleOverrideSetDetails log={log} />;
     case "report_schedule_override_cleared":

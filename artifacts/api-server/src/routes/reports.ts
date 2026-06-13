@@ -817,7 +817,34 @@ router.put("/schedules/:merchantId", requireAdmin, async (req, res, next) => {
       return;
     }
 
+    const existingSchedule = await db
+      .select({ id: reportSchedulesTable.merchantId })
+      .from(reportSchedulesTable)
+      .where(eq(reportSchedulesTable.merchantId, mid))
+      .limit(1);
+    const isCreate = existingSchedule.length === 0;
+
     const schedule = await upsertSchedule(mid, { frequency, format, isActive, dayOfWeek, dayOfMonth, nextRunAt });
+
+    // Always write a created/updated audit log for the schedule lifecycle
+    {
+      const admin = (req as any).user;
+      await db.insert(auditLogsTable).values({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: isCreate ? "report_schedule_created" : "report_schedule_updated",
+        targetType: "report_schedule",
+        targetId: mid,
+        details: JSON.stringify({
+          merchantId: mid,
+          businessName: merchant.businessName,
+          frequency: schedule.frequency,
+          format: schedule.format,
+          nextRunAt: schedule.nextRunAt ? schedule.nextRunAt.toISOString() : null,
+        }),
+        ipAddress: req.ip ?? null,
+      });
+    }
 
     // Write audit log and notify merchant whenever an admin explicitly sets or clears nextRunAt
     if (nextRunAt !== undefined) {
