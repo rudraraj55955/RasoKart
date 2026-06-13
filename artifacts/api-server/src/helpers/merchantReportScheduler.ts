@@ -7,6 +7,7 @@ import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
 import { createNotification, createBulkNotifications } from "./notifications";
 import { notifyAdminsOfReportScheduleAutoPaused } from "./adminNotifyEmail";
+import { sendReportScheduleAutoPausedMerchantEmail } from "./reportScheduleEmail";
 
 let scheduledTask: ScheduledTask | null = null;
 
@@ -454,7 +455,7 @@ async function handleReportFailure(
 
   if (shouldAutoPause) {
     const [merchantInfo] = await db
-      .select({ businessName: merchantsTable.businessName })
+      .select({ businessName: merchantsTable.businessName, email: merchantsTable.email })
       .from(merchantsTable)
       .where(eq(merchantsTable.id, schedule.merchantId))
       .limit(1);
@@ -489,6 +490,40 @@ async function handleReportFailure(
       consecutiveFailures: newConsecutiveFailures,
       autoPauseAfterFailures: schedule.autoPauseAfterFailures,
     });
+
+    if (merchantInfo?.email) {
+      let notifyEmailSent = false;
+      let notifyEmailFailureReason: string | null = null;
+      try {
+        notifyEmailSent = await sendReportScheduleAutoPausedMerchantEmail({
+          to: merchantInfo.email,
+          businessName: merchantName,
+          frequency: schedule.frequency,
+          consecutiveFailures: newConsecutiveFailures,
+          autoPauseAfterFailures: schedule.autoPauseAfterFailures,
+        });
+        if (!notifyEmailSent) {
+          notifyEmailFailureReason = "SMTP returned failure — merchant auto-pause notification email not delivered.";
+        }
+      } catch (emailErr) {
+        notifyEmailSent = false;
+        notifyEmailFailureReason = emailErr instanceof Error ? emailErr.message : String(emailErr);
+        logger.error({ err: emailErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to send auto-pause merchant notification email");
+      }
+      await db.insert(reportDeliveryLogsTable).values({
+        scheduleId: schedule.id,
+        merchantId: schedule.merchantId,
+        success: notifyEmailSent,
+        failureReason: notifyEmailFailureReason,
+        isAutoPause: true,
+        frequency: schedule.frequency,
+        format: schedule.format,
+        outcome: "merchant_notification_email",
+        triggeredBy: triggeredBy ?? null,
+      }).catch(logErr => {
+        logger.error({ err: logErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to persist merchant auto-pause notification delivery log");
+      });
+    }
   }
 }
 
