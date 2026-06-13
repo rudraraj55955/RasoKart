@@ -1080,6 +1080,17 @@ function DeliveryHistoryPanel() {
     return Array.from(dayMap.values());
   }, [logs]);
 
+  const merchantSuccessRates = useMemo(() => {
+    const map = new Map<number, { success: number; total: number }>();
+    for (const log of logs) {
+      const entry = map.get(log.merchantId) ?? { success: 0, total: 0 };
+      entry.total++;
+      if (log.success) entry.success++;
+      map.set(log.merchantId, entry);
+    }
+    return map;
+  }, [logs]);
+
   const showCharts = !isLoading && logs.length > 0;
 
   return (
@@ -1342,7 +1353,30 @@ function DeliveryHistoryPanel() {
                         ({formatDistanceToNow(new Date(log.attemptedAt), { addSuffix: true })})
                       </span>
                     </TableCell>
-                    <TableCell className="font-medium text-sm">{log.businessName ?? `Merchant #${log.merchantId}`}</TableCell>
+                    <TableCell className="font-medium text-sm">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{log.businessName ?? `Merchant #${log.merchantId}`}</span>
+                        {(() => {
+                          const rate = merchantSuccessRates.get(log.merchantId);
+                          if (!rate || rate.total === 0) return null;
+                          const pct = Math.round((rate.success / rate.total) * 100);
+                          const color =
+                            pct >= 90
+                              ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
+                              : pct >= 70
+                              ? "text-amber-400 bg-amber-400/10 border-amber-400/20"
+                              : "text-red-400 bg-red-400/10 border-red-400/20";
+                          return (
+                            <span
+                              className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold leading-5 ${color}`}
+                              title={`${rate.success} of ${rate.total} delivered (from visible logs)`}
+                            >
+                              {pct}% delivered
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{log.merchantEmail ?? "—"}</TableCell>
                     <TableCell>
                       <TriggeredByBadge value={(log as any).triggeredBy} />
