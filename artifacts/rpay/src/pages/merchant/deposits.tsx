@@ -49,7 +49,7 @@ import {
   ChevronRight,
   CreditCard,
 } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, parseISO, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -922,6 +922,23 @@ export default function MerchantDeposits() {
   const activeDateFrom = smartFilter?.dateFrom ?? (dateFrom || undefined);
   const activeDateTo = smartFilter?.dateTo ?? (dateTo || undefined);
   const activeProvider = smartFilter?.txProvider ?? (provider !== "all" ? provider : undefined);
+  const rangeSummary = (() => {
+    const from = activeDateFrom ?? "";
+    const to = activeDateTo ?? "";
+    const hasFrom = !!from;
+    const hasTo = !!to;
+    let label: string | null = null;
+    if (hasFrom && hasTo) {
+      const builtIn = DATE_PRESETS.find(p => { const r = p.getRange(); return r.from === from && r.to === to; });
+      if (builtIn) label = builtIn.label;
+      else { const custom = customDatePresets.find(p => p.from === from && p.to === to); if (custom) label = custom.name; }
+    }
+    const fmt = (s: string) => { try { return format(parseISO(s), "d MMM yyyy"); } catch { return s; } };
+    if (!hasFrom && !hasTo) return "All time";
+    if (hasFrom && hasTo) { const r = `${fmt(from)} – ${fmt(to)}`; return label ? `${label} · ${r}` : `Custom range · ${r}`; }
+    if (hasFrom) return `From ${fmt(from)}`;
+    return `Until ${fmt(to)}`;
+  })();
   const amountMin = smartFilter?.amountMin;
   const amountMax = smartFilter?.amountMax;
 
@@ -1603,6 +1620,11 @@ export default function MerchantDeposits() {
                 </Button>
               )}
             </div>
+            {/* Date range summary */}
+            <p className="text-xs text-muted-foreground/70 flex items-center gap-1.5">
+              <CalendarRange className="w-3 h-3 shrink-0" />
+              {rangeSummary}
+            </p>
             {showSaveDatePreset && (
               <div className="flex items-start gap-2 pl-1">
                 <div className="flex-shrink-0 pt-1">

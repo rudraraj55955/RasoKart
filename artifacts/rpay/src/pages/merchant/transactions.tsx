@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Download, Search, X, Info, Sparkles, Zap, TrendingUp, CheckCircle2, XCircle, Hash, Bookmark, BookmarkCheck, Trash2, CreditCard, ArrowDownLeft, ArrowUpRight, FileText, Loader2, Link2, CalendarRange, Layers, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
+import { format, parseISO, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { getToken } from "@/lib/auth";
 import { toast } from "sonner";
 
@@ -1077,6 +1077,23 @@ export default function MerchantTransactions() {
   });
   const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
   const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
+  const rangeSummary = (() => {
+    const from = activeDateFrom;
+    const to = activeDateTo;
+    const hasFrom = !!from;
+    const hasTo = !!to;
+    let label: string | null = null;
+    if (hasFrom && hasTo) {
+      const builtIn = DATE_PRESETS.find(p => { const r = p.getRange(); return r.from === from && r.to === to; });
+      if (builtIn) label = builtIn.label;
+      else { const custom = customDatePresets.find(p => p.from === from && p.to === to); if (custom) label = custom.name; }
+    }
+    const fmt = (s: string) => { try { return format(parseISO(s), "d MMM yyyy"); } catch { return s; } };
+    if (!hasFrom && !hasTo) return "All time";
+    if (hasFrom && hasTo) { const r = `${fmt(from)} – ${fmt(to)}`; return label ? `${label} · ${r}` : `Custom range · ${r}`; }
+    if (hasFrom) return `From ${fmt(from)}`;
+    return `Until ${fmt(to)}`;
+  })();
 
   // Combined preset derived state
   const isCombinedPresetAlreadySaved = combinedPresets.some(
@@ -1698,6 +1715,11 @@ export default function MerchantTransactions() {
                   </Button>
                 )}
               </div>
+              {/* Date range summary */}
+              <p className="text-xs text-muted-foreground/70 flex items-center gap-1.5">
+                <CalendarRange className="w-3 h-3 shrink-0" />
+                {rangeSummary}
+              </p>
               {showSaveDatePreset && (
                 <div className="flex items-start gap-2 pl-1">
                   <div className="flex-shrink-0 pt-1">
