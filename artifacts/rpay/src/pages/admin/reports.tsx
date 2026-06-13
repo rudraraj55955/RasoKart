@@ -607,7 +607,13 @@ function ReportHistoryPanel() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="text-xs uppercase">{s.format}</Badge>
+                    {s.format === "xlsx" ? (
+                      <Badge className="text-xs uppercase bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/20">XLSX</Badge>
+                    ) : s.format === "pdf" ? (
+                      <Badge className="text-xs uppercase bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/20">PDF</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs uppercase">{s.format}</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {s.lastSentAt ? (
