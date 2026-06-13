@@ -402,6 +402,8 @@ async function handleReportFailure(
     success: false,
     failureReason: failureReason ?? null,
     isAutoPause: false,
+    frequency: schedule.frequency,
+    format: schedule.format,
   });
 
   if (shouldAutoPause) {
@@ -411,6 +413,8 @@ async function handleReportFailure(
       success: false,
       failureReason: `Schedule auto-paused after ${newConsecutiveFailures} consecutive delivery failures.`,
       isAutoPause: true,
+      frequency: schedule.frequency,
+      format: schedule.format,
     });
   }
 
@@ -490,6 +494,8 @@ export async function sendMerchantReport(
         success: true,
         failureReason: null,
         isAutoPause: false,
+        frequency: schedule.frequency,
+        format: schedule.format,
       });
       logger.info({ scheduleId: schedule.id, merchantId: schedule.merchantId, txCount: transactions.length }, "Merchant report emailed successfully");
     } else {

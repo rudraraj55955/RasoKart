@@ -157,6 +157,7 @@ export * from './getQrCodeStatsParams';
 export * from './getReconciliationRunEmailLogs200';
 export * from './getReportSchedule200';
 export * from './getReportScheduleHistory200';
+export * from './getReportScheduleHistoryFormat';
 export * from './getReportScheduleHistoryParams';
 export * from './getRoutingLogsParams';
 export * from './getRoutingMetricsParams';

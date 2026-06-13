@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetReportScheduleHistoryFormat } from './getReportScheduleHistoryFormat';
 
 export type GetReportScheduleHistoryParams = {
 /**
@@ -13,4 +14,8 @@ export type GetReportScheduleHistoryParams = {
  * @maximum 100
  */
 limit?: number;
+/**
+ * Filter delivery history by file format
+ */
+format?: GetReportScheduleHistoryFormat;
 };

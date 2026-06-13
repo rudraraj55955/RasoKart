@@ -20,4 +20,14 @@ export interface ReportDeliveryLog {
   failureReason?: string | null;
   /** Whether this entry represents the moment the schedule was auto-paused */
   isAutoPause: boolean;
+  /**
+     * Schedule frequency at time of delivery (weekly or monthly)
+     * @nullable
+     */
+  frequency?: string | null;
+  /**
+     * File format used for this delivery (xlsx or pdf)
+     * @nullable
+     */
+  format?: string | null;
 }

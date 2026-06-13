@@ -1626,7 +1626,8 @@ export const getReportScheduleHistoryQueryLimitMax = 100;
 
 
 export const GetReportScheduleHistoryQueryParams = zod.object({
-  "limit": zod.coerce.number().min(1).max(getReportScheduleHistoryQueryLimitMax).default(getReportScheduleHistoryQueryLimitDefault).describe('Maximum number of history entries to return (default 20, max 100)')
+  "limit": zod.coerce.number().min(1).max(getReportScheduleHistoryQueryLimitMax).default(getReportScheduleHistoryQueryLimitDefault).describe('Maximum number of history entries to return (default 20, max 100)'),
+  "format": zod.enum(['xlsx', 'pdf']).optional().describe('Filter delivery history by file format')
 })
 
 export const GetReportScheduleHistoryResponse = zod.object({
@@ -1637,7 +1638,9 @@ export const GetReportScheduleHistoryResponse = zod.object({
   "attemptedAt": zod.string().describe('ISO timestamp of the delivery attempt'),
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
-  "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused')
+  "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
+  "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)')
 }))
 })
 

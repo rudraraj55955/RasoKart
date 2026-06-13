@@ -650,6 +650,16 @@ export interface ReportDeliveryLog {
   failureReason?: string | null;
   /** Whether this entry represents the moment the schedule was auto-paused */
   isAutoPause: boolean;
+  /**
+     * Schedule frequency at time of delivery (weekly or monthly)
+     * @nullable
+     */
+  frequency?: string | null;
+  /**
+     * File format used for this delivery (xlsx or pdf)
+     * @nullable
+     */
+  format?: string | null;
 }
 
 export type AdminReportDeliveryLog = ReportDeliveryLog & ({
@@ -4357,7 +4367,19 @@ export type GetReportScheduleHistoryParams = {
  * @maximum 100
  */
 limit?: number;
+/**
+ * Filter delivery history by file format
+ */
+format?: GetReportScheduleHistoryFormat;
 };
+
+export type GetReportScheduleHistoryFormat = typeof GetReportScheduleHistoryFormat[keyof typeof GetReportScheduleHistoryFormat];
+
+
+export const GetReportScheduleHistoryFormat = {
+  xlsx: 'xlsx',
+  pdf: 'pdf',
+} as const;
 
 export type GetReportScheduleHistory200 = {
   logs: ReportDeliveryLog[];
