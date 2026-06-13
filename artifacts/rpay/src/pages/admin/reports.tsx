@@ -225,6 +225,11 @@ function ScheduledReportsPanel() {
               Clear
             </Button>
           )}
+          {hasFilters && (
+            <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+              {filteredSchedules.length} of {schedules.length} schedule{schedules.length !== 1 ? "s" : ""}
+            </span>
+          )}
         </div>
 
         {isLoading ? (
