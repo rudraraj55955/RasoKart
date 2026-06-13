@@ -49,7 +49,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
 
 const DATE_PRESETS = [
@@ -274,7 +274,14 @@ function ScheduledReportsPanel() {
                     </span>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {s.lastSentAt ? format(new Date(s.lastSentAt), "dd MMM yyyy, HH:mm") : "Never"}
+                    {s.lastSentAt ? (
+                      <span>
+                        {format(new Date(s.lastSentAt), "dd MMM yyyy, HH:mm")}
+                        <span className="ml-1 text-muted-foreground/60">
+                          ({formatDistanceToNow(new Date(s.lastSentAt), { addSuffix: true })})
+                        </span>
+                      </span>
+                    ) : "Never"}
                   </TableCell>
                   <TableCell className="text-xs">
                     {(() => {
