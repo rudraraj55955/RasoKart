@@ -292,6 +292,8 @@ function ScheduledReportsPanel() {
   const [overrideTarget, setOverrideTarget] = useState<{ merchantId: number; name: string; current: string | null } | null>(null);
   const [overrideValue, setOverrideValue] = useState("");
   const [overrideSaving, setOverrideSaving] = useState(false);
+  const [sendingMerchantId, setSendingMerchantId] = useState<number | null>(null);
+  const [confirmSend, setConfirmSend] = useState<{ merchantId: number; name: string; email: string; frequency: string; format: string } | null>(null);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getListMerchantReportSchedulesQueryOptions().queryKey });
@@ -320,12 +322,16 @@ function ScheduledReportsPanel() {
   };
 
   const handleSendNow = async (merchantId: number, name: string) => {
+    setSendingMerchantId(merchantId);
+    setConfirmSend(null);
     try {
       const res = await sendNow.mutateAsync({ merchantId });
       toast.success(`Report sent to ${res.to} for ${name}`);
       invalidate();
     } catch {
-      toast.error(`Failed to send report for ${name}`);
+      toast.error(`Failed to send report for ${name} — check SMTP configuration`);
+    } finally {
+      setSendingMerchantId(null);
     }
   };
 
@@ -757,14 +763,15 @@ function ScheduledReportsPanel() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 px-2 text-xs gap-1"
-                        onClick={() => handleSendNow(s.merchantId, s.businessName)}
-                        disabled={sendNow.isPending}
+                        className="h-7 px-2 text-xs gap-1 text-sky-400 hover:text-sky-300"
+                        onClick={() => setConfirmSend({ merchantId: s.merchantId, name: s.businessName, email: s.merchantEmail, frequency: s.frequency, format: s.format })}
+                        disabled={sendingMerchantId === s.merchantId}
                         title="Send report now"
                       >
-                        {sendNow.isPending
+                        {sendingMerchantId === s.merchantId
                           ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           : <Send className="w-3.5 h-3.5" />}
+                        <span className="hidden sm:inline">Send Now</span>
                       </Button>
                       <Button
                         variant="ghost"
@@ -793,6 +800,66 @@ function ScheduledReportsPanel() {
         open={historyMerchant != null}
         onClose={() => setHistoryMerchant(null)}
       />
+
+      {/* Send Now confirmation dialog */}
+      <Dialog open={confirmSend != null} onOpenChange={(open) => { if (!open) setConfirmSend(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Send className="w-4 h-4 text-sky-400" />
+              Send Report Now
+            </DialogTitle>
+          </DialogHeader>
+          {confirmSend && (
+            <div className="py-2 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                This will immediately send a{" "}
+                <strong className="text-foreground capitalize">{confirmSend.frequency}</strong>{" "}
+                <strong className="text-foreground uppercase">{confirmSend.format}</strong>{" "}
+                report to{" "}
+                <strong className="text-foreground">{confirmSend.name}</strong>.
+              </p>
+              <div className="rounded-md bg-muted/50 border border-border px-3 py-2 text-xs text-muted-foreground space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="opacity-60">Recipient:</span>
+                  <span className="text-foreground font-medium">{confirmSend.email}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="opacity-60">Cadence window:</span>
+                  <span className="text-foreground font-medium">
+                    Last {confirmSend.frequency === "monthly" ? "30" : "7"} days of transactions
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The schedule's <span className="text-foreground font-medium">last sent</span> timestamp and <span className="text-foreground font-medium">next run</span> will update after delivery.
+              </p>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7"
+              onClick={() => setConfirmSend(null)}
+              disabled={sendingMerchantId != null}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="text-xs h-7 gap-1.5 bg-sky-600 hover:bg-sky-500 text-white"
+              onClick={() => confirmSend && handleSendNow(confirmSend.merchantId, confirmSend.name)}
+              disabled={sendingMerchantId != null}
+            >
+              {sendingMerchantId != null
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Send className="w-3 h-3" />}
+              {sendingMerchantId != null ? "Sending…" : "Send Now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={sendFailures != null} onOpenChange={(open) => { if (!open) setSendFailures(null); }}>
         <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">

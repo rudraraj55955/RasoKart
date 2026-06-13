@@ -958,6 +958,23 @@ router.post("/schedules/:merchantId/send-now", requireAdmin, async (req, res, ne
       return;
     }
 
+    const admin = (req as any).user;
+    await db.insert(auditLogsTable).values({
+      adminId: admin.id,
+      adminEmail: admin.email,
+      action: "report_manual_send",
+      targetType: "merchant",
+      targetId: mid,
+      details: JSON.stringify({
+        merchantId: mid,
+        businessName: merchantRow.businessName,
+        sentTo: merchantRow.email,
+        frequency: scheduleRow.frequency,
+        format: scheduleRow.format,
+      }),
+      ipAddress: req.ip ?? null,
+    });
+
     res.json({ ok: true, to: merchantRow.email });
   } catch (err) {
     next(err);
