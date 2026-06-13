@@ -16,6 +16,7 @@ function notifIcon(type: string) {
   if (type === "provider_limit_reset") return <RefreshCw className="w-4 h-4" />;
   if (type === "limit_exceeded" || type === "provider_limit_warning" || type === "provider_limit_reached") return <AlertCircle className="w-4 h-4" />;
   if (type === "scheduled_report_auto_paused" || type === "scheduled_report_failure" || type === "scheduled_report_retry_success") return <Calendar className="w-4 h-4" />;
+  if (type === "report_schedule_next_run_updated") return <Calendar className="w-4 h-4" />;
   return <Megaphone className="w-4 h-4" />;
 }
 
@@ -27,6 +28,7 @@ function notifColor(type: string): string {
   if (type === "provider_limit_reset") return "text-emerald-400";
   if (type === "scheduled_report_auto_paused" || type === "scheduled_report_failure") return "text-amber-400";
   if (type === "scheduled_report_retry_success") return "text-emerald-400";
+  if (type === "report_schedule_next_run_updated") return "text-sky-400";
   return "text-blue-400";
 }
 
@@ -44,6 +46,7 @@ const TYPE_LABELS: Record<string, string> = {
   scheduled_report_auto_paused: "Report Paused",
   scheduled_report_failure: "Report Failed",
   scheduled_report_retry_success: "Report Resumed",
+  report_schedule_next_run_updated: "Report Schedule",
 };
 
 type TypeFilter =
@@ -58,7 +61,8 @@ type TypeFilter =
   | "provider_limit_reached"
   | "provider_limit_reset"
   | "system_notice"
-  | "scheduled_report_auto_paused";
+  | "scheduled_report_auto_paused"
+  | "report_schedule_next_run_updated";
 
 const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] = [
   { value: "all", label: "All Types", icon: <Bell className="w-3 h-3" /> },
@@ -73,6 +77,7 @@ const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] 
   { value: "provider_limit_reset", label: "Limit Reset", icon: <RefreshCw className="w-3 h-3" /> },
   { value: "system_notice", label: "Notice", icon: <Megaphone className="w-3 h-3" /> },
   { value: "scheduled_report_auto_paused", label: "Report Paused", icon: <Calendar className="w-3 h-3" /> },
+  { value: "report_schedule_next_run_updated", label: "Report Schedule", icon: <Calendar className="w-3 h-3" /> },
 ];
 
 const PROVIDER_LIMIT_TYPES = new Set(["provider_limit_warning", "provider_limit_reached", "provider_limit_reset"]);
