@@ -6,7 +6,7 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
 import { createNotification, createBulkNotifications } from "./notifications";
-import { notifyAdminsOfReportScheduleAutoPaused } from "./adminNotifyEmail";
+import { notifyAdminsOfReportScheduleAutoPaused, notifyAdminsOfReportScheduleResumed } from "./adminNotifyEmail";
 import { sendReportScheduleAutoPausedMerchantEmail } from "./reportScheduleEmail";
 
 let scheduledTask: ScheduledTask | null = null;
@@ -578,6 +578,16 @@ export async function sendMerchantReport(
         triggeredBy: triggeredBy ?? null,
       });
       logger.info({ scheduleId: schedule.id, merchantId: schedule.merchantId, txCount: transactions.length, triggeredBy }, "Merchant report emailed successfully");
+      if (schedule.consecutiveFailures > 0) {
+        notifyAdminsOfReportScheduleResumed({
+          merchantId: schedule.merchantId,
+          merchantName: businessName,
+          frequency: schedule.frequency,
+          previousFailures: schedule.consecutiveFailures,
+        }).catch(notifyErr => {
+          logger.error({ err: notifyErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to send report schedule resumed notification to admins");
+        });
+      }
     } else {
       logger.warn({ scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to send merchant report email");
       await handleReportFailure(schedule, "Email delivery failed — SMTP returned an error.", triggeredBy).catch(notifyErr => {
