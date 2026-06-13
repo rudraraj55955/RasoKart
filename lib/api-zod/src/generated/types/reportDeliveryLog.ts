@@ -35,4 +35,9 @@ export interface ReportDeliveryLog {
      * @nullable
      */
   outcome?: string | null;
+  /**
+     * What triggered this delivery attempt — manual (admin or merchant send-now), bulk (admin send-all-overdue), or scheduler (automated cron)
+     * @nullable
+     */
+  triggeredBy?: string | null;
 }

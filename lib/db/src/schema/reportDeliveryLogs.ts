@@ -14,6 +14,7 @@ export const reportDeliveryLogsTable = pgTable("report_delivery_logs", {
   frequency: text("frequency"),
   format: text("format"),
   outcome: text("outcome"),
+  triggeredBy: text("triggered_by"),
 });
 
 export type ReportDeliveryLog = typeof reportDeliveryLogsTable.$inferSelect;

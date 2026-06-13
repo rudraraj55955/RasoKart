@@ -666,6 +666,11 @@ export interface ReportDeliveryLog {
      * @nullable
      */
   outcome?: string | null;
+  /**
+     * What triggered this delivery attempt — manual (admin or merchant send-now), bulk (admin send-all-overdue), or scheduler (automated cron)
+     * @nullable
+     */
+  triggeredBy?: string | null;
 }
 
 export type AdminReportDeliveryLog = ReportDeliveryLog & ({
@@ -4727,6 +4732,10 @@ dateTo?: string;
  */
 success?: GetAdminReportDeliveryHistorySuccess;
 /**
+ * Filter by what triggered the delivery — manual (send-now), bulk (send-all-overdue), or scheduler (automated cron)
+ */
+triggeredBy?: GetAdminReportDeliveryHistoryTriggeredBy;
+/**
  * Maximum rows to return (default 100, max 200)
  * @minimum 1
  * @maximum 200
@@ -4740,6 +4749,15 @@ export type GetAdminReportDeliveryHistorySuccess = typeof GetAdminReportDelivery
 export const GetAdminReportDeliveryHistorySuccess = {
   true: 'true',
   false: 'false',
+} as const;
+
+export type GetAdminReportDeliveryHistoryTriggeredBy = typeof GetAdminReportDeliveryHistoryTriggeredBy[keyof typeof GetAdminReportDeliveryHistoryTriggeredBy];
+
+
+export const GetAdminReportDeliveryHistoryTriggeredBy = {
+  manual: 'manual',
+  bulk: 'bulk',
+  scheduler: 'scheduler',
 } as const;
 
 export type GetAdminReportDeliveryHistory200 = {

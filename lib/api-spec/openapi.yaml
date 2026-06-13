@@ -1984,6 +1984,12 @@ paths:
             type: string
             enum: ["true", "false"]
           description: Filter by outcome (omit for all)
+        - name: triggeredBy
+          in: query
+          schema:
+            type: string
+            enum: ["manual", "bulk", "scheduler"]
+          description: Filter by what triggered the delivery — manual (send-now), bulk (send-all-overdue), or scheduler (automated cron)
         - name: limit
           in: query
           schema:
@@ -8945,6 +8951,9 @@ components:
         outcome:
           type: ["string", "null"]
           description: Distinct outcome marker for special events; "re-enabled" when a paused schedule is re-activated
+        triggeredBy:
+          type: ["string", "null"]
+          description: What triggered this delivery attempt — manual (admin or merchant send-now), bulk (admin send-all-overdue), or scheduler (automated cron)
 
     AdminReportDeliveryLog:
       allOf:

@@ -1647,7 +1647,8 @@ export const GetReportScheduleHistoryResponse = zod.object({
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
-  "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated')
+  "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
+  "triggeredBy": zod.string().nullish().describe('What triggered this delivery attempt — manual (admin or merchant send-now), bulk (admin send-all-overdue), or scheduler (automated cron)')
 }))
 })
 
@@ -1819,6 +1820,7 @@ export const GetAdminReportDeliveryHistoryQueryParams = zod.object({
   "dateFrom": zod.coerce.string().optional().describe('ISO date — only return attempts on or after this date'),
   "dateTo": zod.coerce.string().optional().describe('ISO date — only return attempts on or before this date'),
   "success": zod.enum(['true', 'false']).optional().describe('Filter by outcome (omit for all)'),
+  "triggeredBy": zod.enum(['manual', 'bulk', 'scheduler']).optional().describe('Filter by what triggered the delivery — manual (send-now), bulk (send-all-overdue), or scheduler (automated cron)'),
   "limit": zod.coerce.number().min(1).max(getAdminReportDeliveryHistoryQueryLimitMax).default(getAdminReportDeliveryHistoryQueryLimitDefault).describe('Maximum rows to return (default 100, max 200)')
 })
 
@@ -1833,7 +1835,8 @@ export const GetAdminReportDeliveryHistoryResponse = zod.object({
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
-  "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated')
+  "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
+  "triggeredBy": zod.string().nullish().describe('What triggered this delivery attempt — manual (admin or merchant send-now), bulk (admin send-all-overdue), or scheduler (automated cron)')
 }).and(zod.object({
   "businessName": zod.string().nullish().describe('Merchant\'s business name'),
   "merchantEmail": zod.string().nullish().describe('Merchant\'s email address')
@@ -1914,7 +1917,8 @@ export const GetAdminMerchantReportScheduleHistoryResponse = zod.object({
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
-  "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated')
+  "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
+  "triggeredBy": zod.string().nullish().describe('What triggered this delivery attempt — manual (admin or merchant send-now), bulk (admin send-all-overdue), or scheduler (automated cron)')
 }))
 })
 

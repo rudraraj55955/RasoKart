@@ -160,6 +160,26 @@ function toLocalDatetimeInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function TriggeredByBadge({ value }: { value: string | null | undefined }) {
+  if (!value) return <span className="text-xs text-muted-foreground/50">—</span>;
+  if (value === "manual") return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-sky-400 bg-sky-400/10 rounded px-1.5 py-0.5">
+      <Send className="w-2.5 h-2.5" />Manual
+    </span>
+  );
+  if (value === "bulk") return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-400 bg-violet-400/10 rounded px-1.5 py-0.5">
+      <Send className="w-2.5 h-2.5" />Bulk
+    </span>
+  );
+  if (value === "scheduler") return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400 bg-amber-400/10 rounded px-1.5 py-0.5">
+      <CalendarClock className="w-2.5 h-2.5" />Scheduler
+    </span>
+  );
+  return <span className="text-xs text-muted-foreground capitalize">{value}</span>;
+}
+
 function ScheduleHistoryDialog({
   merchantId,
   merchantName,
@@ -192,7 +212,7 @@ function ScheduleHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+      <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
             <History className="w-4 h-4 text-primary" />
@@ -216,6 +236,7 @@ function ScheduleHistoryDialog({
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Date &amp; Time</TableHead>
+                  <TableHead className="text-xs">Triggered By</TableHead>
                   <TableHead className="text-xs">Outcome</TableHead>
                   <TableHead className="text-xs">Failure Reason</TableHead>
                 </TableRow>
@@ -228,6 +249,9 @@ function ScheduleHistoryDialog({
                       <span className="ml-1 text-muted-foreground/60">
                         ({formatDistanceToNow(new Date(log.attemptedAt), { addSuffix: true })})
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      <TriggeredByBadge value={(log as any).triggeredBy} />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
@@ -972,6 +996,7 @@ function DeliveryHistoryPanel() {
 
   const [merchantFilter, setMerchantFilter] = useState(urlMerchantId);
   const [successFilter, setSuccessFilter] = useState("all");
+  const [triggeredByFilter, setTriggeredByFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [reEnabling, setReEnabling] = useState<number | null>(null);
@@ -979,6 +1004,7 @@ function DeliveryHistoryPanel() {
   const params = {
     merchantId: merchantFilter !== "all" ? parseInt(merchantFilter) : undefined,
     success: successFilter !== "all" ? (successFilter as "true" | "false") : undefined,
+    triggeredBy: triggeredByFilter !== "all" ? (triggeredByFilter as "manual" | "bulk" | "scheduler") : undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     limit: 200,
@@ -1005,11 +1031,12 @@ function DeliveryHistoryPanel() {
     }
   };
 
-  const hasFilters = merchantFilter !== "all" || successFilter !== "all" || !!dateFrom || !!dateTo;
+  const hasFilters = merchantFilter !== "all" || successFilter !== "all" || triggeredByFilter !== "all" || !!dateFrom || !!dateTo;
 
   const clearFilters = () => {
     setMerchantFilter("all");
     setSuccessFilter("all");
+    setTriggeredByFilter("all");
     setDateFrom("");
     setDateTo("");
   };
@@ -1064,7 +1091,7 @@ function DeliveryHistoryPanel() {
           {(isLoading || isFetching) && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
         </div>
         <p className="text-xs text-muted-foreground">
-          Per-attempt delivery log across all merchants — failures, auto-pauses, and successes in one view.
+          Per-attempt delivery log across all merchants — failures, auto-pauses, and successes in one view. Each attempt records how it was triggered (manual send, bulk overdue sweep, or automated scheduler).
         </p>
         {!isLoading && logs.length > 0 && (failureCount > 0 || autoPauseCount > 0) && (
           <div className="flex items-center gap-3 pt-1">
@@ -1110,6 +1137,23 @@ function DeliveryHistoryPanel() {
               </SelectItem>
               <SelectItem value="false">
                 <span className="flex items-center gap-1.5 text-red-400"><XCircle className="w-3 h-3" />Failed</span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={triggeredByFilter} onValueChange={setTriggeredByFilter}>
+            <SelectTrigger className="h-8 w-[140px] text-xs">
+              <SelectValue placeholder="All triggers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All triggers</SelectItem>
+              <SelectItem value="manual">
+                <span className="flex items-center gap-1.5 text-sky-400"><Send className="w-3 h-3" />Manual</span>
+              </SelectItem>
+              <SelectItem value="bulk">
+                <span className="flex items-center gap-1.5 text-violet-400"><Send className="w-3 h-3" />Bulk</span>
+              </SelectItem>
+              <SelectItem value="scheduler">
+                <span className="flex items-center gap-1.5 text-amber-400"><CalendarClock className="w-3 h-3" />Scheduler</span>
               </SelectItem>
             </SelectContent>
           </Select>
@@ -1280,6 +1324,7 @@ function DeliveryHistoryPanel() {
                   <TableHead>Attempted At</TableHead>
                   <TableHead>Merchant</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Triggered By</TableHead>
                   <TableHead>Frequency</TableHead>
                   <TableHead>Format</TableHead>
                   <TableHead>Outcome</TableHead>
@@ -1299,6 +1344,9 @@ function DeliveryHistoryPanel() {
                     </TableCell>
                     <TableCell className="font-medium text-sm">{log.businessName ?? `Merchant #${log.merchantId}`}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{log.merchantEmail ?? "—"}</TableCell>
+                    <TableCell>
+                      <TriggeredByBadge value={(log as any).triggeredBy} />
+                    </TableCell>
                     <TableCell>
                       {log.frequency ? (
                         <FrequencyBadge frequency={log.frequency as "weekly" | "monthly"} />

@@ -379,6 +379,7 @@ function buildEmailHtml(
 async function handleReportFailure(
   schedule: typeof reportSchedulesTable.$inferSelect,
   failureReason?: string,
+  triggeredBy?: string,
 ): Promise<void> {
   const newConsecutiveFailures = schedule.consecutiveFailures + 1;
   const shouldAutoPause = newConsecutiveFailures >= schedule.autoPauseAfterFailures;
@@ -405,6 +406,7 @@ async function handleReportFailure(
     isAutoPause: false,
     frequency: schedule.frequency,
     format: schedule.format,
+    triggeredBy: triggeredBy ?? null,
   });
 
   if (shouldAutoPause) {
@@ -416,6 +418,7 @@ async function handleReportFailure(
       isAutoPause: true,
       frequency: schedule.frequency,
       format: schedule.format,
+      triggeredBy: triggeredBy ?? null,
     });
   }
 
@@ -493,6 +496,7 @@ export async function sendMerchantReport(
   schedule: typeof reportSchedulesTable.$inferSelect,
   merchantEmail: string,
   businessName: string,
+  triggeredBy?: string,
 ): Promise<boolean> {
   const { dateFrom, dateTo } = getDateRange(schedule.frequency);
 
@@ -536,11 +540,12 @@ export async function sendMerchantReport(
         isAutoPause: false,
         frequency: schedule.frequency,
         format: schedule.format,
+        triggeredBy: triggeredBy ?? null,
       });
-      logger.info({ scheduleId: schedule.id, merchantId: schedule.merchantId, txCount: transactions.length }, "Merchant report emailed successfully");
+      logger.info({ scheduleId: schedule.id, merchantId: schedule.merchantId, txCount: transactions.length, triggeredBy }, "Merchant report emailed successfully");
     } else {
       logger.warn({ scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to send merchant report email");
-      await handleReportFailure(schedule, "Email delivery failed — SMTP returned an error.").catch(notifyErr => {
+      await handleReportFailure(schedule, "Email delivery failed — SMTP returned an error.", triggeredBy).catch(notifyErr => {
         logger.error({ err: notifyErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to handle merchant report failure");
       });
     }
@@ -549,7 +554,7 @@ export async function sendMerchantReport(
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.error({ err, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Error sending merchant report");
-    await handleReportFailure(schedule, reason).catch(notifyErr => {
+    await handleReportFailure(schedule, reason, triggeredBy).catch(notifyErr => {
       logger.error({ err: notifyErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to handle merchant report failure after exception");
     });
     return false;
@@ -595,7 +600,7 @@ async function runDueReports(): Promise<void> {
         ? { ...schedule, consecutiveFailures: fresh.consecutiveFailures, autoPauseAfterFailures: fresh.autoPauseAfterFailures, nextRunAt: fresh.nextRunAt }
         : schedule;
 
-      await sendMerchantReport(freshSchedule, email, businessName).catch(err => {
+      await sendMerchantReport(freshSchedule, email, businessName, "scheduler").catch(err => {
         logger.error({ err, scheduleId: schedule.id }, "Merchant report scheduler send failed");
       });
     }

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetAdminReportDeliveryHistorySuccess } from './getAdminReportDeliveryHistorySuccess';
+import type { GetAdminReportDeliveryHistoryTriggeredBy } from './getAdminReportDeliveryHistoryTriggeredBy';
 
 export type GetAdminReportDeliveryHistoryParams = {
 /**
@@ -24,6 +25,10 @@ dateTo?: string;
  * Filter by outcome (omit for all)
  */
 success?: GetAdminReportDeliveryHistorySuccess;
+/**
+ * Filter by what triggered the delivery — manual (send-now), bulk (send-all-overdue), or scheduler (automated cron)
+ */
+triggeredBy?: GetAdminReportDeliveryHistoryTriggeredBy;
 /**
  * Maximum rows to return (default 100, max 200)
  * @minimum 1

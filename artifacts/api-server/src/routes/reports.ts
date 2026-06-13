@@ -537,7 +537,7 @@ router.post("/schedule/send-now", async (req, res, next) => {
       return;
     }
 
-    const sent = await sendMerchantReport(scheduleRow, merchantRow.email, merchantRow.businessName);
+    const sent = await sendMerchantReport(scheduleRow, merchantRow.email, merchantRow.businessName, "manual");
 
     if (!sent) {
       res.status(502).json({ error: "Failed to send report — check SMTP configuration" });
@@ -555,7 +555,7 @@ router.post("/schedule/send-now", async (req, res, next) => {
 // GET /api/reports/schedules/delivery-history — admin: consolidated delivery log across all merchants
 router.get("/schedules/delivery-history", requireAdmin, async (req, res, next) => {
   try {
-    const { merchantId, dateFrom, dateTo, success } = req.query as Record<string, string>;
+    const { merchantId, dateFrom, dateTo, success, triggeredBy } = req.query as Record<string, string>;
 
     const rawLimit = parseInt((req.query["limit"] as string) ?? "100");
     const limit = isNaN(rawLimit) ? 100 : Math.min(Math.max(rawLimit, 1), 200);
@@ -570,6 +570,9 @@ router.get("/schedules/delivery-history", requireAdmin, async (req, res, next) =
     }
     if (success === "true") conditions.push(eq(reportDeliveryLogsTable.success, true));
     if (success === "false") conditions.push(eq(reportDeliveryLogsTable.success, false));
+    if (triggeredBy && ["manual", "bulk", "scheduler"].includes(triggeredBy)) {
+      conditions.push(eq(reportDeliveryLogsTable.triggeredBy, triggeredBy));
+    }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -664,7 +667,7 @@ router.post("/schedules/send-all-overdue", requireAdmin, async (req, res, next) 
 
     for (const row of overdue) {
       try {
-        const ok = await sendMerchantReport(row.schedule, row.email, row.businessName);
+        const ok = await sendMerchantReport(row.schedule, row.email, row.businessName, "bulk");
         if (ok) {
           sent++;
         } else {
@@ -951,7 +954,7 @@ router.post("/schedules/:merchantId/send-now", requireAdmin, async (req, res, ne
       return;
     }
 
-    const sent = await sendMerchantReport(scheduleRow, merchantRow.email, merchantRow.businessName);
+    const sent = await sendMerchantReport(scheduleRow, merchantRow.email, merchantRow.businessName, "manual");
 
     if (!sent) {
       res.status(502).json({ error: "Failed to send report — check SMTP configuration" });

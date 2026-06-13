@@ -163,6 +163,7 @@ export * from './getAdminMerchantReportScheduleHistoryParams';
 export * from './getAdminReportDeliveryHistory200';
 export * from './getAdminReportDeliveryHistoryParams';
 export * from './getAdminReportDeliveryHistorySuccess';
+export * from './getAdminReportDeliveryHistoryTriggeredBy';
 export * from './getCallbackSecretHistoryParams';
 export * from './getLedgerBackfillLastRun200';
 export * from './getMerchantsWebhookFailureCountsParams';
