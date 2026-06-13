@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useSearch, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -70,7 +70,17 @@ import {
   AlertCircle,
   PauseCircle,
 } from "lucide-react";
-import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths, eachDayOfInterval, parseISO } from "date-fns";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 import { toast } from "sonner";
 
 const DATE_PRESETS = [
@@ -816,6 +826,44 @@ function DeliveryHistoryPanel() {
   const failureCount = logs.filter((l) => !l.success).length;
   const autoPauseCount = logs.filter((l) => l.isAutoPause).length;
 
+  const merchantChartData = useMemo(() => {
+    const map = new Map<string, { merchant: string; success: number; failed: number }>();
+    for (const log of logs) {
+      const name = log.businessName ?? `Merchant #${log.merchantId}`;
+      const entry = map.get(name) ?? { merchant: name, success: 0, failed: 0 };
+      if (log.success) entry.success++;
+      else entry.failed++;
+      map.set(name, entry);
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.failed - a.failed || b.success - a.success)
+      .slice(0, 12);
+  }, [logs]);
+
+  const timelineChartData = useMemo(() => {
+    if (logs.length === 0) return [];
+    const cutoff = subDays(new Date(), 29);
+    const recentLogs = logs.filter((l) => new Date(l.attemptedAt) >= cutoff);
+    if (recentLogs.length === 0) return [];
+    const dayMap = new Map<string, { date: string; success: number; failed: number }>();
+    const days = eachDayOfInterval({ start: cutoff, end: new Date() });
+    for (const d of days) {
+      const key = format(d, "dd MMM");
+      dayMap.set(key, { date: key, success: 0, failed: 0 });
+    }
+    for (const log of recentLogs) {
+      const key = format(parseISO(log.attemptedAt), "dd MMM");
+      const entry = dayMap.get(key);
+      if (entry) {
+        if (log.success) entry.success++;
+        else entry.failed++;
+      }
+    }
+    return Array.from(dayMap.values());
+  }, [logs]);
+
+  const showCharts = !isLoading && logs.length > 0;
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -902,6 +950,123 @@ function DeliveryHistoryPanel() {
             {!isLoading && `${logs.length.toLocaleString("en-IN")} attempt${logs.length !== 1 ? "s" : ""}`}
           </span>
         </div>
+
+        {showCharts && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-4 py-4 border-b border-border">
+            {/* Per-merchant success/failure bar chart */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                <BarChart3 className="w-3.5 h-3.5 text-primary" />
+                Success vs Failure per Merchant
+              </p>
+              <ResponsiveContainer width="100%" height={Math.max(120, merchantChartData.length * 36)}>
+                <BarChart
+                  layout="vertical"
+                  data={merchantChartData}
+                  margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
+                  barCategoryGap="28%"
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    allowDecimals={false}
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="merchant"
+                    width={110}
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 15) + "…" : v}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted)/0.15)" }}
+                    contentStyle={{
+                      background: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 6,
+                      fontSize: 11,
+                    }}
+                    formatter={(value: number, name: string) => [
+                      value,
+                      name === "success" ? "Delivered" : "Failed",
+                    ]}
+                    labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600, marginBottom: 4 }}
+                  />
+                  <Legend
+                    iconType="square"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: 10, paddingTop: 8 }}
+                    formatter={(value: string) => value === "success" ? "Delivered" : "Failed"}
+                  />
+                  <Bar dataKey="success" name="success" stackId="a" fill="hsl(142 71% 45%)" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="failed" name="failed" stackId="a" fill="hsl(0 84% 60%)" radius={[0, 3, 3, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Timeline: failures over last 30 days */}
+            {timelineChartData.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <CalendarDays className="w-3.5 h-3.5 text-primary" />
+                  Delivery Timeline — last 30 days
+                </p>
+                <ResponsiveContainer width="100%" height={Math.max(120, merchantChartData.length * 36)}>
+                  <BarChart
+                    data={timelineChartData}
+                    margin={{ top: 0, right: 8, left: -20, bottom: 24 }}
+                    barCategoryGap="20%"
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={Math.floor(timelineChartData.length / 7)}
+                      angle={-40}
+                      textAnchor="end"
+                      dy={4}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "hsl(var(--muted)/0.15)" }}
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 6,
+                        fontSize: 11,
+                      }}
+                      formatter={(value: number, name: string) => [
+                        value,
+                        name === "success" ? "Delivered" : "Failed",
+                      ]}
+                      labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600, marginBottom: 4 }}
+                    />
+                    <Legend
+                      iconType="square"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 10, paddingTop: 8 }}
+                      formatter={(value: string) => value === "success" ? "Delivered" : "Failed"}
+                    />
+                    <Bar dataKey="success" name="success" stackId="t" fill="hsl(142 71% 45%)" />
+                    <Bar dataKey="failed" name="failed" stackId="t" fill="hsl(0 84% 60%)" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
