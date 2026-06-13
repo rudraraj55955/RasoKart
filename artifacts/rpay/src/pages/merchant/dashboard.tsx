@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink, useGetCallbackSecret } from "@workspace/api-client-react";
+import { useState, useEffect } from "react";
+import { useGetDashboardStats, useGetDashboardChart, useGetMe, useGetMyPlan, useGetMyPlanUsage, useListMerchantConnections, useUpdateMerchantConnection, getListMerchantConnectionsQueryKey, listPaymentLinks, ListPaymentLinksStatus, type PaymentLink, useGetCallbackSecret, useGetKycSummary } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert, BadgeCheck, X } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";
@@ -165,6 +165,22 @@ export default function MerchantDashboard() {
     },
   });
 
+  const merchantId = (user as any)?.merchantId as number | undefined;
+  const { data: kycSummary } = useGetKycSummary(merchantId ?? 0, {
+    query: { enabled: !!merchantId, queryKey: ["/api/kyc/summary", merchantId] },
+  });
+
+  const kycDismissKey = user?.id && kycSummary
+    ? `rasokart_kyc_banner_${user.id}_${kycSummary.pendingCount}_${kycSummary.rejectedCount}_${kycSummary.approvedCount}_${kycSummary.submittedDocTypes.length}`
+    : null;
+  const [kycBannerDismissed, setKycBannerDismissed] = useState(false);
+  useEffect(() => {
+    if (!kycDismissKey) return;
+    setKycBannerDismissed(localStorage.getItem(kycDismissKey) === "1");
+  }, [kycDismissKey]);
+
+  const showKycBanner = kycSummary != null && !kycSummary.isVerified && !kycBannerDismissed;
+
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
 
   const secretAgeInDays = secretStatus?.isSet && secretStatus.lastRotatedAt != null
@@ -182,7 +198,15 @@ export default function MerchantDashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Welcome, {user?.name || "Merchant"}</h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-3xl font-bold tracking-tight">Welcome, {user?.name || "Merchant"}</h1>
+          {kycSummary?.isVerified && (
+            <span className="flex items-center gap-1 text-xs font-semibold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-1 leading-none">
+              <BadgeCheck className="w-3.5 h-3.5" />
+              KYC Verified
+            </span>
+          )}
+        </div>
         <p className="text-muted-foreground">Overview of your deposit collection activity.</p>
       </div>
 
@@ -279,6 +303,56 @@ export default function MerchantDashboard() {
             <Link href="/merchant/webhook">
               <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 shrink-0">Rotate Secret</Button>
             </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* KYC Banner */}
+      {showKycBanner && kycSummary && (
+        <Card className={kycSummary.rejectedCount > 0 ? "border-rose-500/40 bg-rose-950/20" : "border-blue-500/40 bg-blue-950/20"}>
+          <CardContent className="py-4 flex items-center gap-3">
+            <BadgeCheck className={`w-5 h-5 shrink-0 ${kycSummary.rejectedCount > 0 ? "text-rose-400" : "text-blue-400"}`} />
+            <div className="flex-1">
+              <p className={`text-sm font-medium ${kycSummary.rejectedCount > 0 ? "text-rose-400" : "text-blue-400"}`}>
+                {kycSummary.rejectedCount > 0
+                  ? "KYC Action Required"
+                  : kycSummary.pendingCount > 0
+                  ? "KYC Verification In Progress"
+                  : "Complete Your KYC Verification"}
+              </p>
+              <p className={`text-xs ${kycSummary.rejectedCount > 0 ? "text-rose-400/70" : "text-blue-400/70"}`}>
+                {kycSummary.rejectedCount > 0
+                  ? `${kycSummary.rejectedCount} document${kycSummary.rejectedCount !== 1 ? "s" : ""} need${kycSummary.rejectedCount === 1 ? "s" : ""} attention. Please re-submit to continue verification.`
+                  : kycSummary.pendingCount > 0
+                  ? `${kycSummary.pendingCount} document${kycSummary.pendingCount !== 1 ? "s" : ""} under review. We'll notify you once verified.`
+                  : "Submit your verification documents to unlock full platform access."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link href="/merchant/verification">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={kycSummary.rejectedCount > 0
+                    ? "border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hidden sm:flex"
+                    : "border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hidden sm:flex"}
+                >
+                  {kycSummary.rejectedCount > 0 ? "Fix Now" : kycSummary.pendingCount > 0 ? "View Status" : "Start KYC"}
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                variant="ghost"
+                className={`h-8 w-8 p-0 ${kycSummary.rejectedCount > 0 ? "text-rose-400/60 hover:text-rose-400 hover:bg-rose-500/10" : "text-blue-400/60 hover:text-blue-400 hover:bg-blue-500/10"}`}
+                onClick={() => {
+                  if (kycDismissKey) localStorage.setItem(kycDismissKey, "1");
+                  setKycBannerDismissed(true);
+                }}
+                aria-label="Dismiss KYC verification banner"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
