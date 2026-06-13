@@ -386,7 +386,7 @@ function SchedulePanel() {
               <Switch
                 checked={schedule.isActive}
                 onCheckedChange={handleToggle}
-                disabled={upsert.isPending}
+                disabled={upsert.isPending || isAutoPaused}
               />
             </div>
           )}
@@ -412,7 +412,7 @@ function SchedulePanel() {
                 onClick={handleReenable}
                 disabled={reenable.isPending}
               >
-                Re-enable schedule
+                {reenable.isPending ? "Resuming…" : "Resume schedule"}
               </button>
             </div>
           </div>
@@ -482,13 +482,13 @@ function SchedulePanel() {
           )}
         </div>
 
-        {schedule && !schedule.isActive && (
+        {schedule && !schedule.isActive && !isAutoPaused && (
           <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-amber-300">Schedule paused</p>
               <p className="text-xs text-amber-400/80 mt-0.5">
-                Your scheduled reports have been paused due to repeated delivery failures. Re-enable to resume automatic delivery.
+                This schedule is currently paused. Use the toggle above or the button here to resume automatic delivery.
               </p>
             </div>
             <Button
@@ -501,7 +501,7 @@ function SchedulePanel() {
               {reenable.isPending
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 : <PlayCircle className="w-3.5 h-3.5" />}
-              Re-enable schedule
+              Resume schedule
             </Button>
           </div>
         )}
