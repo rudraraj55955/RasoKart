@@ -132,6 +132,10 @@ interface ReportsSavedFilter {
 const REPORTS_SAVED_FILTERS_KEY = "rasokart_merchant_reports_saved_filters";
 const CUSTOM_DATE_PRESETS_KEY = "rasokart_custom_date_presets";
 const DATE_LOCK_KEY = "rasokart_reports_date_locked";
+const TX_DATE_FROM_KEY = "rasokart_reports_tx_date_from";
+const TX_DATE_TO_KEY = "rasokart_reports_tx_date_to";
+const STL_DATE_FROM_KEY = "rasokart_reports_stl_date_from";
+const STL_DATE_TO_KEY = "rasokart_reports_stl_date_to";
 
 interface CustomDatePreset {
   id: string;
@@ -529,8 +533,14 @@ export default function MerchantReports() {
   const [activeTab, setActiveTab] = useState("transactions");
 
   // Transaction filter state
-  const [txDateFrom, setTxDateFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
-  const [txDateTo, setTxDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [txDateFrom, setTxDateFrom] = useState(() => {
+    try { const v = localStorage.getItem(TX_DATE_FROM_KEY); if (v) return v; } catch {}
+    return format(startOfMonth(new Date()), "yyyy-MM-dd");
+  });
+  const [txDateTo, setTxDateTo] = useState(() => {
+    try { const v = localStorage.getItem(TX_DATE_TO_KEY); if (v) return v; } catch {}
+    return format(new Date(), "yyyy-MM-dd");
+  });
   const [type, setType] = useState("all");
   const [txStatus, setTxStatus] = useState("all");
   const [connectionProvider, setConnectionProvider] = useState("all");
@@ -539,8 +549,14 @@ export default function MerchantReports() {
   const [txExporting, setTxExporting] = useState<"pdf" | "xlsx" | null>(null);
 
   // Settlement filter state
-  const [stlDateFrom, setStlDateFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
-  const [stlDateTo, setStlDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [stlDateFrom, setStlDateFrom] = useState(() => {
+    try { const v = localStorage.getItem(STL_DATE_FROM_KEY); if (v) return v; } catch {}
+    return format(startOfMonth(new Date()), "yyyy-MM-dd");
+  });
+  const [stlDateTo, setStlDateTo] = useState(() => {
+    try { const v = localStorage.getItem(STL_DATE_TO_KEY); if (v) return v; } catch {}
+    return format(new Date(), "yyyy-MM-dd");
+  });
   const [stlStatus, setStlStatus] = useState("all");
   const [settlementId, setSettlementId] = useState("");
   const [stlActivePreset, setStlActivePreset] = useState<string | null>(null);
@@ -631,6 +647,12 @@ export default function MerchantReports() {
       setStlActivePreset(txActivePreset);
     }
   };
+
+  // Persist date range values to localStorage whenever they change
+  useEffect(() => { try { localStorage.setItem(TX_DATE_FROM_KEY, txDateFrom); } catch {} }, [txDateFrom]);
+  useEffect(() => { try { localStorage.setItem(TX_DATE_TO_KEY, txDateTo); } catch {} }, [txDateTo]);
+  useEffect(() => { try { localStorage.setItem(STL_DATE_FROM_KEY, stlDateFrom); } catch {} }, [stlDateFrom]);
+  useEffect(() => { try { localStorage.setItem(STL_DATE_TO_KEY, stlDateTo); } catch {} }, [stlDateTo]);
 
   // Rename/drag state for custom date preset chips (shared across both tabs)
   const [renamingPresetId, setRenamingPresetId] = useState<string | null>(null);
