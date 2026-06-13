@@ -1172,6 +1172,8 @@ function DeliveryHistoryPanel() {
                   <TableHead>Attempted At</TableHead>
                   <TableHead>Merchant</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Frequency</TableHead>
+                  <TableHead>Format</TableHead>
                   <TableHead>Outcome</TableHead>
                   <TableHead>Auto-pause</TableHead>
                   <TableHead>Failure Reason</TableHead>
@@ -1189,6 +1191,20 @@ function DeliveryHistoryPanel() {
                     </TableCell>
                     <TableCell className="font-medium text-sm">{log.businessName ?? `Merchant #${log.merchantId}`}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{log.merchantEmail ?? "—"}</TableCell>
+                    <TableCell>
+                      {log.frequency ? (
+                        <FrequencyBadge frequency={log.frequency as "weekly" | "monthly"} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {log.format ? (
+                        <FormatBadge format={log.format as "xlsx" | "pdf"} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {log.success ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
