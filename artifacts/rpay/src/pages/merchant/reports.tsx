@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
 import {
   useGetTransactionReport,
   useGetSettlementReport,
@@ -398,6 +399,17 @@ export default function MerchantReports() {
   const FILTER_CONTEXT = "merchant_reports";
   const filtersInitialized = useRef(false);
   const [savedFilters, setSavedFilters] = useState<ReportsSavedFilter[]>(() => loadReportsFilters());
+
+  useCrossTabSync([
+    {
+      key: REPORTS_SAVED_FILTERS_KEY,
+      onUpdate: (raw) => {
+        try { setSavedFilters(raw ? (JSON.parse(raw) as ReportsSavedFilter[]) : []); }
+        catch { setSavedFilters([]); }
+      },
+    },
+  ]);
+
   const [showAllFilters, setShowAllFilters] = useState(false);
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveFilterName, setSaveFilterName] = useState("");
