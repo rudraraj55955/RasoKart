@@ -822,14 +822,16 @@ export default function MerchantReports() {
   ];
 
   const txCountResults = useQueries({
-    queries: txPresetRanges.map(({ from, to }) =>
-      getGetTransactionReportCountQueryOptions({ dateFrom: from, dateTo: to, ...txCountNonDateFilters })
-    ),
+    queries: txPresetRanges.map(({ from, to }) => ({
+      ...getGetTransactionReportCountQueryOptions({ dateFrom: from, dateTo: to, ...txCountNonDateFilters }),
+      staleTime: 60_000,
+    })),
   });
   const stlCountResults = useQueries({
-    queries: stlPresetRanges.map(({ from, to }) =>
-      getGetSettlementReportCountQueryOptions({ dateFrom: from, dateTo: to, ...stlCountNonDateFilters })
-    ),
+    queries: stlPresetRanges.map(({ from, to }) => ({
+      ...getGetSettlementReportCountQueryOptions({ dateFrom: from, dateTo: to, ...stlCountNonDateFilters }),
+      staleTime: 60_000,
+    })),
   });
 
   const txCountMap: Record<string, { count: number | undefined; loading: boolean }> = {};
