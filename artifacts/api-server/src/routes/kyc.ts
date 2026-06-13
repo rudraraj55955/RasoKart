@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, merchantKycTable, merchantsTable, usersTable } from "@workspace/db";
-import { eq, and, count, inArray } from "drizzle-orm";
+import { db, merchantKycTable, merchantsTable, usersTable, kycReviewHistoryTable } from "@workspace/db";
+import { eq, and, count, inArray, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { recordUploadIntent, consumeUploadIntent } from "../lib/uploadIntentStore";
@@ -219,16 +219,29 @@ router.patch("/:id/review", requireAdmin, async (req, res) => {
     return;
   }
 
-  const [updated] = await db
-    .update(merchantKycTable)
-    .set({
+  // Update document status and append history in a single transaction so
+  // the audit record is guaranteed to exist whenever the decision is applied.
+  const [updated] = await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(merchantKycTable)
+      .set({
+        status,
+        adminNote: adminNote ?? null,
+        reviewedBy: user.id,
+        reviewedAt: new Date(),
+      })
+      .where(eq(merchantKycTable.id, id))
+      .returning();
+
+    await tx.insert(kycReviewHistoryTable).values({
+      kycId: id,
+      reviewedBy: user.id,
       status,
       adminNote: adminNote ?? null,
-      reviewedBy: user.id,
-      reviewedAt: new Date(),
-    })
-    .where(eq(merchantKycTable.id, id))
-    .returning();
+    });
+
+    return rows;
+  });
 
   // Notify the merchant about the review decision
   const docTypeLabels: Record<string, string> = {
@@ -310,6 +323,37 @@ router.patch("/:id/review", requireAdmin, async (req, res) => {
   }
 
   res.json(serializeKycDoc(updated));
+});
+
+// GET /api/kyc/:id/review-history — review history for a KYC document (admin only)
+// Intentionally does NOT require the KYC document to still exist so that audit
+// history remains accessible even after a document has been deleted/resubmitted.
+router.get("/:id/review-history", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+
+  const history = await db
+    .select({
+      id: kycReviewHistoryTable.id,
+      kycId: kycReviewHistoryTable.kycId,
+      reviewedBy: kycReviewHistoryTable.reviewedBy,
+      reviewerEmail: usersTable.email,
+      reviewerName: usersTable.name,
+      status: kycReviewHistoryTable.status,
+      adminNote: kycReviewHistoryTable.adminNote,
+      createdAt: kycReviewHistoryTable.createdAt,
+    })
+    .from(kycReviewHistoryTable)
+    .leftJoin(usersTable, eq(kycReviewHistoryTable.reviewedBy, usersTable.id))
+    .where(eq(kycReviewHistoryTable.kycId, id))
+    .orderBy(desc(kycReviewHistoryTable.createdAt));
+
+  res.json({
+    data: history.map(h => ({
+      ...h,
+      createdAt: h.createdAt.toISOString(),
+    })),
+    total: history.length,
+  });
 });
 
 // GET /api/kyc/summary/:merchantId — KYC summary for a merchant

@@ -77,6 +77,20 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS merchant_kyc_merchant_id_idx ON merchant_kyc(merchant_id);
     CREATE INDEX IF NOT EXISTS merchant_kyc_status_idx ON merchant_kyc(status);
 
+    -- ── kyc_review_history ─────────────────────────────────────────────────────
+    -- Append-only audit trail of every approve/reject decision on a KYC document.
+    -- No FK cascade on kyc_id: history rows intentionally survive document deletion
+    -- so admins can audit past decisions even after a merchant resubmits.
+    CREATE TABLE IF NOT EXISTS kyc_review_history (
+      id SERIAL PRIMARY KEY,
+      kyc_id INTEGER NOT NULL,
+      reviewed_by INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      admin_note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS kyc_review_history_kyc_id_idx ON kyc_review_history(kyc_id);
+
     -- ── module_controls ────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS module_controls (
       id SERIAL PRIMARY KEY,

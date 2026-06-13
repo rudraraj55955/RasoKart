@@ -6432,6 +6432,28 @@ export const ReviewKycDocumentResponse = zod.object({
 
 
 /**
+ * @summary Get review history for a KYC document (admin only)
+ */
+export const GetKycReviewHistoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetKycReviewHistoryResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "kycId": zod.number(),
+  "reviewedBy": zod.number(),
+  "reviewerEmail": zod.string().nullish(),
+  "reviewerName": zod.string().nullish(),
+  "status": zod.string(),
+  "adminNote": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number()
+})
+
+
+/**
  * @summary Get KYC verification summary for a merchant
  */
 export const GetKycSummaryParams = zod.object({

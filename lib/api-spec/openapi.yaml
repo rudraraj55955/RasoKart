@@ -6981,6 +6981,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /kyc/{id}/review-history:
+    get:
+      operationId: getKycReviewHistory
+      tags: [kyc]
+      summary: Get review history for a KYC document (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Review history entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycReviewHistoryResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /kyc/summary/{merchantId}:
     get:
       operationId: getKycSummary
@@ -7261,6 +7300,41 @@ components:
           type: array
           items:
             type: string
+
+    KycReviewHistoryEntry:
+      type: object
+      required: [id, kycId, reviewedBy, status, createdAt]
+      properties:
+        id:
+          type: integer
+        kycId:
+          type: integer
+        reviewedBy:
+          type: integer
+        reviewerEmail:
+          type: string
+          nullable: true
+        reviewerName:
+          type: string
+          nullable: true
+        status:
+          type: string
+        adminNote:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    KycReviewHistoryResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/KycReviewHistoryEntry"
+        total:
+          type: integer
 
     GithubSyncConfig:
       type: object

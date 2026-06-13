@@ -2,9 +2,10 @@ import { useState } from "react";
 import {
   useListKycDocuments,
   useReviewKycDocument,
-  useDeleteKycDocument,
+  useGetKycReviewHistory,
   getListKycDocumentsQueryKey,
   type KycDocument,
+  type KycReviewHistoryEntry,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +16,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Eye, Loader2, FileText, Search, ShieldCheck, Clock, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Eye, Loader2, FileText, Search, ShieldCheck, Clock, AlertTriangle, History } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -110,12 +112,97 @@ function ReviewDialog({ doc, action, onClose, onConfirm }: ReviewDialogProps) {
   );
 }
 
+interface ReviewHistorySheetProps {
+  doc: KycDocument | null;
+  onClose: () => void;
+}
+
+function ReviewHistorySheet({ doc, onClose }: ReviewHistorySheetProps) {
+  const { data, isLoading } = useGetKycReviewHistory(doc?.id ?? 0, {
+    query: { enabled: !!doc, queryKey: ["getKycReviewHistory", doc?.id ?? 0] },
+  });
+
+  const entries: KycReviewHistoryEntry[] = data?.data ?? [];
+
+  return (
+    <Sheet open={!!doc} onOpenChange={() => onClose()}>
+      <SheetContent className="sm:max-w-lg w-full overflow-y-auto">
+        <SheetHeader className="mb-4">
+          <SheetTitle className="flex items-center gap-2">
+            <History className="w-4 h-4" />
+            Review History
+          </SheetTitle>
+          {doc && (
+            <p className="text-sm text-muted-foreground">
+              {DOC_TYPE_LABELS[doc.docType] ?? doc.docType} — Merchant #{doc.merchantId}
+            </p>
+          )}
+        </SheetHeader>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <History className="w-8 h-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No review decisions recorded yet.</p>
+            <p className="text-xs mt-1">This document has not been reviewed.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {entries.map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded-lg border border-border/50 p-3 space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  {entry.status === "approved" ? (
+                    <div className="flex items-center gap-1.5 text-emerald-400 text-sm font-medium">
+                      <CheckCircle className="w-4 h-4" />
+                      Approved
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-rose-400 text-sm font-medium">
+                      <XCircle className="w-4 h-4" />
+                      Rejected
+                    </div>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {format(new Date(entry.createdAt), "dd MMM yyyy, HH:mm")}
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Reviewed by{" "}
+                  <span className="text-foreground font-medium">
+                    {entry.reviewerName ?? entry.reviewerEmail ?? `Admin #${entry.reviewedBy}`}
+                  </span>
+                  {entry.reviewerEmail && entry.reviewerName && (
+                    <span className="ml-1">({entry.reviewerEmail})</span>
+                  )}
+                </div>
+                {entry.adminNote && (
+                  <div className="rounded bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
+                    <span className="text-foreground/60 font-medium">Note: </span>
+                    {entry.adminNote}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export default function AdminKycReview() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("pending");
   const [merchantIdFilter, setMerchantIdFilter] = useState("");
   const [reviewDoc, setReviewDoc] = useState<KycDocument | null>(null);
   const [reviewAction, setReviewAction] = useState<"approved" | "rejected" | null>(null);
+  const [historyDoc, setHistoryDoc] = useState<KycDocument | null>(null);
 
   const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -245,28 +332,40 @@ export default function AdminKycReview() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {doc.status === "pending" && (
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                            onClick={() => openReview(doc, "approved")}
-                          >
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
-                            onClick={() => openReview(doc, "rejected")}
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            Reject
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-muted-foreground hover:text-foreground"
+                          onClick={() => setHistoryDoc(doc)}
+                          title="View review history"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                          History
+                        </Button>
+                        {doc.status === "pending" && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+                              onClick={() => openReview(doc, "approved")}
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+                              onClick={() => openReview(doc, "rejected")}
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -281,6 +380,11 @@ export default function AdminKycReview() {
         action={reviewAction}
         onClose={closeReview}
         onConfirm={handleReview}
+      />
+
+      <ReviewHistorySheet
+        doc={historyDoc}
+        onClose={() => setHistoryDoc(null)}
       />
     </div>
   );

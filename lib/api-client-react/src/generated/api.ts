@@ -136,6 +136,7 @@ import type {
   KycDocument,
   KycDocumentListResponse,
   KycDocumentSubmitInput,
+  KycReviewHistoryResponse,
   KycReviewInput,
   KycSummary,
   KycUploadUrlRequest,
@@ -21829,6 +21830,83 @@ export const useReviewKycDocument = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getReviewKycDocumentMutationOptions(options));
     }
+
+export const getGetKycReviewHistoryUrl = (id: number,) => {
+
+
+
+
+  return `/api/kyc/${id}/review-history`
+}
+
+/**
+ * @summary Get review history for a KYC document (admin only)
+ */
+export const getKycReviewHistory = async (id: number, options?: RequestInit): Promise<KycReviewHistoryResponse> => {
+
+  return customFetch<KycReviewHistoryResponse>(getGetKycReviewHistoryUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKycReviewHistoryQueryKey = (id: number,) => {
+    return [
+    `/api/kyc/${id}/review-history`
+    ] as const;
+    }
+
+
+export const getGetKycReviewHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getKycReviewHistory>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKycReviewHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKycReviewHistoryQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKycReviewHistory>>> = ({ signal }) => getKycReviewHistory(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKycReviewHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKycReviewHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getKycReviewHistory>>>
+export type GetKycReviewHistoryQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get review history for a KYC document (admin only)
+ */
+
+export function useGetKycReviewHistory<TData = Awaited<ReturnType<typeof getKycReviewHistory>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKycReviewHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKycReviewHistoryQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetKycSummaryUrl = (merchantId: number,) => {
 

@@ -175,6 +175,8 @@ export * from './knownLoginIpListResponse';
 export * from './kycDocument';
 export * from './kycDocumentListResponse';
 export * from './kycDocumentSubmitInput';
+export * from './kycReviewHistoryEntry';
+export * from './kycReviewHistoryResponse';
 export * from './kycReviewInput';
 export * from './kycSummary';
 export * from './kycUploadUrlRequest';

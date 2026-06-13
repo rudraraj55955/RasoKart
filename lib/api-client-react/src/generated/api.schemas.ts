@@ -57,6 +57,22 @@ export interface KycSummary {
   submittedDocTypes: string[];
 }
 
+export interface KycReviewHistoryEntry {
+  id: number;
+  kycId: number;
+  reviewedBy: number;
+  reviewerEmail?: string | null;
+  reviewerName?: string | null;
+  status: string;
+  adminNote?: string | null;
+  createdAt: string;
+}
+
+export interface KycReviewHistoryResponse {
+  data: KycReviewHistoryEntry[];
+  total: number;
+}
+
 export interface GithubSyncConfig {
   /** Whether the GitHub sync job is enabled */
   enabled: boolean;
