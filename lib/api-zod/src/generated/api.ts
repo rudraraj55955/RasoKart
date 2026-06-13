@@ -1381,6 +1381,56 @@ export const SearchByUtrResponse = zod.object({
 
 
 /**
+ * @summary Generate transaction report data (no pagination, up to 10,000 rows)
+ */
+export const GetTransactionReportQueryParams = zod.object({
+  "type": zod.enum(['deposit', 'withdrawal', 'all']).optional(),
+  "status": zod.enum(['pending', 'success', 'failed', 'all']).optional(),
+  "merchantId": zod.coerce.number().optional().describe('Admin only — scope report to a specific merchant'),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "amountMin": zod.coerce.number().optional(),
+  "amountMax": zod.coerce.number().optional(),
+  "connectionProvider": zod.enum(['phonepe', 'paytm', 'bharatpe', 'yono_sbi', 'hdfc_smarthub', 'upi_id']).optional(),
+  "source": zod.enum(['qr_code', 'virtual_account', 'payment_link', 'direct']).optional().describe('Filter by transaction source channel')
+})
+
+export const GetTransactionReportResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "virtualAccountId": zod.number().nullish(),
+  "qrCodeId": zod.number().nullish(),
+  "paymentLinkId": zod.number().nullish(),
+  "connectionId": zod.number().nullish(),
+  "connectionProvider": zod.string().nullish(),
+  "merchantName": zod.string().nullish(),
+  "type": zod.enum(['deposit', 'withdrawal']),
+  "status": zod.enum(['pending', 'success', 'failed']),
+  "amount": zod.number(),
+  "currency": zod.string(),
+  "utr": zod.string(),
+  "referenceId": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "metadata": zod.string().nullish(),
+  "provider": zod.string().nullish(),
+  "fee": zod.number().describe('Sum of fee ledger entries associated with this transaction'),
+  "settlementStatus": zod.string().describe('Status of the covering settlement if one exists, otherwise \'unsettled\''),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})),
+  "stats": zod.object({
+  "depositVolume": zod.number(),
+  "withdrawalVolume": zod.number(),
+  "successCount": zod.number(),
+  "failedCount": zod.number(),
+  "pendingCount": zod.number(),
+  "totalFees": zod.number().describe('Sum of all fees across matched transactions')
+})
+})
+
+
+/**
  * @summary List withdrawal requests
  */
 export const ListWithdrawalsQueryParams = zod.object({

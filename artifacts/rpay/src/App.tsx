@@ -81,6 +81,8 @@ import MerchantSecurity from "@/pages/merchant/security";
 import MerchantRasokartServices from "@/pages/merchant/rasokart-services";
 import MerchantVerification from "@/pages/merchant/verification";
 import AdminKycReview from "@/pages/admin/kyc-review";
+import MerchantReports from "@/pages/merchant/reports";
+import AdminReports from "@/pages/admin/reports";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -172,8 +174,12 @@ function Router() {
       <Route path="/admin/cashfree-payout"><AdminRoute component={AdminCashfreePayout} /></Route>
       <Route path="/admin/provider-integrations"><AdminRoute component={AdminProviderIntegrations} /></Route>
       <Route path="/admin/smart-routing"><AdminRoute component={AdminSmartRouting} /></Route>
+<<<<<<< HEAD
       <Route path="/admin/module-control"><AdminRoute component={AdminModuleControl} /></Route>
       <Route path="/admin/kyc-review"><AdminRoute component={AdminKycReview} /></Route>
+=======
+      <Route path="/admin/reports"><AdminRoute component={AdminReports} /></Route>
+>>>>>>> e3eee5ba (feat: Add transaction report generation with PDF and Excel export (#1407))
 
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>
@@ -195,7 +201,11 @@ function Router() {
       <Route path="/merchant/branding"><MerchantRoute component={MerchantBranding} /></Route>
       <Route path="/merchant/security"><MerchantRoute component={MerchantSecurity} /></Route>
       <Route path="/merchant/rasokart-services"><MerchantRoute component={MerchantRasokartServices} /></Route>
+<<<<<<< HEAD
       <Route path="/merchant/verification"><MerchantRoute component={MerchantVerification} /></Route>
+=======
+      <Route path="/merchant/reports"><MerchantRoute component={MerchantReports} /></Route>
+>>>>>>> e3eee5ba (feat: Add transaction report generation with PDF and Excel export (#1407))
       <Route path="/merchant/api-docs"><PublicPage component={MerchantApiDocs} /></Route>
 
       <Route path="/pay/:slug" component={PayPage} />

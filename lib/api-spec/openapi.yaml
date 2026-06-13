@@ -67,6 +67,8 @@ tags:
     description: Merchant security event log
   - name: kyc
     description: KYC document verification for merchants
+  - name: reports
+    description: Transaction report generation for merchants and admins
 paths:
   /healthz:
     get:
@@ -1380,6 +1382,64 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /reports/transactions:
+    get:
+      operationId: getTransactionReport
+      tags: [reports]
+      summary: Generate transaction report data (no pagination, up to 10,000 rows)
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [deposit, withdrawal, all]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, success, failed, all]
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+          description: Admin only — scope report to a specific merchant
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: amountMin
+          in: query
+          schema:
+            type: number
+        - name: amountMax
+          in: query
+          schema:
+            type: number
+        - name: connectionProvider
+          in: query
+          schema:
+            type: string
+            enum: [phonepe, paytm, bharatpe, yono_sbi, hdfc_smarthub, upi_id]
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [qr_code, virtual_account, payment_link, direct]
+          description: Filter by transaction source channel
+      responses:
+        "200":
+          description: Transaction report data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionReportResponse"
+        "401":
+          description: Unauthorized
 
   /withdrawals:
     get:
@@ -7575,6 +7635,83 @@ components:
               type: integer
             pendingCount:
               type: integer
+
+    ReportTransaction:
+      type: object
+      required: [id, merchantId, type, status, amount, currency, utr, createdAt, fee, settlementStatus]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        virtualAccountId:
+          type: ["integer", "null"]
+        qrCodeId:
+          type: ["integer", "null"]
+        paymentLinkId:
+          type: ["integer", "null"]
+        connectionId:
+          type: ["integer", "null"]
+        connectionProvider:
+          type: ["string", "null"]
+        merchantName:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [deposit, withdrawal]
+        status:
+          type: string
+          enum: [pending, success, failed]
+        amount:
+          type: number
+        currency:
+          type: string
+        utr:
+          type: string
+        referenceId:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        metadata:
+          type: ["string", "null"]
+        provider:
+          type: ["string", "null"]
+        fee:
+          type: number
+          description: Sum of fee ledger entries associated with this transaction
+        settlementStatus:
+          type: string
+          description: Status of the covering settlement if one exists, otherwise 'unsettled'
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    TransactionReportResponse:
+      type: object
+      required: [data, stats]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportTransaction"
+        stats:
+          type: object
+          required: [depositVolume, withdrawalVolume, successCount, failedCount, pendingCount, totalFees]
+          properties:
+            depositVolume:
+              type: number
+            withdrawalVolume:
+              type: number
+            successCount:
+              type: integer
+            failedCount:
+              type: integer
+            pendingCount:
+              type: integer
+            totalFees:
+              type: number
+              description: Sum of all fees across matched transactions
 
     Withdrawal:
       type: object

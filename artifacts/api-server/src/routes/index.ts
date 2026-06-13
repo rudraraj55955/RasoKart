@@ -43,6 +43,7 @@ import smartRoutingRouter from "./smartRouting";
 import moduleControlRouter from "./moduleControl";
 import merchantModuleStatusRouter from "./merchantModuleStatus";
 import kycRouter from "./kyc";
+import reportsRouter from "./reports";
 
 const router: IRouter = Router();
 
@@ -90,5 +91,6 @@ router.use("/smart-routing", smartRoutingRouter);
 router.use("/module-control", moduleControlRouter);
 router.use("/merchant", merchantModuleStatusRouter);
 router.use("/kyc", kycRouter);
+router.use("/reports", reportsRouter);
 
 export default router;

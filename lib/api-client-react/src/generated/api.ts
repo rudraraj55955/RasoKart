@@ -116,6 +116,7 @@ import type {
   GetRoutingMetricsParams,
   GetSecurityComplianceSummaryParams,
   GetSignatureFailureAlertHistoryParams,
+  GetTransactionReportParams,
   GetVirtualAccountBalanceHistoryParams,
   GetWebhookFailureAlertHistoryParams,
   GetWebhookLogAttempts200,
@@ -289,6 +290,7 @@ import type {
   ToggleProductInput,
   Transaction,
   TransactionListResponse,
+  TransactionReportResponse,
   TrustedIpListResponse,
   UpdateAccountDetailVisibility200,
   UpdateActivationRequestBody,
@@ -4128,6 +4130,90 @@ export function useSearchByUtr<TData = Awaited<ReturnType<typeof searchByUtr>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchByUtrQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetTransactionReportUrl = (params?: GetTransactionReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/transactions?${stringifiedParams}` : `/api/reports/transactions`
+}
+
+/**
+ * @summary Generate transaction report data (no pagination, up to 10,000 rows)
+ */
+export const getTransactionReport = async (params?: GetTransactionReportParams, options?: RequestInit): Promise<TransactionReportResponse> => {
+
+  return customFetch<TransactionReportResponse>(getGetTransactionReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTransactionReportQueryKey = (params?: GetTransactionReportParams,) => {
+    return [
+    `/api/reports/transactions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTransactionReportQueryOptions = <TData = Awaited<ReturnType<typeof getTransactionReport>>, TError = ErrorType<void>>(params?: GetTransactionReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTransactionReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTransactionReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTransactionReport>>> = ({ signal }) => getTransactionReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTransactionReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTransactionReportQueryResult = NonNullable<Awaited<ReturnType<typeof getTransactionReport>>>
+export type GetTransactionReportQueryError = ErrorType<void>
+
+
+/**
+ * @summary Generate transaction report data (no pagination, up to 10,000 rows)
+ */
+
+export function useGetTransactionReport<TData = Awaited<ReturnType<typeof getTransactionReport>>, TError = ErrorType<void>>(
+ params?: GetTransactionReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTransactionReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTransactionReportQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

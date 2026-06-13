@@ -528,6 +528,74 @@ export interface TransactionListResponse {
   stats: TransactionListResponseStats;
 }
 
+export type ReportTransactionType = typeof ReportTransactionType[keyof typeof ReportTransactionType];
+
+
+export const ReportTransactionType = {
+  deposit: 'deposit',
+  withdrawal: 'withdrawal',
+} as const;
+
+export type ReportTransactionStatus = typeof ReportTransactionStatus[keyof typeof ReportTransactionStatus];
+
+
+export const ReportTransactionStatus = {
+  pending: 'pending',
+  success: 'success',
+  failed: 'failed',
+} as const;
+
+export interface ReportTransaction {
+  id: number;
+  merchantId: number;
+  /** @nullable */
+  virtualAccountId?: number | null;
+  /** @nullable */
+  qrCodeId?: number | null;
+  /** @nullable */
+  paymentLinkId?: number | null;
+  /** @nullable */
+  connectionId?: number | null;
+  /** @nullable */
+  connectionProvider?: string | null;
+  /** @nullable */
+  merchantName?: string | null;
+  type: ReportTransactionType;
+  status: ReportTransactionStatus;
+  amount: number;
+  currency: string;
+  utr: string;
+  /** @nullable */
+  referenceId?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  metadata?: string | null;
+  /** @nullable */
+  provider?: string | null;
+  /** Sum of fee ledger entries associated with this transaction */
+  fee: number;
+  /** Status of the covering settlement if one exists, otherwise 'unsettled' */
+  settlementStatus: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type TransactionReportResponseStats = {
+  depositVolume: number;
+  withdrawalVolume: number;
+  successCount: number;
+  failedCount: number;
+  pendingCount: number;
+  /** Sum of all fees across matched transactions */
+  totalFees: number;
+};
+
+export interface TransactionReportResponse {
+  data: ReportTransaction[];
+  stats: TransactionReportResponseStats;
+}
+
 export type WithdrawalStatus = typeof WithdrawalStatus[keyof typeof WithdrawalStatus];
 
 
@@ -3763,6 +3831,65 @@ export const ListTransactionsConnectionProvider = {
 export type SearchByUtrParams = {
 utr: string;
 };
+
+export type GetTransactionReportParams = {
+type?: GetTransactionReportType;
+status?: GetTransactionReportStatus;
+/**
+ * Admin only — scope report to a specific merchant
+ */
+merchantId?: number;
+dateFrom?: string;
+dateTo?: string;
+amountMin?: number;
+amountMax?: number;
+connectionProvider?: GetTransactionReportConnectionProvider;
+/**
+ * Filter by transaction source channel
+ */
+source?: GetTransactionReportSource;
+};
+
+export type GetTransactionReportType = typeof GetTransactionReportType[keyof typeof GetTransactionReportType];
+
+
+export const GetTransactionReportType = {
+  deposit: 'deposit',
+  withdrawal: 'withdrawal',
+  all: 'all',
+} as const;
+
+export type GetTransactionReportStatus = typeof GetTransactionReportStatus[keyof typeof GetTransactionReportStatus];
+
+
+export const GetTransactionReportStatus = {
+  pending: 'pending',
+  success: 'success',
+  failed: 'failed',
+  all: 'all',
+} as const;
+
+export type GetTransactionReportConnectionProvider = typeof GetTransactionReportConnectionProvider[keyof typeof GetTransactionReportConnectionProvider];
+
+
+export const GetTransactionReportConnectionProvider = {
+  phonepe: 'phonepe',
+  paytm: 'paytm',
+  bharatpe: 'bharatpe',
+  yono_sbi: 'yono_sbi',
+  hdfc_smarthub: 'hdfc_smarthub',
+  upi_id: 'upi_id',
+} as const;
+
+export type GetTransactionReportSource = typeof GetTransactionReportSource[keyof typeof GetTransactionReportSource];
+
+
+export const GetTransactionReportSource = {
+  qr_code: 'qr_code',
+  virtual_account: 'virtual_account',
+  payment_link: 'payment_link',
+  direct: 'direct',
+} as const;
 
 export type ListWithdrawalsParams = {
 status?: ListWithdrawalsStatus;
