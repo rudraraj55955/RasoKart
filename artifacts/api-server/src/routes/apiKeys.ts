@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { db, apiKeysTable, merchantsTable, credentialEventsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, inArray, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { requireModule } from "../middlewares/checkModule";
 import crypto from "crypto";
 import { sendApiKeyGeneratedEmail, sendApiKeyRevokedEmail, maskIp } from "../helpers/apiKeyEmail";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
@@ -104,7 +105,7 @@ router.get("/history", async (req, res) => {
 });
 
 // POST /api/api-keys
-router.post("/", apiKeyCreateLimiter, async (req, res) => {
+router.post("/", apiKeyCreateLimiter, requireModule("api_access"), async (req, res) => {
   const user = (req as any).user;
   if (user.role !== "merchant") {
     res.status(403).json({ error: "Only merchants can generate API keys" });

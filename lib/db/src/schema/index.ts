@@ -52,3 +52,5 @@ export * from "./routingConfigs";
 export * from "./routingRules";
 export * from "./routingLogs";
 export * from "./providerMetrics";
+export * from "./moduleControls";
+export * from "./moduleVisibility";

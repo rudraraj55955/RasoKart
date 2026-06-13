@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, withdrawalsTable, merchantsTable } from "@workspace/db";
 import { eq, and, count, sum, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireModule } from "../middlewares/checkModule";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 
 const router = Router();
@@ -67,7 +68,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/withdrawals
-router.post("/", async (req, res) => {
+router.post("/", requireModule("merchant_withdrawals"), async (req, res) => {
   const user = (req as any).user;
   if (user.role !== "merchant") {
     res.status(403).json({ error: "Only merchants can request withdrawals" });

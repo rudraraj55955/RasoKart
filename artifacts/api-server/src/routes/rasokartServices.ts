@@ -26,6 +26,7 @@ import {
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { requireModule } from "../middlewares/checkModule";
 
 const router = Router();
 router.use(requireAuth);
@@ -98,7 +99,7 @@ router.get("/rasokart-services", async (req, res, next) => {
  * Submit an activation request for a RasoKart service.
  * Returns only public fields — no provider details.
  */
-router.post("/rasokart-services/request", async (req, res, next) => {
+router.post("/rasokart-services/request", requireModule("rasokart_services"), async (req, res, next) => {
   try {
     const user = (req as any).user;
     if (user.role !== "merchant" || !user.merchantId) {

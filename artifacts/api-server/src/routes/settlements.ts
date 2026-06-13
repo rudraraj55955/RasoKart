@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { db, settlementsTable, merchantsTable, ledgerEntriesTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, sql, gte, lte, sum } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireModule } from "../middlewares/checkModule";
 import { createNotification } from "../helpers/notifications";
 import { notifyAdminsOfSettlementStateChange } from "../helpers/adminNotifyEmail";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
@@ -164,7 +165,7 @@ router.get("/export/csv", requireAdmin, async (req, res) => {
 });
 
 // POST /api/settlements  (merchant creates settlement request)
-router.post("/", settlementCreateLimiter, async (req, res) => {
+router.post("/", settlementCreateLimiter, requireModule("merchant_settlements"), async (req, res) => {
   const user = (req as any).user;
   if (!user.merchantId) {
     res.status(403).json({ error: "Not a merchant" });
