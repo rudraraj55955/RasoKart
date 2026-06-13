@@ -18,6 +18,7 @@ import {
   useUpdateMerchantWebhookMaxRetries,
   useGetWebhookFailureAlertHistory,
   useGetMerchantsWebhookFailureCounts,
+  useGetKycSummary, useListKycDocuments, useReviewKycDocument,
   getListMerchantsQueryKey,
   listMerchants,
   type WebhookFailureAlertLogEntry,
@@ -255,6 +256,10 @@ export default function AdminMerchants() {
   const [scrollToAlerts, setScrollToAlerts] = useState(false);
   const webhookAlertsRef = useRef<HTMLDivElement>(null);
 
+  // KYC review state — tracks inline note per document id and pending review action
+  const [kycReviewState, setKycReviewState] = useState<Record<number, { action: "approved" | "rejected"; note: string } | null>>({});
+  const [kycConfirming, setKycConfirming] = useState<Record<number, boolean>>({});
+
   // Parse ?open=<merchantId> once on mount (e.g. linked from QR/VA detail panels)
   const [deepLinkId] = useState<number | null>(() => {
     const raw = new URLSearchParams(window.location.search).get("open");
@@ -336,6 +341,30 @@ export default function AdminMerchants() {
     credEventFilter ? { eventType: credEventFilter } : undefined,
     { query: { enabled: !!assignPlanMerchant, queryKey: ["listMerchantCredentialEvents", assignPlanMerchant?.id ?? 0, credEventFilter] } }
   );
+  const { data: kycSummary, isLoading: kycSummaryLoading } = useGetKycSummary(
+    assignPlanMerchant?.id ?? 0,
+    { query: { enabled: !!assignPlanMerchant, queryKey: ["getKycSummary", assignPlanMerchant?.id ?? 0] } }
+  );
+  const { data: kycDocumentsResponse, isLoading: kycDocsLoading } = useListKycDocuments(
+    assignPlanMerchant ? { merchantId: assignPlanMerchant.id } : undefined,
+    { query: { enabled: !!assignPlanMerchant, queryKey: ["listKycDocuments", "merchant", assignPlanMerchant?.id ?? 0] } }
+  );
+  const kycDocuments = kycDocumentsResponse?.data ?? [];
+  const reviewKycMutation = useReviewKycDocument({
+    mutation: {
+      onSuccess: (_, vars) => {
+        toast.success(`Document ${vars.data.status === "approved" ? "approved" : "rejected"}`);
+        qc.invalidateQueries({ queryKey: ["getKycSummary", assignPlanMerchant?.id ?? 0] });
+        qc.invalidateQueries({ queryKey: ["listKycDocuments", "merchant", assignPlanMerchant?.id ?? 0] });
+        setKycReviewState(prev => ({ ...prev, [vars.id]: null }));
+        setKycConfirming(prev => ({ ...prev, [vars.id]: false }));
+      },
+      onError: (_, vars) => {
+        toast.error("Failed to update KYC document");
+        setKycConfirming(prev => ({ ...prev, [vars.id]: false }));
+      },
+    },
+  });
   // Fetch the deep-link merchant by ID so the panel opens regardless of which page they're on
   const { data: deepLinkMerchant } = useGetMerchant(
     deepLinkId ?? 0,
@@ -2699,6 +2728,176 @@ export default function AdminMerchants() {
                             )}
                           </div>
                         </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* KYC Verification */}
+            <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                {kycSummaryLoading ? (
+                  <div className="w-4 h-4 rounded-full bg-muted/40 animate-pulse shrink-0" />
+                ) : kycSummary?.isVerified ? (
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <ShieldOff className="w-4 h-4 text-muted-foreground shrink-0" />
+                )}
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">KYC Verification</p>
+                {kycSummary != null && (
+                  <span className={`ml-auto text-xs font-medium px-2 py-0.5 rounded-full border tabular-nums ${
+                    kycSummary.isVerified
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                      : "bg-muted/30 border-border/50 text-muted-foreground"
+                  }`}>
+                    {kycSummary.isVerified ? "Verified" : `${kycSummary.approvedCount} of ${kycSummary.requiredDocTypes.length} docs`}
+                  </span>
+                )}
+              </div>
+
+              {/* Summary stats row */}
+              {!kycSummaryLoading && kycSummary != null && (
+                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                  {kycSummary.pendingCount > 0 && (
+                    <span className="flex items-center gap-1 text-amber-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                      {kycSummary.pendingCount} pending
+                    </span>
+                  )}
+                  {kycSummary.approvedCount > 0 && (
+                    <span className="flex items-center gap-1 text-emerald-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                      {kycSummary.approvedCount} approved
+                    </span>
+                  )}
+                  {kycSummary.rejectedCount > 0 && (
+                    <span className="flex items-center gap-1 text-rose-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                      {kycSummary.rejectedCount} rejected
+                    </span>
+                  )}
+                  {kycSummary.totalDocs === 0 && (
+                    <span className="text-muted-foreground/60">No documents submitted yet</span>
+                  )}
+                </div>
+              )}
+
+              {/* Document list */}
+              {kycDocsLoading ? (
+                <div className="space-y-2">
+                  {[1, 2].map(i => (
+                    <div key={i} className="animate-pulse h-14 rounded-lg bg-muted/30" />
+                  ))}
+                </div>
+              ) : kycDocuments.length === 0 ? (
+                <div className="flex flex-col items-center gap-1.5 py-4 text-center">
+                  <ShieldOff className="w-5 h-5 text-muted-foreground/30" />
+                  <p className="text-xs text-muted-foreground">No KYC documents submitted.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {kycDocuments.map((doc) => {
+                    const reviewEntry = kycReviewState[doc.id];
+                    const isConfirming = kycConfirming[doc.id];
+                    const docStatusColors: Record<string, string> = {
+                      approved: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+                      rejected: "text-rose-400 bg-rose-500/10 border-rose-500/30",
+                      pending: "text-amber-400 bg-amber-500/10 border-amber-500/30",
+                    };
+                    const statusColor = docStatusColors[doc.status] ?? "text-muted-foreground bg-muted/20 border-border/40";
+                    return (
+                      <div key={doc.id} className="rounded-lg border border-border/50 bg-muted/5 px-3 py-2.5 space-y-2">
+                        <div className="flex items-start gap-2 flex-wrap">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-medium text-foreground capitalize">{doc.docType.replace(/_/g, " ")}</span>
+                              {doc.fileName && (
+                                <span className="text-[10px] text-muted-foreground/60 font-mono truncate max-w-[140px]" title={doc.fileName}>{doc.fileName}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border capitalize font-medium ${statusColor}`}>{doc.status}</span>
+                              {doc.adminNote && (
+                                <span className="text-[10px] text-muted-foreground/70 italic">"{doc.adminNote}"</span>
+                              )}
+                              <a
+                                href={doc.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] text-primary hover:underline flex items-center gap-0.5 ml-auto"
+                              >
+                                View <ExternalLink className="w-2.5 h-2.5" />
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Inline review controls */}
+                        {!reviewEntry && (
+                          <div className="flex gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px] text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                              onClick={() => setKycReviewState(prev => ({ ...prev, [doc.id]: { action: "approved", note: "" } }))}
+                            >
+                              <CheckCircle className="w-3 h-3 mr-1" />Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px] text-rose-400 border-rose-500/30 hover:bg-rose-500/10"
+                              onClick={() => setKycReviewState(prev => ({ ...prev, [doc.id]: { action: "rejected", note: "" } }))}
+                            >
+                              <XCircle className="w-3 h-3 mr-1" />Reject
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Confirm review form */}
+                        {reviewEntry && (
+                          <div className="space-y-1.5 pt-1 border-t border-border/40">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                              {reviewEntry.action === "approved" ? "Confirming approval" : "Confirming rejection"}
+                            </p>
+                            <Input
+                              className="h-7 text-xs"
+                              placeholder="Admin note (optional)…"
+                              value={reviewEntry.note}
+                              onChange={e => setKycReviewState(prev => ({
+                                ...prev,
+                                [doc.id]: { ...reviewEntry, note: e.target.value },
+                              }))}
+                            />
+                            <div className="flex gap-1.5">
+                              <Button
+                                size="sm"
+                                className={`h-6 px-2 text-[10px] ${reviewEntry.action === "approved" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-rose-600 hover:bg-rose-700 text-white"}`}
+                                disabled={isConfirming || reviewKycMutation.isPending}
+                                onClick={() => {
+                                  setKycConfirming(prev => ({ ...prev, [doc.id]: true }));
+                                  reviewKycMutation.mutate({
+                                    id: doc.id,
+                                    data: { status: reviewEntry.action, adminNote: reviewEntry.note || undefined },
+                                  });
+                                }}
+                              >
+                                {isConfirming ? <Loader2 className="w-3 h-3 animate-spin" /> : "Confirm"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 px-2 text-[10px] text-muted-foreground"
+                                disabled={isConfirming || reviewKycMutation.isPending}
+                                onClick={() => setKycReviewState(prev => ({ ...prev, [doc.id]: null }))}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
