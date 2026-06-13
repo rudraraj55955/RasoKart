@@ -4,7 +4,7 @@ import { eq, and, sql, gte, lte, or, inArray, isNotNull, isNull, desc } from "dr
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMerchantReport } from "../helpers/merchantReportScheduler";
 import { createNotification } from "../helpers/notifications";
-import { sendReportScheduleUpdatedEmail, buildReportScheduleUpdatedHtml } from "../helpers/reportScheduleEmail";
+import { sendReportScheduleUpdatedEmail, buildReportScheduleUpdatedHtml, sendReportScheduleDeletedEmail } from "../helpers/reportScheduleEmail";
 
 const router = Router();
 router.use(requireAuth);
@@ -854,7 +854,7 @@ router.delete("/schedules/:merchantId", requireAdmin, async (req, res, next) => 
     }
 
     const [merchant] = await db
-      .select({ businessName: merchantsTable.businessName })
+      .select({ businessName: merchantsTable.businessName, email: merchantsTable.email })
       .from(merchantsTable)
       .where(eq(merchantsTable.id, mid))
       .limit(1);
@@ -885,6 +885,14 @@ router.delete("/schedules/:merchantId", requireAdmin, async (req, res, next) => 
         title: "Report Schedule Removed",
         body: "An admin has removed your scheduled report. You will no longer receive automated reports unless a new schedule is set up.",
         metadata: { merchantId: mid },
+      }).catch(() => {});
+    }
+
+    if (merchant) {
+      sendReportScheduleDeletedEmail({
+        merchantId: mid,
+        to: merchant.email,
+        businessName: merchant.businessName,
       }).catch(() => {});
     }
 

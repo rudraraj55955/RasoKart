@@ -172,6 +172,101 @@ export async function sendReportScheduleAutoPausedMerchantEmail(opts: {
   return sent;
 }
 
+export function buildReportScheduleDeletedHtml(opts: {
+  businessName: string;
+}): string {
+  const { businessName } = opts;
+  const scheduleLink = `${APP_DOMAIN}/merchant/reports`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #3b1f1f; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — Report Schedule Removed</h1>
+      <p style="margin: 4px 0 0; color: #fca5a5; font-size: 13px;">Your scheduled report has been removed by an admin</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #e5e5e5; font-size: 15px;">
+        Dear <strong>${businessName}</strong>,
+      </p>
+      <p style="margin: 0 0 20px; color: #d1d5db; font-size: 14px; line-height: 1.6;">
+        An admin has removed your scheduled report configuration. <strong>You will no longer receive automated reports</strong> until a new schedule is set up.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 50%;">Schedule Status</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #f87171; font-weight: 600;">Removed</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Automated Reports</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #f87171; font-weight: 600;">Stopped</td>
+        </tr>
+      </table>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px; line-height: 1.6;">
+        If you believe this was done in error or would like a new schedule configured, please contact your account manager or reach out to support.
+      </p>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${scheduleLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          View Reports Page
+        </a>
+      </div>
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${scheduleLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This notification was sent by RasoKart because an admin removed your report schedule.
+        For support, contact <a href="mailto:support@rasokart.com" style="color: #818cf8; text-decoration: none;">support@rasokart.com</a>.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`.trim();
+}
+
+export async function sendReportScheduleDeletedEmail(opts: {
+  merchantId: number;
+  to: string;
+  businessName: string;
+}): Promise<void> {
+  const { merchantId, to, businessName } = opts;
+
+  try {
+    const [user] = await db
+      .select({ reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails })
+      .from(usersTable)
+      .where(eq(usersTable.merchantId, merchantId))
+      .limit(1);
+
+    if (!user) {
+      logger.info({ merchantId }, "No user found for merchant — skipping report schedule deleted email");
+      return;
+    }
+
+    if (!user.reportScheduleChangedEmails) {
+      logger.info({ merchantId }, "Merchant opted out of report schedule changed emails — skipping");
+      return;
+    }
+  } catch (err) {
+    logger.error({ err, merchantId }, "Failed to check merchant report schedule email preference — skipping");
+    return;
+  }
+
+  const subject = "[RasoKart] Your report schedule has been removed";
+  const html = buildReportScheduleDeletedHtml({ businessName });
+
+  const sent = await sendMail({ to, subject, html });
+  if (!sent) {
+    logger.warn({ to, businessName, merchantId }, "Report schedule deleted email could not be sent (SMTP not configured or failed)");
+  }
+}
+
 export async function sendReportScheduleUpdatedEmail(opts: {
   merchantId: number;
   to: string;
