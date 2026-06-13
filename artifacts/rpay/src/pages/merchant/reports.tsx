@@ -110,6 +110,24 @@ interface ReportsSavedFilter {
   rawInput: string;
 }
 
+const REPORTS_SAVED_FILTERS_KEY = "rasokart_merchant_reports_saved_filters";
+
+function loadReportsFilters(): ReportsSavedFilter[] {
+  try {
+    const raw = localStorage.getItem(REPORTS_SAVED_FILTERS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as ReportsSavedFilter[];
+  } catch {
+    return [];
+  }
+}
+
+function storeReportsFilters(filters: ReportsSavedFilter[]): void {
+  try {
+    localStorage.setItem(REPORTS_SAVED_FILTERS_KEY, JSON.stringify(filters));
+  } catch {}
+}
+
 function buildReportsRawInput(fd: ReportsFilterData): string {
   const parts: string[] = [];
   if (fd.type) parts.push(fd.type.charAt(0).toUpperCase() + fd.type.slice(1));
@@ -164,7 +182,7 @@ export default function MerchantReports() {
   // Saved filters state
   const FILTER_CONTEXT = "merchant_reports";
   const filtersInitialized = useRef(false);
-  const [savedFilters, setSavedFilters] = useState<ReportsSavedFilter[]>([]);
+  const [savedFilters, setSavedFilters] = useState<ReportsSavedFilter[]>(() => loadReportsFilters());
   const [showAllFilters, setShowAllFilters] = useState(false);
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveFilterName, setSaveFilterName] = useState("");
@@ -213,16 +231,43 @@ export default function MerchantReports() {
   const stlStats = stlData?.stats;
 
   useEffect(() => {
-    if (!serverFiltersLoaded) return;
+    if (!serverFiltersLoaded || filtersInitialized.current) return;
+    filtersInitialized.current = true;
     const serverFilters: ReportsSavedFilter[] = (serverFiltersData?.data ?? []).map((f) => ({
       id: String(f.id),
       name: f.name,
       filterData: f.filterData as ReportsFilterData,
       rawInput: f.rawInput,
     }));
-    setSavedFilters(serverFilters);
-    filtersInitialized.current = true;
-  }, [serverFiltersData]);
+    if (serverFilters.length > 0) {
+      setSavedFilters(serverFilters);
+      storeReportsFilters(serverFilters);
+    } else {
+      const local = loadReportsFilters();
+      if (local.length > 0) {
+        (async () => {
+          const imported: ReportsSavedFilter[] = [];
+          for (const f of local) {
+            try {
+              const created = await createFilterMutation({
+                data: { name: f.name, rawInput: f.rawInput, filterData: f.filterData as Record<string, unknown>, context: FILTER_CONTEXT },
+              });
+              imported.push({
+                id: String(created.id),
+                name: created.name,
+                filterData: created.filterData as ReportsFilterData,
+                rawInput: created.rawInput,
+              });
+            } catch { /* skip duplicates or errors */ }
+          }
+          if (imported.length > 0) {
+            setSavedFilters(imported);
+            storeReportsFilters(imported);
+          }
+        })();
+      }
+    }
+  }, [serverFiltersLoaded, serverFiltersData]);
 
   useEffect(() => {
     if (showSaveInput) setTimeout(() => saveNameInputRef.current?.focus(), 50);
@@ -298,7 +343,9 @@ export default function MerchantReports() {
         filterData: created.filterData as ReportsFilterData,
         rawInput: created.rawInput,
       };
-      setSavedFilters((prev) => [...prev, newFilter]);
+      const updatedFilters = [...savedFilters, newFilter];
+      setSavedFilters(updatedFilters);
+      storeReportsFilters(updatedFilters);
       setShowSaveInput(false);
       setSaveFilterName("");
       setSaveFilterNameError("");
@@ -310,7 +357,9 @@ export default function MerchantReports() {
   const cancelSaveFilter = () => { setShowSaveInput(false); setSaveFilterName(""); setSaveFilterNameError(""); };
 
   const deleteSavedFilter = async (id: string) => {
-    setSavedFilters((prev) => prev.filter((f) => f.id !== id));
+    const updated = savedFilters.filter((f) => f.id !== id);
+    setSavedFilters(updated);
+    storeReportsFilters(updated);
     if (renamingId === id) setRenamingId(null);
     const numericId = parseInt(id);
     if (!isNaN(numericId)) {
@@ -319,17 +368,16 @@ export default function MerchantReports() {
   };
 
   const moveSavedFilter = async (id: string, dir: -1 | 1) => {
-    setSavedFilters((prev) => {
-      const idx = prev.findIndex((f) => f.id === id);
-      if (idx === -1) return prev;
-      const newIdx = idx + dir;
-      if (newIdx < 0 || newIdx >= prev.length) return prev;
-      const updated = [...prev];
-      [updated[idx], updated[newIdx]] = [updated[newIdx]!, updated[idx]!];
-      const ids = updated.map((f) => parseInt(f.id)).filter((n) => !isNaN(n));
-      reorderFilterMutation({ data: { ids, context: FILTER_CONTEXT } }).catch(() => {});
-      return updated;
-    });
+    const idx = savedFilters.findIndex((f) => f.id === id);
+    if (idx === -1) return;
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= savedFilters.length) return;
+    const updated = [...savedFilters];
+    [updated[idx], updated[newIdx]] = [updated[newIdx]!, updated[idx]!];
+    setSavedFilters(updated);
+    storeReportsFilters(updated);
+    const ids = updated.map((f) => parseInt(f.id)).filter((n) => !isNaN(n));
+    reorderFilterMutation({ data: { ids, context: FILTER_CONTEXT } }).catch(() => {});
   };
 
   const handleDragStart = (id: string) => { dragIdRef.current = id; setDraggingId(id); };
@@ -339,17 +387,16 @@ export default function MerchantReports() {
     const sourceId = dragIdRef.current;
     setDragOverId(null); setDraggingId(null); dragIdRef.current = null;
     if (!sourceId || sourceId === targetId) return;
-    setSavedFilters((prev) => {
-      const fromIdx = prev.findIndex((f) => f.id === sourceId);
-      const toIdx = prev.findIndex((f) => f.id === targetId);
-      if (fromIdx === -1 || toIdx === -1) return prev;
-      const updated = [...prev];
-      const [item] = updated.splice(fromIdx, 1);
-      updated.splice(toIdx, 0, item!);
-      const ids = updated.map((f) => parseInt(f.id)).filter((n) => !isNaN(n));
-      reorderFilterMutation({ data: { ids, context: FILTER_CONTEXT } }).catch(() => {});
-      return updated;
-    });
+    const fromIdx = savedFilters.findIndex((f) => f.id === sourceId);
+    const toIdx = savedFilters.findIndex((f) => f.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const updated = [...savedFilters];
+    const [item] = updated.splice(fromIdx, 1);
+    updated.splice(toIdx, 0, item!);
+    setSavedFilters(updated);
+    storeReportsFilters(updated);
+    const ids = updated.map((f) => parseInt(f.id)).filter((n) => !isNaN(n));
+    reorderFilterMutation({ data: { ids, context: FILTER_CONTEXT } }).catch(() => {});
   };
   const handleDragEnd = () => { dragIdRef.current = null; setDraggingId(null); setDragOverId(null); };
 
@@ -361,7 +408,9 @@ export default function MerchantReports() {
     if (savedFilters.some((f) => f.id !== renamingId && f.name.toLowerCase() === trimmed.toLowerCase())) {
       toast.error("A filter with this name already exists."); return;
     }
-    setSavedFilters((prev) => prev.map((f) => f.id === renamingId ? { ...f, name: trimmed } : f));
+    const updated = savedFilters.map((f) => f.id === renamingId ? { ...f, name: trimmed } : f);
+    setSavedFilters(updated);
+    storeReportsFilters(updated);
     setRenamingId(null);
     const numericId = parseInt(renamingId);
     if (!isNaN(numericId)) {
