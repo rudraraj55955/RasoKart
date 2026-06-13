@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useReenableReportSchedule, useGetReportSchedule } from "@workspace/api-client-react";
+import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useReenableReportSchedule, useGetReportSchedule, useGetNotificationUnreadCounts } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +88,18 @@ const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] 
 
 const PROVIDER_LIMIT_TYPES = new Set(["provider_limit_warning", "provider_limit_reached", "provider_limit_reset"]);
 
+const REPORT_NOTIFICATION_TYPES = new Set([
+  "scheduled_report_auto_paused",
+  "scheduled_report_auto_paused_admin",
+  "scheduled_report_failure",
+  "scheduled_report_retry_success",
+  "scheduled_report_overdue",
+  "report_schedule_deleted",
+  "report_schedule_next_run_updated",
+  "report_schedule_reenabled",
+  "report_manual_send",
+]);
+
 export default function NotificationsPage() {
   const [tab, setTab] = useState<"all" | "unread">("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -102,6 +114,7 @@ export default function NotificationsPage() {
     limit: 20,
   });
 
+  const { data: unreadCountsData } = useGetNotificationUnreadCounts();
   const markAll = useMarkAllNotificationsRead();
   const markOne = useMarkNotificationRead();
   const reenable = useReenableReportSchedule();
@@ -118,11 +131,16 @@ export default function NotificationsPage() {
     setPage(1);
   }
 
+  function invalidateUnreadCounts() {
+    qc.invalidateQueries({ queryKey: ["/api/notifications/unread-counts"] });
+  }
+
   function handleMarkAll() {
     markAll.mutate(undefined, {
       onSuccess: () => {
         toast.success("All notifications marked as read");
         qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+        invalidateUnreadCounts();
         refetch();
       },
     });
@@ -132,6 +150,7 @@ export default function NotificationsPage() {
     markOne.mutate({ id }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+        invalidateUnreadCounts();
         refetch();
       },
     });
@@ -171,6 +190,18 @@ export default function NotificationsPage() {
   const unread = data?.unread ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
+  const typeCounts = unreadCountsData?.counts ?? {};
+
+  function chipUnreadCount(chipValue: TypeFilter): number {
+    if (chipValue === "all") return unreadCountsData?.total ?? 0;
+    if (chipValue === "reports") {
+      return Object.entries(typeCounts)
+        .filter(([t]) => REPORT_NOTIFICATION_TYPES.has(t))
+        .reduce((sum, [, n]) => sum + n, 0);
+    }
+    return typeCounts[chipValue] ?? 0;
+  }
+
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
@@ -204,20 +235,32 @@ export default function NotificationsPage() {
       </Tabs>
 
       <div className="flex flex-wrap gap-2">
-        {TYPE_CHIPS.map(chip => (
-          <button
-            key={chip.value}
-            onClick={() => handleTypeFilter(chip.value)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              typeFilter === chip.value
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border bg-transparent"
-            }`}
-          >
-            {chip.icon}
-            {chip.label}
-          </button>
-        ))}
+        {TYPE_CHIPS.map(chip => {
+          const chipCount = chipUnreadCount(chip.value);
+          return (
+            <button
+              key={chip.value}
+              onClick={() => handleTypeFilter(chip.value)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                typeFilter === chip.value
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border bg-transparent"
+              }`}
+            >
+              {chip.icon}
+              {chip.label}
+              {chipCount > 0 && (
+                <span className={`inline-flex items-center justify-center rounded-full min-w-[16px] h-4 px-1 text-[10px] font-semibold leading-none ${
+                  typeFilter === chip.value
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "bg-primary/15 text-primary"
+                }`}>
+                  {chipCount > 99 ? "99+" : chipCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <Card>

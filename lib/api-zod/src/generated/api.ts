@@ -5027,6 +5027,15 @@ export const ListNotificationsResponse = zod.object({
 
 
 /**
+ * @summary Get unread notification counts grouped by type
+ */
+export const GetNotificationUnreadCountsResponse = zod.object({
+  "counts": zod.record(zod.string(), zod.number()).describe('Map of notification type to unread count'),
+  "total": zod.number().describe('Aggregate unread count across all types')
+})
+
+
+/**
  * @summary Mark all notifications as read
  */
 export const MarkAllNotificationsReadResponse = zod.object({

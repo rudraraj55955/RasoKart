@@ -2918,6 +2918,18 @@ export interface NotificationListResponse {
   limit: number;
 }
 
+/**
+ * Map of notification type to unread count
+ */
+export type NotificationUnreadCountsCounts = {[key: string]: number};
+
+export interface NotificationUnreadCounts {
+  /** Map of notification type to unread count */
+  counts: NotificationUnreadCountsCounts;
+  /** Aggregate unread count across all types */
+  total: number;
+}
+
 export interface BroadcastNotificationInput {
   merchantId?: number | null;
   title: string;

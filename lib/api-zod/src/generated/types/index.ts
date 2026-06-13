@@ -328,6 +328,8 @@ export * from './merchantWebhookMaxRetriesInput';
 export * from './messageResponse';
 export * from './notification';
 export * from './notificationListResponse';
+export * from './notificationUnreadCounts';
+export * from './notificationUnreadCountsCounts';
 export * from './paymentCallbackInput';
 export * from './paymentCallbackResponse';
 export * from './paymentCallbackResponseStatus';

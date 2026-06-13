@@ -73,6 +73,29 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+// GET /api/notifications/unread-counts
+router.get("/unread-counts", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const rows = await db
+      .select({ type: notificationsTable.type, cnt: count() })
+      .from(notificationsTable)
+      .where(and(eq(notificationsTable.userId, user.id), eq(notificationsTable.isRead, false)))
+      .groupBy(notificationsTable.type);
+
+    const counts: Record<string, number> = {};
+    let total = 0;
+    for (const row of rows) {
+      counts[row.type] = Number(row.cnt);
+      total += Number(row.cnt);
+    }
+
+    res.json({ counts, total });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/notifications/read-all
 router.post("/read-all", async (req, res, next) => {
   try {

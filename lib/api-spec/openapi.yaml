@@ -5283,6 +5283,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/NotificationListResponse"
 
+  /notifications/unread-counts:
+    get:
+      operationId: getNotificationUnreadCounts
+      tags: [notifications]
+      summary: Get unread notification counts grouped by type
+      responses:
+        "200":
+          description: Per-type unread counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationUnreadCounts"
+
   /notifications/read-all:
     post:
       operationId: markAllNotificationsRead
@@ -11747,6 +11760,19 @@ components:
         unread: { type: integer }
         page: { type: integer }
         limit: { type: integer }
+
+    NotificationUnreadCounts:
+      type: object
+      required: [counts, total]
+      properties:
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Map of notification type to unread count
+        total:
+          type: integer
+          description: Aggregate unread count across all types
 
     BroadcastNotificationInput:
       type: object
