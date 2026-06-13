@@ -1903,6 +1903,23 @@ export const SendAdminMerchantReportNowResponse = zod.object({
 
 
 /**
+ * @summary Admin — preview the schedule-update email that would be sent to a merchant
+ */
+export const PreviewAdminMerchantReportScheduleEmailParams = zod.object({
+  "merchantId": zod.coerce.number()
+})
+
+export const PreviewAdminMerchantReportScheduleEmailQueryParams = zod.object({
+  "nextRunAt": zod.coerce.string().optional().describe('ISO 8601 timestamp for the new next-run date. Omit or leave empty to preview the \"schedule reverted to normal cadence\" variant.')
+})
+
+export const PreviewAdminMerchantReportScheduleEmailResponse = zod.object({
+  "html": zod.string().describe('Full HTML body of the email'),
+  "subject": zod.string().describe('Subject line of the email')
+})
+
+
+/**
  * @summary Admin — get delivery history for a merchant's report schedule
  */
 export const GetAdminMerchantReportScheduleHistoryParams = zod.object({

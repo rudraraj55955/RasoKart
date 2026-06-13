@@ -3,7 +3,7 @@ import { logger } from "../lib/logger";
 
 const APP_DOMAIN = process.env["APP_DOMAIN"] ?? "https://rasokart.com";
 
-function buildReportScheduleUpdatedHtml(opts: {
+export function buildReportScheduleUpdatedHtml(opts: {
   businessName: string;
   nextRunAt: string | null;
   formattedDate: string | null;

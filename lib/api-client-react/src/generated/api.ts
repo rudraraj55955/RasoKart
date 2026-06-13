@@ -243,6 +243,8 @@ import type {
   PlanInput,
   PlanNoteInput,
   PlanUsage,
+  PreviewAdminMerchantReportScheduleEmail200,
+  PreviewAdminMerchantReportScheduleEmailParams,
   PreviewAuditReportEmailParams,
   ProductVisibility,
   Provider,
@@ -5559,6 +5561,95 @@ export const useSendAdminMerchantReportNow = <TError = ErrorType<void>,
       > => {
       return useMutation(getSendAdminMerchantReportNowMutationOptions(options));
     }
+
+export const getPreviewAdminMerchantReportScheduleEmailUrl = (merchantId: number,
+    params?: PreviewAdminMerchantReportScheduleEmailParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/schedules/${merchantId}/email-preview?${stringifiedParams}` : `/api/reports/schedules/${merchantId}/email-preview`
+}
+
+/**
+ * @summary Admin — preview the schedule-update email that would be sent to a merchant
+ */
+export const previewAdminMerchantReportScheduleEmail = async (merchantId: number,
+    params?: PreviewAdminMerchantReportScheduleEmailParams, options?: RequestInit): Promise<PreviewAdminMerchantReportScheduleEmail200> => {
+
+  return customFetch<PreviewAdminMerchantReportScheduleEmail200>(getPreviewAdminMerchantReportScheduleEmailUrl(merchantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPreviewAdminMerchantReportScheduleEmailQueryKey = (merchantId: number,
+    params?: PreviewAdminMerchantReportScheduleEmailParams,) => {
+    return [
+    `/api/reports/schedules/${merchantId}/email-preview`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getPreviewAdminMerchantReportScheduleEmailQueryOptions = <TData = Awaited<ReturnType<typeof previewAdminMerchantReportScheduleEmail>>, TError = ErrorType<void>>(merchantId: number,
+    params?: PreviewAdminMerchantReportScheduleEmailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof previewAdminMerchantReportScheduleEmail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPreviewAdminMerchantReportScheduleEmailQueryKey(merchantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof previewAdminMerchantReportScheduleEmail>>> = ({ signal }) => previewAdminMerchantReportScheduleEmail(merchantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(merchantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof previewAdminMerchantReportScheduleEmail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PreviewAdminMerchantReportScheduleEmailQueryResult = NonNullable<Awaited<ReturnType<typeof previewAdminMerchantReportScheduleEmail>>>
+export type PreviewAdminMerchantReportScheduleEmailQueryError = ErrorType<void>
+
+
+/**
+ * @summary Admin — preview the schedule-update email that would be sent to a merchant
+ */
+
+export function usePreviewAdminMerchantReportScheduleEmail<TData = Awaited<ReturnType<typeof previewAdminMerchantReportScheduleEmail>>, TError = ErrorType<void>>(
+ merchantId: number,
+    params?: PreviewAdminMerchantReportScheduleEmailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof previewAdminMerchantReportScheduleEmail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPreviewAdminMerchantReportScheduleEmailQueryOptions(merchantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetAdminMerchantReportScheduleHistoryUrl = (merchantId: number,
     params?: GetAdminMerchantReportScheduleHistoryParams,) => {

@@ -351,6 +351,8 @@ export * from './planUsagePaymentLink';
 export * from './planUsagePayout';
 export * from './planUsageStaticQr';
 export * from './planUsageVirtualAccount';
+export * from './previewAdminMerchantReportScheduleEmail200';
+export * from './previewAdminMerchantReportScheduleEmailParams';
 export * from './previewAuditReportEmailFrequency';
 export * from './previewAuditReportEmailParams';
 export * from './productVisibility';

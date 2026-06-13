@@ -4,7 +4,7 @@ import { eq, and, sql, gte, lte, or, inArray, isNotNull, isNull, desc } from "dr
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMerchantReport } from "../helpers/merchantReportScheduler";
 import { createNotification } from "../helpers/notifications";
-import { sendReportScheduleUpdatedEmail } from "../helpers/reportScheduleEmail";
+import { sendReportScheduleUpdatedEmail, buildReportScheduleUpdatedHtml } from "../helpers/reportScheduleEmail";
 
 const router = Router();
 router.use(requireAuth);
@@ -888,6 +888,48 @@ router.delete("/schedules/:merchantId", requireAdmin, async (req, res, next) => 
     }
 
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/schedules/:merchantId/email-preview — admin: preview the schedule-update email (no email sent)
+router.get("/schedules/:merchantId/email-preview", requireAdmin, async (req, res, next) => {
+  try {
+    const mid = parseInt(req.params['merchantId'] as string);
+    if (isNaN(mid)) {
+      res.status(400).json({ error: "Invalid merchantId" });
+      return;
+    }
+
+    const [merchant] = await db
+      .select({ id: merchantsTable.id, businessName: merchantsTable.businessName })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, mid))
+      .limit(1);
+    if (!merchant) {
+      res.status(404).json({ error: "Merchant not found" });
+      return;
+    }
+
+    const rawNextRunAt = (req.query["nextRunAt"] as string | undefined) ?? null;
+    const nextRunAt = rawNextRunAt && rawNextRunAt.trim() !== "" ? rawNextRunAt : null;
+
+    const formattedDate = nextRunAt
+      ? new Date(nextRunAt).toLocaleString("en-IN", {
+          dateStyle: "medium",
+          timeStyle: "short",
+          timeZone: "Asia/Kolkata",
+        })
+      : null;
+
+    const subject = nextRunAt === null
+      ? "[RasoKart] Your report schedule has been reverted to normal cadence"
+      : `[RasoKart] Your next report is scheduled for ${formattedDate} IST`;
+
+    const html = buildReportScheduleUpdatedHtml({ businessName: merchant.businessName, nextRunAt, formattedDate });
+
+    res.json({ html, subject });
   } catch (err) {
     next(err);
   }

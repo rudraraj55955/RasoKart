@@ -2078,6 +2078,47 @@ paths:
         "502":
           description: SMTP error
 
+  /reports/schedules/{merchantId}/email-preview:
+    get:
+      operationId: previewAdminMerchantReportScheduleEmail
+      tags: [reports]
+      summary: Admin — preview the schedule-update email that would be sent to a merchant
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: nextRunAt
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ISO 8601 timestamp for the new next-run date. Omit or leave empty to preview the "schedule reverted to normal cadence" variant.
+      responses:
+        "200":
+          description: Email preview (no email is sent)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [html, subject]
+                properties:
+                  html:
+                    type: string
+                    description: Full HTML body of the email
+                  subject:
+                    type: string
+                    description: Subject line of the email
+        "400":
+          description: Invalid merchantId
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Merchant not found
+
   /reports/schedules/{merchantId}/history:
     get:
       operationId: getAdminMerchantReportScheduleHistory

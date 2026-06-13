@@ -15,6 +15,7 @@ import {
   getListMerchantReportSchedulesQueryOptions,
   useGetAdminReportDeliveryHistory,
   getGetAdminReportDeliveryHistoryQueryKey,
+  previewAdminMerchantReportScheduleEmail,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,8 @@ import {
   PauseCircle,
   RotateCcw,
   Info,
+  Eye,
+  Mail,
 } from "lucide-react";
 import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths, eachDayOfInterval, parseISO } from "date-fns";
 import {
@@ -418,6 +421,8 @@ function ScheduledReportsPanel() {
   const [overrideSaving, setOverrideSaving] = useState(false);
   const [sendingMerchantId, setSendingMerchantId] = useState<number | null>(null);
   const [confirmSend, setConfirmSend] = useState<{ merchantId: number; name: string; email: string; frequency: string; format: string } | null>(null);
+  const [emailPreview, setEmailPreview] = useState<{ html: string; subject: string } | null>(null);
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getListMerchantReportSchedulesQueryOptions().queryKey });
@@ -593,6 +598,20 @@ function ScheduledReportsPanel() {
       toast.error("Failed to clear next run override");
     } finally {
       setOverrideSaving(false);
+    }
+  };
+
+  const handlePreviewEmail = async () => {
+    if (!overrideTarget) return;
+    setEmailPreviewLoading(true);
+    try {
+      const nextRunAt = overrideValue ? new Date(overrideValue).toISOString() : undefined;
+      const result = await previewAdminMerchantReportScheduleEmail(overrideTarget.merchantId, nextRunAt ? { nextRunAt } : {});
+      setEmailPreview(result);
+    } catch {
+      toast.error("Failed to load email preview");
+    } finally {
+      setEmailPreviewLoading(false);
     }
   };
 
@@ -1095,6 +1114,12 @@ function ScheduledReportsPanel() {
                 className="text-xs h-8"
               />
             </div>
+            <div className="rounded-md bg-muted/30 border border-border px-3 py-2 text-xs text-muted-foreground">
+              <p className="flex items-center gap-1.5">
+                <Mail className="w-3 h-3 shrink-0" />
+                Saving will send a notification email to the merchant.
+              </p>
+            </div>
           </div>
           <DialogFooter className="gap-2 flex-wrap">
             {overrideTarget?.current && (
@@ -1110,6 +1135,18 @@ function ScheduledReportsPanel() {
               </Button>
             )}
             <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 gap-1 text-violet-400 border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
+              onClick={handlePreviewEmail}
+              disabled={emailPreviewLoading || overrideSaving}
+            >
+              {emailPreviewLoading
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Eye className="w-3 h-3" />}
+              Preview email
+            </Button>
+            <Button
               size="sm"
               className="text-xs h-7"
               onClick={handleOverrideSave}
@@ -1117,6 +1154,44 @@ function ScheduledReportsPanel() {
             >
               {overrideSaving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email preview modal */}
+      <Dialog open={!!emailPreview} onOpenChange={(open) => { if (!open) setEmailPreview(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Eye className="w-4 h-4 text-violet-400" />
+              Email Preview
+            </DialogTitle>
+          </DialogHeader>
+          {emailPreview && (
+            <>
+              <div className="rounded-md bg-muted/40 border border-border px-3 py-2 text-xs text-muted-foreground space-y-1 shrink-0">
+                <div className="flex items-start gap-1.5">
+                  <span className="opacity-60 shrink-0">Subject:</span>
+                  <span className="text-foreground font-medium break-all">{emailPreview.subject}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground/70 italic">
+                  This is a preview only — no email will be sent until you click Save.
+                </p>
+              </div>
+              <div className="flex-1 min-h-0 rounded-md border border-border overflow-hidden">
+                <iframe
+                  srcDoc={emailPreview.html}
+                  title="Email preview"
+                  className="w-full h-full min-h-[420px]"
+                  sandbox="allow-same-origin"
+                />
+              </div>
+            </>
+          )}
+          <DialogFooter>
+            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setEmailPreview(null)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

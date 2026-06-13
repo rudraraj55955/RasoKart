@@ -4775,6 +4775,20 @@ export type SendAdminMerchantReportNow200 = {
   to: string;
 };
 
+export type PreviewAdminMerchantReportScheduleEmailParams = {
+/**
+ * ISO 8601 timestamp for the new next-run date. Omit or leave empty to preview the "schedule reverted to normal cadence" variant.
+ */
+nextRunAt?: string;
+};
+
+export type PreviewAdminMerchantReportScheduleEmail200 = {
+  /** Full HTML body of the email */
+  html: string;
+  /** Subject line of the email */
+  subject: string;
+};
+
 export type GetAdminMerchantReportScheduleHistoryParams = {
 /**
  * Maximum number of history entries to return (default 20, max 100)
