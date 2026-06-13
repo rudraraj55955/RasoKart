@@ -60,7 +60,7 @@ import {
   CalendarDays,
   Trash2,
 } from "lucide-react";
-import { format, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -201,6 +201,13 @@ function domLabel(day: number): string {
   if (day === 2 || day === 22) return `${day}nd`;
   if (day === 3 || day === 23) return `${day}rd`;
   return `${day}th`;
+}
+
+function getNextDue(lastSentAt: string | null | undefined, frequency: string): Date | null {
+  if (!lastSentAt) return null;
+  const last = new Date(lastSentAt);
+  const days = frequency === "monthly" ? 28 : frequency === "daily" ? 1 : 7;
+  return new Date(last.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 function scheduleSendOnLabel(schedule: { frequency: string; dayOfWeek?: number | null; dayOfMonth?: number | null }): string {
@@ -405,7 +412,8 @@ function SchedulePanel() {
               <div className="flex items-center gap-2 text-muted-foreground">
                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
                 <span className="text-xs">
-                  Last sent: {format(new Date(schedule.lastSentAt), "dd MMM yyyy, HH:mm")}
+                  Last sent: {format(new Date(schedule.lastSentAt), "dd MMM yyyy, HH:mm")}{" "}
+                  <span className="text-muted-foreground/60">({formatDistanceToNow(new Date(schedule.lastSentAt), { addSuffix: true })})</span>
                 </span>
               </div>
             )}
@@ -415,6 +423,22 @@ function SchedulePanel() {
                 <span className="text-xs">No report sent yet — first report will go out on the next scheduled run</span>
               </div>
             )}
+            {(() => {
+              const nextDue = getNextDue(schedule.lastSentAt, schedule.frequency);
+              if (!nextDue) return null;
+              const isOverdue = nextDue < new Date();
+              return (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Clock className={`w-3.5 h-3.5 shrink-0 ${isOverdue ? "text-amber-400" : "text-primary"}`} />
+                  <span className="text-xs">
+                    Next due: {format(nextDue, "dd MMM yyyy, HH:mm")}{" "}
+                    <span className={isOverdue ? "text-amber-400/80" : "text-muted-foreground/60"}>
+                      ({formatDistanceToNow(nextDue, { addSuffix: true })})
+                    </span>
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         )}
 
