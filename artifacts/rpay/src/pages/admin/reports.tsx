@@ -1090,9 +1090,9 @@ function ScheduledReportsPanel() {
                 className="text-xs h-7 gap-1.5 bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 hover:text-red-200"
                 disabled={sendAllOverdue.isPending}
                 onClick={async () => {
-                  if (!sendFailures) return;
-                  const failedIds = sendFailures.map((f) => f.merchantId);
                   try {
+                    if (!sendFailures) return;
+                    const failedIds = sendFailures.map((f) => f.merchantId);
                     const res = await sendAllOverdue.mutateAsync({ data: { merchantIds: failedIds } });
                     if (res.failed === 0) {
                       toast.success(`Retried ${res.sent} report${res.sent !== 1 ? "s" : ""} — all delivered successfully`);
@@ -1240,6 +1240,7 @@ function DeliveryHistoryPanel() {
   const [triggeredByFilter, setTriggeredByFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [timelinePreset, setTimelinePreset] = useState<string | null>(null);
   const [reEnabling, setReEnabling] = useState<number | null>(null);
 
   const params = {
@@ -1272,6 +1273,14 @@ function DeliveryHistoryPanel() {
     }
   };
 
+  const applyPreset = (days: number) => {
+    const to = format(new Date(), "yyyy-MM-dd");
+    const from = format(subDays(new Date(), days - 1), "yyyy-MM-dd");
+    setDateFrom(from);
+    setDateTo(to);
+    setTimelinePreset(String(days));
+  };
+
   const hasFilters = merchantFilter !== "all" || successFilter !== "all" || triggeredByFilter !== "all" || !!dateFrom || !!dateTo;
 
   const clearFilters = () => {
@@ -1280,6 +1289,7 @@ function DeliveryHistoryPanel() {
     setTriggeredByFilter("all");
     setDateFrom("");
     setDateTo("");
+    setTimelinePreset(null);
   };
 
   const failureCount = logs.filter((l) => !l.success).length;
@@ -1299,13 +1309,41 @@ function DeliveryHistoryPanel() {
       .slice(0, 12);
   }, [logs]);
 
+  const timelineWindow = useMemo(() => {
+    if (timelinePreset) {
+      const days = parseInt(timelinePreset);
+      return {
+        start: subDays(new Date(), days - 1),
+        end: new Date(),
+        label: `last ${days} days`,
+      };
+    }
+    if (dateFrom) {
+      const start = parseISO(dateFrom);
+      const end = dateTo ? parseISO(dateTo) : new Date();
+      return {
+        start,
+        end,
+        label: `${format(start, "d MMM")} – ${format(end, "d MMM")}`,
+      };
+    }
+    return {
+      start: subDays(new Date(), 29),
+      end: new Date(),
+      label: "last 30 days",
+    };
+  }, [timelinePreset, dateFrom, dateTo]);
+
   const timelineChartData = useMemo(() => {
     if (logs.length === 0) return [];
-    const cutoff = subDays(new Date(), 29);
-    const recentLogs = logs.filter((l) => new Date(l.attemptedAt) >= cutoff);
+    const { start, end } = timelineWindow;
+    const recentLogs = logs.filter((l) => {
+      const d = new Date(l.attemptedAt);
+      return d >= start && d <= end;
+    });
     if (recentLogs.length === 0) return [];
     const dayMap = new Map<string, { date: string; success: number; failed: number }>();
-    const days = eachDayOfInterval({ start: cutoff, end: new Date() });
+    const days = eachDayOfInterval({ start, end });
     for (const d of days) {
       const key = format(d, "dd MMM");
       dayMap.set(key, { date: key, success: 0, failed: 0 });
@@ -1319,7 +1357,7 @@ function DeliveryHistoryPanel() {
       }
     }
     return Array.from(dayMap.values());
-  }, [logs]);
+  }, [logs, timelineWindow]);
 
   const merchantSuccessRates = useMemo(() => {
     const map = new Map<number, { success: number; total: number }>();
@@ -1409,12 +1447,25 @@ function DeliveryHistoryPanel() {
               </SelectItem>
             </SelectContent>
           </Select>
+          <div className="flex items-center gap-1 border border-border rounded-md p-0.5">
+            {[7, 14, 30].map((d) => (
+              <Button
+                key={d}
+                variant={timelinePreset === String(d) ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => applyPreset(d)}
+              >
+                {d}d
+              </Button>
+            ))}
+          </div>
           <div className="flex items-center gap-1.5">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">From</Label>
             <Input
               type="date"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => { setDateFrom(e.target.value); setTimelinePreset(null); }}
               className="h-8 text-xs w-[130px]"
             />
           </div>
@@ -1423,7 +1474,7 @@ function DeliveryHistoryPanel() {
             <Input
               type="date"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => { setDateTo(e.target.value); setTimelinePreset(null); }}
               className="h-8 text-xs w-[130px]"
             />
           </div>
@@ -1501,7 +1552,7 @@ function DeliveryHistoryPanel() {
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
                   <CalendarDays className="w-3.5 h-3.5 text-primary" />
-                  Delivery Timeline — last 30 days
+                  Delivery Timeline — {timelineWindow.label}
                 </p>
                 <ResponsiveContainer width="100%" height={Math.max(120, merchantChartData.length * 36)}>
                   <BarChart
