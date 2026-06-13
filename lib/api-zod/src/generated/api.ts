@@ -1527,6 +1527,8 @@ export const GetReportScheduleResponse = zod.object({
   "dayOfWeek": zod.number().min(getReportScheduleResponseScheduleOneDayOfWeekMin).max(getReportScheduleResponseScheduleOneDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
   "dayOfMonth": zod.number().min(1).max(getReportScheduleResponseScheduleOneDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
+  "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
+  "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }),zod.null()])
@@ -1568,6 +1570,8 @@ export const UpsertReportScheduleResponse = zod.object({
   "dayOfWeek": zod.number().min(upsertReportScheduleResponseScheduleDayOfWeekMin).max(upsertReportScheduleResponseScheduleDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
   "dayOfMonth": zod.number().min(1).max(upsertReportScheduleResponseScheduleDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
+  "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
+  "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -1602,9 +1606,36 @@ export const ReenableReportScheduleResponse = zod.object({
   "dayOfWeek": zod.number().min(reenableReportScheduleResponseScheduleDayOfWeekMin).max(reenableReportScheduleResponseScheduleDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
   "dayOfMonth": zod.number().min(1).max(reenableReportScheduleResponseScheduleDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
+  "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
+  "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
+})
+
+
+/**
+ * @summary Get the merchant's report delivery history (last N attempts)
+ */
+export const getReportScheduleHistoryQueryLimitDefault = 20;
+export const getReportScheduleHistoryQueryLimitMax = 100;
+
+
+
+export const GetReportScheduleHistoryQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getReportScheduleHistoryQueryLimitMax).default(getReportScheduleHistoryQueryLimitDefault).describe('Maximum number of history entries to return (default 20, max 100)')
+})
+
+export const GetReportScheduleHistoryResponse = zod.object({
+  "logs": zod.array(zod.object({
+  "id": zod.number(),
+  "scheduleId": zod.number(),
+  "merchantId": zod.number(),
+  "attemptedAt": zod.string().describe('ISO timestamp of the delivery attempt'),
+  "success": zod.boolean(),
+  "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
+  "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused')
+}))
 })
 
 
@@ -1669,6 +1700,8 @@ export const GetAdminMerchantReportScheduleResponse = zod.object({
   "dayOfWeek": zod.number().min(getAdminMerchantReportScheduleResponseScheduleOneDayOfWeekMin).max(getAdminMerchantReportScheduleResponseScheduleOneDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
   "dayOfMonth": zod.number().min(1).max(getAdminMerchantReportScheduleResponseScheduleOneDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
+  "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
+  "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }),zod.null()])
@@ -1714,6 +1747,8 @@ export const UpsertAdminMerchantReportScheduleResponse = zod.object({
   "dayOfWeek": zod.number().min(upsertAdminMerchantReportScheduleResponseScheduleDayOfWeekMin).max(upsertAdminMerchantReportScheduleResponseScheduleDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
   "dayOfMonth": zod.number().min(1).max(upsertAdminMerchantReportScheduleResponseScheduleDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
   "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
+  "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
+  "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

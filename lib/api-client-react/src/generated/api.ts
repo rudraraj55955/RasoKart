@@ -118,6 +118,8 @@ import type {
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
   GetReportSchedule200,
+  GetReportScheduleHistory200,
+  GetReportScheduleHistoryParams,
   GetRoutingLogsParams,
   GetRoutingMetricsParams,
   GetSecurityComplianceSummaryParams,
@@ -4793,6 +4795,90 @@ export const useReenableReportSchedule = <TError = ErrorType<void>,
       > => {
       return useMutation(getReenableReportScheduleMutationOptions(options));
     }
+
+export const getGetReportScheduleHistoryUrl = (params?: GetReportScheduleHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/schedule/history?${stringifiedParams}` : `/api/reports/schedule/history`
+}
+
+/**
+ * @summary Get the merchant's report delivery history (last N attempts)
+ */
+export const getReportScheduleHistory = async (params?: GetReportScheduleHistoryParams, options?: RequestInit): Promise<GetReportScheduleHistory200> => {
+
+  return customFetch<GetReportScheduleHistory200>(getGetReportScheduleHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReportScheduleHistoryQueryKey = (params?: GetReportScheduleHistoryParams,) => {
+    return [
+    `/api/reports/schedule/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetReportScheduleHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getReportScheduleHistory>>, TError = ErrorType<void>>(params?: GetReportScheduleHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportScheduleHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReportScheduleHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReportScheduleHistory>>> = ({ signal }) => getReportScheduleHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReportScheduleHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReportScheduleHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getReportScheduleHistory>>>
+export type GetReportScheduleHistoryQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the merchant's report delivery history (last N attempts)
+ */
+
+export function useGetReportScheduleHistory<TData = Awaited<ReturnType<typeof getReportScheduleHistory>>, TError = ErrorType<void>>(
+ params?: GetReportScheduleHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportScheduleHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReportScheduleHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getSendReportNowUrl = () => {
 

@@ -33,6 +33,10 @@ export interface ReportSchedule {
      * @nullable
      */
   lastSentAt?: string | null;
+  /** Count of consecutive delivery failures since the last success */
+  consecutiveFailures: number;
+  /** Threshold — schedule is auto-paused when consecutiveFailures reaches this value */
+  autoPauseAfterFailures: number;
   createdAt: string;
   updatedAt: string;
 }

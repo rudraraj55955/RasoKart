@@ -17,6 +17,7 @@ import {
   useReenableReportSchedule,
   getGetTransactionReportCountQueryOptions,
   getGetSettlementReportCountQueryOptions,
+  useGetReportScheduleHistory,
 } from "@workspace/api-client-react";
 import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
 import { useQueryClient } from "@tanstack/react-query";
@@ -65,6 +66,8 @@ import {
   Trash2,
   PlayCircle,
   AlertTriangle,
+  History,
+  PauseCircle,
 } from "lucide-react";
 import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
@@ -234,6 +237,12 @@ function SchedulePanel() {
   const { data: scheduleData, isLoading: scheduleLoading } = useGetReportSchedule();
   const schedule = scheduleData?.schedule ?? null;
 
+  const { data: historyData, isLoading: historyLoading } = useGetReportScheduleHistory(
+    { limit: 20 },
+    { query: { enabled: !!schedule } as any },
+  );
+  const deliveryLogs = historyData?.logs ?? [];
+
   const [frequency, setFrequency] = useState<"weekly" | "monthly">("weekly");
   const [fileFormat, setFileFormat] = useState<"xlsx" | "pdf">("xlsx");
   const [dayOfWeek, setDayOfWeek] = useState<number | null>(1);
@@ -256,8 +265,10 @@ function SchedulePanel() {
   const sendNow = useSendReportNow();
   const reenable = useReenableReportSchedule();
 
-  const invalidate = () =>
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/reports/schedule"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/reports/schedule/history"] });
+  };
 
   const handleReenable = () => {
     reenable.mutate(undefined, {
@@ -329,6 +340,12 @@ function SchedulePanel() {
     );
   }
 
+  const isAutoPaused =
+    schedule != null &&
+    !schedule.isActive &&
+    schedule.consecutiveFailures >= schedule.autoPauseAfterFailures &&
+    schedule.consecutiveFailures > 0;
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -355,6 +372,28 @@ function SchedulePanel() {
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+
+        {/* ─── Auto-pause banner ─────────────────────────────────────────── */}
+        {isAutoPaused && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex items-start gap-3">
+            <PauseCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-300">Schedule auto-paused</p>
+              <p className="text-xs text-amber-400/80 mt-0.5">
+                Your schedule was automatically paused after {schedule.consecutiveFailures} consecutive delivery{" "}
+                {schedule.consecutiveFailures === 1 ? "failure" : "failures"}. Re-enable it below once the issue is resolved.
+              </p>
+              <button
+                className="mt-2 text-xs font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200 transition-colors"
+                onClick={() => handleToggle(true)}
+                disabled={upsert.isPending}
+              >
+                Re-enable schedule
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Frequency</Label>
@@ -524,6 +563,80 @@ function SchedulePanel() {
             </>
           )}
         </div>
+
+        {/* ─── Report History ────────────────────────────────────────────── */}
+        {schedule && (
+          <div className="pt-2 border-t border-border/50">
+            <div className="flex items-center gap-2 mb-3">
+              <History className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">Report History</span>
+              {schedule.consecutiveFailures > 0 && (
+                <span className="ml-auto flex items-center gap-1 text-xs text-amber-400">
+                  <AlertTriangle className="w-3 h-3" />
+                  {schedule.consecutiveFailures} consecutive {schedule.consecutiveFailures === 1 ? "failure" : "failures"}
+                </span>
+              )}
+            </div>
+
+            {historyLoading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : deliveryLogs.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">
+                No delivery history yet — logs appear here after your first scheduled send.
+              </p>
+            ) : (
+              <div className="rounded-lg border border-border/50 overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent border-border/50">
+                      <TableHead className="text-xs py-2 h-auto">Date &amp; Time</TableHead>
+                      <TableHead className="text-xs py-2 h-auto">Outcome</TableHead>
+                      <TableHead className="text-xs py-2 h-auto">Details</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {deliveryLogs.map((log) => (
+                      <TableRow key={log.id} className="border-border/40 hover:bg-muted/30">
+                        <TableCell className="py-2 text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
+                        </TableCell>
+                        <TableCell className="py-2">
+                          {log.isAutoPause ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
+                              <PauseCircle className="w-3 h-3" />
+                              Auto-paused
+                            </span>
+                          ) : log.success ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Delivered
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400">
+                              <XCircle className="w-3 h-3" />
+                              Failed
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2 text-xs text-muted-foreground max-w-xs truncate">
+                          {log.isAutoPause
+                            ? "Schedule automatically paused due to repeated failures"
+                            : log.failureReason
+                            ? log.failureReason
+                            : log.success
+                            ? "Report emailed successfully"
+                            : "Delivery failed"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

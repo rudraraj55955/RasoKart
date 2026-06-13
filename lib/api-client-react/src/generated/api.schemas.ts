@@ -636,6 +636,22 @@ export interface ReportSettlement {
   updatedAt: string;
 }
 
+export interface ReportDeliveryLog {
+  id: number;
+  scheduleId: number;
+  merchantId: number;
+  /** ISO timestamp of the delivery attempt */
+  attemptedAt: string;
+  success: boolean;
+  /**
+     * Human-readable failure reason, present when success is false
+     * @nullable
+     */
+  failureReason?: string | null;
+  /** Whether this entry represents the moment the schedule was auto-paused */
+  isAutoPause: boolean;
+}
+
 export type ReportScheduleFrequency = typeof ReportScheduleFrequency[keyof typeof ReportScheduleFrequency];
 
 
@@ -677,6 +693,10 @@ export interface ReportSchedule {
      * @nullable
      */
   lastSentAt?: string | null;
+  /** Count of consecutive delivery failures since the last success */
+  consecutiveFailures: number;
+  /** Threshold — schedule is auto-paused when consecutiveFailures reaches this value */
+  autoPauseAfterFailures: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -4305,6 +4325,19 @@ export type DeleteReportSchedule200 = {
 
 export type ReenableReportSchedule200 = {
   schedule: ReportSchedule;
+};
+
+export type GetReportScheduleHistoryParams = {
+/**
+ * Maximum number of history entries to return (default 20, max 100)
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type GetReportScheduleHistory200 = {
+  logs: ReportDeliveryLog[];
 };
 
 export type SendReportNow200 = {

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, reportSchedulesTable } from "@workspace/db";
-import { eq, and, sql, gte, lte, or, inArray, isNotNull, isNull } from "drizzle-orm";
+import { db, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, reportSchedulesTable, reportDeliveryLogsTable } from "@workspace/db";
+import { eq, and, sql, gte, lte, or, inArray, isNotNull, isNull, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMerchantReport } from "../helpers/merchantReportScheduler";
 
@@ -431,6 +431,31 @@ router.delete("/schedule", async (req, res, next) => {
       .where(eq(reportSchedulesTable.merchantId, user.merchantId!));
 
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/schedule/history — merchant: get own delivery log
+router.get("/schedule/history", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "merchant") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const rawLimit = parseInt((req.query["limit"] as string) ?? "20");
+    const limit = isNaN(rawLimit) ? 20 : Math.min(Math.max(rawLimit, 1), 100);
+
+    const logs = await db
+      .select()
+      .from(reportDeliveryLogsTable)
+      .where(eq(reportDeliveryLogsTable.merchantId, user.merchantId!))
+      .orderBy(desc(reportDeliveryLogsTable.attemptedAt))
+      .limit(limit);
+
+    res.json({ logs });
   } catch (err) {
     next(err);
   }
