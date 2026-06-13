@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, ListNotificationsIsRead } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -377,6 +377,13 @@ function AdminSidebar() {
     return nextDue != null && nextDue < now;
   }).length;
 
+  const { data: reportFailureData } = useListNotifications({
+    type: "report_schedule_auto_paused_admin",
+    isRead: ListNotificationsIsRead.false,
+    limit: 50,
+  });
+  const reportFailureCount = reportFailureData?.total ?? 0;
+
   return (
     <>
       {ADMIN_NAV.map((group) => (
@@ -405,6 +412,11 @@ function AdminSidebar() {
                         {isReports && overdueScheduleCount > 0 && (
                           <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none">
                             {overdueScheduleCount > 99 ? "99+" : overdueScheduleCount}
+                          </span>
+                        )}
+                        {isReports && reportFailureCount > 0 && (
+                          <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-[10px] font-bold text-white px-1 leading-none">
+                            {reportFailureCount > 99 ? "99+" : reportFailureCount}
                           </span>
                         )}
                       </Link>
@@ -448,7 +460,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
               <span className="font-bold text-sm tracking-wide">RasoKart</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{portalLabel}</span>
             </div>
-            {!publicMode && !isAdmin && user && <NotificationBell />}
+            {!publicMode && user && <NotificationBell isAdmin={isAdmin} />}
           </SidebarHeader>
           <SidebarContent>
             {publicMode ? (
@@ -506,7 +518,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
               <RasoKartLogo size={22} className="shrink-0" />
               <span className="font-semibold text-sm truncate">{portalLabel}</span>
             </div>
-            {!publicMode && !isAdmin && user && <NotificationBell />}
+            {!publicMode && user && <NotificationBell isAdmin={isAdmin} />}
             <InstallAppButton
               appName={portalName}
               variant="ghost"

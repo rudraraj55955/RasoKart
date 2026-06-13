@@ -5,7 +5,7 @@ import { db, reportSchedulesTable, reportDeliveryLogsTable, transactionsTable, m
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
-import { createNotification } from "./notifications";
+import { createNotification, createBulkNotifications } from "./notifications";
 
 let scheduledTask: ScheduledTask | null = null;
 
@@ -424,28 +424,59 @@ async function handleReportFailure(
     .where(eq(usersTable.merchantId, schedule.merchantId))
     .limit(1);
 
-  if (!merchantUser) return;
-
   const freqLabel = schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1);
   const appDomain = process.env["APP_DOMAIN"] ?? "https://rasokart.com";
   const smtpSettingsUrl = `${appDomain}/admin/settings`;
 
+  if (merchantUser) {
+    if (shouldAutoPause) {
+      await createNotification({
+        userId: merchantUser.id,
+        type: "scheduled_report_auto_paused",
+        title: "Scheduled Report Auto-Paused",
+        body: `Your ${freqLabel.toLowerCase()} transaction report schedule has been automatically paused after ${schedule.autoPauseAfterFailures} consecutive delivery failures. This is typically caused by an SMTP misconfiguration on the platform. Please contact your platform administrator to check the SMTP settings at ${smtpSettingsUrl}, then re-enable the schedule from your Reports page.`,
+        metadata: { scheduleId: schedule.id, frequency: schedule.frequency, consecutiveFailures: newConsecutiveFailures, autoPauseAfterFailures: schedule.autoPauseAfterFailures, smtpSettingsUrl },
+      });
+    } else {
+      await createNotification({
+        userId: merchantUser.id,
+        type: "scheduled_report_failure",
+        title: "Scheduled Report Delivery Failed",
+        body: `Your ${freqLabel.toLowerCase()} transaction report could not be delivered (attempt ${newConsecutiveFailures} of ${schedule.autoPauseAfterFailures}). This is typically caused by an SMTP misconfiguration — please contact your platform administrator to verify the SMTP settings at ${smtpSettingsUrl}. The schedule will be automatically paused after ${schedule.autoPauseAfterFailures} consecutive failures.`,
+        metadata: { scheduleId: schedule.id, frequency: schedule.frequency, consecutiveFailures: newConsecutiveFailures, autoPauseAfterFailures: schedule.autoPauseAfterFailures, smtpSettingsUrl },
+      });
+    }
+  }
+
   if (shouldAutoPause) {
-    await createNotification({
-      userId: merchantUser.id,
-      type: "scheduled_report_auto_paused",
-      title: "Scheduled Report Auto-Paused",
-      body: `Your ${freqLabel.toLowerCase()} transaction report schedule has been automatically paused after ${schedule.autoPauseAfterFailures} consecutive delivery failures. This is typically caused by an SMTP misconfiguration on the platform. Please contact your platform administrator to check the SMTP settings at ${smtpSettingsUrl}, then re-enable the schedule from your Reports page.`,
-      metadata: { scheduleId: schedule.id, frequency: schedule.frequency, consecutiveFailures: newConsecutiveFailures, autoPauseAfterFailures: schedule.autoPauseAfterFailures, smtpSettingsUrl },
-    });
-  } else {
-    await createNotification({
-      userId: merchantUser.id,
-      type: "scheduled_report_failure",
-      title: "Scheduled Report Delivery Failed",
-      body: `Your ${freqLabel.toLowerCase()} transaction report could not be delivered (attempt ${newConsecutiveFailures} of ${schedule.autoPauseAfterFailures}). This is typically caused by an SMTP misconfiguration — please contact your platform administrator to verify the SMTP settings at ${smtpSettingsUrl}. The schedule will be automatically paused after ${schedule.autoPauseAfterFailures} consecutive failures.`,
-      metadata: { scheduleId: schedule.id, frequency: schedule.frequency, consecutiveFailures: newConsecutiveFailures, autoPauseAfterFailures: schedule.autoPauseAfterFailures, smtpSettingsUrl },
-    });
+    const [merchantInfo] = await db
+      .select({ businessName: merchantsTable.businessName })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, schedule.merchantId))
+      .limit(1);
+
+    const merchantName = merchantInfo?.businessName ?? `Merchant #${schedule.merchantId}`;
+
+    const adminUsers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+    if (adminUsers.length > 0) {
+      await createBulkNotifications(adminUsers.map((admin) => ({
+        userId: admin.id,
+        type: "report_schedule_auto_paused_admin" as const,
+        title: "Report Schedule Auto-Paused",
+        body: `${merchantName}'s ${freqLabel.toLowerCase()} report schedule was automatically paused after ${newConsecutiveFailures} consecutive delivery failures. This typically indicates an SMTP misconfiguration. Check SMTP settings and re-enable the schedule from the Reports page.`,
+        metadata: {
+          scheduleId: schedule.id,
+          merchantId: schedule.merchantId,
+          merchantName,
+          frequency: schedule.frequency,
+          consecutiveFailures: newConsecutiveFailures,
+        },
+      })));
+    }
   }
 }
 

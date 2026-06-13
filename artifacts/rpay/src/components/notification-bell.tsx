@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from "@workspace/api-client-react";
-import { Bell, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone } from "lucide-react";
+import { Bell, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 function notifIcon(type: string) {
   if (type.startsWith("settlement")) return <CreditCard className="w-3.5 h-3.5" />;
   if (type.startsWith("plan")) return <Zap className="w-3.5 h-3.5" />;
   if (type === "limit_exceeded") return <AlertCircle className="w-3.5 h-3.5" />;
+  if (type === "report_schedule_auto_paused_admin") return <BarChart3 className="w-3.5 h-3.5" />;
   return <Megaphone className="w-3.5 h-3.5" />;
 }
 
@@ -20,18 +20,33 @@ function notifColor(type: string): string {
   if (type === "settlement_rejected") return "text-red-400";
   if (type === "plan_expiring" || type === "limit_exceeded") return "text-amber-400";
   if (type === "plan_expired") return "text-red-400";
+  if (type === "report_schedule_auto_paused_admin") return "text-amber-400";
   return "text-blue-400";
 }
 
-export function NotificationBell() {
+function notifNavTarget(type: string, metadata: unknown): string | null {
+  if (type === "report_schedule_auto_paused_admin") {
+    const meta = metadata as Record<string, unknown> | null;
+    const merchantId = meta?.merchantId;
+    if (merchantId != null) return `/admin/reports?merchantId=${merchantId}`;
+    return "/admin/reports";
+  }
+  return null;
+}
+
+interface NotificationBellProps {
+  isAdmin?: boolean;
+}
+
+export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
+  const [, navigate] = useLocation();
 
   const { data, refetch } = useListNotifications({ limit: 10, page: 1 });
   const markAll = useMarkAllNotificationsRead();
   const markOne = useMarkNotificationRead();
 
-  // Poll for new notifications every 60s
   useEffect(() => {
     const id = setInterval(() => {
       qc.invalidateQueries({ queryKey: ["/api/notifications"] });
@@ -51,12 +66,21 @@ export function NotificationBell() {
     });
   }
 
-  function handleMarkOne(id: number) {
+  function handleMarkOne(id: number, type: string, metadata: unknown) {
+    const target = notifNavTarget(type, metadata);
     markOne.mutate({ id }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+        if (target) {
+          setOpen(false);
+          navigate(target);
+        }
       },
     });
+    if (target && !markOne.isPending) {
+      setOpen(false);
+      navigate(target);
+    }
   }
 
   return (
@@ -87,37 +111,51 @@ export function NotificationBell() {
             <div className="py-10 text-center text-xs text-muted-foreground">No notifications yet</div>
           ) : (
             <ul className="divide-y divide-border/40">
-              {items.map((n) => (
-                <li key={n.id} className={`flex items-start gap-3 px-4 py-3 ${!n.isRead ? "bg-primary/5" : ""}`}>
-                  <div className={`mt-0.5 shrink-0 ${notifColor(n.type)}`}>{notifIcon(n.type)}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-medium leading-tight truncate">{n.title}</p>
-                      {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+              {items.map((n) => {
+                const target = notifNavTarget(n.type, n.metadata);
+                return (
+                  <li
+                    key={n.id}
+                    className={`flex items-start gap-3 px-4 py-3 ${!n.isRead ? "bg-primary/5" : ""} ${target ? "cursor-pointer hover:bg-muted/30" : ""}`}
+                    onClick={target ? () => handleMarkOne(n.id, n.type, n.metadata) : undefined}
+                  >
+                    <div className={`mt-0.5 shrink-0 ${notifColor(n.type)}`}>{notifIcon(n.type)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-medium leading-tight truncate">{n.title}</p>
+                        {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-snug mt-0.5 line-clamp-2">{n.body}</p>
+                      <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                        {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                      </p>
                     </div>
-                    <p className="text-[11px] text-muted-foreground leading-snug mt-0.5 line-clamp-2">{n.body}</p>
-                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
-                    </p>
-                  </div>
-                  {!n.isRead && (
-                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => handleMarkOne(n.id)}>
-                      <Check className="w-3 h-3" />
-                    </Button>
-                  )}
-                </li>
-              ))}
+                    {!n.isRead && !target && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => { e.stopPropagation(); handleMarkOne(n.id, n.type, n.metadata); }}
+                      >
+                        <Check className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
 
-        <div className="border-t border-border/50 px-4 py-2">
-          <Link href="/merchant/notifications" onClick={() => setOpen(false)}>
-            <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground">
-              View all notifications
-            </Button>
-          </Link>
-        </div>
+        {!isAdmin && (
+          <div className="border-t border-border/50 px-4 py-2">
+            <Link href="/merchant/notifications" onClick={() => setOpen(false)}>
+              <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground">
+                View all notifications
+              </Button>
+            </Link>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

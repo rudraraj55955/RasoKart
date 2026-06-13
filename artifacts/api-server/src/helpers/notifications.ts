@@ -16,6 +16,7 @@ export type NotificationType =
   | "scheduled_report_overdue"
   | "report_schedule_next_run_updated"
   | "report_schedule_reenabled"
+  | "report_schedule_auto_paused_admin"
   | "merchant_dormant"
   | "kyc_approved"
   | "kyc_rejected"

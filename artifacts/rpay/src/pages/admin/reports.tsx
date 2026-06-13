@@ -810,7 +810,10 @@ function DeliveryHistoryPanel() {
   const { data: merchantsData } = useListMerchants({ page: 1, limit: 200 });
   const merchants = merchantsData?.data ?? [];
 
-  const [merchantFilter, setMerchantFilter] = useState("all");
+  const searchStr = useSearch();
+  const urlMerchantId = new URLSearchParams(searchStr).get("merchantId") ?? "all";
+
+  const [merchantFilter, setMerchantFilter] = useState(urlMerchantId);
   const [successFilter, setSuccessFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
