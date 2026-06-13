@@ -1978,6 +1978,10 @@ export default function AdminReports() {
         <TabsList className="mb-4">
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="settlements">Settlements</TabsTrigger>
+          <TabsTrigger value="delivery-history" className="flex items-center gap-1.5">
+            <History className="w-3.5 h-3.5" />
+            Delivery History
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Transactions Tab ───────────────────────────────────────────── */}
@@ -2549,10 +2553,14 @@ export default function AdminReports() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Delivery History Tab ────────────────────────────────────────── */}
+        <TabsContent value="delivery-history" className="space-y-6">
+          <DeliveryHistoryPanel />
+        </TabsContent>
       </Tabs>
 
       <ScheduledReportsPanel />
-      <DeliveryHistoryPanel />
     </div>
   );
 }
