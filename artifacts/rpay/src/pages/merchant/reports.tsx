@@ -255,6 +255,7 @@ function SchedulePanel() {
   const { data: scheduleData, isLoading: scheduleLoading } = useGetReportSchedule();
   const schedule = scheduleData?.schedule ?? null;
 
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [historyFormatFilter, setHistoryFormatFilter] = useState<"all" | "xlsx" | "pdf">(() => {
     try {
       const v = localStorage.getItem(HISTORY_FORMAT_FILTER_KEY);
@@ -647,19 +648,32 @@ function SchedulePanel() {
         {/* ─── Delivery History ──────────────────────────────────────────── */}
         {schedule && (
           <div className="pt-2 border-t border-border/50">
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((o) => !o)}
+              className="flex items-center gap-2 w-full text-left group mb-0"
+            >
               <History className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground">Delivery History</span>
-
+              <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+                Delivery History
+              </span>
               {schedule.consecutiveFailures > 0 && (
                 <span className="flex items-center gap-1 text-xs text-amber-400 shrink-0">
                   <AlertTriangle className="w-3 h-3" />
                   {schedule.consecutiveFailures} consecutive {schedule.consecutiveFailures === 1 ? "failure" : "failures"}
                 </span>
               )}
+              <ChevronRight
+                className={`w-3.5 h-3.5 text-muted-foreground ml-auto shrink-0 transition-transform duration-200 ${historyOpen ? "rotate-90" : ""}`}
+              />
+            </button>
 
+            {historyOpen && (
+              <div className="mt-3 space-y-3">
               {/* Format filter pill buttons */}
-              <div className="flex items-center gap-1 ml-auto">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground">Format:</span>
+                <div className="flex items-center gap-1">
                 {(["all", "xlsx", "pdf"] as const).map((f) => (
                   <button
                     key={f}
@@ -677,11 +691,11 @@ function SchedulePanel() {
                     {f === "all" ? "All formats" : f.toUpperCase()}
                   </button>
                 ))}
+                </div>
               </div>
-            </div>
 
             {/* Date-range filter row */}
-            <div className="flex flex-col gap-2 mb-3">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <CalendarRange className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="text-xs text-muted-foreground">Date range:</span>
@@ -864,6 +878,8 @@ function SchedulePanel() {
                 </div>
               )}
               </>
+            )}
+              </div>
             )}
           </div>
         )}
