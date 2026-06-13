@@ -691,19 +691,10 @@ function SchedulePanel() {
                           {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
                         </TableCell>
                         <TableCell className="py-2">
-                          <FrequencyBadge frequency={log.frequency ?? schedule.frequency} />
+                          <FrequencyBadge frequency={log.frequency} />
                         </TableCell>
                         <TableCell className="py-2">
-                          {(() => {
-                            const fmt = log.format ?? null;
-                            if (fmt === "xlsx") return (
-                              <Badge className="text-xs uppercase bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/20">XLSX</Badge>
-                            );
-                            if (fmt === "pdf") return (
-                              <Badge className="text-xs uppercase bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/20">PDF</Badge>
-                            );
-                            return <span className="text-xs text-muted-foreground">—</span>;
-                          })()}
+                          <FormatBadge format={log.format} />
                         </TableCell>
                         <TableCell className="py-2">
                           {log.outcome === "re-enabled" ? (

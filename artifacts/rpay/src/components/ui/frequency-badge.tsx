@@ -1,10 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 
 interface FrequencyBadgeProps {
-  frequency: string;
+  frequency?: string | null;
 }
 
 export function FrequencyBadge({ frequency }: FrequencyBadgeProps) {
+  if (!frequency) {
+    return <span className="text-xs text-muted-foreground/60">—</span>;
+  }
   if (frequency === "daily") {
     return (
       <Badge className="text-xs capitalize bg-violet-600/20 text-violet-400 border border-violet-600/30 hover:bg-violet-600/20">

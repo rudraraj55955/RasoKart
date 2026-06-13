@@ -1,10 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 
 interface FormatBadgeProps {
-  format: string;
+  format?: string | null;
 }
 
 export function FormatBadge({ format }: FormatBadgeProps) {
+  if (!format) {
+    return <span className="text-xs text-muted-foreground/60">—</span>;
+  }
   if (format === "xlsx") {
     return (
       <Badge className="text-xs uppercase bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/20">
