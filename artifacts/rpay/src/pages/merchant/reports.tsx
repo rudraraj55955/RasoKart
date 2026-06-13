@@ -13,6 +13,7 @@ import {
   useUpsertReportSchedule,
   useDeleteReportSchedule,
   useSendReportNow,
+  useReenableReportSchedule,
 } from "@workspace/api-client-react";
 import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
 import { useQueryClient } from "@tanstack/react-query";
@@ -59,6 +60,8 @@ import {
   Send,
   CalendarDays,
   Trash2,
+  PlayCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
@@ -244,9 +247,20 @@ function SchedulePanel() {
   const upsert = useUpsertReportSchedule();
   const deleteMut = useDeleteReportSchedule();
   const sendNow = useSendReportNow();
+  const reenable = useReenableReportSchedule();
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["/api/reports/schedule"] });
+
+  const handleReenable = () => {
+    reenable.mutate(undefined, {
+      onSuccess: () => {
+        toast.success("Schedule re-enabled — your reports will resume as normal.");
+        invalidate();
+      },
+      onError: () => toast.error("Failed to re-enable schedule"),
+    });
+  };
 
   const handleSave = () => {
     const data: Record<string, unknown> = { frequency, format: fileFormat, isActive: true };
@@ -397,6 +411,30 @@ function SchedulePanel() {
             </Select>
           )}
         </div>
+
+        {schedule && !schedule.isActive && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-300">Schedule paused</p>
+              <p className="text-xs text-amber-400/80 mt-0.5">
+                Your scheduled reports have been paused due to repeated delivery failures. Re-enable to resume automatic delivery.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReenable}
+              disabled={reenable.isPending}
+              className="h-7 text-xs shrink-0 gap-1.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/60"
+            >
+              {reenable.isPending
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <PlayCircle className="w-3.5 h-3.5" />}
+              Re-enable schedule
+            </Button>
+          </div>
+        )}
 
         {schedule && (
           <div className="rounded-lg bg-muted/40 border border-border/60 px-4 py-3 text-sm space-y-1.5">
