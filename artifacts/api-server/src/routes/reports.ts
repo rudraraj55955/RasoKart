@@ -1076,6 +1076,18 @@ router.post("/schedules/:merchantId/send-now", requireAdmin, async (req, res, ne
       ipAddress: req.ip ?? null,
     });
 
+    const [u] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.merchantId, mid)).limit(1);
+    if (u) {
+      const frequencyLabel = scheduleRow.frequency === "monthly" ? "monthly" : "weekly";
+      createNotification({
+        userId: u.id,
+        type: "report_manual_send",
+        title: "Report Manually Sent by Admin",
+        body: `An admin manually sent your ${frequencyLabel} report. Check your inbox at ${merchantRow.email}.`,
+        metadata: { merchantId: mid, frequency: scheduleRow.frequency, sentTo: merchantRow.email },
+      }).catch(() => {});
+    }
+
     res.json({ ok: true, to: merchantRow.email });
   } catch (err) {
     next(err);
