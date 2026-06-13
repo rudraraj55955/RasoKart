@@ -5,6 +5,11 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { recordUploadIntent, consumeUploadIntent } from "../lib/uploadIntentStore";
 import { createNotification } from "../helpers/notifications";
+import {
+  sendKycDocApprovedEmail,
+  sendKycDocRejectedEmail,
+  sendKycFullyVerifiedEmail,
+} from "../helpers/kycEmail";
 
 const router = Router();
 router.use(requireAuth);
@@ -234,11 +239,18 @@ router.patch("/:id/review", requireAdmin, async (req, res) => {
   };
   const docLabel = docTypeLabels[doc.docType] ?? doc.docType;
 
-  const [merchantUser] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.merchantId, doc.merchantId))
-    .limit(1);
+  const [[merchantUser], [merchant]] = await Promise.all([
+    db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.merchantId, doc.merchantId))
+      .limit(1),
+    db
+      .select({ email: merchantsTable.email, businessName: merchantsTable.businessName })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, doc.merchantId))
+      .limit(1),
+  ]);
 
   if (merchantUser) {
     const isApproved = status === "approved";
@@ -253,6 +265,48 @@ router.patch("/:id/review", requireAdmin, async (req, res) => {
     }).catch((err: unknown) => {
       req.log.error({ err }, "Failed to create KYC review notification");
     });
+  }
+
+  // Send email notification to merchant
+  if (merchant) {
+    const { email, businessName } = merchant;
+    const isApproved = status === "approved";
+
+    if (isApproved) {
+      sendKycDocApprovedEmail({ to: email, businessName, docLabel }).catch((err: unknown) => {
+        req.log.error({ err }, "Failed to send KYC approved email");
+      });
+
+      // Check if merchant is now fully verified (all required docs approved)
+      const remainingDocs = await db
+        .select({ docType: merchantKycTable.docType, status: merchantKycTable.status })
+        .from(merchantKycTable)
+        .where(eq(merchantKycTable.merchantId, doc.merchantId));
+
+      // Include the just-approved doc in our check
+      const allDocs = remainingDocs.map(d =>
+        d.docType === doc.docType ? { ...d, status: "approved" } : d
+      );
+
+      const isFullyVerified = REQUIRED_DOC_TYPES.every(dt =>
+        allDocs.some(d => d.docType === dt && d.status === "approved")
+      );
+
+      if (isFullyVerified) {
+        sendKycFullyVerifiedEmail({ to: email, businessName }).catch((err: unknown) => {
+          req.log.error({ err }, "Failed to send KYC fully-verified email");
+        });
+      }
+    } else {
+      sendKycDocRejectedEmail({
+        to: email,
+        businessName,
+        docLabel,
+        reason: adminNote ?? undefined,
+      }).catch((err: unknown) => {
+        req.log.error({ err }, "Failed to send KYC rejected email");
+      });
+    }
   }
 
   res.json(serializeKycDoc(updated));
