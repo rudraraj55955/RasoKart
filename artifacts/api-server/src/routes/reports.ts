@@ -288,6 +288,38 @@ router.put("/schedule", async (req, res, next) => {
   }
 });
 
+// PATCH /api/reports/schedule/reenable — merchant: re-enable a paused schedule
+router.patch("/schedule/reenable", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "merchant") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(reportSchedulesTable)
+      .where(eq(reportSchedulesTable.merchantId, user.merchantId!))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: "No schedule configured" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(reportSchedulesTable)
+      .set({ isActive: true, consecutiveFailures: 0, updatedAt: new Date() })
+      .where(eq(reportSchedulesTable.merchantId, user.merchantId!))
+      .returning();
+
+    res.json({ schedule: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /api/reports/schedule — merchant: remove own schedule
 router.delete("/schedule", async (req, res, next) => {
   try {

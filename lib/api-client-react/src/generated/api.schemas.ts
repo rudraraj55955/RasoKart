@@ -4218,6 +4218,10 @@ export type DeleteReportSchedule200 = {
   ok: boolean;
 };
 
+export type ReenableReportSchedule200 = {
+  schedule: ReportSchedule;
+};
+
 export type SendReportNow200 = {
   ok: boolean;
   to: string;

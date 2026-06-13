@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from "@workspace/api-client-react";
+import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useReenableReportSchedule } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone, RefreshCw, ExternalLink } from "lucide-react";
+import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone, RefreshCw, ExternalLink, Calendar, PlayCircle } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ function notifIcon(type: string) {
   if (type.startsWith("plan")) return <Zap className="w-4 h-4" />;
   if (type === "provider_limit_reset") return <RefreshCw className="w-4 h-4" />;
   if (type === "limit_exceeded" || type === "provider_limit_warning" || type === "provider_limit_reached") return <AlertCircle className="w-4 h-4" />;
+  if (type === "scheduled_report_auto_paused" || type === "scheduled_report_failure" || type === "scheduled_report_retry_success") return <Calendar className="w-4 h-4" />;
   return <Megaphone className="w-4 h-4" />;
 }
 
@@ -24,6 +25,8 @@ function notifColor(type: string): string {
   if (type === "plan_expiring" || type === "limit_exceeded" || type === "provider_limit_warning") return "text-amber-400";
   if (type === "plan_expired" || type === "provider_limit_reached") return "text-red-400";
   if (type === "provider_limit_reset") return "text-emerald-400";
+  if (type === "scheduled_report_auto_paused" || type === "scheduled_report_failure") return "text-amber-400";
+  if (type === "scheduled_report_retry_success") return "text-emerald-400";
   return "text-blue-400";
 }
 
@@ -38,6 +41,9 @@ const TYPE_LABELS: Record<string, string> = {
   provider_limit_reached: "Limit Reached",
   provider_limit_reset: "Limit Reset",
   system_notice: "Notice",
+  scheduled_report_auto_paused: "Report Paused",
+  scheduled_report_failure: "Report Failed",
+  scheduled_report_retry_success: "Report Resumed",
 };
 
 type TypeFilter =
@@ -51,7 +57,8 @@ type TypeFilter =
   | "provider_limit_warning"
   | "provider_limit_reached"
   | "provider_limit_reset"
-  | "system_notice";
+  | "system_notice"
+  | "scheduled_report_auto_paused";
 
 const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] = [
   { value: "all", label: "All Types", icon: <Bell className="w-3 h-3" /> },
@@ -65,6 +72,7 @@ const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] 
   { value: "provider_limit_reached", label: "Limit Reached", icon: <AlertCircle className="w-3 h-3" /> },
   { value: "provider_limit_reset", label: "Limit Reset", icon: <RefreshCw className="w-3 h-3" /> },
   { value: "system_notice", label: "Notice", icon: <Megaphone className="w-3 h-3" /> },
+  { value: "scheduled_report_auto_paused", label: "Report Paused", icon: <Calendar className="w-3 h-3" /> },
 ];
 
 const PROVIDER_LIMIT_TYPES = new Set(["provider_limit_warning", "provider_limit_reached", "provider_limit_reset"]);
@@ -85,6 +93,7 @@ export default function NotificationsPage() {
 
   const markAll = useMarkAllNotificationsRead();
   const markOne = useMarkNotificationRead();
+  const reenable = useReenableReportSchedule();
 
   function handleTabChange(v: string) {
     setTab(v as "all" | "unread");
@@ -118,6 +127,29 @@ export default function NotificationsPage() {
   function handleNotifClick(id: number, type: string, isRead: boolean) {
     if (!isRead) handleMarkOne(id);
     if (PROVIDER_LIMIT_TYPES.has(type)) navigate("/merchant/connect");
+  }
+
+  function handleReenable(e: React.MouseEvent, notifId: number, isRead: boolean) {
+    e.stopPropagation();
+    reenable.mutate(undefined, {
+      onSuccess: () => {
+        toast.success("Schedule re-enabled — your reports will resume as normal.");
+        if (!isRead) {
+          markOne.mutate({ id: notifId }, {
+            onSuccess: () => {
+              qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+              refetch();
+            },
+          });
+        } else {
+          qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+          refetch();
+        }
+      },
+      onError: () => {
+        toast.error("Failed to re-enable schedule. Please try again or visit the Reports page.");
+      },
+    });
   }
 
   const notifications = data?.data ?? [];
@@ -189,12 +221,13 @@ export default function NotificationsPage() {
             <ul className="divide-y divide-border/50">
               {notifications.map((n) => {
                 const isProviderLimit = PROVIDER_LIMIT_TYPES.has(n.type);
+                const isAutoPaused = n.type === "scheduled_report_auto_paused";
                 const isClickable = !n.isRead || isProviderLimit;
                 return (
                   <li
                     key={n.id}
-                    role="button"
-                    tabIndex={0}
+                    role={isClickable ? "button" : undefined}
+                    tabIndex={isClickable ? 0 : undefined}
                     onClick={() => handleNotifClick(n.id, n.type, n.isRead)}
                     onKeyDown={(e) => e.key === "Enter" && handleNotifClick(n.id, n.type, n.isRead)}
                     className={`flex items-start gap-4 px-5 py-4 transition-colors ${!n.isRead ? "bg-primary/5" : ""} ${isClickable ? "cursor-pointer hover:bg-primary/10" : "cursor-default"}`}
@@ -221,6 +254,20 @@ export default function NotificationsPage() {
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
+                      {isAutoPaused && (
+                        <div className="mt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 hover:border-amber-500/60"
+                            onClick={(e) => handleReenable(e, n.id, n.isRead)}
+                            disabled={reenable.isPending}
+                          >
+                            <PlayCircle className="w-3.5 h-3.5" />
+                            Re-enable schedule
+                          </Button>
+                        </div>
+                      )}
                       <p className="text-[11px] text-muted-foreground/60 mt-1">
                         {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                       </p>

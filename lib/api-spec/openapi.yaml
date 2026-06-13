@@ -1570,6 +1570,29 @@ paths:
         "403":
           description: Forbidden
 
+  /reports/schedule/reenable:
+    patch:
+      operationId: reenableReportSchedule
+      tags: [reports]
+      summary: Re-enable a paused report schedule (sets isActive=true, resets consecutiveFailures)
+      responses:
+        "200":
+          description: Schedule re-enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule]
+                properties:
+                  schedule:
+                    $ref: "#/components/schemas/ReportSchedule"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: No schedule configured
+
   /reports/schedule/send-now:
     post:
       operationId: sendReportNow

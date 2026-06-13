@@ -258,6 +258,7 @@ import type {
   ReconciliationRunListResponse,
   ReconciliationScheduleConfig,
   ReconciliationSchedulerStatus,
+  ReenableReportSchedule200,
   RejectInput,
   RenameMerchantSavedFilterInput,
   RenewPlanInput,
@@ -4549,6 +4550,76 @@ export const useDeleteReportSchedule = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeleteReportScheduleMutationOptions(options));
+    }
+
+export const getReenableReportScheduleUrl = () => {
+
+
+
+
+  return `/api/reports/schedule/reenable`
+}
+
+/**
+ * @summary Re-enable a paused report schedule (sets isActive=true, resets consecutiveFailures)
+ */
+export const reenableReportSchedule = async ( options?: RequestInit): Promise<ReenableReportSchedule200> => {
+
+  return customFetch<ReenableReportSchedule200>(getReenableReportScheduleUrl(),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
+
+export const getReenableReportScheduleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reenableReportSchedule>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reenableReportSchedule>>, TError,void, TContext> => {
+
+const mutationKey = ['reenableReportSchedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reenableReportSchedule>>, void> = () => {
+
+
+          return  reenableReportSchedule(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReenableReportScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof reenableReportSchedule>>>
+
+    export type ReenableReportScheduleMutationError = ErrorType<void>
+
+    /**
+ * @summary Re-enable a paused report schedule (sets isActive=true, resets consecutiveFailures)
+ */
+export const useReenableReportSchedule = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reenableReportSchedule>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reenableReportSchedule>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getReenableReportScheduleMutationOptions(options));
     }
 
 export const getSendReportNowUrl = () => {

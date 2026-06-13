@@ -1550,6 +1550,32 @@ export const DeleteReportScheduleResponse = zod.object({
 
 
 /**
+ * @summary Re-enable a paused report schedule (sets isActive=true, resets consecutiveFailures)
+ */
+export const reenableReportScheduleResponseScheduleDayOfWeekMin = 0;
+export const reenableReportScheduleResponseScheduleDayOfWeekMax = 6;
+
+export const reenableReportScheduleResponseScheduleDayOfMonthMax = 28;
+
+
+
+export const ReenableReportScheduleResponse = zod.object({
+  "schedule": zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "frequency": zod.enum(['weekly', 'monthly']),
+  "format": zod.enum(['xlsx', 'pdf']),
+  "isActive": zod.boolean(),
+  "dayOfWeek": zod.number().min(reenableReportScheduleResponseScheduleDayOfWeekMin).max(reenableReportScheduleResponseScheduleDayOfWeekMax).nullish().describe('Day of week for weekly reports (0=Sun, 1=Mon, …, 6=Sat). Null uses rolling 7-day cadence.'),
+  "dayOfMonth": zod.number().min(1).max(reenableReportScheduleResponseScheduleDayOfMonthMax).nullish().describe('Day of month for monthly reports (1–28). Null uses rolling 30-day cadence.'),
+  "lastSentAt": zod.string().nullish().describe('ISO timestamp of last successful send'),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+})
+
+
+/**
  * @summary Immediately send the scheduled report to the merchant's email
  */
 export const SendReportNowResponse = zod.object({
