@@ -125,6 +125,7 @@ interface ReportsSavedFilter {
 
 const REPORTS_SAVED_FILTERS_KEY = "rasokart_merchant_reports_saved_filters";
 const CUSTOM_DATE_PRESETS_KEY = "rasokart_custom_date_presets";
+const DATE_LOCK_KEY = "rasokart_reports_date_locked";
 
 interface CustomDatePreset {
   id: string;
@@ -548,6 +549,24 @@ export default function MerchantReports() {
   const [stlSaveDatePresetNameError, setStlSaveDatePresetNameError] = useState("");
   const stlSaveDatePresetNameRef = useRef<HTMLInputElement>(null);
 
+  // Date lock state — persisted to localStorage
+  const [dateLocked, setDateLocked] = useState<boolean>(() => {
+    try { return localStorage.getItem(DATE_LOCK_KEY) === "true"; }
+    catch { return false; }
+  });
+
+  const toggleDateLock = () => {
+    const next = !dateLocked;
+    setDateLocked(next);
+    try { localStorage.setItem(DATE_LOCK_KEY, String(next)); }
+    catch {}
+    if (next) {
+      setStlDateFrom(txDateFrom);
+      setStlDateTo(txDateTo);
+      setStlActivePreset(txActivePreset);
+    }
+  };
+
   // Rename/drag state for custom date preset chips (shared across both tabs)
   const [renamingPresetId, setRenamingPresetId] = useState<string | null>(null);
   const [renamePresetValue, setRenamePresetValue] = useState("");
@@ -685,6 +704,11 @@ export default function MerchantReports() {
     setTxDateFrom(range.from);
     setTxDateTo(range.to);
     setTxActivePreset(preset.label);
+    if (dateLocked) {
+      setStlDateFrom(range.from);
+      setStlDateTo(range.to);
+      setStlActivePreset(preset.label);
+    }
   };
 
   const applyStlPreset = (preset: typeof DATE_PRESETS[number]) => {
@@ -692,6 +716,11 @@ export default function MerchantReports() {
     setStlDateFrom(range.from);
     setStlDateTo(range.to);
     setStlActivePreset(preset.label);
+    if (dateLocked) {
+      setTxDateFrom(range.from);
+      setTxDateTo(range.to);
+      setTxActivePreset(preset.label);
+    }
   };
 
   const applyCustomPresetTx = (preset: CustomDatePreset) => {
@@ -699,6 +728,11 @@ export default function MerchantReports() {
     setTxDateTo(preset.to);
     setTxActivePreset(null);
     setTxShowSaveDatePreset(false);
+    if (dateLocked) {
+      setStlDateFrom(preset.from);
+      setStlDateTo(preset.to);
+      setStlActivePreset(null);
+    }
   };
 
   const applyCustomPresetStl = (preset: CustomDatePreset) => {
@@ -706,6 +740,11 @@ export default function MerchantReports() {
     setStlDateTo(preset.to);
     setStlActivePreset(null);
     setStlShowSaveDatePreset(false);
+    if (dateLocked) {
+      setTxDateFrom(preset.from);
+      setTxDateTo(preset.to);
+      setTxActivePreset(null);
+    }
   };
 
   const confirmSaveDatePreset = async (from: string, to: string, name: string, setName: (v: string) => void, setError: (v: string) => void, setShow: (v: boolean) => void, nameRef: React.RefObject<HTMLInputElement | null>) => {
@@ -1240,16 +1279,42 @@ export default function MerchantReports() {
       <SchedulePanel />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="transactions" className="gap-2">
-            <FileText className="w-4 h-4" />
-            Transactions
-          </TabsTrigger>
-          <TabsTrigger value="settlements" className="gap-2">
-            <Banknote className="w-4 h-4" />
-            Settlements
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <TabsList>
+            <TabsTrigger value="transactions" className="gap-2">
+              <FileText className="w-4 h-4" />
+              Transactions
+            </TabsTrigger>
+            <TabsTrigger value="settlements" className="gap-2">
+              <Banknote className="w-4 h-4" />
+              Settlements
+            </TabsTrigger>
+          </TabsList>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={toggleDateLock}
+                  className={[
+                    "inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium transition-colors",
+                    dateLocked
+                      ? "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
+                      : "border-border/60 bg-transparent text-muted-foreground hover:text-foreground hover:border-border",
+                  ].join(" ")}
+                  aria-label={dateLocked ? "Date ranges are synced — click to unlock" : "Click to sync date ranges across both tabs"}
+                >
+                  <Link2 className={`w-3.5 h-3.5 ${dateLocked ? "text-primary" : ""}`} />
+                  {dateLocked ? "Dates synced" : "Sync dates"}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[220px] text-center">
+                {dateLocked
+                  ? "Date ranges are synced across both tabs — changing one updates the other. Click to unlock."
+                  : "Click to sync date ranges across both tabs so changes in one tab mirror to the other."}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
 
         {/* u2500u2500 Transactions Tab u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500 */} 
         <TabsContent value="transactions" className="space-y-6">
@@ -1456,7 +1521,11 @@ export default function MerchantReports() {
                   <Input
                     type="date"
                     value={txDateFrom}
-                    onChange={(e) => { setTxDateFrom(e.target.value); setTxActivePreset(null); }}
+                    onChange={(e) => {
+                      setTxDateFrom(e.target.value);
+                      setTxActivePreset(null);
+                      if (dateLocked) { setStlDateFrom(e.target.value); setStlActivePreset(null); }
+                    }}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -1465,7 +1534,11 @@ export default function MerchantReports() {
                   <Input
                     type="date"
                     value={txDateTo}
-                    onChange={(e) => { setTxDateTo(e.target.value); setTxActivePreset(null); }}
+                    onChange={(e) => {
+                      setTxDateTo(e.target.value);
+                      setTxActivePreset(null);
+                      if (dateLocked) { setStlDateTo(e.target.value); setStlActivePreset(null); }
+                    }}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -1872,7 +1945,11 @@ export default function MerchantReports() {
                   <Input
                     type="date"
                     value={stlDateFrom}
-                    onChange={(e) => { setStlDateFrom(e.target.value); setStlActivePreset(null); }}
+                    onChange={(e) => {
+                      setStlDateFrom(e.target.value);
+                      setStlActivePreset(null);
+                      if (dateLocked) { setTxDateFrom(e.target.value); setTxActivePreset(null); }
+                    }}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -1881,7 +1958,11 @@ export default function MerchantReports() {
                   <Input
                     type="date"
                     value={stlDateTo}
-                    onChange={(e) => { setStlDateTo(e.target.value); setStlActivePreset(null); }}
+                    onChange={(e) => {
+                      setStlDateTo(e.target.value);
+                      setStlActivePreset(null);
+                      if (dateLocked) { setTxDateTo(e.target.value); setTxActivePreset(null); }
+                    }}
                     className="h-8 text-sm"
                   />
                 </div>
