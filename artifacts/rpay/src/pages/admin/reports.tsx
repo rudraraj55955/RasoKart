@@ -14,6 +14,7 @@ import {
   useReenableAdminMerchantReportSchedule,
   getListMerchantReportSchedulesQueryOptions,
   useGetAdminReportDeliveryHistory,
+  getGetAdminReportDeliveryHistoryQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -986,13 +987,16 @@ function DeliveryHistoryPanel() {
   const { data, isLoading, isFetching } = useGetAdminReportDeliveryHistory(params);
   const logs = data?.logs ?? [];
 
-  const upsert = useUpsertAdminMerchantReportSchedule();
+  const reenable = useReenableAdminMerchantReportSchedule();
 
   const handleReEnable = async (merchantId: number, merchantName: string) => {
     setReEnabling(merchantId);
     try {
-      await upsert.mutateAsync({ merchantId, data: { isActive: true } });
-      await queryClient.invalidateQueries({ queryKey: getListMerchantReportSchedulesQueryOptions().queryKey });
+      await reenable.mutateAsync({ merchantId });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListMerchantReportSchedulesQueryOptions().queryKey }),
+        queryClient.invalidateQueries({ queryKey: getGetAdminReportDeliveryHistoryQueryKey() }),
+      ]);
       toast.success(`Schedule re-enabled for ${merchantName}`);
     } catch {
       toast.error("Failed to re-enable schedule");
