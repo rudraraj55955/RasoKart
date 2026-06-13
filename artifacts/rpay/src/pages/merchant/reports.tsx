@@ -23,6 +23,7 @@ import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -492,6 +493,17 @@ function SchedulePanel() {
             <div className="flex items-center gap-2 text-muted-foreground">
               <Mail className="w-3.5 h-3.5 shrink-0" />
               <span className="text-xs">Report emailed to your registered merchant email address</span>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-xs mr-1">Format:</span>
+              {schedule.format === "xlsx" ? (
+                <Badge className="text-xs uppercase bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/20">XLSX</Badge>
+              ) : schedule.format === "pdf" ? (
+                <Badge className="text-xs uppercase bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/20">PDF</Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs uppercase">{schedule.format}</Badge>
+              )}
             </div>
             {schedule.lastSentAt && (
               <div className="flex items-center gap-2 text-muted-foreground">
