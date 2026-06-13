@@ -584,6 +584,64 @@ router.get("/schedules", requireAdmin, async (req, res, next) => {
   }
 });
 
+// POST /api/reports/schedules/send-all-overdue — admin: send reports to all overdue active schedules
+router.post("/schedules/send-all-overdue", requireAdmin, async (req, res, next) => {
+  try {
+    const now = new Date();
+    const { merchantIds } = req.body as { merchantIds?: number[] };
+
+    // Validate merchantIds if provided
+    if (merchantIds !== undefined && (!Array.isArray(merchantIds) || merchantIds.some((id) => typeof id !== "number"))) {
+      res.status(400).json({ error: "merchantIds must be an array of integers" });
+      return;
+    }
+
+    const rows = await db
+      .select({
+        schedule: reportSchedulesTable,
+        email: merchantsTable.email,
+        businessName: merchantsTable.businessName,
+      })
+      .from(reportSchedulesTable)
+      .innerJoin(merchantsTable, eq(reportSchedulesTable.merchantId, merchantsTable.id))
+      .where(eq(reportSchedulesTable.isActive, true));
+
+    // When merchantIds is provided, restrict to that explicit set; otherwise target all active
+    const candidates = merchantIds && merchantIds.length > 0
+      ? rows.filter((r) => merchantIds.includes(r.schedule.merchantId))
+      : rows;
+
+    // Filter to only schedules where next due is in the past (overdue)
+    const overdue = candidates.filter((r) => {
+      if (!r.schedule.lastSentAt) return false;
+      const last = new Date(r.schedule.lastSentAt);
+      const freqDays = r.schedule.frequency === "monthly" ? 28 : r.schedule.frequency === "daily" ? 1 : 7;
+      const nextDue = new Date(last.getTime() + freqDays * 24 * 60 * 60 * 1000);
+      return nextDue < now;
+    });
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const row of overdue) {
+      try {
+        const ok = await sendMerchantReport(row.schedule, row.email, row.businessName);
+        if (ok) {
+          sent++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    res.json({ sent, failed, total: overdue.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/reports/schedules/:merchantId — admin: get a specific merchant's schedule
 router.get("/schedules/:merchantId", requireAdmin, async (req, res, next) => {
   try {

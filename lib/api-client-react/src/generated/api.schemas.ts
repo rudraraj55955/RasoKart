@@ -4666,6 +4666,21 @@ export type DeleteAdminMerchantReportSchedule200 = {
   ok: boolean;
 };
 
+export type SendAllOverdueReportsBody = {
+  /** Explicit list of merchant IDs to send to. When provided, only these merchants are targeted (still filtered to active + overdue). When omitted, all overdue active schedules are targeted.
+   */
+  merchantIds?: number[];
+};
+
+export type SendAllOverdueReports200 = {
+  /** Number of reports successfully sent */
+  sent: number;
+  /** Number of reports that failed to send */
+  failed: number;
+  /** Total overdue schedules processed */
+  total: number;
+};
+
 export type GetAdminReportDeliveryHistoryParams = {
 /**
  * Filter by a specific merchant

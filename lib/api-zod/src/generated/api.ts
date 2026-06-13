@@ -1778,6 +1778,20 @@ export const DeleteAdminMerchantReportScheduleResponse = zod.object({
 
 
 /**
+ * @summary Admin — send reports immediately to all overdue schedules
+ */
+export const SendAllOverdueReportsBody = zod.object({
+  "merchantIds": zod.array(zod.number()).optional().describe('Explicit list of merchant IDs to send to. When provided, only these merchants are targeted (still filtered to active + overdue). When omitted, all overdue active schedules are targeted.\n')
+})
+
+export const SendAllOverdueReportsResponse = zod.object({
+  "sent": zod.number().describe('Number of reports successfully sent'),
+  "failed": zod.number().describe('Number of reports that failed to send'),
+  "total": zod.number().describe('Total overdue schedules processed')
+})
+
+
+/**
  * @summary Admin — consolidated delivery log across all merchants
  */
 export const getAdminReportDeliveryHistoryQueryLimitDefault = 100;

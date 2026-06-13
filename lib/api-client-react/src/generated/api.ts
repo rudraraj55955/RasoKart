@@ -301,6 +301,8 @@ import type {
   SecurityReminderRequest,
   SecurityReminderResponse,
   SendAdminMerchantReportNow200,
+  SendAllOverdueReports200,
+  SendAllOverdueReportsBody,
   SendReportNow200,
   ServiceActivationRequestBody,
   ServiceActivationResponse,
@@ -5260,6 +5262,77 @@ export const useDeleteAdminMerchantReportSchedule = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDeleteAdminMerchantReportScheduleMutationOptions(options));
+    }
+
+export const getSendAllOverdueReportsUrl = () => {
+
+
+
+
+  return `/api/reports/schedules/send-all-overdue`
+}
+
+/**
+ * @summary Admin — send reports immediately to all overdue schedules
+ */
+export const sendAllOverdueReports = async (sendAllOverdueReportsBody?: SendAllOverdueReportsBody, options?: RequestInit): Promise<SendAllOverdueReports200> => {
+
+  return customFetch<SendAllOverdueReports200>(getSendAllOverdueReportsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      sendAllOverdueReportsBody,)
+  }
+);}
+
+
+
+
+export const getSendAllOverdueReportsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAllOverdueReports>>, TError,{data?: BodyType<SendAllOverdueReportsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAllOverdueReports>>, TError,{data?: BodyType<SendAllOverdueReportsBody>}, TContext> => {
+
+const mutationKey = ['sendAllOverdueReports'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAllOverdueReports>>, {data?: BodyType<SendAllOverdueReportsBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendAllOverdueReports(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAllOverdueReportsMutationResult = NonNullable<Awaited<ReturnType<typeof sendAllOverdueReports>>>
+    export type SendAllOverdueReportsMutationBody = BodyType<SendAllOverdueReportsBody> | undefined
+    export type SendAllOverdueReportsMutationError = ErrorType<void>
+
+    /**
+ * @summary Admin — send reports immediately to all overdue schedules
+ */
+export const useSendAllOverdueReports = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAllOverdueReports>>, TError,{data?: BodyType<SendAllOverdueReportsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendAllOverdueReports>>,
+        TError,
+        {data?: BodyType<SendAllOverdueReportsBody>},
+        TContext
+      > => {
+      return useMutation(getSendAllOverdueReportsMutationOptions(options));
     }
 
 export const getGetAdminReportDeliveryHistoryUrl = (params?: GetAdminReportDeliveryHistoryParams,) => {

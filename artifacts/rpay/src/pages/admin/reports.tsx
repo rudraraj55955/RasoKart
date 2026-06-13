@@ -10,6 +10,7 @@ import {
   useDeleteAdminMerchantReportSchedule,
   useSendAdminMerchantReportNow,
   useGetAdminMerchantReportScheduleHistory,
+  useSendAllOverdueReports,
   getListMerchantReportSchedulesQueryOptions,
   useGetAdminReportDeliveryHistory,
 } from "@workspace/api-client-react";
@@ -247,6 +248,7 @@ function ScheduledReportsPanel() {
   const upsert = useUpsertAdminMerchantReportSchedule();
   const del = useDeleteAdminMerchantReportSchedule();
   const sendNow = useSendAdminMerchantReportNow();
+  const sendAllOverdue = useSendAllOverdueReports();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -300,6 +302,25 @@ function ScheduledReportsPanel() {
       invalidate();
     } catch {
       toast.error(`Failed to send report for ${name}`);
+    }
+  };
+
+  const handleSendAllOverdue = async () => {
+    try {
+      const merchantIds = filteredSchedules.map((s) => s.merchantId);
+      const res = await sendAllOverdue.mutateAsync({ data: { merchantIds } });
+      if (res.total === 0) {
+        toast.info("No overdue schedules found");
+      } else if (res.failed === 0) {
+        toast.success(`Sent ${res.sent} overdue report${res.sent !== 1 ? "s" : ""} successfully`);
+      } else if (res.sent === 0) {
+        toast.error(`Failed to send all ${res.failed} overdue report${res.failed !== 1 ? "s" : ""}`);
+      } else {
+        toast.warning(`Sent ${res.sent}, failed ${res.failed} of ${res.total} overdue reports`);
+      }
+      invalidate();
+    } catch {
+      toast.error("Failed to send overdue reports — check SMTP configuration");
     }
   };
 
@@ -449,6 +470,16 @@ function ScheduledReportsPanel() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="paused">Paused</SelectItem>
+                <SelectItem value="overdue">
+                  <span className="flex items-center gap-1.5">
+                    Overdue
+                    {overdueCount > 0 && (
+                      <span className="inline-flex items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-semibold px-1.5 min-w-[18px] h-[18px] leading-none">
+                        {overdueCount}
+                      </span>
+                    )}
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
             <Select value={frequencyFilter} onValueChange={setFrequencyFilter}>
@@ -478,8 +509,27 @@ function ScheduledReportsPanel() {
                 Clear
               </Button>
             )}
+            {statusFilter === "overdue" && filteredSchedules.length > 0 && (
+              <Button
+                size="sm"
+                className="h-8 px-3 text-xs gap-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 hover:text-amber-200"
+                onClick={handleSendAllOverdue}
+                disabled={sendAllOverdue.isPending}
+              >
+                {sendAllOverdue.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Send className="w-3.5 h-3.5" />}
+                Send All Now
+              </Button>
+            )}
             {hasFilters && (
-              <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+              <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap flex items-center gap-2">
+                {statusFilter === "overdue" && filteredSchedules.length > 0 && (
+                  <span className="inline-flex items-center gap-1 text-amber-400 font-medium">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    {filteredSchedules.length} overdue
+                  </span>
+                )}
                 {filteredSchedules.length} of {schedules.length} schedule{schedules.length !== 1 ? "s" : ""}
               </span>
             )}

@@ -1885,6 +1885,49 @@ paths:
         "403":
           description: Forbidden
 
+  /reports/schedules/send-all-overdue:
+    post:
+      operationId: sendAllOverdueReports
+      tags: [reports]
+      summary: Admin — send reports immediately to all overdue schedules
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                merchantIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: >
+                    Explicit list of merchant IDs to send to. When provided, only
+                    these merchants are targeted (still filtered to active + overdue).
+                    When omitted, all overdue active schedules are targeted.
+      responses:
+        "200":
+          description: Bulk send result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent, failed, total]
+                properties:
+                  sent:
+                    type: integer
+                    description: Number of reports successfully sent
+                  failed:
+                    type: integer
+                    description: Number of reports that failed to send
+                  total:
+                    type: integer
+                    description: Total overdue schedules processed
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
   /reports/schedules/delivery-history:
     get:
       operationId: getAdminReportDeliveryHistory

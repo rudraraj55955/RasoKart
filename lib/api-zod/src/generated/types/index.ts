@@ -441,6 +441,8 @@ export * from './securityEventListResponse';
 export * from './securityReminderRequest';
 export * from './securityReminderResponse';
 export * from './sendAdminMerchantReportNow200';
+export * from './sendAllOverdueReports200';
+export * from './sendAllOverdueReportsBody';
 export * from './sendReportNow200';
 export * from './serviceActivationRequestBody';
 export * from './serviceActivationResponse';
