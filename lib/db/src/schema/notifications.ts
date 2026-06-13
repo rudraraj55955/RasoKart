@@ -61,6 +61,17 @@ export const notificationsTable = pgTable("notifications", {
       sql`((metadata->>'dedupeKey'))`,
     )
     .where(sql`type = 'scheduled_report_overdue'`),
+  // Dedup index: at most one report_schedule_auto_paused_admin alert per admin user
+  // per schedule auto-pause event (keyed by scheduleId in metadata).
+  // If the scheduler fires twice in a short window, the second insert is silently
+  // dropped by onConflictDoNothing() in handleReportFailure().
+  uniqueIndex("notifications_report_auto_paused_admin_dedup_idx")
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'scheduleId'))`,
+    )
+    .where(sql`type = 'report_schedule_auto_paused_admin' AND is_read = false`),
 ]);
 
 export type Notification = typeof notificationsTable.$inferSelect;

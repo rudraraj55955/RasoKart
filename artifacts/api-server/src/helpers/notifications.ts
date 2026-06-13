@@ -41,13 +41,17 @@ export async function createNotification(input: CreateNotificationInput) {
   return row;
 }
 
-export async function createBulkNotifications(inputs: CreateNotificationInput[]) {
+export async function createBulkNotifications(inputs: CreateNotificationInput[], opts?: { onConflictDoNothing?: boolean }) {
   if (inputs.length === 0) return [];
-  return db.insert(notificationsTable).values(inputs.map(i => ({
+  const query = db.insert(notificationsTable).values(inputs.map(i => ({
     userId: i.userId,
     type: i.type,
     title: i.title,
     body: i.body,
     metadata: i.metadata ?? null,
-  }))).returning();
+  })));
+  if (opts?.onConflictDoNothing) {
+    return query.onConflictDoNothing().returning();
+  }
+  return query.returning();
 }

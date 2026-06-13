@@ -479,7 +479,7 @@ async function handleReportFailure(
           frequency: schedule.frequency,
           consecutiveFailures: newConsecutiveFailures,
         },
-      })));
+      })), { onConflictDoNothing: true });
     }
 
     await notifyAdminsOfReportScheduleAutoPaused({
