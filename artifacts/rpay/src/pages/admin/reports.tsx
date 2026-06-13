@@ -768,6 +768,7 @@ function ScheduledReportsPanel() {
 }
 
 function DeliveryHistoryPanel() {
+  const queryClient = useQueryClient();
   const { data: merchantsData } = useListMerchants({ page: 1, limit: 200 });
   const merchants = merchantsData?.data ?? [];
 
@@ -775,6 +776,7 @@ function DeliveryHistoryPanel() {
   const [successFilter, setSuccessFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [reEnabling, setReEnabling] = useState<number | null>(null);
 
   const params = {
     merchantId: merchantFilter !== "all" ? parseInt(merchantFilter) : undefined,
@@ -786,6 +788,21 @@ function DeliveryHistoryPanel() {
 
   const { data, isLoading, isFetching } = useGetAdminReportDeliveryHistory(params);
   const logs = data?.logs ?? [];
+
+  const upsert = useUpsertAdminMerchantReportSchedule();
+
+  const handleReEnable = async (merchantId: number, merchantName: string) => {
+    setReEnabling(merchantId);
+    try {
+      await upsert.mutateAsync({ merchantId, data: { isActive: true } });
+      await queryClient.invalidateQueries({ queryKey: getListMerchantReportSchedulesQueryOptions().queryKey });
+      toast.success(`Schedule re-enabled for ${merchantName}`);
+    } catch {
+      toast.error("Failed to re-enable schedule");
+    } finally {
+      setReEnabling(null);
+    }
+  };
 
   const hasFilters = merchantFilter !== "all" || successFilter !== "all" || !!dateFrom || !!dateTo;
 
@@ -910,6 +927,7 @@ function DeliveryHistoryPanel() {
                   <TableHead>Outcome</TableHead>
                   <TableHead>Auto-pause</TableHead>
                   <TableHead>Failure Reason</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -945,6 +963,25 @@ function DeliveryHistoryPanel() {
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground max-w-[280px] truncate" title={log.failureReason ?? undefined}>
                       {log.failureReason ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {log.isAutoPause ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
+                          onClick={() => handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`)}
+                          disabled={reEnabling === log.merchantId}
+                          title="Re-enable this merchant's report schedule"
+                        >
+                          {reEnabling === log.merchantId
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <ToggleRight className="w-3.5 h-3.5" />}
+                          Re-enable
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
