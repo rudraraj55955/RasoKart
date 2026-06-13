@@ -82,6 +82,7 @@ import {
   History,
   CheckCircle,
   AlertCircle,
+  AlertTriangle,
   PauseCircle,
   RotateCcw,
   Info,
@@ -396,6 +397,7 @@ function ScheduledReportsPanel() {
   const [formatFilter, setFormatFilter] = useState("all");
   const [historyMerchant, setHistoryMerchant] = useState<{ id: number; name: string } | null>(null);
   const [sendFailures, setSendFailures] = useState<{ merchantId: number; merchantName: string; email: string; reason: string }[] | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   type SortCol = "merchant" | "email" | "frequency" | "format" | "status" | "lastSent" | "nextDue";
   const VALID_SORT_COLS: SortCol[] = ["merchant", "email", "frequency", "format", "status", "lastSent", "nextDue"];
@@ -653,6 +655,31 @@ function ScheduledReportsPanel() {
           )}
         </CardHeader>
         <CardContent className="p-0">
+          {/* Auto-paused warning banner */}
+          {statusCounts.autoPaused > 0 && !bannerDismissed && (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-amber-400">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <p className="flex-1 text-xs">
+                <span className="font-semibold">{statusCounts.autoPaused} schedule{statusCounts.autoPaused !== 1 ? "s" : ""} auto-paused</span>
+                {" "}due to repeated delivery failures. Review and re-enable them to resume report delivery.
+              </p>
+              <button
+                type="button"
+                onClick={() => setStatusFilter("auto-paused")}
+                className="shrink-0 text-xs font-medium underline underline-offset-2 hover:text-amber-300 transition-colors"
+              >
+                View auto-paused
+              </button>
+              <button
+                type="button"
+                onClick={() => setBannerDismissed(true)}
+                aria-label="Dismiss"
+                className="shrink-0 text-amber-400/60 hover:text-amber-300 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           {/* Filter bar */}
           <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-1 border-b border-border">
             <div className="relative flex-1 min-w-[180px]">
