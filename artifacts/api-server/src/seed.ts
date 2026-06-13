@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { and, count, eq, isNotNull, sql } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -1262,6 +1262,20 @@ export async function seed() {
       await db.insert(reportDeliveryLogsTable).values(deliveryLogs);
     }
     console.log("Report schedules and delivery logs seeded");
+  }
+
+  // Backfill frequency/format on legacy delivery log rows that pre-date these columns
+  const backfillResult = await db.execute(sql`
+    UPDATE ${reportDeliveryLogsTable}
+    SET
+      frequency = ${reportSchedulesTable}.frequency,
+      format    = ${reportSchedulesTable}.format
+    FROM ${reportSchedulesTable}
+    WHERE ${reportDeliveryLogsTable}.schedule_id = ${reportSchedulesTable}.id
+      AND (${reportDeliveryLogsTable}.frequency IS NULL OR ${reportDeliveryLogsTable}.format IS NULL)
+  `);
+  if ((backfillResult.rowCount ?? 0) > 0) {
+    console.log(`Backfilled frequency/format on ${backfillResult.rowCount} delivery log row(s).`);
   }
 
   console.log("Seed complete.");
