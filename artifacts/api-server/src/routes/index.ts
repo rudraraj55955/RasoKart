@@ -39,6 +39,7 @@ import cashfreeOrdersRouter from "./cashfreeOrders";
 import cashfreePayoutRouter from "./cashfreePayout";
 import providerIntegrationsRouter from "./providerIntegrations";
 import rasokartServicesRouter from "./rasokartServices";
+import smartRoutingRouter from "./smartRouting";
 
 const router: IRouter = Router();
 
@@ -82,5 +83,6 @@ router.use("/merchant", cashfreeOrdersRouter);
 router.use("/cashfree-payout", cashfreePayoutRouter);
 router.use("/provider-integrations", providerIntegrationsRouter);
 router.use("/merchant", rasokartServicesRouter);
+router.use("/smart-routing", smartRoutingRouter);
 
 export default router;

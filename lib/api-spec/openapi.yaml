@@ -6481,6 +6481,231 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/MerchantActivationRequest"
+
+  /smart-routing/configs:
+    get:
+      summary: List routing configs (admin)
+      operationId: listRoutingConfigs
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of routing configs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoutingConfig"
+    post:
+      summary: Create a routing config (admin)
+      operationId: createRoutingConfig
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingConfigInput"
+      responses:
+        "200":
+          description: Created config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingConfig"
+
+  /smart-routing/configs/{id}:
+    put:
+      summary: Update a routing config (admin)
+      operationId: updateRoutingConfig
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingConfigInput"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingConfig"
+
+  /smart-routing/configs/{id}/rules:
+    get:
+      summary: List routing rules for a config (admin)
+      operationId: listRoutingRules
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of routing rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoutingRule"
+    post:
+      summary: Add a routing rule (admin)
+      operationId: createRoutingRule
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingRuleInput"
+      responses:
+        "200":
+          description: Created rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRule"
+
+  /smart-routing/rules/{id}:
+    put:
+      summary: Update a routing rule (admin)
+      operationId: updateRoutingRule
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingRuleInput"
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRule"
+    delete:
+      summary: Delete a routing rule (admin)
+      operationId: deleteRoutingRule
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+
+  /smart-routing/metrics:
+    get:
+      summary: Provider success-rate metrics (admin)
+      operationId: getRoutingMetrics
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum: [1h, 24h, 7d]
+            default: 24h
+      responses:
+        "200":
+          description: Provider metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProviderMetric"
+
+  /smart-routing/logs:
+    get:
+      summary: Routing decision logs (admin)
+      operationId: getRoutingLogs
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Routing logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingLogsResponse"
+
+  /smart-routing/status:
+    get:
+      summary: Smart routing health summary (admin)
+      operationId: getRoutingStatus
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Routing status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingStatusResponse"
 components:
   schemas:
     GithubSyncConfig:
@@ -10916,3 +11141,222 @@ components:
           type: string
         updatedAt:
           type: string
+
+    RoutingConfig:
+      type: object
+      required: [id, configName, strategy, isEnabled, fallbackEnabled, timeoutMs, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        configName:
+          type: string
+        description:
+          type: string
+          nullable: true
+        strategy:
+          type: string
+          enum: [priority, percentage, success_rate, round_robin]
+        isEnabled:
+          type: boolean
+        fallbackEnabled:
+          type: boolean
+        timeoutMs:
+          type: integer
+        minSuccessRateThreshold:
+          type: string
+          nullable: true
+        updatedByEmail:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    RoutingConfigInput:
+      type: object
+      properties:
+        configName:
+          type: string
+        description:
+          type: string
+        strategy:
+          type: string
+          enum: [priority, percentage, success_rate, round_robin]
+        isEnabled:
+          type: boolean
+        fallbackEnabled:
+          type: boolean
+        timeoutMs:
+          type: integer
+        minSuccessRateThreshold:
+          type: number
+
+    RoutingRule:
+      type: object
+      required: [id, configId, providerKey, priority, weightPercent, isEnabled, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        configId:
+          type: integer
+        providerKey:
+          type: string
+        priority:
+          type: integer
+        weightPercent:
+          type: integer
+        minAmount:
+          type: string
+          nullable: true
+        maxAmount:
+          type: string
+          nullable: true
+        allowedPaymentModes:
+          type: string
+          nullable: true
+        isEnabled:
+          type: boolean
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    RoutingRuleInput:
+      type: object
+      properties:
+        providerKey:
+          type: string
+        priority:
+          type: integer
+        weightPercent:
+          type: integer
+        minAmount:
+          type: number
+          nullable: true
+        maxAmount:
+          type: number
+          nullable: true
+        allowedPaymentModes:
+          type: array
+          items:
+            type: string
+        isEnabled:
+          type: boolean
+        notes:
+          type: string
+
+    ProviderMetric:
+      type: object
+      required: [id, providerKey, timeWindow, totalAttempts, successCount, failedCount, timeoutCount, lastComputedAt]
+      properties:
+        id:
+          type: integer
+        providerKey:
+          type: string
+        timeWindow:
+          type: string
+        totalAttempts:
+          type: integer
+        successCount:
+          type: integer
+        failedCount:
+          type: integer
+        timeoutCount:
+          type: integer
+        avgResponseMs:
+          type: integer
+          nullable: true
+        successRate:
+          type: number
+          nullable: true
+        lastComputedAt:
+          type: string
+
+    RoutingLog:
+      type: object
+      required: [id, merchantId, attemptNumber, providerKey, result, createdAt]
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        configName:
+          type: string
+          nullable: true
+        strategyUsed:
+          type: string
+          nullable: true
+        attemptNumber:
+          type: integer
+        providerKey:
+          type: string
+        result:
+          type: string
+        responseTimeMs:
+          type: integer
+          nullable: true
+        amount:
+          type: number
+          nullable: true
+        paymentMode:
+          type: string
+          nullable: true
+        publicReferenceId:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    RoutingLogsResponse:
+      type: object
+      required: [total, page, limit, logs]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoutingLog"
+
+    RoutingStatusResponse:
+      type: object
+      required: [configured]
+      properties:
+        configured:
+          type: boolean
+        configName:
+          type: string
+          nullable: true
+        strategy:
+          type: string
+          nullable: true
+        isEnabled:
+          type: boolean
+        fallbackEnabled:
+          type: boolean
+        timeoutMs:
+          type: integer
+        providerCount:
+          type: integer
+        providers:
+          type: array
+          items:
+            type: object
+        metrics24h:
+          type: array
+          items:
+            type: object
+        recentActivity:
+          type: object
+

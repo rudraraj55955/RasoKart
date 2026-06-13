@@ -93,6 +93,7 @@ import type {
   CredentialEventListResponse,
   DashboardStats,
   DeleteAccountDetail200,
+  DeleteRoutingRule200,
   EkqrConfig,
   EkqrConfigInput,
   EkqrPaymentWebhook200,
@@ -111,6 +112,8 @@ import type {
   GetMerchantsWebhookFailureCountsParams,
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
+  GetRoutingLogsParams,
+  GetRoutingMetricsParams,
   GetSecurityComplianceSummaryParams,
   GetSignatureFailureAlertHistoryParams,
   GetVirtualAccountBalanceHistoryParams,
@@ -212,6 +215,7 @@ import type {
   ProviderIntegration,
   ProviderListResponse,
   ProviderMerchantVisibility,
+  ProviderMetric,
   ProviderProduct,
   ProviderReorderInput,
   ProviderVisibilityInput,
@@ -245,6 +249,12 @@ import type {
   ResetWebhookFailureAlertCooldownParams,
   RetryCallback200,
   RetryWebhookLog200,
+  RoutingConfig,
+  RoutingConfigInput,
+  RoutingLogsResponse,
+  RoutingRule,
+  RoutingRuleInput,
+  RoutingStatusResponse,
   RunLedgerBackfill200,
   SavedFilter,
   ScheduleRenewalInput,
@@ -20495,6 +20505,762 @@ export function useListMerchantActivationRequests<TData = Awaited<ReturnType<typ
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListMerchantActivationRequestsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListRoutingConfigsUrl = () => {
+
+
+
+
+  return `/api/smart-routing/configs`
+}
+
+/**
+ * @summary List routing configs (admin)
+ */
+export const listRoutingConfigs = async ( options?: RequestInit): Promise<RoutingConfig[]> => {
+
+  return customFetch<RoutingConfig[]>(getListRoutingConfigsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRoutingConfigsQueryKey = () => {
+    return [
+    `/api/smart-routing/configs`
+    ] as const;
+    }
+
+
+export const getListRoutingConfigsQueryOptions = <TData = Awaited<ReturnType<typeof listRoutingConfigs>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRoutingConfigs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRoutingConfigsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRoutingConfigs>>> = ({ signal }) => listRoutingConfigs({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRoutingConfigs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRoutingConfigsQueryResult = NonNullable<Awaited<ReturnType<typeof listRoutingConfigs>>>
+export type ListRoutingConfigsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List routing configs (admin)
+ */
+
+export function useListRoutingConfigs<TData = Awaited<ReturnType<typeof listRoutingConfigs>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRoutingConfigs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRoutingConfigsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateRoutingConfigUrl = () => {
+
+
+
+
+  return `/api/smart-routing/configs`
+}
+
+/**
+ * @summary Create a routing config (admin)
+ */
+export const createRoutingConfig = async (routingConfigInput: RoutingConfigInput, options?: RequestInit): Promise<RoutingConfig> => {
+
+  return customFetch<RoutingConfig>(getCreateRoutingConfigUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      routingConfigInput,)
+  }
+);}
+
+
+
+
+export const getCreateRoutingConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRoutingConfig>>, TError,{data: BodyType<RoutingConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRoutingConfig>>, TError,{data: BodyType<RoutingConfigInput>}, TContext> => {
+
+const mutationKey = ['createRoutingConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRoutingConfig>>, {data: BodyType<RoutingConfigInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createRoutingConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRoutingConfigMutationResult = NonNullable<Awaited<ReturnType<typeof createRoutingConfig>>>
+    export type CreateRoutingConfigMutationBody = BodyType<RoutingConfigInput>
+    export type CreateRoutingConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a routing config (admin)
+ */
+export const useCreateRoutingConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRoutingConfig>>, TError,{data: BodyType<RoutingConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRoutingConfig>>,
+        TError,
+        {data: BodyType<RoutingConfigInput>},
+        TContext
+      > => {
+      return useMutation(getCreateRoutingConfigMutationOptions(options));
+    }
+
+export const getUpdateRoutingConfigUrl = (id: number,) => {
+
+
+
+
+  return `/api/smart-routing/configs/${id}`
+}
+
+/**
+ * @summary Update a routing config (admin)
+ */
+export const updateRoutingConfig = async (id: number,
+    routingConfigInput: RoutingConfigInput, options?: RequestInit): Promise<RoutingConfig> => {
+
+  return customFetch<RoutingConfig>(getUpdateRoutingConfigUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      routingConfigInput,)
+  }
+);}
+
+
+
+
+export const getUpdateRoutingConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRoutingConfig>>, TError,{id: number;data: BodyType<RoutingConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRoutingConfig>>, TError,{id: number;data: BodyType<RoutingConfigInput>}, TContext> => {
+
+const mutationKey = ['updateRoutingConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRoutingConfig>>, {id: number;data: BodyType<RoutingConfigInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateRoutingConfig(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRoutingConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateRoutingConfig>>>
+    export type UpdateRoutingConfigMutationBody = BodyType<RoutingConfigInput>
+    export type UpdateRoutingConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a routing config (admin)
+ */
+export const useUpdateRoutingConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRoutingConfig>>, TError,{id: number;data: BodyType<RoutingConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRoutingConfig>>,
+        TError,
+        {id: number;data: BodyType<RoutingConfigInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateRoutingConfigMutationOptions(options));
+    }
+
+export const getListRoutingRulesUrl = (id: number,) => {
+
+
+
+
+  return `/api/smart-routing/configs/${id}/rules`
+}
+
+/**
+ * @summary List routing rules for a config (admin)
+ */
+export const listRoutingRules = async (id: number, options?: RequestInit): Promise<RoutingRule[]> => {
+
+  return customFetch<RoutingRule[]>(getListRoutingRulesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRoutingRulesQueryKey = (id: number,) => {
+    return [
+    `/api/smart-routing/configs/${id}/rules`
+    ] as const;
+    }
+
+
+export const getListRoutingRulesQueryOptions = <TData = Awaited<ReturnType<typeof listRoutingRules>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRoutingRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRoutingRulesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRoutingRules>>> = ({ signal }) => listRoutingRules(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRoutingRules>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRoutingRulesQueryResult = NonNullable<Awaited<ReturnType<typeof listRoutingRules>>>
+export type ListRoutingRulesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List routing rules for a config (admin)
+ */
+
+export function useListRoutingRules<TData = Awaited<ReturnType<typeof listRoutingRules>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRoutingRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRoutingRulesQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateRoutingRuleUrl = (id: number,) => {
+
+
+
+
+  return `/api/smart-routing/configs/${id}/rules`
+}
+
+/**
+ * @summary Add a routing rule (admin)
+ */
+export const createRoutingRule = async (id: number,
+    routingRuleInput: RoutingRuleInput, options?: RequestInit): Promise<RoutingRule> => {
+
+  return customFetch<RoutingRule>(getCreateRoutingRuleUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      routingRuleInput,)
+  }
+);}
+
+
+
+
+export const getCreateRoutingRuleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRoutingRule>>, TError,{id: number;data: BodyType<RoutingRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRoutingRule>>, TError,{id: number;data: BodyType<RoutingRuleInput>}, TContext> => {
+
+const mutationKey = ['createRoutingRule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRoutingRule>>, {id: number;data: BodyType<RoutingRuleInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createRoutingRule(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRoutingRuleMutationResult = NonNullable<Awaited<ReturnType<typeof createRoutingRule>>>
+    export type CreateRoutingRuleMutationBody = BodyType<RoutingRuleInput>
+    export type CreateRoutingRuleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a routing rule (admin)
+ */
+export const useCreateRoutingRule = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRoutingRule>>, TError,{id: number;data: BodyType<RoutingRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRoutingRule>>,
+        TError,
+        {id: number;data: BodyType<RoutingRuleInput>},
+        TContext
+      > => {
+      return useMutation(getCreateRoutingRuleMutationOptions(options));
+    }
+
+export const getUpdateRoutingRuleUrl = (id: number,) => {
+
+
+
+
+  return `/api/smart-routing/rules/${id}`
+}
+
+/**
+ * @summary Update a routing rule (admin)
+ */
+export const updateRoutingRule = async (id: number,
+    routingRuleInput: RoutingRuleInput, options?: RequestInit): Promise<RoutingRule> => {
+
+  return customFetch<RoutingRule>(getUpdateRoutingRuleUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      routingRuleInput,)
+  }
+);}
+
+
+
+
+export const getUpdateRoutingRuleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRoutingRule>>, TError,{id: number;data: BodyType<RoutingRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRoutingRule>>, TError,{id: number;data: BodyType<RoutingRuleInput>}, TContext> => {
+
+const mutationKey = ['updateRoutingRule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRoutingRule>>, {id: number;data: BodyType<RoutingRuleInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateRoutingRule(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRoutingRuleMutationResult = NonNullable<Awaited<ReturnType<typeof updateRoutingRule>>>
+    export type UpdateRoutingRuleMutationBody = BodyType<RoutingRuleInput>
+    export type UpdateRoutingRuleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a routing rule (admin)
+ */
+export const useUpdateRoutingRule = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRoutingRule>>, TError,{id: number;data: BodyType<RoutingRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRoutingRule>>,
+        TError,
+        {id: number;data: BodyType<RoutingRuleInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateRoutingRuleMutationOptions(options));
+    }
+
+export const getDeleteRoutingRuleUrl = (id: number,) => {
+
+
+
+
+  return `/api/smart-routing/rules/${id}`
+}
+
+/**
+ * @summary Delete a routing rule (admin)
+ */
+export const deleteRoutingRule = async (id: number, options?: RequestInit): Promise<DeleteRoutingRule200> => {
+
+  return customFetch<DeleteRoutingRule200>(getDeleteRoutingRuleUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteRoutingRuleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteRoutingRule>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteRoutingRule>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteRoutingRule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteRoutingRule>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteRoutingRule(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteRoutingRuleMutationResult = NonNullable<Awaited<ReturnType<typeof deleteRoutingRule>>>
+
+    export type DeleteRoutingRuleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a routing rule (admin)
+ */
+export const useDeleteRoutingRule = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteRoutingRule>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteRoutingRule>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteRoutingRuleMutationOptions(options));
+    }
+
+export const getGetRoutingMetricsUrl = (params?: GetRoutingMetricsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/smart-routing/metrics?${stringifiedParams}` : `/api/smart-routing/metrics`
+}
+
+/**
+ * @summary Provider success-rate metrics (admin)
+ */
+export const getRoutingMetrics = async (params?: GetRoutingMetricsParams, options?: RequestInit): Promise<ProviderMetric[]> => {
+
+  return customFetch<ProviderMetric[]>(getGetRoutingMetricsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRoutingMetricsQueryKey = (params?: GetRoutingMetricsParams,) => {
+    return [
+    `/api/smart-routing/metrics`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRoutingMetricsQueryOptions = <TData = Awaited<ReturnType<typeof getRoutingMetrics>>, TError = ErrorType<unknown>>(params?: GetRoutingMetricsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRoutingMetrics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRoutingMetricsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRoutingMetrics>>> = ({ signal }) => getRoutingMetrics(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRoutingMetrics>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRoutingMetricsQueryResult = NonNullable<Awaited<ReturnType<typeof getRoutingMetrics>>>
+export type GetRoutingMetricsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Provider success-rate metrics (admin)
+ */
+
+export function useGetRoutingMetrics<TData = Awaited<ReturnType<typeof getRoutingMetrics>>, TError = ErrorType<unknown>>(
+ params?: GetRoutingMetricsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRoutingMetrics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRoutingMetricsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetRoutingLogsUrl = (params?: GetRoutingLogsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/smart-routing/logs?${stringifiedParams}` : `/api/smart-routing/logs`
+}
+
+/**
+ * @summary Routing decision logs (admin)
+ */
+export const getRoutingLogs = async (params?: GetRoutingLogsParams, options?: RequestInit): Promise<RoutingLogsResponse> => {
+
+  return customFetch<RoutingLogsResponse>(getGetRoutingLogsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRoutingLogsQueryKey = (params?: GetRoutingLogsParams,) => {
+    return [
+    `/api/smart-routing/logs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRoutingLogsQueryOptions = <TData = Awaited<ReturnType<typeof getRoutingLogs>>, TError = ErrorType<unknown>>(params?: GetRoutingLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRoutingLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRoutingLogsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRoutingLogs>>> = ({ signal }) => getRoutingLogs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRoutingLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRoutingLogsQueryResult = NonNullable<Awaited<ReturnType<typeof getRoutingLogs>>>
+export type GetRoutingLogsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Routing decision logs (admin)
+ */
+
+export function useGetRoutingLogs<TData = Awaited<ReturnType<typeof getRoutingLogs>>, TError = ErrorType<unknown>>(
+ params?: GetRoutingLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRoutingLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRoutingLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetRoutingStatusUrl = () => {
+
+
+
+
+  return `/api/smart-routing/status`
+}
+
+/**
+ * @summary Smart routing health summary (admin)
+ */
+export const getRoutingStatus = async ( options?: RequestInit): Promise<RoutingStatusResponse> => {
+
+  return customFetch<RoutingStatusResponse>(getGetRoutingStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRoutingStatusQueryKey = () => {
+    return [
+    `/api/smart-routing/status`
+    ] as const;
+    }
+
+
+export const getGetRoutingStatusQueryOptions = <TData = Awaited<ReturnType<typeof getRoutingStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRoutingStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRoutingStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRoutingStatus>>> = ({ signal }) => getRoutingStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRoutingStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRoutingStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getRoutingStatus>>>
+export type GetRoutingStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Smart routing health summary (admin)
+ */
+
+export function useGetRoutingStatus<TData = Awaited<ReturnType<typeof getRoutingStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRoutingStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRoutingStatusQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

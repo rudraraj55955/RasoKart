@@ -299,6 +299,7 @@ const ADMIN_NAV = [
       { title: "Feature Control", icon: Sliders, href: "/admin/feature-control" },
       { title: "Account Details", icon: CreditCard, href: "/admin/account-details" },
       { title: "Provider Integrations", icon: Layers, href: "/admin/provider-integrations" },
+      { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
       { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
       { title: "Cashfree Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
       { title: "Cashfree Payout", icon: Landmark, href: "/admin/cashfree-payout" },

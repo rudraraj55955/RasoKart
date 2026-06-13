@@ -3437,6 +3437,131 @@ export interface MerchantActivationRequest {
   updatedAt: string;
 }
 
+export type RoutingConfigStrategy = typeof RoutingConfigStrategy[keyof typeof RoutingConfigStrategy];
+
+
+export const RoutingConfigStrategy = {
+  priority: 'priority',
+  percentage: 'percentage',
+  success_rate: 'success_rate',
+  round_robin: 'round_robin',
+} as const;
+
+export interface RoutingConfig {
+  id: number;
+  configName: string;
+  description?: string | null;
+  strategy: RoutingConfigStrategy;
+  isEnabled: boolean;
+  fallbackEnabled: boolean;
+  timeoutMs: number;
+  minSuccessRateThreshold?: string | null;
+  updatedByEmail?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RoutingConfigInputStrategy = typeof RoutingConfigInputStrategy[keyof typeof RoutingConfigInputStrategy];
+
+
+export const RoutingConfigInputStrategy = {
+  priority: 'priority',
+  percentage: 'percentage',
+  success_rate: 'success_rate',
+  round_robin: 'round_robin',
+} as const;
+
+export interface RoutingConfigInput {
+  configName?: string;
+  description?: string;
+  strategy?: RoutingConfigInputStrategy;
+  isEnabled?: boolean;
+  fallbackEnabled?: boolean;
+  timeoutMs?: number;
+  minSuccessRateThreshold?: number;
+}
+
+export interface RoutingRule {
+  id: number;
+  configId: number;
+  providerKey: string;
+  priority: number;
+  weightPercent: number;
+  minAmount?: string | null;
+  maxAmount?: string | null;
+  allowedPaymentModes?: string | null;
+  isEnabled: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RoutingRuleInput {
+  providerKey?: string;
+  priority?: number;
+  weightPercent?: number;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  allowedPaymentModes?: string[];
+  isEnabled?: boolean;
+  notes?: string;
+}
+
+export interface ProviderMetric {
+  id: number;
+  providerKey: string;
+  timeWindow: string;
+  totalAttempts: number;
+  successCount: number;
+  failedCount: number;
+  timeoutCount: number;
+  avgResponseMs?: number | null;
+  successRate?: number | null;
+  lastComputedAt: string;
+}
+
+export interface RoutingLog {
+  id: number;
+  merchantId: number;
+  configName?: string | null;
+  strategyUsed?: string | null;
+  attemptNumber: number;
+  providerKey: string;
+  result: string;
+  responseTimeMs?: number | null;
+  amount?: number | null;
+  paymentMode?: string | null;
+  publicReferenceId?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+}
+
+export interface RoutingLogsResponse {
+  total: number;
+  page: number;
+  limit: number;
+  logs: RoutingLog[];
+}
+
+export type RoutingStatusResponseProvidersItem = { [key: string]: unknown };
+
+export type RoutingStatusResponseMetrics24hItem = { [key: string]: unknown };
+
+export type RoutingStatusResponseRecentActivity = { [key: string]: unknown };
+
+export interface RoutingStatusResponse {
+  configured: boolean;
+  configName?: string | null;
+  strategy?: string | null;
+  isEnabled?: boolean;
+  fallbackEnabled?: boolean;
+  timeoutMs?: number;
+  providerCount?: number;
+  providers?: RoutingStatusResponseProvidersItem[];
+  metrics24h?: RoutingStatusResponseMetrics24hItem[];
+  recentActivity?: RoutingStatusResponseRecentActivity;
+}
+
 export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
@@ -4348,5 +4473,27 @@ export type EkqrPaymentWebhook200 = {
 
 export type ListProductVisibilityParams = {
 merchantId?: number;
+};
+
+export type DeleteRoutingRule200 = {
+  deleted?: boolean;
+};
+
+export type GetRoutingMetricsParams = {
+window?: GetRoutingMetricsWindow;
+};
+
+export type GetRoutingMetricsWindow = typeof GetRoutingMetricsWindow[keyof typeof GetRoutingMetricsWindow];
+
+
+export const GetRoutingMetricsWindow = {
+  '1h': '1h',
+  '24h': '24h',
+  '7d': '7d',
+} as const;
+
+export type GetRoutingLogsParams = {
+page?: number;
+limit?: number;
 };
 

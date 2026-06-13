@@ -5984,3 +5984,266 @@ export const ListMerchantActivationRequestsResponseItem = zod.object({
 export const ListMerchantActivationRequestsResponse = zod.array(ListMerchantActivationRequestsResponseItem)
 
 
+/**
+ * @summary List routing configs (admin)
+ */
+export const ListRoutingConfigsResponseItem = zod.object({
+  "id": zod.number(),
+  "configName": zod.string(),
+  "description": zod.string().nullish(),
+  "strategy": zod.enum(['priority', 'percentage', 'success_rate', 'round_robin']),
+  "isEnabled": zod.boolean(),
+  "fallbackEnabled": zod.boolean(),
+  "timeoutMs": zod.number(),
+  "minSuccessRateThreshold": zod.string().nullish(),
+  "updatedByEmail": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListRoutingConfigsResponse = zod.array(ListRoutingConfigsResponseItem)
+
+
+/**
+ * @summary Create a routing config (admin)
+ */
+export const CreateRoutingConfigBody = zod.object({
+  "configName": zod.string().optional(),
+  "description": zod.string().optional(),
+  "strategy": zod.enum(['priority', 'percentage', 'success_rate', 'round_robin']).optional(),
+  "isEnabled": zod.boolean().optional(),
+  "fallbackEnabled": zod.boolean().optional(),
+  "timeoutMs": zod.number().optional(),
+  "minSuccessRateThreshold": zod.number().optional()
+})
+
+export const CreateRoutingConfigResponse = zod.object({
+  "id": zod.number(),
+  "configName": zod.string(),
+  "description": zod.string().nullish(),
+  "strategy": zod.enum(['priority', 'percentage', 'success_rate', 'round_robin']),
+  "isEnabled": zod.boolean(),
+  "fallbackEnabled": zod.boolean(),
+  "timeoutMs": zod.number(),
+  "minSuccessRateThreshold": zod.string().nullish(),
+  "updatedByEmail": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a routing config (admin)
+ */
+export const UpdateRoutingConfigParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateRoutingConfigBody = zod.object({
+  "configName": zod.string().optional(),
+  "description": zod.string().optional(),
+  "strategy": zod.enum(['priority', 'percentage', 'success_rate', 'round_robin']).optional(),
+  "isEnabled": zod.boolean().optional(),
+  "fallbackEnabled": zod.boolean().optional(),
+  "timeoutMs": zod.number().optional(),
+  "minSuccessRateThreshold": zod.number().optional()
+})
+
+export const UpdateRoutingConfigResponse = zod.object({
+  "id": zod.number(),
+  "configName": zod.string(),
+  "description": zod.string().nullish(),
+  "strategy": zod.enum(['priority', 'percentage', 'success_rate', 'round_robin']),
+  "isEnabled": zod.boolean(),
+  "fallbackEnabled": zod.boolean(),
+  "timeoutMs": zod.number(),
+  "minSuccessRateThreshold": zod.string().nullish(),
+  "updatedByEmail": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List routing rules for a config (admin)
+ */
+export const ListRoutingRulesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListRoutingRulesResponseItem = zod.object({
+  "id": zod.number(),
+  "configId": zod.number(),
+  "providerKey": zod.string(),
+  "priority": zod.number(),
+  "weightPercent": zod.number(),
+  "minAmount": zod.string().nullish(),
+  "maxAmount": zod.string().nullish(),
+  "allowedPaymentModes": zod.string().nullish(),
+  "isEnabled": zod.boolean(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListRoutingRulesResponse = zod.array(ListRoutingRulesResponseItem)
+
+
+/**
+ * @summary Add a routing rule (admin)
+ */
+export const CreateRoutingRuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateRoutingRuleBody = zod.object({
+  "providerKey": zod.string().optional(),
+  "priority": zod.number().optional(),
+  "weightPercent": zod.number().optional(),
+  "minAmount": zod.number().nullish(),
+  "maxAmount": zod.number().nullish(),
+  "allowedPaymentModes": zod.array(zod.string()).optional(),
+  "isEnabled": zod.boolean().optional(),
+  "notes": zod.string().optional()
+})
+
+export const CreateRoutingRuleResponse = zod.object({
+  "id": zod.number(),
+  "configId": zod.number(),
+  "providerKey": zod.string(),
+  "priority": zod.number(),
+  "weightPercent": zod.number(),
+  "minAmount": zod.string().nullish(),
+  "maxAmount": zod.string().nullish(),
+  "allowedPaymentModes": zod.string().nullish(),
+  "isEnabled": zod.boolean(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a routing rule (admin)
+ */
+export const UpdateRoutingRuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateRoutingRuleBody = zod.object({
+  "providerKey": zod.string().optional(),
+  "priority": zod.number().optional(),
+  "weightPercent": zod.number().optional(),
+  "minAmount": zod.number().nullish(),
+  "maxAmount": zod.number().nullish(),
+  "allowedPaymentModes": zod.array(zod.string()).optional(),
+  "isEnabled": zod.boolean().optional(),
+  "notes": zod.string().optional()
+})
+
+export const UpdateRoutingRuleResponse = zod.object({
+  "id": zod.number(),
+  "configId": zod.number(),
+  "providerKey": zod.string(),
+  "priority": zod.number(),
+  "weightPercent": zod.number(),
+  "minAmount": zod.string().nullish(),
+  "maxAmount": zod.string().nullish(),
+  "allowedPaymentModes": zod.string().nullish(),
+  "isEnabled": zod.boolean(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a routing rule (admin)
+ */
+export const DeleteRoutingRuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteRoutingRuleResponse = zod.object({
+  "deleted": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Provider success-rate metrics (admin)
+ */
+export const getRoutingMetricsQueryWindowDefault = `24h`;
+
+export const GetRoutingMetricsQueryParams = zod.object({
+  "window": zod.enum(['1h', '24h', '7d']).default(getRoutingMetricsQueryWindowDefault)
+})
+
+export const GetRoutingMetricsResponseItem = zod.object({
+  "id": zod.number(),
+  "providerKey": zod.string(),
+  "timeWindow": zod.string(),
+  "totalAttempts": zod.number(),
+  "successCount": zod.number(),
+  "failedCount": zod.number(),
+  "timeoutCount": zod.number(),
+  "avgResponseMs": zod.number().nullish(),
+  "successRate": zod.number().nullish(),
+  "lastComputedAt": zod.string()
+})
+export const GetRoutingMetricsResponse = zod.array(GetRoutingMetricsResponseItem)
+
+
+/**
+ * @summary Routing decision logs (admin)
+ */
+export const getRoutingLogsQueryPageDefault = 1;
+export const getRoutingLogsQueryLimitDefault = 50;
+
+export const GetRoutingLogsQueryParams = zod.object({
+  "page": zod.coerce.number().default(getRoutingLogsQueryPageDefault),
+  "limit": zod.coerce.number().default(getRoutingLogsQueryLimitDefault)
+})
+
+export const GetRoutingLogsResponse = zod.object({
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number(),
+  "logs": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "configName": zod.string().nullish(),
+  "strategyUsed": zod.string().nullish(),
+  "attemptNumber": zod.number(),
+  "providerKey": zod.string(),
+  "result": zod.string(),
+  "responseTimeMs": zod.number().nullish(),
+  "amount": zod.number().nullish(),
+  "paymentMode": zod.string().nullish(),
+  "publicReferenceId": zod.string().nullish(),
+  "errorMessage": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Smart routing health summary (admin)
+ */
+export const GetRoutingStatusResponse = zod.object({
+  "configured": zod.boolean(),
+  "configName": zod.string().nullish(),
+  "strategy": zod.string().nullish(),
+  "isEnabled": zod.boolean().optional(),
+  "fallbackEnabled": zod.boolean().optional(),
+  "timeoutMs": zod.number().optional(),
+  "providerCount": zod.number().optional(),
+  "providers": zod.array(zod.object({
+
+}).passthrough()).optional(),
+  "metrics24h": zod.array(zod.object({
+
+}).passthrough()).optional(),
+  "recentActivity": zod.object({
+
+}).passthrough().optional()
+})
+
+
