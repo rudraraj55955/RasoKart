@@ -30,6 +30,8 @@ import {
   merchantWalletsTable,
   walletLedgerTable,
   merchantVerificationsTable,
+  reportSchedulesTable,
+  reportDeliveryLogsTable,
 } from "@workspace/db";
 
 const PLAN_TIERS = [
@@ -1174,6 +1176,92 @@ export async function seed() {
       await db.update(merchantsTable).set({ verificationStatus: "approved" }).where(eq(merchantsTable.id, m2.id));
       console.log("Demo merchant 2 verification seeded");
     }
+  }
+
+  // ── Report Schedules & Delivery Logs — merchant-scoped guard ────────────
+  // Seeds one schedule per demo merchant plus 3–5 realistic delivery log
+  // entries (mix of success, failure, and auto-pause) so the Scheduled
+  // Reports feature is demostrable on a fresh install.
+  if (m1 && m2) {
+    const now = Date.now();
+
+    const scheduleSeeds = [
+      {
+        merchantId: m1.id,
+        frequency: "weekly" as const,
+        format: "xlsx" as const,
+        isActive: true,
+        dayOfWeek: 1, // Monday
+        dayOfMonth: null,
+        consecutiveFailures: 0,
+        autoPauseAfterFailures: 3,
+        lastSentAt: new Date(now - 7 * 86400000),
+        nextRunAt: new Date(now + 7 * 86400000),
+      },
+      {
+        merchantId: m2.id,
+        frequency: "monthly" as const,
+        format: "pdf" as const,
+        isActive: true,
+        dayOfWeek: null,
+        dayOfMonth: 1,
+        consecutiveFailures: 0,
+        autoPauseAfterFailures: 3,
+        lastSentAt: new Date(now - 30 * 86400000),
+        nextRunAt: new Date(now + 1 * 86400000),
+      },
+    ];
+
+    for (const sched of scheduleSeeds) {
+      const [existing] = await db
+        .select({ id: reportSchedulesTable.id })
+        .from(reportSchedulesTable)
+        .where(eq(reportSchedulesTable.merchantId, sched.merchantId))
+        .limit(1);
+
+      if (existing) continue;
+
+      const [inserted] = await db
+        .insert(reportSchedulesTable)
+        .values(sched)
+        .returning();
+
+      if (!inserted) continue;
+
+      // Seed 3–5 delivery log entries per schedule
+      const deliveryLogs: Array<{
+        scheduleId: number;
+        merchantId: number;
+        attemptedAt: Date;
+        success: boolean;
+        failureReason: string | null;
+        isAutoPause: boolean;
+        frequency: string;
+        format: string;
+      }> = [];
+
+      if (sched.frequency === "weekly") {
+        // 5 entries: 4 success + 1 failure
+        deliveryLogs.push(
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 35 * 86400000), success: true,  failureReason: null, isAutoPause: false, frequency: sched.frequency, format: sched.format },
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 28 * 86400000), success: true,  failureReason: null, isAutoPause: false, frequency: sched.frequency, format: sched.format },
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 21 * 86400000), success: false, failureReason: "SMTP connection timeout", isAutoPause: false, frequency: sched.frequency, format: sched.format },
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 14 * 86400000), success: true,  failureReason: null, isAutoPause: false, frequency: sched.frequency, format: sched.format },
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 7  * 86400000), success: true,  failureReason: null, isAutoPause: false, frequency: sched.frequency, format: sched.format },
+        );
+      } else {
+        // 4 entries: 2 success + 1 failure + 1 auto-pause
+        deliveryLogs.push(
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 90 * 86400000), success: true,  failureReason: null,                           isAutoPause: false, frequency: sched.frequency, format: sched.format },
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 60 * 86400000), success: false, failureReason: "Invalid recipient email",       isAutoPause: false, frequency: sched.frequency, format: sched.format },
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 60 * 86400000 + 3600000), success: false, failureReason: "Delivery failed after 3 retries", isAutoPause: true, frequency: sched.frequency, format: sched.format },
+          { scheduleId: inserted.id, merchantId: sched.merchantId, attemptedAt: new Date(now - 30 * 86400000), success: true,  failureReason: null,                           isAutoPause: false, frequency: sched.frequency, format: sched.format },
+        );
+      }
+
+      await db.insert(reportDeliveryLogsTable).values(deliveryLogs);
+    }
+    console.log("Report schedules and delivery logs seeded");
   }
 
   console.log("Seed complete.");
