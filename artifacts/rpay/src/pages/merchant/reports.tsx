@@ -796,7 +796,7 @@ function SchedulePanel() {
                               <CheckCircle2 className="w-3 h-3" />
                               Delivered
                             </span>
-                          ) : (
+                          ) : log.failureReason ? (
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -806,10 +806,15 @@ function SchedulePanel() {
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="max-w-xs text-xs">
-                                  {log.failureReason ?? "Delivery failed"}
+                                  {log.failureReason}
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400">
+                              <XCircle className="w-3 h-3" />
+                              Failed
+                            </span>
                           )}
                         </TableCell>
                       </TableRow>
