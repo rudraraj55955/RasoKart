@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, reportSchedulesTable, reportDeliveryLogsTable, usersTable } from "@workspace/db";
+import { db, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, reportSchedulesTable, reportDeliveryLogsTable, auditLogsTable, usersTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, or, inArray, isNotNull, isNull, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMerchantReport } from "../helpers/merchantReportScheduler";
@@ -654,8 +654,23 @@ router.put("/schedules/:merchantId", requireAdmin, async (req, res, next) => {
 
     const schedule = await upsertSchedule(mid, { frequency, format, isActive, dayOfWeek, dayOfMonth, nextRunAt });
 
-    // Notify the merchant if the admin explicitly set or cleared nextRunAt
+    // Write audit log and notify merchant whenever an admin explicitly sets or clears nextRunAt
     if (nextRunAt !== undefined) {
+      const admin = (req as any).user;
+      await db.insert(auditLogsTable).values({
+        adminId: admin.id,
+        adminEmail: admin.email,
+        action: nextRunAt === null ? "report_schedule_override_cleared" : "report_schedule_override_set",
+        targetType: "merchant",
+        targetId: mid,
+        details: JSON.stringify({
+          merchantId: mid,
+          nextRunAt: nextRunAt ?? null,
+          frequency: schedule.frequency,
+          format: schedule.format,
+        }),
+        ipAddress: req.ip ?? null,
+      });
       const [u] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.merchantId, mid)).limit(1);
       if (u) {
         const body = nextRunAt === null
