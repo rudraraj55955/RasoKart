@@ -154,6 +154,9 @@ const TX_STATUS_KEY = "rasokart_reports_tx_status";
 const TX_SOURCE_KEY = "rasokart_reports_tx_source";
 const TX_CONNECTION_PROVIDER_KEY = "rasokart_reports_tx_connection_provider";
 const STL_STATUS_KEY = "rasokart_reports_stl_status";
+const HISTORY_FORMAT_FILTER_KEY = "rasokart_schedule_history_format_filter";
+const HISTORY_DATE_FROM_KEY = "rasokart_schedule_history_date_from";
+const HISTORY_DATE_TO_KEY = "rasokart_schedule_history_date_to";
 
 interface CustomDatePreset {
   id: string;
@@ -252,9 +255,36 @@ function SchedulePanel() {
   const { data: scheduleData, isLoading: scheduleLoading } = useGetReportSchedule();
   const schedule = scheduleData?.schedule ?? null;
 
-  const [historyFormatFilter, setHistoryFormatFilter] = useState<"all" | "xlsx" | "pdf">("all");
-  const [historyDateFrom, setHistoryDateFrom] = useState<string>("");
-  const [historyDateTo, setHistoryDateTo] = useState<string>("");
+  const [historyFormatFilter, setHistoryFormatFilter] = useState<"all" | "xlsx" | "pdf">(() => {
+    try {
+      const v = localStorage.getItem(HISTORY_FORMAT_FILTER_KEY);
+      return (v === "xlsx" || v === "pdf" ? v : "all") as "all" | "xlsx" | "pdf";
+    } catch { return "all"; }
+  });
+  const [historyDateFrom, setHistoryDateFrom] = useState<string>(() => {
+    try { return localStorage.getItem(HISTORY_DATE_FROM_KEY) ?? ""; } catch { return ""; }
+  });
+  const [historyDateTo, setHistoryDateTo] = useState<string>(() => {
+    try { return localStorage.getItem(HISTORY_DATE_TO_KEY) ?? ""; } catch { return ""; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(HISTORY_FORMAT_FILTER_KEY, historyFormatFilter); } catch {}
+  }, [historyFormatFilter]);
+
+  useEffect(() => {
+    try {
+      if (historyDateFrom) localStorage.setItem(HISTORY_DATE_FROM_KEY, historyDateFrom);
+      else localStorage.removeItem(HISTORY_DATE_FROM_KEY);
+    } catch {}
+  }, [historyDateFrom]);
+
+  useEffect(() => {
+    try {
+      if (historyDateTo) localStorage.setItem(HISTORY_DATE_TO_KEY, historyDateTo);
+      else localStorage.removeItem(HISTORY_DATE_TO_KEY);
+    } catch {}
+  }, [historyDateTo]);
 
   const historyParams: Record<string, unknown> = { limit: 50 };
   if (historyFormatFilter !== "all") historyParams["format"] = historyFormatFilter;
