@@ -132,6 +132,7 @@ function ScheduledReportsPanel() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [frequencyFilter, setFrequencyFilter] = useState("all");
+  const [formatFilter, setFormatFilter] = useState("all");
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getListMerchantReportSchedulesQueryOptions().queryKey });
@@ -165,15 +166,17 @@ function ScheduledReportsPanel() {
     if (statusFilter === "active" && !s.isActive) return false;
     if (statusFilter === "paused" && s.isActive) return false;
     if (frequencyFilter !== "all" && s.frequency !== frequencyFilter) return false;
+    if (formatFilter !== "all" && s.format !== formatFilter) return false;
     return true;
   });
 
-  const hasFilters = search.trim() !== "" || statusFilter !== "all" || frequencyFilter !== "all";
+  const hasFilters = search.trim() !== "" || statusFilter !== "all" || frequencyFilter !== "all" || formatFilter !== "all";
 
   const clearFilters = () => {
     setSearch("");
     setStatusFilter("all");
     setFrequencyFilter("all");
+    setFormatFilter("all");
   };
 
   return (
@@ -217,6 +220,16 @@ function ScheduledReportsPanel() {
               <SelectItem value="all">All Frequencies</SelectItem>
               <SelectItem value="weekly">Weekly</SelectItem>
               <SelectItem value="monthly">Monthly</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={formatFilter} onValueChange={setFormatFilter}>
+            <SelectTrigger className="h-8 w-[120px] text-xs">
+              <SelectValue placeholder="Format" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Formats</SelectItem>
+              <SelectItem value="xlsx">XLSX</SelectItem>
+              <SelectItem value="pdf">PDF</SelectItem>
             </SelectContent>
           </Select>
           {hasFilters && (
