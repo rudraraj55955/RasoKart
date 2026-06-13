@@ -14,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -32,6 +31,7 @@ const DOC_TYPES = [
 
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
 const MAX_SIZE = 10 * 1024 * 1024;
+const POLL_INTERVAL_MS = 15_000;
 
 function statusBadge(status: string) {
   if (status === "approved") return <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">Approved</Badge>;
@@ -45,13 +45,14 @@ function DocRow({
   onResubmit,
 }: {
   doc: KycDocument;
-  onDelete: (id: number) => void;
+  onDelete: (id: number) => Promise<void>;
   onResubmit: (docType: string) => void;
 }) {
   const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
   const typeLabel = DOC_TYPES.find(d => d.value === doc.docType)?.label ?? doc.docType;
   const fileUrl = doc.fileUrl.startsWith("/") ? `${base}/api/storage${doc.fileUrl}` : doc.fileUrl;
   const [deleting, setDeleting] = useState(false);
+  const [resubmitting, setResubmitting] = useState(false);
 
   async function handleDelete() {
     setDeleting(true);
@@ -59,6 +60,18 @@ function DocRow({
       await onDelete(doc.id);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleResubmit() {
+    setResubmitting(true);
+    try {
+      await onDelete(doc.id);
+      onResubmit(doc.docType);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to remove rejected document"));
+    } finally {
+      setResubmitting(false);
     }
   }
 
@@ -113,9 +126,10 @@ function DocRow({
               size="sm"
               variant="outline"
               className="h-7 gap-1.5 text-xs border-rose-500/40 text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
-              onClick={() => onResubmit(doc.docType)}
+              onClick={handleResubmit}
+              disabled={resubmitting}
             >
-              <RefreshCw className="w-3 h-3" />
+              {resubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               Resubmit
             </Button>
           </div>
@@ -130,9 +144,11 @@ export default function MerchantVerification() {
   const qc = useQueryClient();
   const merchantId = (user as any)?.merchantId as number | undefined;
 
-  const { data: kycData, isLoading } = useListKycDocuments();
+  const { data: kycData, isLoading } = useListKycDocuments(undefined, {
+    query: { refetchInterval: POLL_INTERVAL_MS, queryKey: getListKycDocumentsQueryKey() },
+  });
   const { data: summaryData } = useGetKycSummary(merchantId ?? 0, {
-    query: { enabled: !!merchantId, queryKey: ["/api/kyc/summary", merchantId] },
+    query: { enabled: !!merchantId, queryKey: ["/api/kyc/summary", merchantId], refetchInterval: POLL_INTERVAL_MS },
   });
   const requestUploadUrl = useRequestKycUploadUrl();
   const submitDoc = useSubmitKycDocument();
@@ -200,7 +216,7 @@ export default function MerchantVerification() {
   async function handleDelete(id: number) {
     try {
       await deleteDoc.mutateAsync({ id });
-      toast.success("Document deleted");
+      toast.success("Document removed");
       qc.invalidateQueries({ queryKey: getListKycDocumentsQueryKey() });
       qc.invalidateQueries({ queryKey: ["/api/kyc/summary"] });
     } catch (err) {
@@ -211,6 +227,7 @@ export default function MerchantVerification() {
   function openUpload(prefilledType?: string) {
     setDocType(prefilledType ?? "");
     setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setShowUpload(true);
   }
 

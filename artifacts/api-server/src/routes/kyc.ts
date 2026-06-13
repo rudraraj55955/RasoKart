@@ -187,8 +187,8 @@ router.delete("/:id", async (req, res) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    if (doc.status !== "pending") {
-      res.status(400).json({ error: "Only pending documents can be deleted" });
+    if (doc.status !== "pending" && doc.status !== "rejected") {
+      res.status(400).json({ error: "Only pending or rejected documents can be deleted" });
       return;
     }
   }
