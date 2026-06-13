@@ -68,6 +68,7 @@ import {
   AlertTriangle,
   History,
   PauseCircle,
+  Check,
 } from "lucide-react";
 import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
@@ -1504,6 +1505,7 @@ export default function MerchantReports() {
   const isStlExporting = stlExporting !== null;
   const txNoData = !txLoading && transactions.length === 0;
   const stlNoData = !stlLoading && settlements.length === 0;
+  const rangesMatch = txDateFrom === stlDateFrom && txDateTo === stlDateTo;
 
   return (
     <div className="space-y-6">
@@ -1532,30 +1534,47 @@ export default function MerchantReports() {
               Settlements
             </TabsTrigger>
           </TabsList>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={toggleDateLock}
-                  className={[
-                    "inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium transition-colors",
-                    dateLocked
-                      ? "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
-                      : "border-border/60 bg-transparent text-muted-foreground hover:text-foreground hover:border-border",
-                  ].join(" ")}
-                  aria-label={dateLocked ? "Date ranges are synced — click to unlock" : "Click to sync date ranges across both tabs"}
-                >
-                  <Link2 className={`w-3.5 h-3.5 ${dateLocked ? "text-primary" : ""}`} />
-                  {dateLocked ? "Dates synced" : "Sync dates"}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[220px] text-center">
-                {dateLocked
-                  ? "Date ranges are synced across both tabs — changing one updates the other. Click to unlock."
-                  : "Click to sync date ranges across both tabs so changes in one tab mirror to the other."}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className="flex items-center gap-2">
+            {rangesMatch && !dateLocked && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 h-6 px-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 text-[11px] font-medium select-none">
+                      <Check className="w-3 h-3" />
+                      Ranges match
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[220px] text-center">
+                    Both tabs are showing the same date range.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={toggleDateLock}
+                    className={[
+                      "inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium transition-colors",
+                      dateLocked
+                        ? "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
+                        : "border-border/60 bg-transparent text-muted-foreground hover:text-foreground hover:border-border",
+                    ].join(" ")}
+                    aria-label={dateLocked ? "Date ranges are synced — click to unlock" : "Click to sync date ranges across both tabs"}
+                  >
+                    <Link2 className={`w-3.5 h-3.5 ${dateLocked ? "text-primary" : ""}`} />
+                    {dateLocked ? "Dates synced" : "Sync dates"}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[220px] text-center">
+                  {dateLocked
+                    ? "Date ranges are synced across both tabs — changing one updates the other. Click to unlock."
+                    : "Click to sync date ranges across both tabs so changes in one tab mirror to the other."}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
 
         {/* u2500u2500 Transactions Tab u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500 */} 
