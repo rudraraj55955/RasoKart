@@ -4,12 +4,55 @@ import PDFDocument from "pdfkit";
 import { db, reportSchedulesTable, reportDeliveryLogsTable, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, usersTable } from "@workspace/db";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { sendMail } from "./mailer";
+import { sendMail, type MailOptions } from "./mailer";
 import { createNotification, createBulkNotifications } from "./notifications";
 import { notifyAdminsOfReportScheduleAutoPaused, notifyAdminsOfReportScheduleResumed } from "./adminNotifyEmail";
 import { sendReportScheduleAutoPausedMerchantEmail } from "./reportScheduleEmail";
 
 let scheduledTask: ScheduledTask | null = null;
+
+const REPORT_DELIVERY_MAX_ATTEMPTS = 3;
+const REPORT_DELIVERY_BACKOFF_BASE_MS = 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function sendMailWithRetry(
+  opts: MailOptions,
+  scheduleId: number,
+  merchantId: number,
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= REPORT_DELIVERY_MAX_ATTEMPTS; attempt++) {
+    let ok: boolean;
+    try {
+      ok = await sendMail(opts);
+    } catch (err) {
+      if (attempt < REPORT_DELIVERY_MAX_ATTEMPTS) {
+        const delayMs = REPORT_DELIVERY_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
+        logger.warn(
+          { err, scheduleId, merchantId, attempt, maxAttempts: REPORT_DELIVERY_MAX_ATTEMPTS, nextRetryMs: delayMs },
+          "Report delivery threw an exception — will retry",
+        );
+        await sleep(delayMs);
+        continue;
+      }
+      throw err;
+    }
+
+    if (ok) return true;
+
+    if (attempt < REPORT_DELIVERY_MAX_ATTEMPTS) {
+      const delayMs = REPORT_DELIVERY_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
+      logger.warn(
+        { scheduleId, merchantId, attempt, maxAttempts: REPORT_DELIVERY_MAX_ATTEMPTS, nextRetryMs: delayMs },
+        "Report delivery failed — will retry",
+      );
+      await sleep(delayMs);
+    }
+  }
+  return false;
+}
 
 function fmt(amount: number): string {
   return amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -565,7 +608,7 @@ export async function sendMerchantReport(
     const subject = `[RasoKart] ${schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1)} Transaction Report — ${dateFrom.toISOString().slice(0, 10)} to ${dateTo.toISOString().slice(0, 10)}`;
     const html = buildEmailHtml(businessName, schedule.frequency, schedule.format, dateFrom, dateTo, stats, transactions.length);
 
-    const sent = await sendMail({ to: merchantEmail, subject, html, attachments: [attachment] });
+    const sent = await sendMailWithRetry({ to: merchantEmail, subject, html, attachments: [attachment] }, schedule.id, schedule.merchantId);
 
     if (sent) {
       await db.update(reportSchedulesTable)
