@@ -1290,13 +1290,15 @@ function ScheduleRow({
                 </Tooltip>
               </TooltipProvider>
             )}
-            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
-              s.isActive
-                ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
-                : "bg-muted/30 text-muted-foreground border-border/50"
-            }`}>
-              {FREQUENCY_LABELS[s.frequency] ?? s.frequency}
-            </span>
+            {s.frequency === "daily" ? (
+              <Badge className="text-xs capitalize bg-violet-600/20 text-violet-400 border border-violet-600/30 hover:bg-violet-600/20">Daily</Badge>
+            ) : s.frequency === "weekly" ? (
+              <Badge className="text-xs capitalize bg-amber-600/20 text-amber-400 border border-amber-600/30 hover:bg-amber-600/20">Weekly</Badge>
+            ) : s.frequency === "monthly" ? (
+              <Badge className="text-xs capitalize bg-sky-600/20 text-sky-400 border border-sky-600/30 hover:bg-sky-600/20">Monthly</Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs capitalize">{FREQUENCY_LABELS[s.frequency] ?? s.frequency}</Badge>
+            )}
             {!s.isActive && (
               <TooltipProvider>
                 <Tooltip>
