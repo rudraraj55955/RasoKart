@@ -742,6 +742,7 @@ function SchedulePanel() {
                       <TableHead className="text-xs py-2 h-auto">Date &amp; Time</TableHead>
                       <TableHead className="text-xs py-2 h-auto">Frequency</TableHead>
                       <TableHead className="text-xs py-2 h-auto">Format</TableHead>
+                      <TableHead className="text-xs py-2 h-auto">Triggered By</TableHead>
                       <TableHead className="text-xs py-2 h-auto">Outcome</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -756,6 +757,19 @@ function SchedulePanel() {
                         </TableCell>
                         <TableCell className="py-2">
                           <FormatBadge format={log.format} />
+                        </TableCell>
+                        <TableCell className="py-2">
+                          {(log as any).triggeredBy === "manual" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-violet-600/15 text-violet-400 border border-violet-600/30">
+                              <Send className="w-2.5 h-2.5" />
+                              Manual
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-sky-600/15 text-sky-400 border border-sky-600/30">
+                              <RotateCcw className="w-2.5 h-2.5" />
+                              Scheduler
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="py-2">
                           {log.outcome === "re-enabled" ? (
