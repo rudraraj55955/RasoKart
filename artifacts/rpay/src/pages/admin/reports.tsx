@@ -311,7 +311,9 @@ function ScheduledReportsPanel() {
                       return (
                         <span className={isOverdue ? "text-amber-400 font-medium" : "text-muted-foreground"}>
                           {format(nextDue, "dd MMM yyyy, HH:mm")}
-                          {isOverdue && <span className="ml-1 text-amber-400">(overdue)</span>}
+                          <span className="ml-1 font-normal opacity-75">
+                            ({formatDistanceToNow(nextDue, { addSuffix: true })})
+                          </span>
                         </span>
                       );
                     })()}
