@@ -2918,8 +2918,146 @@ export default function AdminReports() {
     }
   }, [settlements, stlStats, stlDateFrom, stlDateTo, stlMerchantName]);
 
+  // ── Delivery Health exports ───────────────────────────────────────────────
+  const [dhExporting, setDhExporting] = useState<"pdf" | "xlsx" | null>(null);
+
+  const exportDhExcel = useCallback(async () => {
+    const merchants = dhData?.merchants ?? [];
+    if (!merchants.length) { toast.error("No data to export"); return; }
+    setDhExporting("xlsx");
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
+
+      const stats = dhData!.stats;
+      const overallSuccessRate = stats.totalDeliveries > 0
+        ? `${(((stats.totalSuccesses) / stats.totalDeliveries) * 100).toFixed(1)}%`
+        : "—";
+      const summaryRows = [
+        ["RasoKart — Delivery Health Report"],
+        [`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`],
+        [`Period: ${dhDateFrom || "All time"} to ${dhDateTo || "All time"}`],
+        [],
+        ["Summary"],
+        ["Total Deliveries", stats.totalDeliveries],
+        ["Successful", stats.totalSuccesses],
+        ["Failed", stats.totalFailures],
+        ["Overall Failure Rate", `${(stats.overallFailureRate * 100).toFixed(1)}%`],
+        ["Overall Success Rate", overallSuccessRate],
+        ["Auto-Paused Schedules", stats.autoPausedSchedules],
+        ["Merchants With Failures", stats.merchantsWithFailures],
+      ];
+      const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
+      ws1["!cols"] = [{ wch: 28 }, { wch: 20 }];
+      XLSX.utils.book_append_sheet(wb, ws1, "Summary");
+
+      const breakdownRows = [
+        ["Merchant", "Successful", "Failed", "Total", "Failure Rate", "Schedule", "Auto-Pauses"],
+        ...merchants.map((m) => [
+          m.businessName,
+          m.successCount,
+          m.failureCount,
+          m.successCount + m.failureCount,
+          `${(m.failureRate * 100).toFixed(1)}%`,
+          m.scheduleActive === true ? "Active" : m.scheduleActive === false ? "Paused" : "—",
+          m.autoPauseCount,
+        ]),
+      ];
+      const ws2 = XLSX.utils.aoa_to_sheet(breakdownRows);
+      ws2["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "Per-Merchant");
+
+      XLSX.writeFile(wb, `rasokart-delivery-health-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+      toast.success("Excel report downloaded");
+    } catch {
+      toast.error("Failed to export Excel");
+    } finally {
+      setDhExporting(null);
+    }
+  }, [dhData, dhDateFrom, dhDateTo]);
+
+  const exportDhPDF = useCallback(async () => {
+    const merchants = dhData?.merchants ?? [];
+    if (!merchants.length) { toast.error("No data to export"); return; }
+    setDhExporting("pdf");
+    try {
+      const { jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
+      const doc = new jsPDF({ orientation: "landscape" });
+      const stats = dhData!.stats;
+      const overallSuccessRate = stats.totalDeliveries > 0
+        ? `${(((stats.totalSuccesses) / stats.totalDeliveries) * 100).toFixed(1)}%`
+        : "—";
+
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("RasoKart — Delivery Health Report", 14, 18);
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(120, 120, 120);
+      doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, 26);
+      doc.text(`Period: ${dhDateFrom || "All time"} → ${dhDateTo || "All time"}`, 14, 32);
+      doc.setTextColor(0, 0, 0);
+
+      autoTable(doc, {
+        startY: 40,
+        head: [["Metric", "Value"]],
+        body: [
+          ["Total Deliveries", stats.totalDeliveries.toLocaleString("en-IN")],
+          ["Successful", stats.totalSuccesses.toLocaleString("en-IN")],
+          ["Failed", stats.totalFailures.toLocaleString("en-IN")],
+          ["Overall Failure Rate", `${(stats.overallFailureRate * 100).toFixed(1)}%`],
+          ["Overall Success Rate", overallSuccessRate],
+          ["Auto-Paused Schedules", stats.autoPausedSchedules.toString()],
+          ["Merchants With Failures", stats.merchantsWithFailures.toString()],
+        ],
+        theme: "grid",
+        headStyles: { fillColor: [30, 30, 46] },
+        columnStyles: { 0: { fontStyle: "bold", cellWidth: 70 }, 1: { cellWidth: 60 } },
+      });
+
+      const afterSummary = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+
+      autoTable(doc, {
+        startY: afterSummary,
+        head: [["Merchant", "Successful", "Failed", "Total", "Failure Rate", "Schedule", "Auto-Pauses"]],
+        body: merchants.map((m) => [
+          m.businessName,
+          m.successCount.toString(),
+          m.failureCount.toString(),
+          (m.successCount + m.failureCount).toString(),
+          `${(m.failureRate * 100).toFixed(1)}%`,
+          m.scheduleActive === true ? "Active" : m.scheduleActive === false ? "Paused" : "—",
+          m.autoPauseCount.toString(),
+        ]),
+        theme: "striped",
+        headStyles: { fillColor: [30, 30, 46] },
+        styles: { fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 60 },
+          1: { cellWidth: 26, halign: "right" },
+          2: { cellWidth: 22, halign: "right" },
+          3: { cellWidth: 22, halign: "right" },
+          4: { cellWidth: 26, halign: "right" },
+          5: { cellWidth: 26 },
+          6: { cellWidth: "auto", halign: "right" },
+        },
+      });
+
+      doc.save(`rasokart-delivery-health-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+      toast.success("PDF report downloaded");
+    } catch {
+      toast.error("Failed to export PDF");
+    } finally {
+      setDhExporting(null);
+    }
+  }, [dhData, dhDateFrom, dhDateTo]);
+
   const isTxExporting = txExporting !== null;
   const isStlExporting = stlExporting !== null;
+  const isDhExporting = dhExporting !== null;
   const txNoData = !txLoading && transactions.length === 0;
   const stlNoData = !stlLoading && settlements.length === 0;
 
@@ -3650,6 +3788,27 @@ export default function AdminReports() {
 
         {/* ── Delivery Health Tab ─────────────────────────────────────────── */}
         <TabsContent value="delivery-health" className="space-y-6">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportDhExcel}
+              disabled={isDhExporting || dhLoading || !dhData || dhData.merchants.length === 0}
+            >
+              {dhExporting === "xlsx" ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-1.5" />}
+              {dhExporting === "xlsx" ? "Exporting…" : "Excel (.xlsx)"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportDhPDF}
+              disabled={isDhExporting || dhLoading || !dhData || dhData.merchants.length === 0}
+            >
+              {dhExporting === "pdf" ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 mr-1.5" />}
+              {dhExporting === "pdf" ? "Exporting…" : "PDF (.pdf)"}
+            </Button>
+          </div>
+
           {/* Date range filter */}
           <Card>
             <CardContent className="pt-4 pb-3 space-y-3">
@@ -3779,9 +3938,19 @@ export default function AdminReports() {
                 <p className="text-sm font-medium flex items-center gap-2">
                   <Store className="w-4 h-4 text-primary" />
                   Per-Merchant Breakdown
+                  {(dhLoading || dhFetching) && (
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  )}
                 </p>
-                {(dhLoading || dhFetching) && (
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                {dhData && dhData.merchants.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={exportDhExcel} disabled={isDhExporting}>
+                      <Download className="w-3 h-3" />xlsx
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={exportDhPDF} disabled={isDhExporting}>
+                      <Download className="w-3 h-3" />pdf
+                    </Button>
+                  </div>
                 )}
               </div>
             </CardHeader>
