@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey } from "@workspace/api-client-react";
-import { Bell, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3 } from "lucide-react";
+import { Bell, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ function notifIcon(type: string) {
   if (type.startsWith("plan")) return <Zap className="w-3.5 h-3.5" />;
   if (type === "limit_exceeded") return <AlertCircle className="w-3.5 h-3.5" />;
   if (type === "report_schedule_auto_paused_admin" || type === "report_schedule_reenabled_by_merchant" || type === "scheduled_report_auto_paused" || type === "scheduled_report_failure") return <BarChart3 className="w-3.5 h-3.5" />;
+  if (type === "preference_change_unknown_device") return <ShieldAlert className="w-3.5 h-3.5" />;
   return <Megaphone className="w-3.5 h-3.5" />;
 }
 
@@ -23,6 +24,7 @@ function notifColor(type: string): string {
   if (type === "report_schedule_auto_paused_admin" || type === "scheduled_report_auto_paused") return "text-amber-400";
   if (type === "report_schedule_reenabled_by_merchant") return "text-emerald-400";
   if (type === "scheduled_report_failure") return "text-orange-400";
+  if (type === "preference_change_unknown_device") return "text-red-400";
   return "text-blue-400";
 }
 
@@ -36,6 +38,9 @@ function notifNavTarget(type: string, metadata: unknown): string | null {
   if (type === "scheduled_report_auto_paused" || type === "scheduled_report_failure") {
     const meta = metadata as Record<string, unknown> | null;
     return (meta?.target as string | undefined) ?? "/merchant/reports";
+  }
+  if (type === "preference_change_unknown_device") {
+    return "/merchant/security";
   }
   return null;
 }

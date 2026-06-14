@@ -24,7 +24,8 @@ export type NotificationType =
   | "kyc_approved"
   | "kyc_rejected"
   | "kyc_status_updated"
-  | "report_delivery_low_success_rate";
+  | "report_delivery_low_success_rate"
+  | "preference_change_unknown_device";
 
 export interface CreateNotificationInput {
   userId: number;

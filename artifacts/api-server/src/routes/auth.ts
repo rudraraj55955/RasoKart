@@ -8,6 +8,7 @@ import { generateToken, requireAuth } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { makeRateLimiter } from "../helpers/makeRateLimiter";
 import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
+import { createNotification } from "../helpers/notifications";
 
 const router = Router();
 
@@ -609,6 +610,34 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
         }).catch((err: unknown) => {
           req.log.warn({ err, userId: user.id }, "Failed to write audit log for notification_preferences_updated");
         });
+
+        if (user.role === "merchant" && user.merchantId && ip !== null) {
+          const isTrusted = await db
+            .select({ id: merchantTrustedIpsTable.id })
+            .from(merchantTrustedIpsTable)
+            .where(
+              and(
+                eq(merchantTrustedIpsTable.merchantId, user.merchantId),
+                eq(merchantTrustedIpsTable.ipAddress, ip),
+                eq(merchantTrustedIpsTable.label, "trusted"),
+              ),
+            )
+            .limit(1)
+            .then(rows => rows.length > 0)
+            .catch(() => true);
+
+          if (!isTrusted) {
+            createNotification({
+              userId: user.id,
+              type: "preference_change_unknown_device",
+              title: "Notification preferences changed from an unrecognised device",
+              body: `Your notification preferences were updated from IP ${ip}. If this wasn't you, review your Security Activity immediately.`,
+              metadata: { ip, target: "/merchant/security" },
+            }).catch((err: unknown) => {
+              req.log.warn({ err, userId: user.id }, "Failed to create preference_change_unknown_device notification");
+            });
+          }
+        }
       }
     }
 
