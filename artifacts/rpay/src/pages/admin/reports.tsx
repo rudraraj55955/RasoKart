@@ -3330,7 +3330,7 @@ export default function AdminReports() {
                 View details <ChevronRight className="w-3 h-3" />
               </button>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
               {(["Last 7 days", "Last 30 days", "This month"] as const).map((label) => {
                 const preset = DATE_PRESETS.find((p) => p.label === label);
                 if (!preset) return null;
@@ -3349,11 +3349,21 @@ export default function AdminReports() {
                   </button>
                 );
               })}
-              {dhDateFrom && dhDateTo && (
-                <span className="text-[10px] text-muted-foreground/50 ml-1">
-                  {dhDateFrom} → {dhDateTo}
-                </span>
-              )}
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <input
+                type="date"
+                value={dhDateFrom}
+                onChange={(e) => { setDhDateFrom(e.target.value); setDhActivePreset(null); }}
+                className="h-6 rounded border border-border/60 bg-transparent px-1.5 text-[10px] text-foreground focus:outline-none focus:border-primary/50"
+              />
+              <span className="text-[10px] text-muted-foreground/50">→</span>
+              <input
+                type="date"
+                value={dhDateTo}
+                onChange={(e) => { setDhDateTo(e.target.value); setDhActivePreset(null); }}
+                className="h-6 rounded border border-border/60 bg-transparent px-1.5 text-[10px] text-foreground focus:outline-none focus:border-primary/50"
+              />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
