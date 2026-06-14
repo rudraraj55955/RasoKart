@@ -20,6 +20,7 @@ import { initMerchantReportScheduler } from "./helpers/merchantReportScheduler";
 import { initOverdueReportScheduler, runOverdueReportScan } from "./helpers/overdueReportScheduler";
 import { initDeliveryHealthDigestScheduler } from "./helpers/reportDeliveryHealthEmail";
 import { initDeliverySuccessRateAlertScheduler, runDeliverySuccessRateAlertScan } from "./helpers/deliverySuccessRateAlertScheduler";
+import { flushAllReadyQuietHoursQueues } from "./helpers/quietHours";
 
 const rawPort = process.env["PORT"];
 
@@ -45,6 +46,24 @@ function scheduleCallbackRetryWorker() {
   });
 
   logger.info("Callback retry worker registered (runs every minute)");
+}
+
+function initQuietHoursFlushScheduler() {
+  const intervalMs = parseInt(process.env["QUIET_HOURS_FLUSH_INTERVAL_MS"] ?? "60000", 10);
+
+  setInterval(async () => {
+    try {
+      logger.info("Quiet hours flush: scanning for ready queues");
+      const { usersProcessed, totalFlushed } = await flushAllReadyQuietHoursQueues();
+      if (usersProcessed > 0) {
+        logger.info({ usersProcessed, totalFlushed }, "Quiet hours flush complete");
+      }
+    } catch (err) {
+      logger.error({ err }, "Quiet hours flush sweep failed");
+    }
+  }, intervalMs);
+
+  logger.info({ intervalMs }, "Quiet hours flush scheduler registered");
 }
 
 async function main() {
@@ -81,6 +100,7 @@ async function main() {
   initDeliveryHealthDigestScheduler();
   initDeliverySuccessRateAlertScheduler();
   scheduleCallbackRetryWorker();
+  initQuietHoursFlushScheduler();
 
   // Startup sweep: immediately scan all active connections so merchants receive
   // provider_limit_reset (and warning/reached) notifications even when the server
