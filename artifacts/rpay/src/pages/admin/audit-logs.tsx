@@ -16,6 +16,8 @@ import {
   useSendSecurityReviewReminder,
   useCreateAdminAuditLog,
   useReenableAdminMerchantReportSchedule,
+  useDeleteAdminMerchantReportSchedule,
+  useSendAdminMerchantReportNow,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -1200,8 +1202,13 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
   const threshold = parsed.autoPauseAfterFailures ?? null;
 
   const [reenabled, setReenabled] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [sentNow, setSentNow] = useState(false);
   const queryClient = useQueryClient();
   const reenable = useReenableAdminMerchantReportSchedule();
+  const deleteMutation = useDeleteAdminMerchantReportSchedule();
+  const sendNowMutation = useSendAdminMerchantReportNow();
 
   function handleReenable() {
     if (parsed.merchantId == null) return;
@@ -1216,6 +1223,37 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
       },
     });
   }
+
+  function handleDelete() {
+    if (parsed.merchantId == null) return;
+    deleteMutation.mutate({ merchantId: parsed.merchantId }, {
+      onSuccess: () => {
+        setDeleted(true);
+        setConfirmDelete(false);
+        queryClient.invalidateQueries({ queryKey: getListAdminAuditLogsQueryKey() });
+        toast.success("Report schedule deleted.");
+      },
+      onError: () => {
+        toast.error("Failed to delete the report schedule. Please try again.");
+      },
+    });
+  }
+
+  function handleSendNow() {
+    if (parsed.merchantId == null) return;
+    sendNowMutation.mutate({ merchantId: parsed.merchantId }, {
+      onSuccess: () => {
+        setSentNow(true);
+        queryClient.invalidateQueries({ queryKey: getListAdminAuditLogsQueryKey() });
+        toast.success("Report sent successfully.");
+      },
+      onError: () => {
+        toast.error("Failed to send report. Check mailer configuration.");
+      },
+    });
+  }
+
+  const hasMerchantId = parsed.merchantId != null;
 
   return (
     <div className="space-y-3">
@@ -1254,27 +1292,94 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
           This schedule was automatically paused by the system after reaching the consecutive failure threshold. An admin must investigate the delivery issue and re-enable the schedule.
         </p>
       </div>
-      {parsed.merchantId != null && (
-        reenabled ? (
-          <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <p className="text-xs text-emerald-300">Schedule re-enabled. The audit log has been refreshed.</p>
-          </div>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full border-orange-500/30 text-orange-300 hover:bg-orange-500/10 hover:text-orange-200"
-            onClick={handleReenable}
-            disabled={reenable.isPending}
-          >
-            {reenable.isPending ? (
-              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Re-enabling…</>
-            ) : (
-              <><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Re-enable Schedule</>
-            )}
-          </Button>
-        )
+      {hasMerchantId && !deleted && (
+        <div className="space-y-2">
+          {reenabled ? (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <p className="text-xs text-emerald-300">Schedule re-enabled. The audit log has been refreshed.</p>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full border-orange-500/30 text-orange-300 hover:bg-orange-500/10 hover:text-orange-200"
+              onClick={handleReenable}
+              disabled={reenable.isPending || deleteMutation.isPending || sendNowMutation.isPending}
+            >
+              {reenable.isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Re-enabling…</>
+              ) : (
+                <><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Re-enable Schedule</>
+              )}
+            </Button>
+          )}
+          {sentNow ? (
+            <div className="flex items-center gap-2 rounded-lg bg-sky-500/10 border border-sky-500/20 px-3 py-2">
+              <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />
+              <p className="text-xs text-sky-300">Report sent. Check delivery logs for the result.</p>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full border-sky-500/30 text-sky-300 hover:bg-sky-500/10 hover:text-sky-200"
+              onClick={handleSendNow}
+              disabled={sendNowMutation.isPending || reenable.isPending || deleteMutation.isPending}
+            >
+              {sendNowMutation.isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Sending…</>
+              ) : (
+                <><Send className="w-3.5 h-3.5 mr-1.5" />Send Now</>
+              )}
+            </Button>
+          )}
+          {confirmDelete ? (
+            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 space-y-2">
+              <p className="text-xs text-rose-300">This will permanently delete the merchant's report schedule. This cannot be undone.</p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 border-rose-500/40 text-rose-300 hover:bg-rose-500/15 hover:text-rose-200"
+                  onClick={handleDelete}
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? (
+                    <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Deleting…</>
+                  ) : (
+                    <><Trash2 className="w-3.5 h-3.5 mr-1.5" />Confirm Delete</>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="flex-1 text-muted-foreground hover:text-foreground"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleteMutation.isPending}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+              onClick={() => setConfirmDelete(true)}
+              disabled={reenable.isPending || sendNowMutation.isPending || deleteMutation.isPending}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />Delete Schedule
+            </Button>
+          )}
+        </div>
+      )}
+      {deleted && (
+        <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-3 py-2">
+          <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+          <p className="text-xs text-rose-300">Schedule deleted. The audit log has been refreshed.</p>
+        </div>
       )}
     </div>
   );
