@@ -25,6 +25,7 @@ export const usersTable = pgTable("users", {
   settlementStateChangedEmails: boolean("settlement_state_changed_emails").notNull().default(true),
   planChangeEmails: boolean("plan_change_emails").notNull().default(true),
   notifPrefsDisabledAt: timestamp("notif_prefs_disabled_at", { withTimezone: true }),
+  notifReminderSentAt: timestamp("notif_reminder_sent_at", { withTimezone: true }),
   quietHoursStart: text("quiet_hours_start"),
   quietHoursEnd: text("quiet_hours_end"),
   quietHoursTimezone: text("quiet_hours_timezone"),

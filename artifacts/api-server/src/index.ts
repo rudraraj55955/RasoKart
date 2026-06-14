@@ -21,6 +21,7 @@ import { initOverdueReportScheduler, runOverdueReportScan } from "./helpers/over
 import { initDeliveryHealthDigestScheduler } from "./helpers/reportDeliveryHealthEmail";
 import { initDeliverySuccessRateAlertScheduler, runDeliverySuccessRateAlertScan } from "./helpers/deliverySuccessRateAlertScheduler";
 import { flushAllReadyQuietHoursQueues } from "./helpers/quietHours";
+import { initNotifReminderScheduler, runNotifReminderScan } from "./helpers/notifReminderScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -99,6 +100,7 @@ async function main() {
   initOverdueReportScheduler();
   initDeliveryHealthDigestScheduler();
   initDeliverySuccessRateAlertScheduler();
+  initNotifReminderScheduler();
   scheduleCallbackRetryWorker();
   initQuietHoursFlushScheduler();
 
@@ -125,6 +127,13 @@ async function main() {
   // the server was down at the scheduled run time. Dedup keys make this safe.
   runDeliverySuccessRateAlertScan().catch((err) => {
     logger.warn({ err }, "Startup delivery success-rate alert sweep failed");
+  });
+
+  // Startup sweep: send notif reminder emails to merchants who have had
+  // notifications disabled for ≥30 days and haven't received a reminder yet.
+  // notif_reminder_sent_at guards against duplicate sends within 30 days.
+  runNotifReminderScan().catch((err) => {
+    logger.warn({ err }, "Startup notif reminder sweep failed");
   });
 
   app.listen(port, (err) => {
