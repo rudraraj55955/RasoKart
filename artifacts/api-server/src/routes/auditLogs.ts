@@ -463,7 +463,20 @@ router.get("/my-activity/export", async (req, res) => {
     return s;
   }
 
-  const header = ["ID", "Action", "Target Type", "Target ID", "IP Address", "Timestamp"];
+  function formatDetails(action: string, details: string | null): string {
+    if (action !== "notification_preferences_updated" || !details) return "";
+    try {
+      const parsed = JSON.parse(details) as { changes?: { field: string; oldValue: boolean; newValue: boolean }[] };
+      if (!Array.isArray(parsed.changes) || parsed.changes.length === 0) return "";
+      return parsed.changes
+        .map(c => `${c.field}: ${c.oldValue ? "On" : "Off"} → ${c.newValue ? "On" : "Off"}`)
+        .join("; ");
+    } catch {
+      return "";
+    }
+  }
+
+  const header = ["ID", "Action", "Target Type", "Target ID", "IP Address", "Timestamp", "Details"];
   const csvRows = rows.map(r => [
     escapeCsv(String(r.id)),
     escapeCsv(r.action),
@@ -471,6 +484,7 @@ router.get("/my-activity/export", async (req, res) => {
     escapeCsv(r.targetId != null ? String(r.targetId) : null),
     escapeCsv(r.ipAddress),
     escapeCsv(r.createdAt.toISOString()),
+    escapeCsv(formatDetails(r.action, r.details)),
   ].join(","));
 
   const csv = [header.join(","), ...csvRows].join("\n");
