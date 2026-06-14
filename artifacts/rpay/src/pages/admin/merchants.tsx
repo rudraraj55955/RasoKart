@@ -42,7 +42,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, Bell, BellOff, Activity, ExternalLink, ChevronDown, ChevronRight, CheckCircle2, Eye, Mail } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, Bell, BellOff, Activity, ExternalLink, ChevronDown, ChevronRight, CheckCircle2, Eye, Mail, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow, differenceInSeconds } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -378,6 +378,10 @@ export default function AdminMerchants() {
   const { data: kycDocumentsResponse, isLoading: kycDocsLoading } = useListKycDocuments(
     assignPlanMerchant ? { merchantId: assignPlanMerchant.id } : undefined,
     { query: { enabled: !!assignPlanMerchant, queryKey: ["listKycDocuments", "merchant", assignPlanMerchant?.id ?? 0] } }
+  );
+  const { data: panelMerchantDetail } = useGetMerchant(
+    assignPlanMerchant?.id ?? 0,
+    { query: { enabled: !!assignPlanMerchant, queryKey: ["getMerchant", assignPlanMerchant?.id ?? 0] } }
   );
   const kycDocuments = kycDocumentsResponse?.data ?? [];
   const reviewKycMutation = useReviewKycDocument({
@@ -2598,6 +2602,76 @@ export default function AdminMerchants() {
               <p className="text-[11px] text-muted-foreground/60">
                 Opted-out merchants will not receive these emails even when triggered by admin actions.
               </p>
+
+              {/* In-App Notification Toggles (read-only) */}
+              <div className="pt-1 border-t border-border/40 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">In-App Notifications</p>
+                  {(() => {
+                    const inAppKeys = [
+                      "settlementStateNotifs", "settlementStateChangedNotifs",
+                      "planExpiryAlertNotifs", "planChangeNotifs",
+                      "loginAlertNotifs", "signatureFailureAlertNotifs",
+                      "apiKeyGeneratedNotifs", "apiKeyRevokedNotifs",
+                      "webhookFailureNotifs", "reportFailureAlertNotifs",
+                      "reportScheduleChangedNotifs", "weeklyDeliveryDigestNotifs",
+                      "reconciliationAlertNotifs",
+                    ] as const;
+                    const mutedCount = inAppKeys.filter(k => panelMerchantDetail?.[k] === false).length;
+                    if (!panelMerchantDetail) return null;
+                    return mutedCount > 0 ? (
+                      <span className="ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        <BellOff className="w-2.5 h-2.5 shrink-0" />
+                        {mutedCount} muted
+                      </span>
+                    ) : (
+                      <span className="ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                        <CheckCircle className="w-2.5 h-2.5 shrink-0" />
+                        All on
+                      </span>
+                    );
+                  })()}
+                </div>
+                {!panelMerchantDetail ? (
+                  <div className="animate-pulse h-4 bg-muted/30 rounded w-40" />
+                ) : (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    {(
+                      [
+                        { key: "settlementStateChangedNotifs", label: "Settlement Updates" },
+                        { key: "planExpiryAlertNotifs", label: "Plan Expiry" },
+                        { key: "planChangeNotifs", label: "Plan Changes" },
+                        { key: "loginAlertNotifs", label: "Login Alerts" },
+                        { key: "signatureFailureAlertNotifs", label: "Signature Failures" },
+                        { key: "webhookFailureNotifs", label: "Webhook Failures" },
+                        { key: "apiKeyGeneratedNotifs", label: "API Key Created" },
+                        { key: "apiKeyRevokedNotifs", label: "API Key Revoked" },
+                        { key: "reportFailureAlertNotifs", label: "Report Failures" },
+                        { key: "reportScheduleChangedNotifs", label: "Report Schedule" },
+                        { key: "weeklyDeliveryDigestNotifs", label: "Weekly Digest" },
+                        { key: "reconciliationAlertNotifs", label: "Reconciliation" },
+                      ] as const
+                    ).map(({ key, label }) => {
+                      const enabled = panelMerchantDetail?.[key] !== false;
+                      return (
+                        <div key={key} className="flex items-center gap-1.5">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${enabled ? "bg-emerald-400" : "bg-rose-400"}`} />
+                          <span className={`text-[11px] ${enabled ? "text-muted-foreground" : "text-rose-400 font-medium"}`}>
+                            {label}
+                          </span>
+                          {!enabled && (
+                            <span className="text-[10px] text-rose-400/70 font-medium">· muted</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground/60">
+                  Muted types are silenced by the merchant and won't appear in their notification feed.
+                </p>
+              </div>
             </div>
 
             {/* Callback Secret */}

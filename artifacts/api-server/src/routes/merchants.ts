@@ -397,6 +397,19 @@ router.get("/:id", async (req, res) => {
       reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails,
       settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
       planExpiryAlertEmails: usersTable.planExpiryAlertEmails,
+      reconciliationAlertNotifs: usersTable.reconciliationAlertNotifs,
+      planExpiryAlertNotifs: usersTable.planExpiryAlertNotifs,
+      settlementStateNotifs: usersTable.settlementStateNotifs,
+      signatureFailureAlertNotifs: usersTable.signatureFailureAlertNotifs,
+      webhookFailureNotifs: usersTable.webhookFailureNotifs,
+      reportFailureAlertNotifs: usersTable.reportFailureAlertNotifs,
+      weeklyDeliveryDigestNotifs: usersTable.weeklyDeliveryDigestNotifs,
+      apiKeyGeneratedNotifs: usersTable.apiKeyGeneratedNotifs,
+      apiKeyRevokedNotifs: usersTable.apiKeyRevokedNotifs,
+      loginAlertNotifs: usersTable.loginAlertNotifs,
+      reportScheduleChangedNotifs: usersTable.reportScheduleChangedNotifs,
+      settlementStateChangedNotifs: usersTable.settlementStateChangedNotifs,
+      planChangeNotifs: usersTable.planChangeNotifs,
     })
     .from(merchantsTable)
     .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
@@ -413,6 +426,19 @@ router.get("/:id", async (req, res) => {
     reportScheduleChangedEmails: row.reportScheduleChangedEmails ?? true,
     settlementStateChangedEmails: row.settlementStateChangedEmails ?? true,
     planExpiryAlertEmails: row.planExpiryAlertEmails ?? true,
+    reconciliationAlertNotifs: row.reconciliationAlertNotifs ?? true,
+    planExpiryAlertNotifs: row.planExpiryAlertNotifs ?? true,
+    settlementStateNotifs: row.settlementStateNotifs ?? true,
+    signatureFailureAlertNotifs: row.signatureFailureAlertNotifs ?? true,
+    webhookFailureNotifs: row.webhookFailureNotifs ?? true,
+    reportFailureAlertNotifs: row.reportFailureAlertNotifs ?? true,
+    weeklyDeliveryDigestNotifs: row.weeklyDeliveryDigestNotifs ?? true,
+    apiKeyGeneratedNotifs: row.apiKeyGeneratedNotifs ?? true,
+    apiKeyRevokedNotifs: row.apiKeyRevokedNotifs ?? true,
+    loginAlertNotifs: row.loginAlertNotifs ?? true,
+    reportScheduleChangedNotifs: row.reportScheduleChangedNotifs ?? true,
+    settlementStateChangedNotifs: row.settlementStateChangedNotifs ?? true,
+    planChangeNotifs: row.planChangeNotifs ?? true,
   });
 });
 

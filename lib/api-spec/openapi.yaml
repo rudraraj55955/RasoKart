@@ -9416,6 +9416,45 @@ components:
         planChangeEmails:
           type: boolean
           description: Whether the merchant will receive plan change emails. Defaults to true.
+        reconciliationAlertNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications for reconciliation alerts. Defaults to true.
+        planExpiryAlertNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications for plan expiry alerts. Defaults to true.
+        settlementStateNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications for settlement state updates. Defaults to true.
+        signatureFailureAlertNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications for signature failure alerts. Defaults to true.
+        webhookFailureNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications for webhook failure alerts. Defaults to true.
+        reportFailureAlertNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications for report failure alerts. Defaults to true.
+        weeklyDeliveryDigestNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications for the weekly delivery digest. Defaults to true.
+        apiKeyGeneratedNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications when an API key is generated. Defaults to true.
+        apiKeyRevokedNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications when an API key is revoked. Defaults to true.
+        loginAlertNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications for new login alerts. Defaults to true.
+        reportScheduleChangedNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.
+        settlementStateChangedNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.
+        planChangeNotifs:
+          type: boolean
+          description: Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.
         createdAt:
           type: string
 
