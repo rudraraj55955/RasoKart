@@ -83,6 +83,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   report_schedule_override_cleared:      { label: "Report Schedule Override Cleared",     color: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
   report_schedule_deleted:               { label: "Report Schedule Deleted",              color: "bg-red-500/10 text-red-400 border-red-500/20" },
   report_schedule_auto_paused:           { label: "Report Schedule Auto-Paused",          color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
+  notification_preferences_updated:      { label: "Notification Preferences Updated",      color: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
@@ -1236,6 +1237,50 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
   );
 }
 
+function NotificationPreferencesUpdatedDetails({ log }: { log: any }) {
+  let parsed: { changes?: { field: string; oldValue: unknown; newValue: unknown }[] } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const changes = parsed.changes ?? [];
+
+  function formatBoolValue(v: unknown): React.ReactNode {
+    if (v === true)  return <span className="text-emerald-400 font-medium">Enabled</span>;
+    if (v === false) return <span className="text-rose-400 font-medium">Disabled</span>;
+    if (v == null)   return <span className="text-muted-foreground">—</span>;
+    return <span>{String(v)}</span>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<BellRing className="w-5 h-5 text-indigo-400" />}
+        title={changes.length > 0 ? `${changes.length} notification preference${changes.length !== 1 ? "s" : ""} changed` : "Notification preferences updated"}
+        subtitle={`User #${log.targetId ?? "—"}`}
+        colorClass="bg-indigo-500/10 border-indigo-500/20"
+      />
+      {changes.length > 0 && (
+        <div className="rounded-lg bg-muted/20 p-3 space-y-2">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Changes</p>
+          <div className="divide-y divide-border/30">
+            {changes.map((c, i) => (
+              <div key={i} className="flex items-center gap-3 py-1.5 first:pt-0 last:pb-0">
+                <span className="text-xs text-muted-foreground flex-1 min-w-0 truncate" title={humanizeKey(c.field)}>
+                  {humanizeKey(c.field)}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0 text-xs">
+                  {formatBoolValue(c.oldValue)}
+                  <span className="text-muted-foreground/50">→</span>
+                  {formatBoolValue(c.newValue)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RawJsonDetails({ log }: { log: any }) {
   return (
     <div className="rounded-lg bg-muted/20 p-3">
@@ -1315,6 +1360,8 @@ function ActionDetails({ log }: { log: any }) {
       return <ReportScheduleDeletedDetails log={log} />;
     case "report_schedule_auto_paused":
       return <ReportScheduleAutoPausedDetails log={log} />;
+    case "notification_preferences_updated":
+      return <NotificationPreferencesUpdatedDetails log={log} />;
     default:
       return <RawJsonDetails log={log} />;
   }
