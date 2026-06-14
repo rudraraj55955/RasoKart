@@ -622,10 +622,13 @@ function ScheduledReportsPanel() {
   const [selectedFailureIds, setSelectedFailureIds] = useState<Set<number>>(new Set());
   const clearFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [sendAllSummary, setSendAllSummary] = useState<{ sent: number; ranAt: Date } | null>(null);
+  const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (clearFlashTimer.current != null) clearTimeout(clearFlashTimer.current);
+      if (summaryTimer.current != null) clearTimeout(summaryTimer.current);
     };
   }, []);
 
@@ -715,6 +718,15 @@ function ScheduledReportsPanel() {
         toast.info("No overdue schedules found");
       } else if (res.failed === 0) {
         toast.success(`Sent ${res.sent} overdue report${res.sent !== 1 ? "s" : ""} successfully`);
+        if (res.sent > 0) {
+          if (summaryTimer.current != null) clearTimeout(summaryTimer.current);
+          setSendAllSummary({ sent: res.sent, ranAt: new Date() });
+          setBannerDismissed(false);
+          summaryTimer.current = setTimeout(() => {
+            summaryTimer.current = null;
+            setSendAllSummary(null);
+          }, 5 * 60 * 1000);
+        }
       } else if (res.sent === 0) {
         toast.error(`All ${res.failed} overdue report${res.failed !== 1 ? "s" : ""} failed — see details`);
         if (clearFlashTimer.current != null) clearTimeout(clearFlashTimer.current);
@@ -727,6 +739,15 @@ function ScheduledReportsPanel() {
         setClearedMerchantIds(new Set());
         setSendFailures(res.failures);
         setSelectedFailureIds(prev => new Set([...prev].filter(id => res.failures.some((f: { merchantId: number }) => f.merchantId === id))));
+        if (res.sent > 0) {
+          if (summaryTimer.current != null) clearTimeout(summaryTimer.current);
+          setSendAllSummary({ sent: res.sent, ranAt: new Date() });
+          setBannerDismissed(false);
+          summaryTimer.current = setTimeout(() => {
+            summaryTimer.current = null;
+            setSendAllSummary(null);
+          }, 5 * 60 * 1000);
+        }
       }
       invalidate();
     } catch {
@@ -1056,6 +1077,24 @@ function ScheduledReportsPanel() {
               </span>
             )}
           </div>
+          {sendAllSummary != null && !bannerDismissed && (
+            <div className="flex items-center gap-2.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 mb-1">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+              <span className="font-medium">
+                {sendAllSummary.sent} overdue report{sendAllSummary.sent !== 1 ? "s" : ""} sent
+              </span>
+              <span className="text-emerald-400/60">·</span>
+              <span className="text-emerald-400/80">last run {formatDistanceToNow(sendAllSummary.ranAt, { addSuffix: true })}</span>
+              <button
+                type="button"
+                onClick={() => setBannerDismissed(true)}
+                className="ml-auto text-emerald-400/60 hover:text-emerald-300 transition-colors"
+                aria-label="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
               <Loader2 className="w-4 h-4 animate-spin" />
