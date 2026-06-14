@@ -380,6 +380,13 @@ const ADMIN_NAV = [
   },
 ];
 
+function getScheduleNextDue(lastSentAt: string | null | undefined, frequency: string): Date | null {
+  if (!lastSentAt) return null;
+  const last = new Date(lastSentAt);
+  const days = frequency === "monthly" ? 28 : frequency === "daily" ? 1 : 7;
+  return new Date(last.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
 function AdminSidebar() {
   const [location] = useLocation();
   const { data: complianceData } = useGetSecurityComplianceSummary();
@@ -388,6 +395,13 @@ function AdminSidebar() {
   const { data: schedulesData } = useListMerchantReportSchedules();
   const schedules = schedulesData?.schedules ?? [];
   const deliveryFailureCount = schedules.filter((s) => s.consecutiveFailures > 0).length;
+
+  const now = new Date();
+  const overdueCount = schedules.filter((s) => {
+    if (!s.isActive || s.consecutiveFailures > 0) return false;
+    const nextDue = getScheduleNextDue(s.lastSentAt, s.frequency);
+    return nextDue != null && nextDue < now;
+  }).length;
 
   const { data: deliveryHealth } = useGetReportDeliveryHealth(undefined, {
     query: { refetchInterval: 60_000, queryKey: ["/api/reports/delivery-health"] },
@@ -421,6 +435,11 @@ function AdminSidebar() {
                         {isAuditLogs && neverCount > 0 && (
                           <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none">
                             {neverCount > 99 ? "99+" : neverCount}
+                          </span>
+                        )}
+                        {isReports && overdueCount > 0 && (
+                          <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none" aria-label={`${overdueCount} overdue schedule${overdueCount !== 1 ? "s" : ""}`}>
+                            {overdueCount > 99 ? "99+" : overdueCount}
                           </span>
                         )}
                         {isReports && deliveryFailureCount > 0 && (
