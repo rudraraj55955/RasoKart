@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable } from "@workspace/db";
+import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable, auditLogsTable } from "@workspace/db";
 import { dbRateLimitStore } from "../lib/rateLimitStore";
 import { eq, and, count, desc } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
@@ -451,11 +451,75 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       return;
     }
 
+    const prefFields = [
+      "reconciliationAlertEmails",
+      "planExpiryAlertEmails",
+      "settlementStateEmails",
+      "signatureFailureAlertEmails",
+      "webhookFailureEmails",
+      "reportFailureAlertEmails",
+      "apiKeyGeneratedEmails",
+      "apiKeyRevokedEmails",
+      "loginAlertEmails",
+      "reportScheduleChangedEmails",
+      "settlementStateChangedEmails",
+    ] as const;
+
+    const [current] = await db
+      .select({
+        reconciliationAlertEmails: usersTable.reconciliationAlertEmails,
+        planExpiryAlertEmails: usersTable.planExpiryAlertEmails,
+        settlementStateEmails: usersTable.settlementStateEmails,
+        signatureFailureAlertEmails: usersTable.signatureFailureAlertEmails,
+        webhookFailureEmails: usersTable.webhookFailureEmails,
+        reportFailureAlertEmails: usersTable.reportFailureAlertEmails,
+        apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
+        apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
+        loginAlertEmails: usersTable.loginAlertEmails,
+        reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails,
+        settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, user.id))
+      .limit(1);
+
     const [updated] = await db
       .update(usersTable)
       .set(patch)
       .where(eq(usersTable.id, user.id))
       .returning();
+
+    if (current) {
+      const changes: Array<{ field: string; oldValue: boolean; newValue: boolean }> = [];
+      for (const field of prefFields) {
+        if (field in patch) {
+          const oldVal = current[field];
+          const newVal = patch[field] as boolean;
+          if (oldVal !== newVal) {
+            changes.push({ field, oldValue: oldVal, newValue: newVal });
+          }
+        }
+      }
+
+      if (changes.length > 0) {
+        const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+          ?? req.socket.remoteAddress
+          ?? req.ip
+          ?? null;
+
+        db.insert(auditLogsTable).values({
+          adminId: user.id,
+          adminEmail: user.email,
+          action: "notification_preferences_updated",
+          targetType: "user",
+          targetId: user.id,
+          details: JSON.stringify({ changes }),
+          ipAddress: ip,
+        }).catch((err: unknown) => {
+          req.log.warn({ err, userId: user.id }, "Failed to write audit log for notification_preferences_updated");
+        });
+      }
+    }
 
     res.json({
       id: updated.id,
