@@ -322,11 +322,26 @@ router.get("/export", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
   const user = (req as any).user;
 
-  const { action, targetType, search, dateFrom, dateTo } = req.query as Record<string, string>;
+  const { action, targetType, search, dateFrom, dateTo, performedBy } = req.query as Record<string, string>;
 
   const conditions: any[] = [];
   if (action && action !== "all") conditions.push(eq(auditLogsTable.action, action));
   if (targetType && targetType !== "all") conditions.push(eq(auditLogsTable.targetType, targetType));
+  if (performedBy === "system") {
+    conditions.push(
+      or(
+        eq(auditLogsTable.adminEmail, "system"),
+        eq(auditLogsTable.adminId, 0),
+      )!
+    );
+  } else if (performedBy === "admin") {
+    conditions.push(
+      and(
+        sql`${auditLogsTable.adminEmail} != 'system'`,
+        sql`${auditLogsTable.adminId} != 0`,
+      )!
+    );
+  }
   if (search) {
     conditions.push(
       or(
@@ -386,7 +401,7 @@ router.get("/export", async (req, res) => {
     targetId: null,
     details: JSON.stringify({
       rowCount: rows.length,
-      filters: { action: action ?? null, targetType: targetType ?? null, search: search ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null },
+      filters: { action: action ?? null, targetType: targetType ?? null, search: search ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null, performedBy: performedBy ?? null },
     }),
     ipAddress: req.ip ?? null,
   });

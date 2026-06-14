@@ -3814,6 +3814,7 @@ export default function AdminAuditLogs() {
       if (dateTo) params.set("dateTo", dateTo);
       if (merchantId != null) params.set("merchantId", String(merchantId));
       if (showSettingKeyFilter && settingKey !== "all") params.set("settingKey", settingKey);
+      if (performedBy && performedBy !== "all") params.set("performedBy", performedBy);
 
       const token = localStorage.getItem("rasokart_token");
       const res = await fetch(`/api/audit-logs/export?${params.toString()}`, {
