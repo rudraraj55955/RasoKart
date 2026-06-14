@@ -27,6 +27,7 @@ import {
   RotateCcw,
   AlertTriangle,
   Bell,
+  BellOff,
   Mail,
   ClipboardList,
   ChevronLeft,
@@ -398,6 +399,17 @@ export default function MerchantSecurity() {
   const loginAlertEnabled = me?.loginAlertEmails ?? true;
   const reportScheduleChangedEnabled = me?.reportScheduleChangedEmails ?? true;
   const settlementStateChangedEnabled = me?.settlementStateChangedEmails ?? true;
+
+  const disabledNotifications = me == null ? [] : [
+    ...(!apiKeyGeneratedEnabled ? ["API key generated"] : []),
+    ...(!apiKeyRevokedEnabled ? ["API key revoked"] : []),
+    ...(!signatureFailureAlertEnabled ? ["Signature failure alerts"] : []),
+    ...(!loginAlertEnabled ? ["New login alerts"] : []),
+    ...(!reportScheduleChangedEnabled ? ["Report schedule changed"] : []),
+    ...(!settlementStateChangedEnabled ? ["Settlement state changed"] : []),
+  ];
+
+  const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -1644,6 +1656,42 @@ export default function MerchantSecurity() {
           )}
         </CardContent>
       </Card>
+
+      {/* Disabled notifications summary banner */}
+      {disabledNotifications.length > 0 && !notifBannerDismissed && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 flex items-start gap-3">
+          <BellOff className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-amber-300">
+              {disabledNotifications.length === 1
+                ? "1 email notification is turned off"
+                : `${disabledNotifications.length} email notifications are turned off`}
+            </p>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {disabledNotifications.map(name => (
+                <span
+                  key={name}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-0.5"
+                >
+                  <BellOff className="w-3 h-3" />
+                  {name}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-amber-400/60 mt-2">
+              Review the notification settings below to re-enable any alerts you want to receive.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNotifBannerDismissed(true)}
+            className="shrink-0 p-1 rounded-md text-amber-400/60 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+            aria-label="Dismiss notification summary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Security Notifications */}
       <Card>

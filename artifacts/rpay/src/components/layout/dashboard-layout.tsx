@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, ListNotificationsIsRead } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -167,6 +167,15 @@ function MerchantSidebar() {
     query: { enabled: !!merchantId, queryKey: ["/api/kyc/summary", merchantId] },
   });
   const isKycVerified = kycSummary?.isVerified === true;
+  const { data: me } = useGetMe();
+  const disabledNotifCount = me == null ? 0 : [
+    me.apiKeyGeneratedEmails,
+    me.apiKeyRevokedEmails,
+    me.signatureFailureAlertEmails,
+    me.loginAlertEmails,
+    me.reportScheduleChangedEmails,
+    me.settlementStateChangedEmails,
+  ].filter(v => v === false).length;
 
   const navGroups = [
     {
@@ -258,6 +267,11 @@ function MerchantSidebar() {
                           <span className="flex items-center gap-0.5 text-[10px] font-semibold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded px-1 py-0.5 leading-none shrink-0">
                             <BadgeCheck className="w-3 h-3" />
                             {item.badge}
+                          </span>
+                        )}
+                        {item.href === "/merchant/security" && disabledNotifCount > 0 && (
+                          <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none shrink-0">
+                            {disabledNotifCount}
                           </span>
                         )}
                       </Link>
