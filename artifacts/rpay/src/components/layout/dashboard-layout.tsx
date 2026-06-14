@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -399,6 +399,13 @@ function AdminSidebar() {
   });
   const reportFailureCount = reportFailureData?.total ?? 0;
 
+  const { data: deliveryHealth } = useGetReportDeliveryHealth(undefined, {
+    query: { refetchInterval: 60_000, queryKey: ["/api/reports/delivery-health"] },
+  });
+  const hasDeliveryAlert =
+    (deliveryHealth?.stats.autoPausedSchedules ?? 0) > 0 ||
+    (deliveryHealth?.stats.overallFailureRate ?? 0) >= 0.2;
+
   return (
     <>
       {ADMIN_NAV.map((group) => (
@@ -412,6 +419,8 @@ function AdminSidebar() {
                 const isActive = location === item.href || (isAuditLogs && location.startsWith("/admin/audit-logs"));
                 const linkHref = isAuditLogs && neverCount > 0
                   ? "/admin/audit-logs?tab=compliance"
+                  : isReports && hasDeliveryAlert
+                  ? "/admin/reports?tab=delivery-health"
                   : item.href;
                 return (
                   <SidebarMenuItem key={item.title}>
@@ -433,6 +442,9 @@ function AdminSidebar() {
                           <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-[10px] font-bold text-white px-1 leading-none">
                             {reportFailureCount > 99 ? "99+" : reportFailureCount}
                           </span>
+                        )}
+                        {isReports && hasDeliveryAlert && (
+                          <span className="flex items-center justify-center w-2 h-2 rounded-full bg-amber-400 shrink-0" aria-label="Delivery health alert" />
                         )}
                       </Link>
                     </SidebarMenuButton>
