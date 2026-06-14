@@ -139,8 +139,9 @@ function buildReportScheduleAutoPausedMerchantHtml(opts: {
   consecutiveFailures: number;
   autoPauseAfterFailures: number;
   reenableToken: string;
+  failureReason?: string | null;
 }): string {
-  const { businessName, frequency, consecutiveFailures, autoPauseAfterFailures, reenableToken } = opts;
+  const { businessName, frequency, consecutiveFailures, autoPauseAfterFailures, reenableToken, failureReason } = opts;
   const freqLabel = frequency.charAt(0).toUpperCase() + frequency.slice(1);
   const reportsLink = `${APP_DOMAIN}/merchant/reports`;
   const reenableLink = `${APP_DOMAIN}/api/reports/schedule/reenable?token=${encodeURIComponent(reenableToken)}`;
@@ -177,11 +178,16 @@ function buildReportScheduleAutoPausedMerchantHtml(opts: {
           <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Consecutive Failures</td>
           <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #f87171; font-weight: 600;">${consecutiveFailures} of ${autoPauseAfterFailures}</td>
         </tr>
+        ${failureReason ? `
         <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Last Failure Reason</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #fbbf24;">${failureReason}</td>
+        </tr>` : ""}
+        <tr${failureReason ? "" : ' style="background: #111;"'}>
           <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Schedule Status</td>
           <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #fb923c; font-weight: 600;">Auto-Paused</td>
         </tr>
-        <tr>
+        <tr${failureReason ? ' style="background: #111;"' : ""}>
           <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Link Expires</td>
           <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #a1a1aa;">7 days from receipt</td>
         </tr>
@@ -223,16 +229,39 @@ export async function sendReportScheduleAutoPausedMerchantEmail(opts: {
   autoPauseAfterFailures: number;
   merchantId: number;
   scheduleId: number;
+  failureReason?: string | null;
 }): Promise<boolean> {
-  const { to, businessName, frequency, consecutiveFailures, autoPauseAfterFailures, merchantId, scheduleId } = opts;
+  const { to, businessName, frequency, consecutiveFailures, autoPauseAfterFailures, merchantId, scheduleId, failureReason } = opts;
+
+  try {
+    const [user] = await db
+      .select({ reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails })
+      .from(usersTable)
+      .where(eq(usersTable.merchantId, merchantId))
+      .limit(1);
+
+    if (!user) {
+      logger.info({ merchantId }, "No user found for merchant — skipping report schedule auto-pause email");
+      return false;
+    }
+
+    if (!user.reportScheduleChangedEmails) {
+      logger.info({ merchantId }, "Merchant opted out of report schedule changed emails — skipping auto-pause notification");
+      return false;
+    }
+  } catch (err) {
+    logger.error({ err, merchantId }, "Failed to check merchant report schedule email preference — skipping auto-pause notification");
+    return false;
+  }
+
   const freqLabel = frequency.charAt(0).toUpperCase() + frequency.slice(1);
   const subject = `[RasoKart] Your ${freqLabel} Report Schedule Has Been Paused`;
   const reenableToken = generateReenableToken(merchantId, scheduleId);
-  const html = buildReportScheduleAutoPausedMerchantHtml({ businessName, frequency, consecutiveFailures, autoPauseAfterFailures, reenableToken });
+  const html = buildReportScheduleAutoPausedMerchantHtml({ businessName, frequency, consecutiveFailures, autoPauseAfterFailures, reenableToken, failureReason });
 
   const sent = await sendMail({ to, subject, html });
   if (!sent) {
-    logger.warn({ to, businessName }, "Report schedule auto-pause merchant email could not be sent (SMTP not configured or failed)");
+    logger.warn({ to, businessName, merchantId }, "Report schedule auto-pause merchant email could not be sent (SMTP not configured or failed)");
   }
   return sent;
 }
