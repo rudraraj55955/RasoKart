@@ -488,7 +488,7 @@ export default function MerchantSecurity() {
   const [qhTimezone, setQhTimezone] = useState<string>("");
   const [qhEnabled, setQhEnabled] = useState<boolean>(false);
   const [flushingQueue, setFlushingQueue] = useState(false);
-  const { data: queueCountData, refetch: refetchQueueCount } = useGetQuietHoursQueueCount({ query: { queryKey: getGetQuietHoursQueueCountQueryKey(), refetchInterval: 60_000 } });
+  const { data: queueCountData, refetch: refetchQueueCount } = useGetQuietHoursQueueCount({ query: { queryKey: getGetQuietHoursQueueCountQueryKey(), refetchInterval: 60_000, refetchIntervalInBackground: false } });
 
   // Sync quiet hours draft state from server data when me loads
   useEffect(() => {
