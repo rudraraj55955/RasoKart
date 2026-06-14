@@ -1098,7 +1098,12 @@ function SchedulePanel() {
 
 function DeliveryHealthBanner() {
   const queryClient = useQueryClient();
-  const { data: scheduleData, isLoading } = useGetReportSchedule();
+  const { data: scheduleData, isLoading } = useGetReportSchedule({
+    query: {
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: false,
+    } as any,
+  });
   const reenable = useReenableReportSchedule();
   const schedule = scheduleData?.schedule ?? null;
 
