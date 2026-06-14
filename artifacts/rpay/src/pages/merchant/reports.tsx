@@ -1114,7 +1114,8 @@ function DeliveryHealthBanner() {
   const queryClient = useQueryClient();
   const { data: scheduleData, isLoading } = useGetReportSchedule({
     query: {
-      refetchInterval: 60_000,
+      refetchInterval: (data: any) =>
+        (data?.schedule?.consecutiveFailures ?? 1) > 0 ? 60_000 : false,
       refetchIntervalInBackground: false,
     } as any,
   });
