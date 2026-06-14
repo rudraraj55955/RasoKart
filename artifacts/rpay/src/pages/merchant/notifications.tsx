@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useReenableReportSchedule, useGetReportSchedule, useGetNotificationUnreadCounts } from "@workspace/api-client-react";
+import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useReenableReportSchedule, useGetReportSchedule, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -108,7 +108,13 @@ export default function NotificationsPage() {
     limit: 20,
   });
 
-  const { data: unreadCountsData } = useGetNotificationUnreadCounts();
+  const { data: unreadCountsData } = useGetNotificationUnreadCounts({
+    query: {
+      queryKey: getGetNotificationUnreadCountsQueryKey(),
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+    },
+  });
   const markAll = useMarkAllNotificationsRead();
   const markOne = useMarkNotificationRead();
   const reenable = useReenableReportSchedule();
