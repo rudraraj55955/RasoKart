@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useGetMe, useGetReportDeliveryHealth } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -371,13 +371,6 @@ const ADMIN_NAV = [
   },
 ];
 
-function getScheduleNextDue(lastSentAt: string | null | undefined, frequency: string): Date | null {
-  if (!lastSentAt) return null;
-  const last = new Date(lastSentAt);
-  const days = frequency === "monthly" ? 28 : frequency === "daily" ? 1 : 7;
-  return new Date(last.getTime() + days * 24 * 60 * 60 * 1000);
-}
-
 function AdminSidebar() {
   const [location] = useLocation();
   const { data: complianceData } = useGetSecurityComplianceSummary();
@@ -385,19 +378,7 @@ function AdminSidebar() {
 
   const { data: schedulesData } = useListMerchantReportSchedules();
   const schedules = schedulesData?.schedules ?? [];
-  const now = new Date();
-  const overdueScheduleCount = schedules.filter((s) => {
-    if (!s.isActive) return false;
-    const nextDue = getScheduleNextDue(s.lastSentAt, s.frequency);
-    return nextDue != null && nextDue < now;
-  }).length;
-
-  const { data: reportFailureData } = useListNotifications({
-    type: "report_schedule_auto_paused_admin",
-    isRead: ListNotificationsIsRead.false,
-    limit: 50,
-  });
-  const reportFailureCount = reportFailureData?.total ?? 0;
+  const deliveryFailureCount = schedules.filter((s) => s.consecutiveFailures > 0).length;
 
   const { data: deliveryHealth } = useGetReportDeliveryHealth(undefined, {
     query: { refetchInterval: 60_000, queryKey: ["/api/reports/delivery-health"] },
@@ -433,14 +414,9 @@ function AdminSidebar() {
                             {neverCount > 99 ? "99+" : neverCount}
                           </span>
                         )}
-                        {isReports && overdueScheduleCount > 0 && (
-                          <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none">
-                            {overdueScheduleCount > 99 ? "99+" : overdueScheduleCount}
-                          </span>
-                        )}
-                        {isReports && reportFailureCount > 0 && (
+                        {isReports && deliveryFailureCount > 0 && (
                           <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-[10px] font-bold text-white px-1 leading-none">
-                            {reportFailureCount > 99 ? "99+" : reportFailureCount}
+                            {deliveryFailureCount > 99 ? "99+" : deliveryFailureCount}
                           </span>
                         )}
                         {isReports && hasDeliveryAlert && (
