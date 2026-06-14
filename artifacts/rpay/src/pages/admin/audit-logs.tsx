@@ -1120,6 +1120,7 @@ function ScheduledReportFailureDetails({ log }: { log: any }) {
   const threshold = parsed.autoPauseAfterFailures ?? null;
 
   const [reenabled, setReenabled] = useState(false);
+  const [confirmReenable, setConfirmReenable] = useState(false);
   const queryClient = useQueryClient();
   const reenable = useReenableAdminMerchantReportSchedule();
 
@@ -1128,6 +1129,7 @@ function ScheduledReportFailureDetails({ log }: { log: any }) {
     reenable.mutate({ merchantId: parsed.merchantId }, {
       onSuccess: () => {
         setReenabled(true);
+        setConfirmReenable(false);
         queryClient.invalidateQueries({ queryKey: getListAdminAuditLogsQueryKey() });
         toast.success("Report schedule re-enabled successfully.");
       },
@@ -1181,19 +1183,42 @@ function ScheduledReportFailureDetails({ log }: { log: any }) {
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <p className="text-xs text-emerald-300">Schedule re-enabled. The audit log has been refreshed.</p>
           </div>
+        ) : confirmReenable ? (
+          <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 space-y-2">
+            <p className="text-xs text-emerald-300">Make sure the delivery issue is resolved before re-enabling. The schedule will resume automated delivery immediately.</p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/15 hover:text-emerald-200"
+                onClick={handleReenable}
+                disabled={reenable.isPending}
+              >
+                {reenable.isPending ? (
+                  <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Re-enabling…</>
+                ) : (
+                  <><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Confirm Re-enable</>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="flex-1 text-muted-foreground hover:text-foreground"
+                onClick={() => setConfirmReenable(false)}
+                disabled={reenable.isPending}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         ) : (
           <Button
             size="sm"
             variant="outline"
             className="w-full border-rose-500/30 text-rose-300 hover:bg-rose-500/10 hover:text-rose-200"
-            onClick={handleReenable}
-            disabled={reenable.isPending}
+            onClick={() => setConfirmReenable(true)}
           >
-            {reenable.isPending ? (
-              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Re-enabling…</>
-            ) : (
-              <><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Re-enable Schedule</>
-            )}
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />Re-enable Schedule
           </Button>
         )
       )}
@@ -1356,6 +1381,7 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
   const threshold = parsed.autoPauseAfterFailures ?? null;
 
   const [reenabled, setReenabled] = useState(false);
+  const [confirmReenable, setConfirmReenable] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sentNow, setSentNow] = useState(false);
@@ -1369,6 +1395,7 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
     reenable.mutate({ merchantId: parsed.merchantId }, {
       onSuccess: () => {
         setReenabled(true);
+        setConfirmReenable(false);
         queryClient.invalidateQueries({ queryKey: getListAdminAuditLogsQueryKey() });
         toast.success("Report schedule re-enabled successfully.");
       },
@@ -1491,19 +1518,43 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <p className="text-xs text-emerald-300">Schedule re-enabled. The audit log has been refreshed.</p>
             </div>
+          ) : confirmReenable ? (
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 space-y-2">
+              <p className="text-xs text-emerald-300">Make sure the delivery issue is resolved before re-enabling. The schedule will resume automated delivery immediately.</p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/15 hover:text-emerald-200"
+                  onClick={handleReenable}
+                  disabled={reenable.isPending}
+                >
+                  {reenable.isPending ? (
+                    <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Re-enabling…</>
+                  ) : (
+                    <><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Confirm Re-enable</>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="flex-1 text-muted-foreground hover:text-foreground"
+                  onClick={() => setConfirmReenable(false)}
+                  disabled={reenable.isPending}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
           ) : (
             <Button
               size="sm"
               variant="outline"
               className="w-full border-orange-500/30 text-orange-300 hover:bg-orange-500/10 hover:text-orange-200"
-              onClick={handleReenable}
-              disabled={reenable.isPending || deleteMutation.isPending || sendNowMutation.isPending}
+              onClick={() => setConfirmReenable(true)}
+              disabled={deleteMutation.isPending || sendNowMutation.isPending}
             >
-              {reenable.isPending ? (
-                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Re-enabling…</>
-              ) : (
-                <><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Re-enable Schedule</>
-              )}
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />Re-enable Schedule
             </Button>
           )}
           {sentNow ? (
