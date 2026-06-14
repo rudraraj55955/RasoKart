@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey, useGetQuietHoursQueueCount, getGetQuietHoursQueueCountQueryKey, useGetMe, getGetMeQueryKey, useUpdateMyPreferences } from "@workspace/api-client-react";
-import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2, ChevronDown, ChevronUp } from "lucide-react";
+import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2, ChevronDown, ChevronUp, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
@@ -82,6 +82,33 @@ const IN_APP_NOTIF_LABELS: Record<InAppNotifField, string> = {
   ekqrSyncAlertNotifs: "EKQR sync alerts",
   planChangeNotifs: "Plan changes",
 };
+
+const NOTIF_TYPE_TO_FIELD: Partial<Record<string, InAppNotifField>> = {
+  settlement_approved: "settlementStateChangedNotifs",
+  settlement_rejected: "settlementStateChangedNotifs",
+  settlement_paid: "settlementStateChangedNotifs",
+  plan_expiring: "planExpiryAlertNotifs",
+  plan_expired: "planExpiryAlertNotifs",
+  webhook_failure: "webhookFailureNotifs",
+  reconciliation_email_failure: "reconciliationAlertNotifs",
+  scheduled_report_failure: "reportFailureAlertNotifs",
+  scheduled_report_retry_success: "reportFailureAlertNotifs",
+  scheduled_report_auto_paused: "reportFailureAlertNotifs",
+  scheduled_report_overdue: "reportFailureAlertNotifs",
+  report_schedule_deleted: "reportScheduleChangedNotifs",
+  report_schedule_next_run_updated: "reportScheduleChangedNotifs",
+  report_schedule_reenabled: "reportScheduleChangedNotifs",
+  report_schedule_reenabled_by_merchant: "reportScheduleChangedNotifs",
+  report_schedule_auto_paused_admin: "reportScheduleChangedNotifs",
+  report_schedule_failures_reset: "reportScheduleChangedNotifs",
+  report_manual_send: "reportScheduleChangedNotifs",
+  report_delivery_low_success_rate: "weeklyDeliveryDigestNotifs",
+  preference_change_unknown_device: "loginAlertNotifs",
+};
+
+function typeToField(type: string): InAppNotifField | null {
+  return NOTIF_TYPE_TO_FIELD[type] ?? null;
+}
 
 function countMutedInAppTypes(me: Record<string, unknown> | null | undefined): number {
   if (!me) return 0;
@@ -240,17 +267,25 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
               <ul className="divide-y divide-border/40">
                 {items.map((n) => {
                   const target = notifNavTarget(n.type, n.metadata);
+                  const prefField = !isAdmin ? typeToField(n.type) : null;
+                  const isTypeMuted = prefField != null && meRecord ? (meRecord[prefField] === false) : false;
                   return (
                     <li
                       key={n.id}
-                      className={`flex items-start gap-3 px-4 py-3 ${!n.isRead ? "bg-primary/5" : ""} ${target ? "cursor-pointer hover:bg-muted/30" : ""}`}
+                      className={`group flex items-start gap-3 px-4 py-3 transition-opacity ${isTypeMuted ? "opacity-50" : ""} ${!n.isRead && !isTypeMuted ? "bg-primary/5" : ""} ${target ? "cursor-pointer hover:bg-muted/30" : ""}`}
                       onClick={target ? () => handleMarkOne(n.id, n.type, n.metadata) : undefined}
                     >
                       <div className={`mt-0.5 shrink-0 ${notifColor(n.type)}`}>{notifIcon(n.type)}</div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-xs font-medium leading-tight truncate">{n.title}</p>
-                          {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                          {!n.isRead && !isTypeMuted && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                          {isTypeMuted && (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] text-muted-foreground/50">
+                              <BellOff className="w-2.5 h-2.5" />
+                              muted
+                            </span>
+                          )}
                         </div>
                         <p className="text-[11px] text-muted-foreground leading-snug mt-0.5 line-clamp-2">{n.body}</p>
                         {n.type === "preference_change_unknown_device" && (() => {
@@ -273,16 +308,41 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
                           {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                         </p>
                       </div>
-                      {!n.isRead && !target && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-                          onClick={(e) => { e.stopPropagation(); handleMarkOne(n.id, n.type, n.metadata); }}
-                        >
-                          <Check className="w-3 h-3" />
-                        </Button>
-                      )}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {!n.isRead && !target && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            onClick={(e) => { e.stopPropagation(); handleMarkOne(n.id, n.type, n.metadata); }}
+                          >
+                            <Check className="w-3 h-3" />
+                          </Button>
+                        )}
+                        {prefField != null && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-6 w-6 transition-opacity ${isTypeMuted ? "opacity-100 text-amber-400 hover:text-amber-300" : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"}`}
+                                disabled={savingPrefs}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleField(prefField, isTypeMuted);
+                                }}
+                              >
+                                {isTypeMuted ? <Bell className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="text-xs max-w-[160px]">
+                              {isTypeMuted
+                                ? `Unmute "${IN_APP_NOTIF_LABELS[prefField]}"`
+                                : `Mute "${IN_APP_NOTIF_LABELS[prefField]}"`}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
                     </li>
                   );
                 })}
