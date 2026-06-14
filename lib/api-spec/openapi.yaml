@@ -417,6 +417,12 @@ paths:
           schema:
             type: string
             enum: ["false"]
+        - name: planExpiryAlertEmails
+          in: query
+          description: Filter by plan expiry alert email preference. "false" = plan expiry alert emails disabled.
+          schema:
+            type: string
+            enum: ["false"]
       responses:
         "200":
           description: List of merchants

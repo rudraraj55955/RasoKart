@@ -63,7 +63,7 @@ async function logPlanHistory(opts: {
 
 // GET /api/merchants
 router.get("/", requireAdmin, async (req, res) => {
-  const { status, search, page = "1", limit = "20", expiryStatus, rejectionReason, callbackSecretSet, loginAlertEmails, securityEmailsDisabled, settlementStateEmails, reportScheduleEmails } = req.query as Record<string, string>;
+  const { status, search, page = "1", limit = "20", expiryStatus, rejectionReason, callbackSecretSet, loginAlertEmails, securityEmailsDisabled, settlementStateEmails, reportScheduleEmails, planExpiryAlertEmails } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -107,6 +107,9 @@ router.get("/", requireAdmin, async (req, res) => {
   if (reportScheduleEmails === "false") {
     conditions.push(eq(usersTable.reportScheduleChangedEmails, false));
   }
+  if (planExpiryAlertEmails === "false") {
+    conditions.push(eq(usersTable.planExpiryAlertEmails, false));
+  }
 
   const planConditions = [];
   if (expiryStatus === "expired") {
@@ -121,7 +124,7 @@ router.get("/", requireAdmin, async (req, res) => {
   const allConditions = [...conditions, ...planConditions];
   const where = allConditions.length > 0 ? and(...allConditions) : undefined;
 
-  const needsUserJoin = loginAlertEmails === "true" || loginAlertEmails === "false" || securityEmailsDisabled === "true" || settlementStateEmails === "false" || reportScheduleEmails === "false";
+  const needsUserJoin = loginAlertEmails === "true" || loginAlertEmails === "false" || securityEmailsDisabled === "true" || settlementStateEmails === "false" || reportScheduleEmails === "false" || planExpiryAlertEmails === "false";
 
   let total: number;
   if (planConditions.length > 0 || needsUserJoin) {

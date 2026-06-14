@@ -265,6 +265,7 @@ export * from './listMerchantsCallbackSecretSet';
 export * from './listMerchantsExpiryStatus';
 export * from './listMerchantsLoginAlertEmails';
 export * from './listMerchantsParams';
+export * from './listMerchantsPlanExpiryAlertEmails';
 export * from './listMerchantsReportScheduleEmails';
 export * from './listMerchantsSecurityEmailsDisabled';
 export * from './listMerchantsSettlementStateEmails';

@@ -8,6 +8,7 @@
 import type { ListMerchantsCallbackSecretSet } from './listMerchantsCallbackSecretSet';
 import type { ListMerchantsExpiryStatus } from './listMerchantsExpiryStatus';
 import type { ListMerchantsLoginAlertEmails } from './listMerchantsLoginAlertEmails';
+import type { ListMerchantsPlanExpiryAlertEmails } from './listMerchantsPlanExpiryAlertEmails';
 import type { ListMerchantsReportScheduleEmails } from './listMerchantsReportScheduleEmails';
 import type { ListMerchantsSecurityEmailsDisabled } from './listMerchantsSecurityEmailsDisabled';
 import type { ListMerchantsSettlementStateEmails } from './listMerchantsSettlementStateEmails';
@@ -40,4 +41,8 @@ settlementStateEmails?: ListMerchantsSettlementStateEmails;
  * Filter by report schedule email preference. "false" = report schedule emails disabled.
  */
 reportScheduleEmails?: ListMerchantsReportScheduleEmails;
+/**
+ * Filter by plan expiry alert email preference. "false" = plan expiry alert emails disabled.
+ */
+planExpiryAlertEmails?: ListMerchantsPlanExpiryAlertEmails;
 };

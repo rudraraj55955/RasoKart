@@ -4461,6 +4461,10 @@ settlementStateEmails?: ListMerchantsSettlementStateEmails;
  * Filter by report schedule email preference. "false" = report schedule emails disabled.
  */
 reportScheduleEmails?: ListMerchantsReportScheduleEmails;
+/**
+ * Filter by plan expiry alert email preference. "false" = plan expiry alert emails disabled.
+ */
+planExpiryAlertEmails?: ListMerchantsPlanExpiryAlertEmails;
 };
 
 export type ListMerchantsStatus = typeof ListMerchantsStatus[keyof typeof ListMerchantsStatus];
@@ -4515,6 +4519,13 @@ export type ListMerchantsReportScheduleEmails = typeof ListMerchantsReportSchedu
 
 
 export const ListMerchantsReportScheduleEmails = {
+  false: 'false',
+} as const;
+
+export type ListMerchantsPlanExpiryAlertEmails = typeof ListMerchantsPlanExpiryAlertEmails[keyof typeof ListMerchantsPlanExpiryAlertEmails];
+
+
+export const ListMerchantsPlanExpiryAlertEmails = {
   false: 'false',
 } as const;
 

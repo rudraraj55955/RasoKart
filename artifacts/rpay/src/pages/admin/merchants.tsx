@@ -212,6 +212,7 @@ export default function AdminMerchants() {
   const [securityEmailsDisabledFilter, setSecurityEmailsDisabledFilter] = useState<"" | "true">("");
   const [settlementStateEmailsFilter, setSettlementStateEmailsFilter] = useState<"" | "false">("");
   const [reportScheduleEmailsFilter, setReportScheduleEmailsFilter] = useState<"" | "false">("");
+  const [planExpiryAlertEmailsFilter, setPlanExpiryAlertEmailsFilter] = useState<"" | "false">("");
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -314,7 +315,7 @@ export default function AdminMerchants() {
   const [bulkUndoSecondsLeft, setBulkUndoSecondsLeft] = useState(0);
   const [bulkUndoUsed, setBulkUndoUsed] = useState(false);
 
-  const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined, callbackSecretSet: callbackSecretFilter as any || undefined, loginAlertEmails: loginAlertFilter as any || undefined, securityEmailsDisabled: securityEmailsDisabledFilter as any || undefined, settlementStateEmails: settlementStateEmailsFilter as any || undefined, reportScheduleEmails: reportScheduleEmailsFilter as any || undefined });
+  const { data, isLoading } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined, callbackSecretSet: callbackSecretFilter as any || undefined, loginAlertEmails: loginAlertFilter as any || undefined, securityEmailsDisabled: securityEmailsDisabledFilter as any || undefined, settlementStateEmails: settlementStateEmailsFilter as any || undefined, reportScheduleEmails: reportScheduleEmailsFilter as any || undefined, planExpiryAlertEmails: planExpiryAlertEmailsFilter as any || undefined });
   const { data: plans } = useListPlans();
   const { data: currentMerchantPlan, isLoading: planLoading } = useGetMerchantPlan(
     assignPlanMerchant?.id ?? 0,
@@ -956,7 +957,7 @@ export default function AdminMerchants() {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / 20);
 
-  const anyFilterActive = !!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || callbackSecretFilter !== "" || loginAlertFilter !== "" || securityEmailsDisabledFilter !== "" || settlementStateEmailsFilter !== "" || reportScheduleEmailsFilter !== "";
+  const anyFilterActive = !!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || callbackSecretFilter !== "" || loginAlertFilter !== "" || securityEmailsDisabledFilter !== "" || settlementStateEmailsFilter !== "" || reportScheduleEmailsFilter !== "" || planExpiryAlertEmailsFilter !== "";
   const [grandTotal, setGrandTotal] = useState(0);
   useEffect(() => {
     if (!anyFilterActive && !isLoading && data?.total != null) {
@@ -1274,6 +1275,30 @@ export default function AdminMerchants() {
               Opted Out
             </button>
           </div>
+          <div className="flex gap-1 flex-wrap items-center">
+            <span className="text-xs text-muted-foreground pr-1">Plan Expiry Alerts:</span>
+            <button
+              onClick={() => { setPlanExpiryAlertEmailsFilter(""); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                planExpiryAlertEmailsFilter === ""
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              Any
+            </button>
+            <button
+              onClick={() => { setPlanExpiryAlertEmailsFilter("false"); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${
+                planExpiryAlertEmailsFilter === "false"
+                  ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              <BellOff className="w-3.5 h-3.5" />
+              Opted Out
+            </button>
+          </div>
         </div>
         {(status === "rejected" || status === "all") && (
           <div className="relative max-w-sm">
@@ -1289,7 +1314,7 @@ export default function AdminMerchants() {
       </div>
 
       {/* Filter chips */}
-      {(!!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || !!callbackSecretFilter || !!loginAlertFilter || !!securityEmailsDisabledFilter || !!settlementStateEmailsFilter || !!reportScheduleEmailsFilter) && (
+      {(!!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || !!callbackSecretFilter || !!loginAlertFilter || !!securityEmailsDisabledFilter || !!settlementStateEmailsFilter || !!reportScheduleEmailsFilter || !!planExpiryAlertEmailsFilter) && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Filters:</span>
           {!!search && (
@@ -1423,6 +1448,19 @@ export default function AdminMerchants() {
                 onClick={() => { setReportScheduleEmailsFilter(""); setPage(1); }}
                 className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
                 aria-label="Clear report schedule emails filter"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {planExpiryAlertEmailsFilter === "false" && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
+              <BellOff className="w-3 h-3" />
+              Plan Expiry Alerts Off
+              <button
+                onClick={() => { setPlanExpiryAlertEmailsFilter(""); setPage(1); }}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
+                aria-label="Clear plan expiry alert emails filter"
               >
                 <X className="w-3 h-3" />
               </button>
