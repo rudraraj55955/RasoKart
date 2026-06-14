@@ -24,6 +24,17 @@ const loginLimiter = makeRateLimiter({
   message: { error: "Too many login attempts. Please try again later." },
 });
 
+const prefChangeLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  store: dbRateLimitStore,
+  message: { error: "Too many preference updates. Please try again later." },
+  keyGenerator: (req) => {
+    const user = (req as any).user;
+    return user?.id != null ? `pref-change:${user.id as number}` : null;
+  },
+});
+
 function generateTrustToken(userId: number, ip: string): string {
   return jwt.sign({ purpose: "trust-ip", userId, ip }, JWT_SECRET, { expiresIn: "7d" });
 }
@@ -452,7 +463,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 });
 
 // PUT /api/auth/preferences
-router.put("/preferences", requireAuth, async (req, res, next) => {
+router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next) => {
   try {
     const user = (req as any).user;
     const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, planChangeEmails, quietHoursStart, quietHoursEnd, quietHoursTimezone } = req.body;
