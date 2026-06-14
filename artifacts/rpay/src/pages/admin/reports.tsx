@@ -3201,16 +3201,11 @@ export default function AdminReports() {
       {(dhLoading || dhData) && (
         <Card className="border-border/60">
           <CardContent className="pt-3 pb-3">
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-2">
               <Mail className="w-3.5 h-3.5 text-primary" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 Delivery Health
               </span>
-              {dhDateFrom && dhDateTo && (
-                <span className="text-[10px] text-muted-foreground/50">
-                  {dhDateFrom} → {dhDateTo}
-                </span>
-              )}
               {(dhLoading || dhFetching) && (
                 <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
               )}
@@ -3221,6 +3216,31 @@ export default function AdminReports() {
               >
                 View details <ChevronRight className="w-3 h-3" />
               </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 mb-3">
+              {(["Last 7 days", "Last 30 days", "This month"] as const).map((label) => {
+                const preset = DATE_PRESETS.find((p) => p.label === label);
+                if (!preset) return null;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => applyDhPreset(preset)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                      dhActivePreset === label
+                        ? "bg-primary/15 border-primary/40 text-primary"
+                        : "border-border/60 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              {dhDateFrom && dhDateTo && (
+                <span className="text-[10px] text-muted-foreground/50 ml-1">
+                  {dhDateFrom} → {dhDateTo}
+                </span>
+              )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
