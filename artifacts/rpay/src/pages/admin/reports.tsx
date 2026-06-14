@@ -2576,9 +2576,25 @@ function DeliveryHistoryPanel() {
                             </TableCell>
                             <TableCell>
                               {log.isAutoPause ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
-                                  <Clock className="w-3.5 h-3.5" />Yes
-                                </span>
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
+                                    <Clock className="w-3.5 h-3.5" />Yes
+                                  </span>
+                                  {((log as any).maxAttempts != null || (log as any).backoffBaseMs != null) && (
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      {(log as any).maxAttempts != null && (
+                                        <span className="inline-flex items-center text-[10px] text-amber-400/80 bg-amber-400/10 rounded px-1.5 py-0.5 font-medium whitespace-nowrap">
+                                          {(log as any).maxAttempts} max retries
+                                        </span>
+                                      )}
+                                      {(log as any).backoffBaseMs != null && (
+                                        <span className="inline-flex items-center text-[10px] text-amber-400/80 bg-amber-400/10 rounded px-1.5 py-0.5 font-medium whitespace-nowrap">
+                                          {(log as any).backoffBaseMs}ms backoff
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
@@ -2700,9 +2716,25 @@ function DeliveryHistoryPanel() {
                       </TableCell>
                       <TableCell>
                         {log.isAutoPause ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
-                            <Clock className="w-3.5 h-3.5" />Yes
-                          </span>
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
+                              <Clock className="w-3.5 h-3.5" />Yes
+                            </span>
+                            {((log as any).maxAttempts != null || (log as any).backoffBaseMs != null) && (
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {(log as any).maxAttempts != null && (
+                                  <span className="inline-flex items-center text-[10px] text-amber-400/80 bg-amber-400/10 rounded px-1.5 py-0.5 font-medium whitespace-nowrap">
+                                    {(log as any).maxAttempts} max retries
+                                  </span>
+                                )}
+                                {(log as any).backoffBaseMs != null && (
+                                  <span className="inline-flex items-center text-[10px] text-amber-400/80 bg-amber-400/10 rounded px-1.5 py-0.5 font-medium whitespace-nowrap">
+                                    {(log as any).backoffBaseMs}ms backoff
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
