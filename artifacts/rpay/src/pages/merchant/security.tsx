@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
-import { useListCallbackLogs, useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useListMySecurityActivity, useListSecurityEvents, useListKnownLoginIps, useListTrustedIps, useDeleteTrustedIp, getListTrustedIpsQueryKey, useLabelKnownLoginIp, getListKnownLoginIpsQueryKey } from "@workspace/api-client-react";
+import { useListCallbackLogs, useGetMe, useUpdateMyPreferences, getGetMeQueryKey, useListMySecurityActivity, useListSecurityEvents, useListKnownLoginIps, useListTrustedIps, useDeleteTrustedIp, getListTrustedIpsQueryKey, useLabelKnownLoginIp, getListKnownLoginIpsQueryKey, useGetQuietHoursQueueCount } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -488,6 +488,7 @@ export default function MerchantSecurity() {
   const [qhTimezone, setQhTimezone] = useState<string>("");
   const [qhEnabled, setQhEnabled] = useState<boolean>(false);
   const [flushingQueue, setFlushingQueue] = useState(false);
+  const { data: queueCountData, refetch: refetchQueueCount } = useGetQuietHoursQueueCount();
 
   // Sync quiet hours draft state from server data when me loads
   useEffect(() => {
@@ -525,6 +526,7 @@ export default function MerchantSecurity() {
       if (!res.ok) throw new Error("Failed to flush queue");
       const json = await res.json();
       toast.success(json.message ?? `Flushed ${json.flushed} queued email(s)`);
+      void refetchQueueCount();
     } catch {
       toast.error("Failed to flush queued emails");
     } finally {
@@ -2221,6 +2223,12 @@ export default function MerchantSecurity() {
           <CardTitle className="text-base flex items-center gap-2">
             <Moon className="w-4 h-4 text-indigo-400" />
             Quiet Hours
+            {(queueCountData?.count ?? 0) > 0 && (
+              <Badge className="bg-indigo-500/15 text-indigo-300 border-indigo-500/30 gap-1 text-xs font-medium ml-1">
+                <Mail className="w-3 h-3" />
+                {queueCountData!.count} queued
+              </Badge>
+            )}
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
             Set a do-not-disturb window. Emails triggered during quiet hours are held and delivered as a single digest when the window ends.
@@ -2322,13 +2330,18 @@ export default function MerchantSecurity() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs gap-1.5 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 hover:border-indigo-500/50"
+              className={`h-8 text-xs gap-1.5 ${(queueCountData?.count ?? 0) > 0 ? "border-indigo-500/60 text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 hover:text-indigo-200 hover:border-indigo-400/70" : "border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 hover:border-indigo-500/50"}`}
               onClick={handleFlushQueue}
               disabled={flushingQueue}
               title="Immediately deliver any queued emails whose delivery time has already passed"
             >
               {flushingQueue ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               Deliver queued now
+              {(queueCountData?.count ?? 0) > 0 && (
+                <span className="ml-0.5 inline-flex items-center justify-center rounded-full bg-indigo-500/25 text-indigo-200 text-[10px] font-bold w-4 h-4 leading-none">
+                  {queueCountData!.count}
+                </span>
+              )}
             </Button>
           </div>
         </CardContent>

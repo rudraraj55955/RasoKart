@@ -128,6 +128,7 @@ import type {
   GetMerchantsWebhookFailureCountsParams,
   GetMyVerificationResponse,
   GetQrCodeStatsParams,
+  GetQuietHoursQueueCount200,
   GetReconciliationRunEmailLogs200,
   GetReportDeliveryHealth200,
   GetReportDeliveryHealthParams,
@@ -768,6 +769,84 @@ export const useUpdateMyPreferences = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getUpdateMyPreferencesMutationOptions(options));
     }
+
+export const getGetQuietHoursQueueCountUrl = () => {
+
+
+
+
+  return `/api/auth/quiet-hours/queue-count`
+}
+
+/**
+ * Returns the number of unflushed emails currently held in the quiet-hours queue for the authenticated user.
+ * @summary Get quiet-hours queue count
+ */
+export const getQuietHoursQueueCount = async ( options?: RequestInit): Promise<GetQuietHoursQueueCount200> => {
+
+  return customFetch<GetQuietHoursQueueCount200>(getGetQuietHoursQueueCountUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetQuietHoursQueueCountQueryKey = () => {
+    return [
+    `/api/auth/quiet-hours/queue-count`
+    ] as const;
+    }
+
+
+export const getGetQuietHoursQueueCountQueryOptions = <TData = Awaited<ReturnType<typeof getQuietHoursQueueCount>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQuietHoursQueueCount>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetQuietHoursQueueCountQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getQuietHoursQueueCount>>> = ({ signal }) => getQuietHoursQueueCount({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getQuietHoursQueueCount>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetQuietHoursQueueCountQueryResult = NonNullable<Awaited<ReturnType<typeof getQuietHoursQueueCount>>>
+export type GetQuietHoursQueueCountQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get quiet-hours queue count
+ */
+
+export function useGetQuietHoursQueueCount<TData = Awaited<ReturnType<typeof getQuietHoursQueueCount>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getQuietHoursQueueCount>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetQuietHoursQueueCountQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getFlushQuietHoursQueueUrl = () => {
 

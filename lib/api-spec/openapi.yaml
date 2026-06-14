@@ -224,6 +224,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/quiet-hours/queue-count:
+    get:
+      operationId: getQuietHoursQueueCount
+      tags: [auth]
+      summary: Get quiet-hours queue count
+      description: Returns the number of unflushed emails currently held in the quiet-hours queue for the authenticated user.
+      responses:
+        "200":
+          description: Queue count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: number
+                    description: Number of unflushed emails in the quiet-hours queue.
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /auth/quiet-hours/flush:
     post:
       operationId: flushQuietHoursQueue

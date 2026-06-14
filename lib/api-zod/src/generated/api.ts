@@ -157,6 +157,15 @@ export const UpdateMyPreferencesResponse = zod.object({
 
 
 /**
+ * Returns the number of unflushed emails currently held in the quiet-hours queue for the authenticated user.
+ * @summary Get quiet-hours queue count
+ */
+export const GetQuietHoursQueueCountResponse = zod.object({
+  "count": zod.number().describe('Number of unflushed emails in the quiet-hours queue.')
+})
+
+
+/**
  * Immediately delivers any queued notification emails whose deliver-after time has already passed for the authenticated user.
  * @summary Flush queued quiet-hours emails
  */

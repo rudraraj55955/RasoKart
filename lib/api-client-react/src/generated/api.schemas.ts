@@ -4429,6 +4429,11 @@ export type UpdateMyPreferencesBody = {
   quietHoursTimezone?: string | null;
 };
 
+export type GetQuietHoursQueueCount200 = {
+  /** Number of unflushed emails in the quiet-hours queue. */
+  count: number;
+};
+
 export type FlushQuietHoursQueue200 = {
   message: string;
   flushed: number;

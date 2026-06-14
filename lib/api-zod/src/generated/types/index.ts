@@ -174,6 +174,7 @@ export * from './getLedgerBackfillLastRun200';
 export * from './getMerchantsWebhookFailureCountsParams';
 export * from './getMyVerificationResponse';
 export * from './getQrCodeStatsParams';
+export * from './getQuietHoursQueueCount200';
 export * from './getReconciliationRunEmailLogs200';
 export * from './getReportDeliveryHealth200';
 export * from './getReportDeliveryHealthParams';
