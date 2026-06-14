@@ -1888,6 +1888,24 @@ function DeliveryHistoryPanel() {
               Clear
             </Button>
           )}
+          {merchantSummaries.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2 text-xs gap-1"
+              onClick={() => {
+                const allCollapsed = merchantSummaries.every((s) => collapsedMerchants.includes(s.merchantId));
+                if (allCollapsed) {
+                  setCollapsedMerchants([]);
+                } else {
+                  setCollapsedMerchants(merchantSummaries.map((s) => s.merchantId));
+                }
+              }}
+            >
+              <ChevronsUpDown className="w-3.5 h-3.5" />
+              {merchantSummaries.every((s) => collapsedMerchants.includes(s.merchantId)) ? "Expand all" : "Collapse all"}
+            </Button>
+          )}
           <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
             {!isLoading && `${logs.length.toLocaleString("en-IN")} attempt${logs.length !== 1 ? "s" : ""}`}
           </span>
