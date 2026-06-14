@@ -110,6 +110,22 @@ function storeCustomDatePresets(presets: CustomDatePreset[]): void {
   localStorage.setItem(CUSTOM_DATE_PRESETS_KEY, JSON.stringify(presets));
 }
 
+const SEC_TIMELINE_CUSTOM_DATE_PRESETS_KEY = "rasokart_custom_date_presets_sec_timeline";
+
+function loadSecTimelineCustomDatePresets(): CustomDatePreset[] {
+  try {
+    const raw = localStorage.getItem(SEC_TIMELINE_CUSTOM_DATE_PRESETS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as CustomDatePreset[];
+  } catch {
+    return [];
+  }
+}
+
+function storeSecTimelineCustomDatePresets(presets: CustomDatePreset[]): void {
+  localStorage.setItem(SEC_TIMELINE_CUSTOM_DATE_PRESETS_KEY, JSON.stringify(presets));
+}
+
 // ─── Callback log helpers ────────────────────────────────────────────────────
 
 function SignatureVerifiedBadge({ value }: { value: boolean | null | undefined }) {
@@ -786,6 +802,96 @@ export default function MerchantSecurity() {
   const [secSearch, setSecSearch] = useState("");
   const [secPage, setSecPage] = useState(1);
   const SEC_PAGE_SIZE = 20;
+
+  const [secCustomDatePresets, setSecCustomDatePresets] = useState<CustomDatePreset[]>(() => loadSecTimelineCustomDatePresets());
+  const [secShowSaveDatePreset, setSecShowSaveDatePreset] = useState(false);
+  const [secSaveDatePresetName, setSecSaveDatePresetName] = useState("");
+  const [secSaveDatePresetNameError, setSecSaveDatePresetNameError] = useState("");
+  const secSaveDatePresetNameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (secShowSaveDatePreset) {
+      setTimeout(() => secSaveDatePresetNameRef.current?.focus(), 50);
+    }
+  }, [secShowSaveDatePreset]);
+
+  const applySecPreset = (preset: (typeof DATE_PRESETS)[number]) => {
+    const { from, to } = preset.getRange();
+    setSecDateFrom(from);
+    setSecDateTo(to);
+    setSecPage(1);
+    setSecShowSaveDatePreset(false);
+  };
+
+  const isSecPresetActive = (preset: (typeof DATE_PRESETS)[number]) => {
+    const { from, to } = preset.getRange();
+    return secDateFrom === from && secDateTo === to;
+  };
+
+  const applySecCustomDatePreset = (preset: CustomDatePreset) => {
+    setSecDateFrom(preset.from);
+    setSecDateTo(preset.to);
+    setSecPage(1);
+    setSecShowSaveDatePreset(false);
+  };
+
+  const isSecCustomDatePresetActive = (preset: CustomDatePreset) =>
+    secDateFrom === preset.from && secDateTo === preset.to;
+
+  const openSecSaveDatePreset = () => {
+    setSecSaveDatePresetName("");
+    setSecSaveDatePresetNameError("");
+    setSecShowSaveDatePreset(true);
+  };
+
+  const confirmSecSaveDatePreset = () => {
+    const trimmed = secSaveDatePresetName.trim();
+    if (!trimmed) {
+      setSecSaveDatePresetNameError("Please enter a name for this preset.");
+      secSaveDatePresetNameRef.current?.focus();
+      return;
+    }
+    const alreadyExists = secCustomDatePresets.some(
+      p => p.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (alreadyExists) {
+      setSecSaveDatePresetNameError("A preset with this name already exists.");
+      secSaveDatePresetNameRef.current?.focus();
+      return;
+    }
+    const newPreset: CustomDatePreset = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: trimmed,
+      from: secDateFrom,
+      to: secDateTo,
+    };
+    const updated = [...secCustomDatePresets, newPreset];
+    setSecCustomDatePresets(updated);
+    storeSecTimelineCustomDatePresets(updated);
+    setSecShowSaveDatePreset(false);
+    setSecSaveDatePresetName("");
+    setSecSaveDatePresetNameError("");
+  };
+
+  const cancelSecSaveDatePreset = () => {
+    setSecShowSaveDatePreset(false);
+    setSecSaveDatePresetName("");
+    setSecSaveDatePresetNameError("");
+  };
+
+  const deleteSecCustomDatePreset = (id: string) => {
+    const updated = secCustomDatePresets.filter(p => p.id !== id);
+    setSecCustomDatePresets(updated);
+    storeSecTimelineCustomDatePresets(updated);
+  };
+
+  const isSecCustomDateRangeEntered = !!(secDateFrom && secDateTo);
+  const isSecBuiltInPresetActive = DATE_PRESETS.some(p => {
+    const { from, to } = p.getRange();
+    return secDateFrom === from && secDateTo === to;
+  });
+  const isSecCustomDateAlreadySaved = secCustomDatePresets.some(p => p.from === secDateFrom && p.to === secDateTo);
+  const canSaveSecDatePreset = isSecCustomDateRangeEntered && !isSecBuiltInPresetActive && !isSecCustomDateAlreadySaved;
 
   const { data: secEventsData, isLoading: secEventsLoading } = useListSecurityActivity({
     limit: SEC_PAGE_SIZE,
@@ -1822,23 +1928,94 @@ export default function MerchantSecurity() {
                 </Button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <CalendarRange className="w-3.5 h-3.5 text-muted-foreground" />
-              <Input
-                type="date"
-                className="w-[140px] h-7 text-xs [color-scheme:dark]"
-                value={secDateFrom}
-                onChange={e => { setSecDateFrom(e.target.value); setSecPage(1); }}
-                title="From date"
-              />
-              <span className="text-muted-foreground text-xs">to</span>
-              <Input
-                type="date"
-                className="w-[140px] h-7 text-xs [color-scheme:dark]"
-                value={secDateTo}
-                onChange={e => { setSecDateTo(e.target.value); setSecPage(1); }}
-                title="To date"
-              />
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-muted-foreground font-medium mr-1">Date range:</span>
+                {DATE_PRESETS.map(preset => (
+                  <Button
+                    key={preset.label}
+                    variant={isSecPresetActive(preset) ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => applySecPreset(preset)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+                {secCustomDatePresets.map(preset => (
+                  <span
+                    key={preset.id}
+                    className={`group inline-flex items-center gap-1 rounded-md border text-xs font-medium transition-colors ${
+                      isSecCustomDatePresetActive(preset)
+                        ? "border-primary/60 bg-primary/15 text-primary"
+                        : "border-sky-500/30 bg-sky-500/8 text-sky-300 hover:border-sky-500/60"
+                    }`}
+                  >
+                    <button
+                      onClick={() => applySecCustomDatePreset(preset)}
+                      className="flex items-center gap-1 h-7 px-2.5 hover:text-sky-100 transition-colors"
+                      title={`${preset.from} – ${preset.to}`}
+                    >
+                      <CalendarRange className="w-3 h-3 shrink-0" />
+                      {preset.name}
+                    </button>
+                    <button
+                      onClick={() => deleteSecCustomDatePreset(preset.id)}
+                      className="pr-1.5 rounded-r-md text-sky-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100 h-7 flex items-center"
+                      aria-label={`Remove preset "${preset.name}"`}
+                      title="Remove this preset"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <div className="flex items-center gap-2 ml-1">
+                  <Input
+                    type="date"
+                    className="w-[140px] h-7 text-xs [color-scheme:dark]"
+                    value={secDateFrom}
+                    onChange={e => { setSecDateFrom(e.target.value); setSecPage(1); setSecShowSaveDatePreset(false); }}
+                    title="From date"
+                  />
+                  <span className="text-muted-foreground text-xs">to</span>
+                  <Input
+                    type="date"
+                    className="w-[140px] h-7 text-xs [color-scheme:dark]"
+                    value={secDateTo}
+                    onChange={e => { setSecDateTo(e.target.value); setSecPage(1); setSecShowSaveDatePreset(false); }}
+                    title="To date"
+                  />
+                  {canSaveSecDatePreset && !secShowSaveDatePreset && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs border-sky-500/40 text-sky-300 hover:bg-sky-500/10 hover:text-sky-200"
+                      onClick={openSecSaveDatePreset}
+                      title="Save this date range as a quick-access preset"
+                    >
+                      <CalendarRange className="w-3 h-3 mr-1.5" />
+                      Save as preset
+                    </Button>
+                  )}
+                  {isSecCustomDateRangeEntered && isSecCustomDateAlreadySaved && (
+                    <span className="inline-flex items-center gap-1 h-7 px-2.5 text-xs text-sky-400/60 border border-sky-500/20 rounded-md">
+                      <CalendarRange className="w-3 h-3" />
+                      Saved
+                    </span>
+                  )}
+                </div>
+                {(secDateFrom || secDateTo) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-muted-foreground hover:text-foreground gap-1"
+                    onClick={() => { setSecDateFrom(""); setSecDateTo(""); setSecPage(1); setSecShowSaveDatePreset(false); }}
+                  >
+                    <X className="w-3 h-3" />
+                    Clear dates
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -2390,7 +2567,43 @@ export default function MerchantSecurity() {
         </CardContent>
       </Card>
 
-      {/* Save preset dialog */}
+      {/* Save preset dialog — security timeline */}
+      <Dialog open={secShowSaveDatePreset} onOpenChange={open => { if (!open) cancelSecSaveDatePreset(); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarRange className="w-5 h-5 text-sky-400" />
+              Save Date Preset
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Save <span className="text-foreground font-medium">{secDateFrom}</span> → <span className="text-foreground font-medium">{secDateTo}</span> as a quick-access preset.
+            </p>
+            <div className="space-y-1">
+              <Label htmlFor="sec-preset-name" className="text-xs text-muted-foreground uppercase tracking-wider">Preset name</Label>
+              <Input
+                id="sec-preset-name"
+                ref={secSaveDatePresetNameRef}
+                placeholder="e.g. Last quarter"
+                value={secSaveDatePresetName}
+                onChange={e => { setSecSaveDatePresetName(e.target.value); setSecSaveDatePresetNameError(""); }}
+                onKeyDown={e => { if (e.key === "Enter") confirmSecSaveDatePreset(); }}
+                className={secSaveDatePresetNameError ? "border-rose-500/50" : ""}
+              />
+              {secSaveDatePresetNameError && (
+                <p className="text-xs text-rose-400">{secSaveDatePresetNameError}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={cancelSecSaveDatePreset}>Cancel</Button>
+            <Button size="sm" onClick={confirmSecSaveDatePreset}>Save preset</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save preset dialog — callback logs */}
       <Dialog open={showSaveDatePreset} onOpenChange={open => { if (!open) cancelSaveDatePreset(); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
