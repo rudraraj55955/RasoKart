@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts } from "@workspace/api-client-react";
+import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey } from "@workspace/api-client-react";
 import { Bell, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -50,7 +50,13 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
   const [, navigate] = useLocation();
 
   const { data, refetch } = useListNotifications({ limit: 10, page: 1 });
-  const { data: unreadCountsData } = useGetNotificationUnreadCounts();
+  const { data: unreadCountsData } = useGetNotificationUnreadCounts({
+    query: {
+      queryKey: getGetNotificationUnreadCountsQueryKey(),
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+    },
+  });
   const markAll = useMarkAllNotificationsRead();
   const markOne = useMarkNotificationRead();
 
