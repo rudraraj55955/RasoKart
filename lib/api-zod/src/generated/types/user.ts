@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { UserNotifFieldDisabledAt } from './userNotifFieldDisabledAt';
 import type { UserRole } from './userRole';
 
 export interface User {
@@ -41,6 +42,11 @@ export interface User {
      * @nullable
      */
   notifPrefsDisabledAt?: string | null;
+  /**
+     * Map of notification field name to ISO timestamp of when that specific field was disabled. Only present for fields that are currently disabled. Null or empty if all are enabled.
+     * @nullable
+     */
+  notifFieldDisabledAt?: UserNotifFieldDisabledAt;
   /**
      * Start of quiet hours window in HH:mm format (e.g. "22:00"). Null means quiet hours disabled.
      * @nullable

@@ -184,8 +184,40 @@ export default function MerchantDashboard() {
   // Notification reminder banner: show when any email notification has been disabled for ≥30 days
   const NOTIF_REMINDER_THRESHOLD_DAYS = 30;
   const NOTIF_REMINDER_DISMISS_KEY = user?.id ? `rasokart_notif_reminder_dismissed_${user.id}` : null;
+
+  const NOTIF_FIELD_LABELS: Record<string, string> = {
+    reconciliationAlertEmails: "Reconciliation alerts",
+    planExpiryAlertEmails: "Plan expiry alerts",
+    settlementStateEmails: "Settlement state emails",
+    signatureFailureAlertEmails: "Signature failure alerts",
+    webhookFailureEmails: "Webhook failure alerts",
+    ekqrSyncAlertEmails: "EKQR sync alerts",
+    reportFailureAlertEmails: "Report failure alerts",
+    weeklyDeliveryDigestEmails: "Weekly delivery digest",
+    apiKeyGeneratedEmails: "API key generated alerts",
+    apiKeyRevokedEmails: "API key revoked alerts",
+    loginAlertEmails: "Login alerts",
+    reportScheduleChangedEmails: "Report schedule changed",
+    settlementStateChangedEmails: "Settlement state changed",
+    planChangeEmails: "Plan change emails",
+  };
+
+  // Compute which fields are disabled AND have been so for ≥30 days
+  const now = new Date();
+  const longDisabledFields: Array<{ label: string; days: number }> = [];
+  const fieldDisabledAt = user?.notifFieldDisabledAt ?? null;
+  if (fieldDisabledAt) {
+    for (const [field, isoTs] of Object.entries(fieldDisabledAt)) {
+      const days = differenceInDays(now, new Date(isoTs));
+      if (days >= NOTIF_REMINDER_THRESHOLD_DAYS && field in NOTIF_FIELD_LABELS) {
+        longDisabledFields.push({ label: NOTIF_FIELD_LABELS[field]!, days });
+      }
+    }
+  }
+  // Fallback: if notifFieldDisabledAt not available yet, use legacy notifPrefsDisabledAt
   const notifPrefsDisabledAt = user?.notifPrefsDisabledAt ? new Date(user.notifPrefsDisabledAt) : null;
-  const notifDisabledDays = notifPrefsDisabledAt != null ? differenceInDays(new Date(), notifPrefsDisabledAt) : null;
+  const notifDisabledDaysLegacy = notifPrefsDisabledAt != null ? differenceInDays(now, notifPrefsDisabledAt) : null;
+
   const [notifReminderDismissedAt, setNotifReminderDismissedAt] = useState<number | null>(null);
   useEffect(() => {
     if (!NOTIF_REMINDER_DISMISS_KEY) return;
@@ -195,9 +227,25 @@ export default function MerchantDashboard() {
   }, [NOTIF_REMINDER_DISMISS_KEY]);
   const notifReminderDismissedRecently = notifReminderDismissedAt != null
     && (Date.now() - notifReminderDismissedAt) < NOTIF_REMINDER_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
-  const showNotifReminderBanner = notifDisabledDays != null
-    && notifDisabledDays >= NOTIF_REMINDER_THRESHOLD_DAYS
-    && !notifReminderDismissedRecently;
+
+  const hasLongDisabledFields = longDisabledFields.length > 0;
+  const showNotifReminderBanner = !notifReminderDismissedRecently && (
+    hasLongDisabledFields ||
+    (!fieldDisabledAt && notifDisabledDaysLegacy != null && notifDisabledDaysLegacy >= NOTIF_REMINDER_THRESHOLD_DAYS)
+  );
+
+  // Build banner text from per-field data
+  const notifBannerText = (() => {
+    if (hasLongDisabledFields) {
+      const maxDays = Math.max(...longDisabledFields.map(f => f.days));
+      const names = longDisabledFields.map(f => f.label);
+      const listed = names.length <= 3
+        ? names.join(", ")
+        : `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
+      return `${listed} have been off for ${maxDays}+ days. Re-enable them to stay informed about important account events.`;
+    }
+    return `You have had one or more email notifications disabled for over ${notifDisabledDaysLegacy} days. Re-enable them to stay informed about important security and account events.`;
+  })();
 
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
 
@@ -383,7 +431,7 @@ export default function MerchantDashboard() {
             <div className="flex-1">
               <p className="text-sm text-amber-400 font-medium">Email Notifications Turned Off</p>
               <p className="text-xs text-amber-400/70">
-                You have had one or more email notifications disabled for over {notifDisabledDays} days. Re-enable them to stay informed about important security and account events.
+                {notifBannerText}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">

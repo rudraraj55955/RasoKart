@@ -535,6 +535,7 @@ export * from './user';
 export * from './userInput';
 export * from './userInputRole';
 export * from './userListResponse';
+export * from './userNotifFieldDisabledAt';
 export * from './userRole';
 export * from './userUpdate';
 export * from './userUpdateRole';

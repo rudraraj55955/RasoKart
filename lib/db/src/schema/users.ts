@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -26,6 +26,7 @@ export const usersTable = pgTable("users", {
   planChangeEmails: boolean("plan_change_emails").notNull().default(true),
   notifPrefsDisabledAt: timestamp("notif_prefs_disabled_at", { withTimezone: true }),
   notifReminderSentAt: timestamp("notif_reminder_sent_at", { withTimezone: true }),
+  notifFieldDisabledAt: jsonb("notif_field_disabled_at").$type<Record<string, string>>(),
   quietHoursStart: text("quiet_hours_start"),
   quietHoursEnd: text("quiet_hours_end"),
   quietHoursTimezone: text("quiet_hours_timezone"),

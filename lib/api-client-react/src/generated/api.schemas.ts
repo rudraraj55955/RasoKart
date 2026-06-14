@@ -216,6 +216,12 @@ export const UserRole = {
   merchant: 'merchant',
 } as const;
 
+/**
+ * Map of notification field name to ISO timestamp of when that specific field was disabled. Only present for fields that are currently disabled. Null or empty if all are enabled.
+ * @nullable
+ */
+export type UserNotifFieldDisabledAt = {[key: string]: string} | null;
+
 export interface User {
   id: number;
   email: string;
@@ -250,6 +256,11 @@ export interface User {
      * @nullable
      */
   notifPrefsDisabledAt?: string | null;
+  /**
+     * Map of notification field name to ISO timestamp of when that specific field was disabled. Only present for fields that are currently disabled. Null or empty if all are enabled.
+     * @nullable
+     */
+  notifFieldDisabledAt?: UserNotifFieldDisabledAt;
   /**
      * Start of quiet hours window in HH:mm format (e.g. "22:00"). Null means quiet hours disabled.
      * @nullable

@@ -326,6 +326,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         ekqrSyncAlertEmails: usersTable.ekqrSyncAlertEmails,
         planChangeEmails: usersTable.planChangeEmails,
         notifPrefsDisabledAt: usersTable.notifPrefsDisabledAt,
+        notifFieldDisabledAt: usersTable.notifFieldDisabledAt,
         quietHoursStart: usersTable.quietHoursStart,
         quietHoursEnd: usersTable.quietHoursEnd,
         quietHoursTimezone: usersTable.quietHoursTimezone,
@@ -356,6 +357,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       ekqrSyncAlertEmails: row?.ekqrSyncAlertEmails ?? true,
       planChangeEmails: row?.planChangeEmails ?? true,
       notifPrefsDisabledAt: row?.notifPrefsDisabledAt ?? null,
+      notifFieldDisabledAt: row?.notifFieldDisabledAt ?? null,
       quietHoursStart: row?.quietHoursStart ?? null,
       quietHoursEnd: row?.quietHoursEnd ?? null,
       quietHoursTimezone: row?.quietHoursTimezone ?? null,
@@ -372,7 +374,7 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
     const user = (req as any).user;
     const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, planChangeEmails, quietHoursStart, quietHoursEnd, quietHoursTimezone } = req.body;
 
-    const patch: Record<string, boolean | Date | string | null> = {};
+    const patch: Record<string, boolean | Date | string | null | Record<string, string>> = {};
 
     if (reconciliationAlertEmails !== undefined) {
       if (typeof reconciliationAlertEmails !== "boolean") {
@@ -556,12 +558,14 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
         ekqrSyncAlertEmails: usersTable.ekqrSyncAlertEmails,
         planChangeEmails: usersTable.planChangeEmails,
         notifPrefsDisabledAt: usersTable.notifPrefsDisabledAt,
+        notifFieldDisabledAt: usersTable.notifFieldDisabledAt,
       })
       .from(usersTable)
       .where(eq(usersTable.id, user.id))
       .limit(1);
 
     // Compute notifPrefsDisabledAt: set when any pref first goes false, clear when all re-enabled
+    // Also compute per-field notifFieldDisabledAt map
     if (current) {
       const mergedValues: Record<string, boolean> = {};
       for (const field of prefFields) {
@@ -573,6 +577,27 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       } else if (!anyDisabled && current.notifPrefsDisabledAt != null) {
         patch["notifPrefsDisabledAt"] = null;
       }
+
+      // Per-field disabled timestamp tracking
+      const nowIso = new Date().toISOString();
+      const fieldMap: Record<string, string> = { ...(current.notifFieldDisabledAt ?? {}) };
+      for (const field of prefFields) {
+        if (field in patch) {
+          const newVal = patch[field] as boolean;
+          const oldVal = current[field] as boolean;
+          if (!newVal && oldVal) {
+            // Newly disabled — stamp it (only if not already stamped)
+            if (!(field in fieldMap)) {
+              fieldMap[field] = nowIso;
+            }
+          } else if (newVal) {
+            // Re-enabled — remove from map
+            delete fieldMap[field];
+          }
+          // If false → false (no change), keep existing timestamp
+        }
+      }
+      patch["notifFieldDisabledAt"] = fieldMap;
     }
 
     const [updated] = await db
@@ -664,6 +689,7 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       ekqrSyncAlertEmails: updated.ekqrSyncAlertEmails,
       planChangeEmails: updated.planChangeEmails,
       notifPrefsDisabledAt: updated.notifPrefsDisabledAt ?? null,
+      notifFieldDisabledAt: updated.notifFieldDisabledAt ?? null,
       quietHoursStart: updated.quietHoursStart ?? null,
       quietHoursEnd: updated.quietHoursEnd ?? null,
       quietHoursTimezone: updated.quietHoursTimezone ?? null,
