@@ -2838,6 +2838,10 @@ function DeliveryHistoryPanel() {
   );
 }
 
+const DH_DATE_FROM_KEY = "rasokart_admin_dh_date_from";
+const DH_DATE_TO_KEY = "rasokart_admin_dh_date_to";
+const DH_ACTIVE_PRESET_KEY = "rasokart_admin_dh_active_preset";
+
 export default function AdminReports() {
   const [activeTab, setActiveTab] = useState("transactions");
 
@@ -2861,10 +2865,22 @@ export default function AdminReports() {
   const [stlActivePreset, setStlActivePreset] = useState<string | null>(null);
   const [stlExporting, setStlExporting] = useState<"pdf" | "xlsx" | null>(null);
 
-  // Delivery health filter state
-  const [dhDateFrom, setDhDateFrom] = useState(() => format(subDays(new Date(), 6), "yyyy-MM-dd"));
-  const [dhDateTo, setDhDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
-  const [dhActivePreset, setDhActivePreset] = useState<string | null>("Last 7 days");
+  // Delivery health filter state — persisted to localStorage
+  const [dhDateFrom, setDhDateFrom] = useState(() => {
+    try { const v = localStorage.getItem(DH_DATE_FROM_KEY); if (v) return v; } catch {}
+    return format(subDays(new Date(), 6), "yyyy-MM-dd");
+  });
+  const [dhDateTo, setDhDateTo] = useState(() => {
+    try { const v = localStorage.getItem(DH_DATE_TO_KEY); if (v) return v; } catch {}
+    return format(new Date(), "yyyy-MM-dd");
+  });
+  const [dhActivePreset, setDhActivePreset] = useState<string | null>(() => {
+    try { const v = localStorage.getItem(DH_ACTIVE_PRESET_KEY); if (v !== null) return v === "" ? null : v; } catch {}
+    return "Last 7 days";
+  });
+  useEffect(() => { try { localStorage.setItem(DH_DATE_FROM_KEY, dhDateFrom); } catch {} }, [dhDateFrom]);
+  useEffect(() => { try { localStorage.setItem(DH_DATE_TO_KEY, dhDateTo); } catch {} }, [dhDateTo]);
+  useEffect(() => { try { localStorage.setItem(DH_ACTIVE_PRESET_KEY, dhActivePreset ?? ""); } catch {} }, [dhActivePreset]);
 
   const { data: merchantsData } = useListMerchants({ page: 1, limit: 200 });
   const merchants = merchantsData?.data ?? [];
