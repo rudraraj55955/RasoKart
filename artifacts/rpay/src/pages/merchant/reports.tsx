@@ -286,7 +286,10 @@ function SchedulePanel() {
   });
 
   useEffect(() => {
-    try { localStorage.setItem(HISTORY_FORMAT_FILTER_KEY, historyFormatFilter); } catch {}
+    try {
+      if (historyFormatFilter !== "all") localStorage.setItem(HISTORY_FORMAT_FILTER_KEY, historyFormatFilter);
+      else localStorage.removeItem(HISTORY_FORMAT_FILTER_KEY);
+    } catch {}
   }, [historyFormatFilter]);
 
   useEffect(() => {
@@ -304,7 +307,10 @@ function SchedulePanel() {
   }, [historyDateTo]);
 
   useEffect(() => {
-    try { localStorage.setItem(HISTORY_TRIGGERED_BY_KEY, historyTriggeredBy); } catch {}
+    try {
+      if (historyTriggeredBy !== "all") localStorage.setItem(HISTORY_TRIGGERED_BY_KEY, historyTriggeredBy);
+      else localStorage.removeItem(HISTORY_TRIGGERED_BY_KEY);
+    } catch {}
   }, [historyTriggeredBy]);
 
   const historyParams: Record<string, unknown> = { limit: 50 };
@@ -891,6 +897,24 @@ function SchedulePanel() {
                 )}
               </div>
             </div>
+
+            {/* Clear all filters */}
+            {(historyFormatFilter !== "all" || historyTriggeredBy !== "all" || historyDateFrom || historyDateTo) && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    setHistoryFormatFilter("all");
+                    setHistoryTriggeredBy("all");
+                    setHistoryDateFrom("");
+                    setHistoryDateTo("");
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5"
+                >
+                  <X className="w-3 h-3" />
+                  Clear filters
+                </button>
+              </div>
+            )}
 
             {historyLoading ? (
               <div className="flex justify-center py-4">
