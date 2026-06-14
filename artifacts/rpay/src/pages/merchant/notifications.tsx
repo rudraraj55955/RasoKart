@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useReenableReportSchedule, useGetReportSchedule, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey, useGetQuietHoursQueueCount, useListQuietHoursQueue, getListQuietHoursQueueQueryKey, getGetQuietHoursQueueCountQueryKey } from "@workspace/api-client-react";
+import { IN_APP_NOTIF_LABELS, typeToField } from "@/lib/notification-categories";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -448,6 +449,14 @@ export default function NotificationsPage() {
                                 {TYPE_LABELS[n.type]}
                               </Badge>
                             )}
+                            {(() => {
+                              const prefField = typeToField(n.type);
+                              return prefField != null ? (
+                                <span className="inline-flex items-center rounded-full border border-border/50 bg-muted/60 px-1.5 py-px text-[9px] font-medium text-muted-foreground/70 leading-tight">
+                                  {IN_APP_NOTIF_LABELS[prefField]}
+                                </span>
+                              ) : null;
+                            })()}
                             {isProviderLimit && (
                               <span className="inline-flex items-center gap-1 text-[10px] text-primary/70">
                                 <ExternalLink className="w-3 h-3" />
@@ -620,6 +629,14 @@ export default function NotificationsPage() {
                                 {TYPE_LABELS[n.type]}
                               </Badge>
                             )}
+                            {(() => {
+                              const prefField = typeToField(n.type);
+                              return prefField != null ? (
+                                <span className="inline-flex items-center rounded-full border border-border/50 bg-muted/60 px-1.5 py-px text-[9px] font-medium text-muted-foreground/70 leading-tight">
+                                  {IN_APP_NOTIF_LABELS[prefField]}
+                                </span>
+                              ) : null;
+                            })()}
                             {isProviderLimit && (
                               <span className="inline-flex items-center gap-1 text-[10px] text-primary/70">
                                 <ExternalLink className="w-3 h-3" />
