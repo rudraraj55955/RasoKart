@@ -1005,7 +1005,7 @@ function SchedulePanel() {
                               )}
                               <button
                                 onClick={() => handleRetryDelivery(log.id)}
-                                disabled={pendingRetryId !== null}
+                                disabled={pendingRetryId === log.id}
                                 className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium border border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {pendingRetryId === log.id ? (
