@@ -726,6 +726,91 @@ router.post("/schedule/send-now", async (req, res, next) => {
   }
 });
 
+// POST /api/reports/schedules/:id/retry — merchant: retry a specific failed delivery log entry
+router.post("/schedules/:id/retry", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "merchant") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const logId = parseInt(req.params['id'] as string);
+    if (isNaN(logId)) {
+      res.status(400).json({ error: "Invalid log id" });
+      return;
+    }
+
+    const [logEntry] = await db
+      .select()
+      .from(reportDeliveryLogsTable)
+      .where(and(
+        eq(reportDeliveryLogsTable.id, logId),
+        eq(reportDeliveryLogsTable.merchantId, user.merchantId!),
+      ))
+      .limit(1);
+
+    if (!logEntry) {
+      res.status(404).json({ error: "Log entry not found" });
+      return;
+    }
+
+    if (logEntry.success || logEntry.isAutoPause || logEntry.outcome === "re-enabled") {
+      res.status(400).json({ error: "Only failed delivery entries can be retried" });
+      return;
+    }
+
+    const [scheduleRow] = await db
+      .select()
+      .from(reportSchedulesTable)
+      .where(eq(reportSchedulesTable.merchantId, user.merchantId!))
+      .limit(1);
+
+    if (!scheduleRow) {
+      res.status(404).json({ error: "No schedule configured" });
+      return;
+    }
+
+    const [merchantRow] = await db
+      .select({ email: merchantsTable.email, businessName: merchantsTable.businessName })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, user.merchantId!))
+      .limit(1);
+
+    if (!merchantRow) {
+      res.status(404).json({ error: "Merchant not found" });
+      return;
+    }
+
+    // Build an effective schedule that replays the log entry's exact format/frequency
+    // so a retry is faithful to that specific failed attempt, even if settings changed since.
+    const effectiveSchedule = {
+      ...scheduleRow,
+      format: (logEntry.format ?? scheduleRow.format) as typeof scheduleRow.format,
+      frequency: (logEntry.frequency ?? scheduleRow.frequency) as typeof scheduleRow.frequency,
+    };
+
+    const sent = await sendMerchantReport(effectiveSchedule, merchantRow.email, merchantRow.businessName, "manual");
+
+    if (!sent) {
+      res.status(502).json({ error: "Failed to send report — check SMTP configuration" });
+      return;
+    }
+
+    // Return the new log entry so the UI can update the row outcome in place
+    const [newLog] = await db
+      .select()
+      .from(reportDeliveryLogsTable)
+      .where(eq(reportDeliveryLogsTable.merchantId, user.merchantId!))
+      .orderBy(desc(reportDeliveryLogsTable.attemptedAt))
+      .limit(1);
+
+    res.json({ ok: true, retriedLogId: logId, newLog: newLog ?? null });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Admin: manage any merchant's schedule ────────────────────────────────────
 
 // GET /api/reports/schedules/delivery-history — admin: consolidated delivery log across all merchants

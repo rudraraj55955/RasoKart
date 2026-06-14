@@ -293,6 +293,7 @@ import type {
   ResetWebhookFailureAlertCooldown200,
   ResetWebhookFailureAlertCooldownParams,
   RetryCallback200,
+  RetryReportDeliveryLog200,
   RetryWebhookLog200,
   RoutingConfig,
   RoutingConfigInput,
@@ -5774,9 +5775,33 @@ export const getReportDeliveryHealth = async (params?: GetReportDeliveryHealthPa
   }
 );}
 
+export const getRetryReportDeliveryLogUrl = (id: number,) => {
 
 
 
+
+  return `/api/reports/schedules/${id}/retry`
+}
+
+/**
+ * Re-attempts delivery for the given failed delivery log entry. Only entries where success=false and isAutoPause=false are retryable. The merchant must own the log entry.
+ * @summary Merchant — retry a specific failed delivery log entry immediately
+ */
+export const retryReportDeliveryLog = async (id: number, options?: RequestInit): Promise<RetryReportDeliveryLog200> => {
+
+  return customFetch<RetryReportDeliveryLog200>(getRetryReportDeliveryLogUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+<<<<<<< HEAD
 
 export const getGetReportDeliveryHealthQueryKey = (params?: GetReportDeliveryHealthParams,) => {
     return [
@@ -5829,6 +5854,53 @@ export function useGetReportDeliveryHealth<TData = Awaited<ReturnType<typeof get
 
 
 
+=======
+export const getRetryReportDeliveryLogMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryReportDeliveryLog>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryReportDeliveryLog>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['retryReportDeliveryLog'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryReportDeliveryLog>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryReportDeliveryLog(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryReportDeliveryLogMutationResult = NonNullable<Awaited<ReturnType<typeof retryReportDeliveryLog>>>
+
+    export type RetryReportDeliveryLogMutationError = ErrorType<void>
+
+    /**
+ * @summary Merchant — retry a specific failed delivery log entry immediately
+ */
+export const useRetryReportDeliveryLog = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryReportDeliveryLog>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryReportDeliveryLog>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRetryReportDeliveryLogMutationOptions(options));
+    }
+
+>>>>>>> 06155ec7 (feat: add per-row Retry button to failed delivery log entries (task-1619))
 export const getGetAdminMerchantReportScheduleHistoryUrl = (merchantId: number,
     params?: GetAdminMerchantReportScheduleHistoryParams,) => {
   const normalizedParams = new URLSearchParams();

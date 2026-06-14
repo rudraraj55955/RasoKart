@@ -4967,6 +4967,14 @@ export type GetReportDeliveryHealth200 = {
   merchants: DeliveryHealthMerchantRow[];
 };
 
+export type RetryReportDeliveryLog200 = {
+  ok: boolean;
+  /** ID of the original failed log entry that was retried */
+  retriedLogId: number;
+  /** The newly created delivery log entry from this retry attempt */
+  newLog?: ReportDeliveryLog | null;
+};
+
 export type GetAdminMerchantReportScheduleHistoryParams = {
 /**
  * Maximum number of history entries to return (default 100, max 100)

@@ -430,6 +430,7 @@ export * from './resendReconciliationReportEmail200';
 export * from './resetWebhookFailureAlertCooldown200';
 export * from './resetWebhookFailureAlertCooldownParams';
 export * from './retryCallback200';
+export * from './retryReportDeliveryLog200';
 export * from './retryWebhookLog200';
 export * from './routingConfig';
 export * from './routingConfigInput';

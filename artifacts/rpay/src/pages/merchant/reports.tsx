@@ -15,6 +15,7 @@ import {
   useDeleteReportSchedule,
   useSendReportNow,
   useReenableReportSchedule,
+  useRetryReportDeliveryLog,
   getGetTransactionReportCountQueryOptions,
   getGetSettlementReportCountQueryOptions,
   useGetReportScheduleHistory,
@@ -260,6 +261,9 @@ function SchedulePanel() {
   const { data: scheduleData, isLoading: scheduleLoading } = useGetReportSchedule();
   const schedule = scheduleData?.schedule ?? null;
 
+  const [retriedLogIds, setRetriedLogIds] = useState<Set<number>>(new Set());
+  const [pendingRetryId, setPendingRetryId] = useState<number | null>(null);
+
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyFormatFilter, setHistoryFormatFilter] = useState<"all" | "xlsx" | "pdf">(() => {
     try {
@@ -357,10 +361,24 @@ function SchedulePanel() {
   const deleteMut = useDeleteReportSchedule();
   const sendNow = useSendReportNow();
   const reenable = useReenableReportSchedule();
+  const retryDelivery = useRetryReportDeliveryLog();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/reports/schedule"] });
     queryClient.invalidateQueries({ queryKey: ["/api/reports/schedule/history"] });
+  };
+
+  const handleRetryDelivery = (logId: number) => {
+    setPendingRetryId(logId);
+    retryDelivery.mutate({ id: logId }, {
+      onSuccess: () => {
+        setRetriedLogIds((prev) => new Set(prev).add(logId));
+        toast.success("Report resent successfully.");
+        invalidate();
+      },
+      onError: () => toast.error("Failed to resend report — check your SMTP configuration."),
+      onSettled: () => setPendingRetryId(null),
+    });
   };
 
   const handleReenable = () => {
@@ -944,6 +962,11 @@ function SchedulePanel() {
                               <CheckCircle2 className="w-3 h-3" />
                               Delivered
                             </span>
+                          ) : retriedLogIds.has(log.id) ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
+                              <Check className="w-3 h-3" />
+                              Retried
+                            </span>
                           ) : (
                             <div className="space-y-0.5">
                               <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400">
@@ -955,6 +978,18 @@ function SchedulePanel() {
                                   {log.failureReason}
                                 </p>
                               )}
+                              <button
+                                onClick={() => handleRetryDelivery(log.id)}
+                                disabled={pendingRetryId !== null}
+                                className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium border border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {pendingRetryId === log.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <RotateCcw className="w-3 h-3" />
+                                )}
+                                {pendingRetryId === log.id ? "Retrying…" : "Retry"}
+                              </button>
                             </div>
                           )}
                         </TableCell>
