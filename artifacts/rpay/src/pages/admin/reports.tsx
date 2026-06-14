@@ -1577,6 +1577,7 @@ function DeliveryHistoryPanel() {
   const [reEnabling, setReEnabling] = useState<number | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const [collapsedMerchants, setCollapsedMerchants] = useState<number[]>([]);
+  const [problemOnly, setProblemOnly] = useState(false);
 
   useEffect(() => {
     try {
@@ -1622,7 +1623,7 @@ function DeliveryHistoryPanel() {
     setTimelinePreset(String(days));
   };
 
-  const hasFilters = merchantFilter !== "all" || successFilter !== "all" || triggeredByFilter !== "all" || !!dateFrom || !!dateTo;
+  const hasFilters = merchantFilter !== "all" || successFilter !== "all" || triggeredByFilter !== "all" || !!dateFrom || !!dateTo || problemOnly;
 
   const clearFilters = () => {
     setMerchantFilter("all");
@@ -1631,6 +1632,7 @@ function DeliveryHistoryPanel() {
     setDateFrom("");
     setDateTo("");
     setTimelinePreset(null);
+    setProblemOnly(false);
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   };
 
@@ -1732,13 +1734,14 @@ function DeliveryHistoryPanel() {
   }, [timelineChartData]);
 
   const merchantSummaries = useMemo(() => {
-    const map = new Map<number, { merchantId: number; name: string; total: number; delivered: number; failed: number }>();
+    const map = new Map<number, { merchantId: number; name: string; total: number; delivered: number; failed: number; autoPauses: number }>();
     for (const log of logs) {
       const name = log.businessName ?? `Merchant #${log.merchantId}`;
-      const entry = map.get(log.merchantId) ?? { merchantId: log.merchantId, name, total: 0, delivered: 0, failed: 0 };
+      const entry = map.get(log.merchantId) ?? { merchantId: log.merchantId, name, total: 0, delivered: 0, failed: 0, autoPauses: 0 };
       entry.total++;
       if (log.success) entry.delivered++;
       else entry.failed++;
+      if (log.isAutoPause) entry.autoPauses++;
       map.set(log.merchantId, entry);
     }
     return Array.from(map.values()).sort((a, b) => {
@@ -1755,6 +1758,16 @@ function DeliveryHistoryPanel() {
       return summarySortDir === "desc" ? -cmp : cmp;
     });
   }, [logs, summarySortCol, summarySortDir]);
+
+  const visibleMerchantSummaries = useMemo(
+    () => problemOnly ? merchantSummaries.filter((s) => s.failed > 0 || s.autoPauses > 0) : merchantSummaries,
+    [merchantSummaries, problemOnly],
+  );
+
+  const visibleSortedLogs = useMemo(
+    () => problemOnly ? sortedLogs.filter((l) => !l.success || l.isAutoPause) : sortedLogs,
+    [sortedLogs, problemOnly],
+  );
 
   const logsByMerchant = useMemo(() => {
     const map = new Map<number, typeof logs>();
@@ -1882,6 +1895,20 @@ function DeliveryHistoryPanel() {
               className="h-8 text-xs w-[130px]"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setProblemOnly((v) => !v)}
+            className={[
+              "inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-xs font-medium transition-colors select-none",
+              problemOnly
+                ? "border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                : "border-border bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50",
+            ].join(" ")}
+            title="Show only merchants with at least one failure or auto-pause"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            Problem merchants
+          </button>
           {hasFilters && (
             <Button variant="ghost" size="sm" className="h-8 px-2 text-xs gap-1 text-muted-foreground" onClick={clearFilters}>
               <X className="w-3.5 h-3.5" />
@@ -2140,7 +2167,7 @@ function DeliveryHistoryPanel() {
               </TableHeader>
               <TableBody>
                 {merchantFilter === "all" ? (
-                  merchantSummaries.map((summary) => {
+                  visibleMerchantSummaries.map((summary) => {
                     const rate = summary.total > 0 ? Math.round((summary.delivered / summary.total) * 100) : 0;
                     const isCollapsed = collapsedMerchants.includes(summary.merchantId);
                     const merchantLogs = logsByMerchant.get(summary.merchantId) ?? [];
@@ -2271,7 +2298,7 @@ function DeliveryHistoryPanel() {
                     );
                   })
                 ) : (
-                  sortedLogs.map((log) => (
+                  visibleSortedLogs.map((log) => (
                     <TableRow key={log.id} className={!log.success ? "bg-red-950/10 hover:bg-red-950/20" : undefined}>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
