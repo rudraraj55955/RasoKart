@@ -17,7 +17,7 @@ page?: number;
  */
 limit?: number;
 /**
- * Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, notification_preferences_updated). Omit or use 'all' for all types.
+ * Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, ip_trusted, notification_preferences_updated). Omit or use 'all' for all types.
  */
 eventType?: string;
 /**

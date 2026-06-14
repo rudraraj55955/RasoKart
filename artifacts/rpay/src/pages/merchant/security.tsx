@@ -292,11 +292,12 @@ function SecurityEventRow({ event, highlight = "", myEmail = "" }: { event: Loca
   const meta = securityEventMeta(event.eventType);
   const isLogin = event.eventType === "merchant_login";
   const isPrefChange = event.eventType === "notification_preferences_updated";
+  const isIpTrusted = event.eventType === "ip_trusted";
   // keyPrefix can come from the dedicated field or from details JSON
   const keyPrefix = event.keyPrefix ?? extractKeyPrefix(event.details);
-  const isAdminAction = !isLogin && !isPrefChange && !!myEmail && !!event.actorEmail && event.actorEmail !== myEmail;
+  const isAdminAction = !isLogin && !isPrefChange && !isIpTrusted && !!myEmail && !!event.actorEmail && event.actorEmail !== myEmail;
   const descText =
-    isLogin || isPrefChange
+    isLogin || isPrefChange || isIpTrusted
       ? null
       : keyPrefix
       ? `${event.eventType === "api_key_generated" ? "API key generated" : event.eventType === "api_key_revoked" ? "API key revoked" : "Callback secret rotated"} (${keyPrefix})`
@@ -326,6 +327,12 @@ function SecurityEventRow({ event, highlight = "", myEmail = "" }: { event: Loca
           <p className="text-sm text-muted-foreground">
             Signed in{event.ipAddress ? <> from <code className="text-xs font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded"><HighlightText text={event.ipAddress} query={highlight} /></code></> : null}
           </p>
+        ) : isIpTrusted ? (
+          <p className="text-sm text-muted-foreground">
+            {event.ipAddress
+              ? <>IP address <code className="text-xs font-mono text-muted-foreground bg-muted/50 px-1 py-0.5 rounded"><HighlightText text={event.ipAddress} query={highlight} /></code> added to trusted list</>
+              : "IP address added to trusted list"}
+          </p>
         ) : isPrefChange ? (
           <div>
             <p className="text-sm text-muted-foreground mb-0.5">Notification preferences updated</p>
@@ -336,7 +343,7 @@ function SecurityEventRow({ event, highlight = "", myEmail = "" }: { event: Loca
             <HighlightText text={descText} query={highlight} />
           </p>
         ) : null}
-        {!isLogin && (event.ipAddress || event.actorEmail) && (
+        {!isLogin && !isIpTrusted && (event.ipAddress || event.actorEmail) && (
           <div className="flex items-center gap-2 flex-wrap mt-1">
             {event.actorEmail && (
               isAdminAction ? (

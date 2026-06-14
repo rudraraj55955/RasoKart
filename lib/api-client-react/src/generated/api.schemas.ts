@@ -1350,7 +1350,7 @@ export const SecurityActivityItemSource = {
 export interface SecurityActivityItem {
   id: number;
   source: SecurityActivityItemSource;
-  /** Event type: merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, notification_preferences_updated */
+  /** Event type: merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, ip_trusted, notification_preferences_updated */
   eventType: string;
   actorEmail: string;
   /** @nullable */
@@ -5389,7 +5389,7 @@ page?: number;
  */
 limit?: number;
 /**
- * Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, notification_preferences_updated). Omit or use 'all' for all types.
+ * Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, ip_trusted, notification_preferences_updated). Omit or use 'all' for all types.
  */
 eventType?: string;
 /**

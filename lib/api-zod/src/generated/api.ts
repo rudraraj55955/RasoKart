@@ -2727,7 +2727,7 @@ export const listSecurityActivityQueryLimitMax = 200;
 export const ListSecurityActivityQueryParams = zod.object({
   "page": zod.coerce.number().min(1).default(listSecurityActivityQueryPageDefault),
   "limit": zod.coerce.number().min(1).max(listSecurityActivityQueryLimitMax).default(listSecurityActivityQueryLimitDefault),
-  "eventType": zod.coerce.string().optional().describe('Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, notification_preferences_updated). Omit or use \'all\' for all types.'),
+  "eventType": zod.coerce.string().optional().describe('Filter by event type (merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, ip_trusted, notification_preferences_updated). Omit or use \'all\' for all types.'),
   "dateFrom": zod.date().optional().describe('Filter events on or after this date (YYYY-MM-DD)'),
   "dateTo": zod.date().optional().describe('Filter events on or before this date (YYYY-MM-DD)'),
   "ipAddress": zod.coerce.string().optional().describe('Filter credential events by IP address (exact match)')
@@ -2737,7 +2737,7 @@ export const ListSecurityActivityResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.number(),
   "source": zod.enum(['credential', 'audit']),
-  "eventType": zod.string().describe('Event type: merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, notification_preferences_updated'),
+  "eventType": zod.string().describe('Event type: merchant_login, api_key_generated, api_key_revoked, callback_secret_rotated, ip_trusted, notification_preferences_updated'),
   "actorEmail": zod.string(),
   "ipAddress": zod.string().nullish(),
   "details": zod.string().nullish().describe('JSON string with extra context (e.g. keyPrefix for key events, changes array for preference updates)'),

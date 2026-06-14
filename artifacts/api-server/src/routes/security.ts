@@ -263,6 +263,8 @@ router.get("/activity", async (req, res, next) => {
       if (!isNaN(t.getTime())) toDate = t;
     }
 
+    // Credential events: recorded in credentialEventsTable (merchant_login, api/key ops, ip_trusted)
+    // Audit events: recorded in auditLogsTable (notification_preferences_updated)
     const credentialEventTypes = ["merchant_login", "api_key_generated", "api_key_revoked", "callback_secret_rotated", "ip_trusted"];
     const auditSecurityActions = ["notification_preferences_updated"];
 
