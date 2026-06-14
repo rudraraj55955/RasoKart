@@ -3068,9 +3068,6 @@ function DeliveryHistoryPanel() {
   );
 }
 
-const DH_DATE_FROM_KEY = "rasokart_admin_dh_date_from";
-const DH_DATE_TO_KEY = "rasokart_admin_dh_date_to";
-const DH_ACTIVE_PRESET_KEY = "rasokart_admin_dh_active_preset";
 
 export default function AdminReports() {
   const searchStr = useSearch();
@@ -3083,42 +3080,65 @@ export default function AdminReports() {
     navigate(`${location}?${next.toString()}`);
   }, [searchStr, location, navigate]);
 
-  // Transaction filter state
-  const [txDateFrom, setTxDateFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
-  const [txDateTo, setTxDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
-  const [type, setType] = useState("all");
-  const [txStatus, setTxStatus] = useState("all");
-  const [connectionProvider, setConnectionProvider] = useState("all");
-  const [source, setSource] = useState("all");
-  const [txMerchantId, setTxMerchantId] = useState("all");
-  const [txActivePreset, setTxActivePreset] = useState<string | null>(null);
+  // ── URL-synced filter helper ──────────────────────────────────────────────
+  const _qp = new URLSearchParams(searchStr);
+  const setFilter = useCallback((updates: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchStr);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value == null || value === "") {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+    }
+    navigate(`${location}?${next.toString()}`);
+  }, [searchStr, location, navigate]);
+
+  // Transaction filters — derived from URL (with sensible defaults)
+  const txDateFrom = _qp.get("txFrom") ?? format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const txDateTo   = _qp.get("txTo")   ?? format(new Date(), "yyyy-MM-dd");
+  const type               = _qp.get("txType")     ?? "all";
+  const txStatus           = _qp.get("txStatus")   ?? "all";
+  const connectionProvider = _qp.get("txProvider") ?? "all";
+  const source             = _qp.get("txSource")   ?? "all";
+  const txMerchantId       = _qp.get("txMerchant") ?? "all";
+  const txActivePreset     = _qp.get("txPreset");
   const [txExporting, setTxExporting] = useState<"pdf" | "xlsx" | null>(null);
 
-  // Settlement filter state
-  const [stlDateFrom, setStlDateFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
-  const [stlDateTo, setStlDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
-  const [stlStatus, setStlStatus] = useState("all");
-  const [settlementId, setSettlementId] = useState("");
-  const [stlMerchantId, setStlMerchantId] = useState("all");
-  const [stlActivePreset, setStlActivePreset] = useState<string | null>(null);
+  const setTxDateFrom = (v: string) => setFilter({ txFrom: v || null, txPreset: null });
+  const setTxDateTo   = (v: string) => setFilter({ txTo: v || null, txPreset: null });
+  const setType               = (v: string) => setFilter({ txType:     v === "all" ? null : v });
+  const setTxStatus           = (v: string) => setFilter({ txStatus:   v === "all" ? null : v });
+  const setConnectionProvider = (v: string) => setFilter({ txProvider: v === "all" ? null : v });
+  const setSource             = (v: string) => setFilter({ txSource:   v === "all" ? null : v });
+  const setTxMerchantId       = (v: string) => setFilter({ txMerchant: v === "all" ? null : v });
+  const setTxActivePreset     = (v: string | null) => setFilter({ txPreset: v });
+
+  // Settlement filters — derived from URL
+  const stlDateFrom    = _qp.get("stlFrom")    ?? format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const stlDateTo      = _qp.get("stlTo")      ?? format(new Date(), "yyyy-MM-dd");
+  const stlStatus      = _qp.get("stlStatus")  ?? "all";
+  const settlementId   = _qp.get("stlId")      ?? "";
+  const stlMerchantId  = _qp.get("stlMerchant") ?? "all";
+  const stlActivePreset = _qp.get("stlPreset");
   const [stlExporting, setStlExporting] = useState<"pdf" | "xlsx" | null>(null);
 
-  // Delivery health filter state — persisted to localStorage
-  const [dhDateFrom, setDhDateFrom] = useState(() => {
-    try { const v = localStorage.getItem(DH_DATE_FROM_KEY); if (v) return v; } catch {}
-    return format(subDays(new Date(), 6), "yyyy-MM-dd");
-  });
-  const [dhDateTo, setDhDateTo] = useState(() => {
-    try { const v = localStorage.getItem(DH_DATE_TO_KEY); if (v) return v; } catch {}
-    return format(new Date(), "yyyy-MM-dd");
-  });
-  const [dhActivePreset, setDhActivePreset] = useState<string | null>(() => {
-    try { const v = localStorage.getItem(DH_ACTIVE_PRESET_KEY); if (v !== null) return v === "" ? null : v; } catch {}
-    return "Last 7 days";
-  });
-  useEffect(() => { try { localStorage.setItem(DH_DATE_FROM_KEY, dhDateFrom); } catch {} }, [dhDateFrom]);
-  useEffect(() => { try { localStorage.setItem(DH_DATE_TO_KEY, dhDateTo); } catch {} }, [dhDateTo]);
-  useEffect(() => { try { localStorage.setItem(DH_ACTIVE_PRESET_KEY, dhActivePreset ?? ""); } catch {} }, [dhActivePreset]);
+  const setStlDateFrom    = (v: string) => setFilter({ stlFrom: v || null, stlPreset: null });
+  const setStlDateTo      = (v: string) => setFilter({ stlTo: v || null, stlPreset: null });
+  const setStlStatus      = (v: string) => setFilter({ stlStatus:   v === "all" ? null : v });
+  const setSettlementId   = (v: string) => setFilter({ stlId: v || null });
+  const setStlMerchantId  = (v: string) => setFilter({ stlMerchant: v === "all" ? null : v });
+  const setStlActivePreset = (v: string | null) => setFilter({ stlPreset: v });
+
+  // Delivery health filters — derived from URL (default: last 7 days)
+  const _dhHasDateParams = _qp.has("dhFrom") || _qp.has("dhTo");
+  const dhDateFrom    = _qp.get("dhFrom")   ?? format(subDays(new Date(), 6), "yyyy-MM-dd");
+  const dhDateTo      = _qp.get("dhTo")     ?? format(new Date(), "yyyy-MM-dd");
+  const dhActivePreset = _qp.get("dhPreset") ?? (_dhHasDateParams ? null : "Last 7 days");
+
+  const setDhDateFrom    = (v: string) => setFilter({ dhFrom: v || null, dhPreset: null });
+  const setDhDateTo      = (v: string) => setFilter({ dhTo: v || null, dhPreset: null });
+  const setDhActivePreset = (v: string | null) => setFilter({ dhPreset: v });
 
   const { data: merchantsData } = useListMerchants({ page: 1, limit: 200 });
   const merchants = merchantsData?.data ?? [];
@@ -3222,23 +3242,17 @@ export default function AdminReports() {
 
   const applyTxPreset = (preset: typeof DATE_PRESETS[number]) => {
     const range = preset.getRange();
-    setTxDateFrom(range.from);
-    setTxDateTo(range.to);
-    setTxActivePreset(preset.label);
+    setFilter({ txFrom: range.from, txTo: range.to, txPreset: preset.label });
   };
 
   const applyStlPreset = (preset: typeof DATE_PRESETS[number]) => {
     const range = preset.getRange();
-    setStlDateFrom(range.from);
-    setStlDateTo(range.to);
-    setStlActivePreset(preset.label);
+    setFilter({ stlFrom: range.from, stlTo: range.to, stlPreset: preset.label });
   };
 
   const applyDhPreset = (preset: typeof DATE_PRESETS[number]) => {
     const range = preset.getRange();
-    setDhDateFrom(range.from);
-    setDhDateTo(range.to);
-    setDhActivePreset(preset.label);
+    setFilter({ dhFrom: range.from, dhTo: range.to, dhPreset: preset.label });
   };
 
   // ── Transaction exports ───────────────────────────────────────────────────
@@ -3731,14 +3745,14 @@ export default function AdminReports() {
               <input
                 type="date"
                 value={dhDateFrom}
-                onChange={(e) => { setDhDateFrom(e.target.value); setDhActivePreset(null); }}
+                onChange={(e) => setDhDateFrom(e.target.value)}
                 className="h-6 rounded border border-border/60 bg-transparent px-1.5 text-[10px] text-foreground focus:outline-none focus:border-primary/50"
               />
               <span className="text-[10px] text-muted-foreground/50">→</span>
               <input
                 type="date"
                 value={dhDateTo}
-                onChange={(e) => { setDhDateTo(e.target.value); setDhActivePreset(null); }}
+                onChange={(e) => setDhDateTo(e.target.value)}
                 className="h-6 rounded border border-border/60 bg-transparent px-1.5 text-[10px] text-foreground focus:outline-none focus:border-primary/50"
               />
             </div>
@@ -3906,7 +3920,7 @@ export default function AdminReports() {
                   <Input
                     type="date"
                     value={txDateFrom}
-                    onChange={(e) => { setTxDateFrom(e.target.value); setTxActivePreset(null); }}
+                    onChange={(e) => setTxDateFrom(e.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -3915,7 +3929,7 @@ export default function AdminReports() {
                   <Input
                     type="date"
                     value={txDateTo}
-                    onChange={(e) => { setTxDateTo(e.target.value); setTxActivePreset(null); }}
+                    onChange={(e) => setTxDateTo(e.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -4206,7 +4220,7 @@ export default function AdminReports() {
                   <Input
                     type="date"
                     value={stlDateFrom}
-                    onChange={(e) => { setStlDateFrom(e.target.value); setStlActivePreset(null); }}
+                    onChange={(e) => setStlDateFrom(e.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -4215,7 +4229,7 @@ export default function AdminReports() {
                   <Input
                     type="date"
                     value={stlDateTo}
-                    onChange={(e) => { setStlDateTo(e.target.value); setStlActivePreset(null); }}
+                    onChange={(e) => setStlDateTo(e.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -4473,7 +4487,7 @@ export default function AdminReports() {
                   <Input
                     type="date"
                     value={dhDateFrom}
-                    onChange={(e) => { setDhDateFrom(e.target.value); setDhActivePreset(null); }}
+                    onChange={(e) => setDhDateFrom(e.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -4482,7 +4496,7 @@ export default function AdminReports() {
                   <Input
                     type="date"
                     value={dhDateTo}
-                    onChange={(e) => { setDhDateTo(e.target.value); setDhActivePreset(null); }}
+                    onChange={(e) => setDhDateTo(e.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
