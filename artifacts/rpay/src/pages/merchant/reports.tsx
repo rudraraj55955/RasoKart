@@ -1013,13 +1013,13 @@ function SchedulePanel() {
                               Re-enabled
                             </span>
                           ) : log.isAutoPause ? (
-                            <div className="space-y-0.5">
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
-                                <PauseCircle className="w-3 h-3" />
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-600/15 text-amber-400 border border-amber-600/30">
+                                <PauseCircle className="w-2.5 h-2.5" />
                                 Auto-paused
                               </span>
                               {log.failureReason && (
-                                <p className="text-xs text-amber-400/70 leading-tight break-words max-w-[200px]">
+                                <p className="text-xs text-amber-400/70 leading-tight break-words max-w-[220px]">
                                   {log.failureReason}
                                 </p>
                               )}
