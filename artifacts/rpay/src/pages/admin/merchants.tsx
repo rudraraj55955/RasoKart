@@ -207,8 +207,14 @@ export default function AdminMerchants() {
     const params = new URLSearchParams(window.location.search);
     return params.get("search") ?? "";
   });
-  const [status, setStatus] = useState("all");
-  const [expiryStatus, setExpiryStatus] = useState<"" | "expiring" | "expired">("");
+  const [status, setStatus] = useState(() => {
+    const v = new URLSearchParams(window.location.search).get("status") ?? "";
+    return ["pending", "approved", "rejected", "suspended"].includes(v) ? v : "all";
+  });
+  const [expiryStatus, setExpiryStatus] = useState<"" | "expiring" | "expired">(() => {
+    const v = new URLSearchParams(window.location.search).get("expiry") ?? "";
+    return (["expiring", "expired"].includes(v) ? v : "") as "" | "expiring" | "expired";
+  });
   const [rejectionReasonFilter, setRejectionReasonFilter] = useState("");
   const [callbackSecretFilter, setCallbackSecretFilter] = useState<"" | "true" | "false">("");
   const [loginAlertFilter, setLoginAlertFilter] = useState<"" | "false">(() => {
@@ -457,8 +463,21 @@ export default function AdminMerchants() {
   // Clean ?open= param from the URL immediately so back-navigation doesn't re-trigger the panel
   useEffect(() => {
     if (deepLinkId == null) return;
-    window.history.replaceState(null, "", window.location.pathname);
+    const params = new URLSearchParams(window.location.search);
+    params.delete("open");
+    const qs = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync search/status/expiry filters to the URL so navigating away and back restores them
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (search) params.set("search", search); else params.delete("search");
+    if (status !== "all") params.set("status", status); else params.delete("status");
+    if (expiryStatus) params.set("expiry", expiryStatus); else params.delete("expiry");
+    const qs = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+  }, [search, status, expiryStatus]);
 
   // Open the merchant panel once the deep-link merchant is fetched (works regardless of pagination)
   useEffect(() => {

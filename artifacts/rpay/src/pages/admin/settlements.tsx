@@ -174,10 +174,13 @@ function storeSavedFilters(filters: SavedFilter[]): void {
 
 export default function AdminSettlements() {
   const qc = useQueryClient();
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  const [dateFrom, setDateFrom] = useState(() => new URLSearchParams(window.location.search).get("dateFrom") ?? "");
+  const [dateTo, setDateTo] = useState(() => new URLSearchParams(window.location.search).get("dateTo") ?? "");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+  const [status, setStatus] = useState(() => {
+    const v = new URLSearchParams(window.location.search).get("status") ?? "";
+    return ["pending", "processing", "approved", "rejected", "paid", "hold"].includes(v) ? v : "all";
+  });
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [actionModal, setActionModal] = useState<ActionModal | null>(null);
@@ -226,6 +229,17 @@ export default function AdminSettlements() {
       setTimeout(() => renameInputRef.current?.focus(), 50);
     }
   }, [renamingId]);
+
+  // Sync search/status/date filters to the URL so navigating away and back restores them
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (search) params.set("search", search); else params.delete("search");
+    if (status !== "all") params.set("status", status); else params.delete("status");
+    if (dateFrom) params.set("dateFrom", dateFrom); else params.delete("dateFrom");
+    if (dateTo) params.set("dateTo", dateTo); else params.delete("dateTo");
+    const qs = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+  }, [search, status, dateFrom, dateTo]);
 
   const { lastRefreshed, isRefreshing, handleRefresh } = useMonitoringRefresh(() => {
     qc.invalidateQueries({ queryKey: getListSettlementsQueryKey() });
