@@ -1477,7 +1477,16 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
       </div>
       {hasMerchantId && (
         <div className="rounded-lg bg-muted/20 border border-border/40 p-3 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent Delivery Failures</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent Delivery Failures</p>
+            <Link
+              href={`/admin/reports?tab=delivery-history&merchantId=${parsed.merchantId}&success=false`}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+            >
+              View delivery history
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
           {failureHistoryLoading ? (
             <div className="flex items-center gap-2 py-1">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
