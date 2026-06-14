@@ -23,6 +23,8 @@ export interface User {
   signatureFailureAlertEmails?: boolean;
   webhookFailureEmails?: boolean;
   reportFailureAlertEmails?: boolean;
+  /** Whether the admin wants to receive the weekly report delivery health digest email. Defaults to true. */
+  weeklyDeliveryDigestEmails?: boolean;
   apiKeyGeneratedEmails?: boolean;
   apiKeyRevokedEmails?: boolean;
   loginAlertEmails?: boolean;

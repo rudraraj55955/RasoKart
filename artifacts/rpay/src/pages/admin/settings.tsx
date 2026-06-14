@@ -253,6 +253,7 @@ export default function AdminSettings() {
   const signatureFailureEnabled = me?.signatureFailureAlertEmails ?? true;
   const webhookFailureEnabled = me?.webhookFailureEmails ?? true;
   const reportFailureEnabled = (me as any)?.reportFailureAlertEmails ?? true;
+  const weeklyDigestEnabled = me?.weeklyDeliveryDigestEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -2714,6 +2715,28 @@ export default function AdminSettings() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               You will not receive emails when merchant report schedules are auto-paused.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Weekly delivery health digest</p>
+              <p className="text-xs text-muted-foreground">
+                Receive a weekly summary every Monday with delivery success rates, failure counts, and auto-paused schedules across all merchants.
+              </p>
+            </div>
+            <Switch
+              checked={weeklyDigestEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { weeklyDeliveryDigestEmails: val } })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!weeklyDigestEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive the weekly report delivery health digest.
             </p>
           )}
         </CardContent>

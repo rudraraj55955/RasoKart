@@ -180,6 +180,9 @@ paths:
                   type: boolean
                 reportFailureAlertEmails:
                   type: boolean
+                weeklyDeliveryDigestEmails:
+                  type: boolean
+                  description: Whether the admin wants to receive the weekly report delivery health digest email.
                 apiKeyGeneratedEmails:
                   type: boolean
                 apiKeyRevokedEmails:
@@ -8614,6 +8617,9 @@ components:
           type: boolean
         reportFailureAlertEmails:
           type: boolean
+        weeklyDeliveryDigestEmails:
+          type: boolean
+          description: Whether the admin wants to receive the weekly report delivery health digest email. Defaults to true.
         apiKeyGeneratedEmails:
           type: boolean
         apiKeyRevokedEmails:

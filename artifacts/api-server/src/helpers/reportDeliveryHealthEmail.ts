@@ -45,7 +45,7 @@ async function getAdminDigestEmails(): Promise<{ email: string; id: number }[]> 
     .where(and(
       eq(usersTable.role, "admin"),
       eq(usersTable.isActive, true),
-      eq(usersTable.reportFailureAlertEmails, true),
+      eq(usersTable.weeklyDeliveryDigestEmails, true),
     ));
   return rows;
 }
@@ -267,7 +267,7 @@ function buildDigestHtml(
 
     <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
       <p style="margin: 0; color: #52525b; font-size: 11px;">
-        This weekly digest is sent every Monday by RasoKart. To stop receiving it, disable Report Failure Alert Emails in your Admin notification preferences.
+        This weekly digest is sent every Monday by RasoKart. To stop receiving it, disable Weekly Delivery Digest Emails in your Admin notification preferences.
       </p>
     </div>
   </div>

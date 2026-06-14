@@ -315,6 +315,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         signatureFailureAlertEmails: usersTable.signatureFailureAlertEmails,
         webhookFailureEmails: usersTable.webhookFailureEmails,
         reportFailureAlertEmails: usersTable.reportFailureAlertEmails,
+        weeklyDeliveryDigestEmails: usersTable.weeklyDeliveryDigestEmails,
         apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
         apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
         loginAlertEmails: usersTable.loginAlertEmails,
@@ -338,6 +339,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       signatureFailureAlertEmails: row?.signatureFailureAlertEmails ?? true,
       webhookFailureEmails: row?.webhookFailureEmails ?? true,
       reportFailureAlertEmails: row?.reportFailureAlertEmails ?? true,
+      weeklyDeliveryDigestEmails: row?.weeklyDeliveryDigestEmails ?? true,
       apiKeyGeneratedEmails: row?.apiKeyGeneratedEmails ?? true,
       apiKeyRevokedEmails: row?.apiKeyRevokedEmails ?? true,
       loginAlertEmails: row?.loginAlertEmails ?? true,
@@ -354,7 +356,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails } = req.body;
 
     const patch: Record<string, boolean> = {};
 
@@ -404,6 +406,14 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
         return;
       }
       patch["reportFailureAlertEmails"] = reportFailureAlertEmails;
+    }
+
+    if (weeklyDeliveryDigestEmails !== undefined) {
+      if (typeof weeklyDeliveryDigestEmails !== "boolean") {
+        res.status(400).json({ error: "weeklyDeliveryDigestEmails must be a boolean" });
+        return;
+      }
+      patch["weeklyDeliveryDigestEmails"] = weeklyDeliveryDigestEmails;
     }
 
     if (apiKeyGeneratedEmails !== undefined) {
@@ -458,6 +468,7 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       "signatureFailureAlertEmails",
       "webhookFailureEmails",
       "reportFailureAlertEmails",
+      "weeklyDeliveryDigestEmails",
       "apiKeyGeneratedEmails",
       "apiKeyRevokedEmails",
       "loginAlertEmails",
@@ -473,6 +484,7 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
         signatureFailureAlertEmails: usersTable.signatureFailureAlertEmails,
         webhookFailureEmails: usersTable.webhookFailureEmails,
         reportFailureAlertEmails: usersTable.reportFailureAlertEmails,
+        weeklyDeliveryDigestEmails: usersTable.weeklyDeliveryDigestEmails,
         apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
         apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
         loginAlertEmails: usersTable.loginAlertEmails,
@@ -535,6 +547,7 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       signatureFailureAlertEmails: updated.signatureFailureAlertEmails,
       webhookFailureEmails: updated.webhookFailureEmails,
       reportFailureAlertEmails: updated.reportFailureAlertEmails,
+      weeklyDeliveryDigestEmails: updated.weeklyDeliveryDigestEmails,
       apiKeyGeneratedEmails: updated.apiKeyGeneratedEmails,
       apiKeyRevokedEmails: updated.apiKeyRevokedEmails,
       loginAlertEmails: updated.loginAlertEmails,
