@@ -2370,8 +2370,8 @@ export default function MerchantSecurity() {
 
           <div className="flex sm:grid sm:grid-cols-[1fr_auto_auto] items-center gap-3 flex-wrap rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
             <div className="flex-1 space-y-0.5 min-w-0">
-              <p className="text-sm font-medium">EKQR sync alerts</p>
-              <p className="text-xs text-muted-foreground">Alert when an EKQR synchronisation issue is detected on your QR codes.</p>
+              <p className="text-sm font-medium">QR Gateway sync alerts</p>
+              <p className="text-xs text-muted-foreground">Alert when a QR Gateway synchronisation issue is detected on your QR codes.</p>
             </div>
             <div className="flex items-center gap-1.5 sm:w-16 sm:justify-center">
               <Mail className="w-3.5 h-3.5 text-muted-foreground sm:hidden" />
