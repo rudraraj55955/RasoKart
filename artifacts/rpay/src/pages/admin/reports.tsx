@@ -3082,6 +3082,62 @@ export default function AdminReports() {
     dateTo: dhDateTo || undefined,
   };
 
+  const { user: dhUser } = useAuth();
+  const dhSnoozeKey = getReportSnoozeKey(dhUser?.id);
+  const [dhSnoozeUntil, setDhSnoozeUntil] = useState<number | null>(null);
+  const dhSnoozeExpireTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const v = localStorage.getItem(dhSnoozeKey);
+    const ts = v ? parseInt(v, 10) : NaN;
+    setDhSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+  }, [dhSnoozeKey]);
+
+  useEffect(() => {
+    if (dhSnoozeExpireTimer.current) clearTimeout(dhSnoozeExpireTimer.current);
+    if (dhSnoozeUntil == null) return;
+    const remaining = dhSnoozeUntil - Date.now();
+    if (remaining <= 0) { setDhSnoozeUntil(null); return; }
+    dhSnoozeExpireTimer.current = setTimeout(() => setDhSnoozeUntil(null), Math.min(remaining, 2_147_483_647));
+    return () => { if (dhSnoozeExpireTimer.current) clearTimeout(dhSnoozeExpireTimer.current); };
+  }, [dhSnoozeUntil]);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== dhSnoozeKey) return;
+      const ts = e.newValue ? parseInt(e.newValue, 10) : NaN;
+      setDhSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+    };
+    const onCustom = () => {
+      const v = localStorage.getItem(dhSnoozeKey);
+      const ts = v ? parseInt(v, 10) : NaN;
+      setDhSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(REPORTS_SNOOZE_EVENT, onCustom);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(REPORTS_SNOOZE_EVENT, onCustom);
+    };
+  }, [dhSnoozeKey]);
+
+  const isDhSnoozed = dhSnoozeUntil != null && dhSnoozeUntil > Date.now();
+
+  const handleDhSnooze = (hours: number) => {
+    const until = Date.now() + hours * 60 * 60 * 1000;
+    localStorage.setItem(dhSnoozeKey, String(until));
+    window.dispatchEvent(new CustomEvent(REPORTS_SNOOZE_EVENT));
+    setDhSnoozeUntil(until);
+    toast.success(`Failure badge snoozed for ${hours}h — it will reappear automatically`);
+  };
+
+  const handleDhCancelSnooze = () => {
+    localStorage.removeItem(dhSnoozeKey);
+    window.dispatchEvent(new CustomEvent(REPORTS_SNOOZE_EVENT));
+    setDhSnoozeUntil(null);
+    toast.info("Snooze cancelled — failure badge is now visible");
+  };
+
   const { data: txData, isLoading: txLoading, isFetching: txFetching } = useGetTransactionReport(txParams);
   const { data: stlData, isLoading: stlLoading, isFetching: stlFetching } = useGetSettlementReport(stlParams);
   const { data: dhData, isLoading: dhLoading, isFetching: dhFetching } = useGetReportDeliveryHealth(dhParams);
@@ -4440,14 +4496,124 @@ export default function AdminReports() {
             if (r >= 0.2 || paused > 0) return (
               <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-400/10 border border-red-400/20 text-red-400 text-sm font-medium">
                 <XCircle className="w-4 h-4 shrink-0" />
-                {r >= 0.2 ? "High failure rate detected — check SMTP configuration." : ""}
-                {paused > 0 ? ` ${paused} schedule${paused !== 1 ? "s" : ""} auto-paused due to repeated failures.` : ""}
+                <span className="flex-1">
+                  {r >= 0.2 ? "High failure rate detected — check SMTP configuration." : ""}
+                  {paused > 0 ? ` ${paused} schedule${paused !== 1 ? "s" : ""} auto-paused due to repeated failures.` : ""}
+                </span>
+                {isDhSnoozed && dhSnoozeUntil != null && (
+                  <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-500/30 bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-medium text-slate-400">
+                    <BellOff className="w-3 h-3 shrink-0" />
+                    Snoozed until {format(new Date(dhSnoozeUntil), "HH:mm, dd MMM")}
+                    <button
+                      type="button"
+                      onClick={handleDhCancelSnooze}
+                      className="ml-0.5 text-slate-400/60 hover:text-slate-300 transition-colors"
+                      aria-label="Cancel snooze"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {!isDhSnoozed ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="ml-auto shrink-0 inline-flex items-center gap-1 text-xs font-medium text-red-400/80 border border-red-500/30 rounded px-2 py-0.5 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                      >
+                        <BellOff className="w-3 h-3" />
+                        Snooze badge
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" align="end" className="w-52 p-2">
+                      <p className="text-xs font-medium text-muted-foreground px-1 pb-1.5">Snooze sidebar badge for…</p>
+                      {[
+                        { label: "4 hours", hours: 4 },
+                        { label: "8 hours", hours: 8 },
+                        { label: "24 hours", hours: 24 },
+                        { label: "48 hours", hours: 48 },
+                      ].map(({ label, hours }) => (
+                        <button
+                          key={hours}
+                          type="button"
+                          onClick={() => handleDhSnooze(hours)}
+                          className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted/60 transition-colors"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDhCancelSnooze}
+                    className="ml-auto shrink-0 inline-flex items-center gap-1 text-xs font-medium text-slate-400/80 border border-slate-500/30 rounded px-2 py-0.5 hover:bg-slate-500/10 hover:text-slate-300 transition-colors"
+                  >
+                    <Bell className="w-3 h-3" />
+                    Unsnooze
+                  </button>
+                )}
               </div>
             );
             return (
               <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-400/10 border border-amber-400/20 text-amber-400 text-sm font-medium">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
-                Delivery health degraded — some failures detected
+                <span className="flex-1">Delivery health degraded — some failures detected</span>
+                {isDhSnoozed && dhSnoozeUntil != null && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-500/30 bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-medium text-slate-400">
+                    <BellOff className="w-3 h-3 shrink-0" />
+                    Snoozed until {format(new Date(dhSnoozeUntil), "HH:mm, dd MMM")}
+                    <button
+                      type="button"
+                      onClick={handleDhCancelSnooze}
+                      className="ml-0.5 text-slate-400/60 hover:text-slate-300 transition-colors"
+                      aria-label="Cancel snooze"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {!isDhSnoozed ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-amber-400/80 border border-amber-500/30 rounded px-2 py-0.5 hover:bg-amber-500/10 hover:text-amber-300 transition-colors"
+                      >
+                        <BellOff className="w-3 h-3" />
+                        Snooze badge
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" align="end" className="w-52 p-2">
+                      <p className="text-xs font-medium text-muted-foreground px-1 pb-1.5">Snooze sidebar badge for…</p>
+                      {[
+                        { label: "4 hours", hours: 4 },
+                        { label: "8 hours", hours: 8 },
+                        { label: "24 hours", hours: 24 },
+                        { label: "48 hours", hours: 48 },
+                      ].map(({ label, hours }) => (
+                        <button
+                          key={hours}
+                          type="button"
+                          onClick={() => handleDhSnooze(hours)}
+                          className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted/60 transition-colors"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDhCancelSnooze}
+                    className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-slate-400/80 border border-slate-500/30 rounded px-2 py-0.5 hover:bg-slate-500/10 hover:text-slate-300 transition-colors"
+                  >
+                    <Bell className="w-3 h-3" />
+                    Unsnooze
+                  </button>
+                )}
               </div>
             );
           })()}
