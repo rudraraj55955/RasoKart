@@ -2034,9 +2034,10 @@ function DeliveryHistoryPanel() {
 
   const searchStr = useSearch();
   const urlMerchantId = new URLSearchParams(searchStr).get("merchantId") ?? "all";
+  const urlSuccess = new URLSearchParams(searchStr).get("success") ?? "all";
 
   const [merchantFilter, setMerchantFilter] = useState(urlMerchantId);
-  const [successFilter, setSuccessFilter] = useState("all");
+  const [successFilter, setSuccessFilter] = useState(urlSuccess);
   const [triggeredByFilter, setTriggeredByFilter] = useState("all");
   const STORAGE_KEY = "rasokart_delivery_history_filter";
 
@@ -3017,7 +3018,9 @@ const DH_DATE_TO_KEY = "rasokart_admin_dh_date_to";
 const DH_ACTIVE_PRESET_KEY = "rasokart_admin_dh_active_preset";
 
 export default function AdminReports() {
-  const [activeTab, setActiveTab] = useState("transactions");
+  const searchStr = useSearch();
+  const urlTab = new URLSearchParams(searchStr).get("tab") ?? "transactions";
+  const [activeTab, setActiveTab] = useState(urlTab);
 
   // Transaction filter state
   const [txDateFrom, setTxDateFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
