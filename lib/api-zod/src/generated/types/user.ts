@@ -67,5 +67,10 @@ export interface User {
      * @nullable
      */
   quietHoursTimezone?: string | null;
+  /**
+     * ISO timestamp until which the admin's reports sidebar badge is snoozed. Null means not snoozed.
+     * @nullable
+     */
+  reportsBadgeSnoozedUntil?: string | null;
   createdAt: string;
 }

@@ -424,10 +424,13 @@ router.get("/me", requireAuth, async (req, res, next) => {
         quietHoursStart: usersTable.quietHoursStart,
         quietHoursEnd: usersTable.quietHoursEnd,
         quietHoursTimezone: usersTable.quietHoursTimezone,
+        reportsBadgeSnoozedUntil: usersTable.reportsBadgeSnoozedUntil,
       })
       .from(usersTable)
       .where(eq(usersTable.id, user.id))
       .limit(1);
+    const rawSnooze = row?.reportsBadgeSnoozedUntil ?? null;
+    const snoozeIso = rawSnooze != null && rawSnooze > new Date() ? rawSnooze.toISOString() : null;
     res.json({
       id: user.id,
       email: user.email,
@@ -455,6 +458,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       quietHoursStart: row?.quietHoursStart ?? null,
       quietHoursEnd: row?.quietHoursEnd ?? null,
       quietHoursTimezone: row?.quietHoursTimezone ?? null,
+      reportsBadgeSnoozedUntil: snoozeIso,
       createdAt: user.createdAt,
     });
   } catch (err) {
@@ -807,6 +811,31 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
       quietHoursTimezone: updated.quietHoursTimezone ?? null,
       createdAt: updated.createdAt,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/auth/snooze-reports-badge
+router.patch("/snooze-reports-badge", requireAuth, async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "admin") {
+      res.status(403).json({ error: "Admin access only" });
+      return;
+    }
+    const { snoozedUntil } = req.body as { snoozedUntil?: string | null };
+    let snoozeDate: Date | null = null;
+    if (snoozedUntil != null) {
+      snoozeDate = new Date(snoozedUntil);
+      if (isNaN(snoozeDate.getTime())) {
+        res.status(400).json({ error: "snoozedUntil must be a valid ISO timestamp or null" });
+        return;
+      }
+    }
+    await db.update(usersTable).set({ reportsBadgeSnoozedUntil: snoozeDate }).where(eq(usersTable.id, user.id));
+    const resultIso = snoozeDate != null && snoozeDate > new Date() ? snoozeDate.toISOString() : null;
+    res.json({ reportsBadgeSnoozedUntil: resultIso });
   } catch (err) {
     next(err);
   }

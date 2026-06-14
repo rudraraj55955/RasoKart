@@ -224,6 +224,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/snooze-reports-badge:
+    patch:
+      operationId: snoozeReportsBadge
+      tags: [auth]
+      summary: Set or clear the reports sidebar badge snooze for the current admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                snoozedUntil:
+                  type: ["string", "null"]
+                  description: ISO timestamp to snooze until, or null to clear the snooze.
+      responses:
+        "200":
+          description: Snooze updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reportsBadgeSnoozedUntil]
+                properties:
+                  reportsBadgeSnoozedUntil:
+                    type: ["string", "null"]
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /auth/quiet-hours/queue:
     get:
       operationId: listQuietHoursQueue
@@ -9110,6 +9143,9 @@ components:
         quietHoursTimezone:
           type: ["string", "null"]
           description: IANA timezone for quiet hours interpretation (e.g. "Asia/Kolkata"). Null means quiet hours disabled.
+        reportsBadgeSnoozedUntil:
+          type: ["string", "null"]
+          description: ISO timestamp until which the admin's reports sidebar badge is snoozed. Null means not snoozed.
         createdAt:
           type: string
 

@@ -334,6 +334,8 @@ import type {
   SettlementStats,
   SignatureFailureAlertHistoryResponse,
   SimulatePaymentInput,
+  SnoozeReportsBadge200,
+  SnoozeReportsBadgeBody,
   StorageCleanupRunResult,
   SubmitVerificationInput,
   SuccessResponse,
@@ -774,6 +776,77 @@ export const useUpdateMyPreferences = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateMyPreferencesMutationOptions(options));
+    }
+
+export const getSnoozeReportsBadgeUrl = () => {
+
+
+
+
+  return `/api/auth/snooze-reports-badge`
+}
+
+/**
+ * @summary Set or clear the reports sidebar badge snooze for the current admin
+ */
+export const snoozeReportsBadge = async (snoozeReportsBadgeBody: SnoozeReportsBadgeBody, options?: RequestInit): Promise<SnoozeReportsBadge200> => {
+
+  return customFetch<SnoozeReportsBadge200>(getSnoozeReportsBadgeUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      snoozeReportsBadgeBody,)
+  }
+);}
+
+
+
+
+export const getSnoozeReportsBadgeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof snoozeReportsBadge>>, TError,{data: BodyType<SnoozeReportsBadgeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof snoozeReportsBadge>>, TError,{data: BodyType<SnoozeReportsBadgeBody>}, TContext> => {
+
+const mutationKey = ['snoozeReportsBadge'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof snoozeReportsBadge>>, {data: BodyType<SnoozeReportsBadgeBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  snoozeReportsBadge(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SnoozeReportsBadgeMutationResult = NonNullable<Awaited<ReturnType<typeof snoozeReportsBadge>>>
+    export type SnoozeReportsBadgeMutationBody = BodyType<SnoozeReportsBadgeBody>
+    export type SnoozeReportsBadgeMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Set or clear the reports sidebar badge snooze for the current admin
+ */
+export const useSnoozeReportsBadge = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof snoozeReportsBadge>>, TError,{data: BodyType<SnoozeReportsBadgeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof snoozeReportsBadge>>,
+        TError,
+        {data: BodyType<SnoozeReportsBadgeBody>},
+        TContext
+      > => {
+      return useMutation(getSnoozeReportsBadgeMutationOptions(options));
     }
 
 export const getListQuietHoursQueueUrl = () => {

@@ -281,6 +281,11 @@ export interface User {
      * @nullable
      */
   quietHoursTimezone?: string | null;
+  /**
+     * ISO timestamp until which the admin's reports sidebar badge is snoozed. Null means not snoozed.
+     * @nullable
+     */
+  reportsBadgeSnoozedUntil?: string | null;
   createdAt: string;
 }
 
@@ -4502,6 +4507,19 @@ export type UpdateMyPreferencesBody = {
      * @nullable
      */
   quietHoursTimezone?: string | null;
+};
+
+export type SnoozeReportsBadgeBody = {
+  /**
+     * ISO timestamp to snooze until, or null to clear the snooze.
+     * @nullable
+     */
+  snoozedUntil?: string | null;
+};
+
+export type SnoozeReportsBadge200 = {
+  /** @nullable */
+  reportsBadgeSnoozedUntil: string | null;
 };
 
 export type ListQuietHoursQueue200ItemsItem = {

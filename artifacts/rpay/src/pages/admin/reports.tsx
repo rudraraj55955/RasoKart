@@ -20,6 +20,9 @@ import {
   previewAdminMerchantReportScheduleEmail,
   useGetReportDeliveryHealth,
   useRetryAdminReportDeliveryLog,
+  useSnoozeReportsBadge,
+  getGetMeQueryKey,
+  useGetMe,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -656,40 +659,73 @@ function ScheduledReportsPanel() {
 
   const { user } = useAuth();
   const snoozeKey = getReportSnoozeKey(user?.id);
+  const snoozeMutation = useSnoozeReportsBadge();
 
-  const [snoozeUntil, setSnoozeUntil] = useState<number | null>(null);
+  const { data: meData } = useGetMe();
+  const serverSnoozeTs = meData?.reportsBadgeSnoozedUntil != null
+    ? new Date(meData.reportsBadgeSnoozedUntil).getTime()
+    : null;
+  const serverSnoozeActive = serverSnoozeTs != null && serverSnoozeTs > Date.now();
+
+  const [localSnoozeUntil, setLocalSnoozeUntil] = useState<number | null>(null);
   const snoozeExpireTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const v = localStorage.getItem(snoozeKey);
     const ts = v ? parseInt(v, 10) : NaN;
-    setSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+    setLocalSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
   }, [snoozeKey]);
 
   useEffect(() => {
     if (snoozeExpireTimer.current) clearTimeout(snoozeExpireTimer.current);
-    if (snoozeUntil == null) return;
-    const remaining = snoozeUntil - Date.now();
-    if (remaining <= 0) { setSnoozeUntil(null); return; }
-    snoozeExpireTimer.current = setTimeout(() => setSnoozeUntil(null), Math.min(remaining, 2_147_483_647));
+    if (localSnoozeUntil == null) return;
+    const remaining = localSnoozeUntil - Date.now();
+    if (remaining <= 0) { setLocalSnoozeUntil(null); return; }
+    snoozeExpireTimer.current = setTimeout(() => setLocalSnoozeUntil(null), Math.min(remaining, 2_147_483_647));
     return () => { if (snoozeExpireTimer.current) clearTimeout(snoozeExpireTimer.current); };
-  }, [snoozeUntil]);
+  }, [localSnoozeUntil]);
 
+  const snoozeUntil = serverSnoozeActive ? serverSnoozeTs : localSnoozeUntil;
   const isSnoozed = snoozeUntil != null && snoozeUntil > Date.now();
 
   const handleSnooze = (hours: number) => {
     const until = Date.now() + hours * 60 * 60 * 1000;
     localStorage.setItem(snoozeKey, String(until));
     window.dispatchEvent(new CustomEvent(REPORTS_SNOOZE_EVENT));
-    setSnoozeUntil(until);
+    setLocalSnoozeUntil(until);
     toast.success(`Failure badge snoozed for ${hours}h — it will reappear automatically`);
+    snoozeMutation.mutate(
+      { data: { snoozedUntil: new Date(until).toISOString() } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetMeQueryKey() });
+          localStorage.removeItem(snoozeKey);
+          window.dispatchEvent(new CustomEvent(REPORTS_SNOOZE_EVENT));
+          setLocalSnoozeUntil(null);
+        },
+        onError: () => {
+          toast.error("Failed to persist snooze — it will reset on next page load");
+        },
+      },
+    );
   };
 
   const handleCancelSnooze = () => {
     localStorage.removeItem(snoozeKey);
     window.dispatchEvent(new CustomEvent(REPORTS_SNOOZE_EVENT));
-    setSnoozeUntil(null);
+    setLocalSnoozeUntil(null);
     toast.info("Snooze cancelled — failure badge is now visible");
+    snoozeMutation.mutate(
+      { data: { snoozedUntil: null } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        },
+        onError: () => {
+          toast.error("Failed to clear snooze on server — badge may reappear on next session");
+        },
+      },
+    );
   };
 
   useEffect(() => {

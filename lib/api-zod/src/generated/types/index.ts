@@ -503,6 +503,8 @@ export * from './signatureFailureAlertLogEntryAffectedMerchantsItem';
 export * from './simulatePaymentInput';
 export * from './simulatePaymentInputExpectedStatus';
 export * from './simulatePaymentInputSourceType';
+export * from './snoozeReportsBadge200';
+export * from './snoozeReportsBadgeBody';
 export * from './storageCleanupRun';
 export * from './storageCleanupRunResult';
 export * from './submitVerificationInput';

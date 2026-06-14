@@ -417,29 +417,30 @@ function AdminSidebar() {
     (deliveryHealth?.stats.autoPausedSchedules ?? 0) > 0 ||
     (deliveryHealth?.stats.overallFailureRate ?? 0) >= 0.2;
 
+  const { data: meData } = useGetMe();
   const snoozeKey = getReportSnoozeKey(user?.id);
 
-  const [snoozeUntil, setSnoozeUntil] = useState<number | null>(null);
+  const [localSnoozeUntil, setLocalSnoozeUntil] = useState<number | null>(null);
 
   useEffect(() => {
     const v = localStorage.getItem(snoozeKey);
     const ts = v ? parseInt(v, 10) : NaN;
-    setSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+    setLocalSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
   }, [snoozeKey]);
 
   useEffect(() => {
-    if (snoozeUntil == null) return;
-    const remaining = snoozeUntil - Date.now();
-    if (remaining <= 0) { setSnoozeUntil(null); return; }
-    const timer = setTimeout(() => setSnoozeUntil(null), Math.min(remaining, 2_147_483_647));
+    if (localSnoozeUntil == null) return;
+    const remaining = localSnoozeUntil - Date.now();
+    if (remaining <= 0) { setLocalSnoozeUntil(null); return; }
+    const timer = setTimeout(() => setLocalSnoozeUntil(null), Math.min(remaining, 2_147_483_647));
     return () => clearTimeout(timer);
-  }, [snoozeUntil]);
+  }, [localSnoozeUntil]);
 
   useEffect(() => {
     const readCurrent = () => {
       const v = localStorage.getItem(snoozeKey);
       const ts = v ? parseInt(v, 10) : NaN;
-      setSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+      setLocalSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
     };
     const onStorage = (e: StorageEvent) => {
       if (e.key !== snoozeKey) return;
@@ -454,7 +455,11 @@ function AdminSidebar() {
     };
   }, [snoozeKey]);
 
-  const isSnoozed = snoozeUntil != null && snoozeUntil > Date.now();
+  const serverSnoozeUntil = meData?.reportsBadgeSnoozedUntil != null
+    ? new Date(meData.reportsBadgeSnoozedUntil).getTime()
+    : null;
+  const serverSnoozed = serverSnoozeUntil != null && serverSnoozeUntil > Date.now();
+  const isSnoozed = serverSnoozed || (localSnoozeUntil != null && localSnoozeUntil > Date.now());
 
   return (
     <>
