@@ -1318,7 +1318,13 @@ function ScheduledReportsPanel() {
                                 setRetryingFailureMerchantId(f.merchantId);
                                 try {
                                   await sendNow.mutateAsync({ merchantId: f.merchantId });
-                                  setSendFailures((prev) => prev?.filter((r) => r.merchantId !== f.merchantId) ?? null);
+                                  setSendFailures((prev) => {
+                                    const next = prev?.filter((r) => r.merchantId !== f.merchantId) ?? null;
+                                    if (next !== null && next.length === 0) {
+                                      toast.success("Report delivered — all failures cleared");
+                                    }
+                                    return next;
+                                  });
                                   invalidate();
                                 } catch (err: unknown) {
                                   const msg = err instanceof Error ? err.message : "Send failed";
