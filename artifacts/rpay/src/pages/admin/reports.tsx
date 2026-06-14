@@ -299,16 +299,36 @@ function ScheduleHistoryDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const [outcomeFilter, setOutcomeFilter] = useState<"all" | "success" | "failed" | "auto-paused" | "re-enabled">("all");
+
   const { data, isLoading } = useGetAdminMerchantReportScheduleHistory(
     merchantId ?? 0,
-    { limit: 50 },
+    { limit: 100 },
     { query: { enabled: open && merchantId != null } as any },
   );
-  const logs = data?.logs ?? [];
+  const allLogs = data?.logs ?? [];
+
+  const logs = useMemo(() => {
+    if (outcomeFilter === "all") return allLogs;
+    if (outcomeFilter === "success") return allLogs.filter((l) => l.success && !l.isAutoPause && l.outcome !== "re-enabled by admin" && l.outcome !== "re-enabled" && l.outcome !== "re-enabled via email link");
+    if (outcomeFilter === "failed") return allLogs.filter((l) => !l.success && !l.isAutoPause);
+    if (outcomeFilter === "auto-paused") return allLogs.filter((l) => l.isAutoPause);
+    if (outcomeFilter === "re-enabled") return allLogs.filter((l) => l.success && (l.outcome === "re-enabled by admin" || l.outcome === "re-enabled" || l.outcome === "re-enabled via email link"));
+    return allLogs;
+  }, [allLogs, outcomeFilter]);
+
+  const stats = useMemo(() => {
+    const total = allLogs.length;
+    const successes = allLogs.filter((l) => l.success && !l.isAutoPause).length;
+    const failures = allLogs.filter((l) => !l.success && !l.isAutoPause).length;
+    const autoPauses = allLogs.filter((l) => l.isAutoPause).length;
+    return { total, successes, failures, autoPauses };
+  }, [allLogs]);
 
   function outcomeIcon(log: { success: boolean; isAutoPause: boolean; outcome?: string | null }) {
     if (log.isAutoPause) return <PauseCircle className="w-4 h-4 text-amber-400 shrink-0" />;
-    if (log.outcome === "re-enabled by admin") return <CheckCircle className="w-4 h-4 text-sky-400 shrink-0" />;
+    if (log.outcome === "re-enabled by admin" || log.outcome === "re-enabled" || log.outcome === "re-enabled via email link")
+      return <CheckCircle className="w-4 h-4 text-sky-400 shrink-0" />;
     if (log.success) return <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />;
     return <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />;
   }
@@ -320,18 +340,28 @@ function ScheduleHistoryDialog({
         <span className="flex flex-col gap-0.5">
           <span className="text-sky-400 font-medium">Re-enabled by admin</span>
           {log.performedByAdminEmail && (
-            <span className="text-xs text-muted-foreground">{log.performedByAdminEmail}</span>
+            <span className="text-[10px] text-muted-foreground">{log.performedByAdminEmail}</span>
           )}
         </span>
       );
     }
+    if (log.outcome === "re-enabled via email link") return <span className="text-sky-400 font-medium">Re-enabled via email</span>;
+    if (log.outcome === "re-enabled") return <span className="text-sky-400 font-medium">Re-enabled</span>;
     if (log.success) return <span className="text-emerald-400 font-medium">Success</span>;
     return <span className="text-red-400 font-medium">Failed</span>;
   }
 
+  const OUTCOME_FILTERS = [
+    { value: "all", label: "All" },
+    { value: "success", label: "Success" },
+    { value: "failed", label: "Failed" },
+    { value: "auto-paused", label: "Auto-paused" },
+    { value: "re-enabled", label: "Re-enabled" },
+  ] as const;
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
             <History className="w-4 h-4 text-primary" />
@@ -339,22 +369,69 @@ function ScheduleHistoryDialog({
           </DialogTitle>
         </DialogHeader>
 
+        {!isLoading && allLogs.length > 0 && (
+          <div className="grid grid-cols-4 gap-2 pb-1">
+            <div className="rounded-md bg-muted/40 border border-border px-3 py-2 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Total</p>
+              <p className="text-base font-semibold">{stats.total}</p>
+            </div>
+            <div className="rounded-md bg-emerald-400/5 border border-emerald-400/20 px-3 py-2 text-center">
+              <p className="text-[10px] text-emerald-400/70 uppercase tracking-wide mb-0.5">Successes</p>
+              <p className="text-base font-semibold text-emerald-400">{stats.successes}</p>
+            </div>
+            <div className="rounded-md bg-red-400/5 border border-red-400/20 px-3 py-2 text-center">
+              <p className="text-[10px] text-red-400/70 uppercase tracking-wide mb-0.5">Failures</p>
+              <p className="text-base font-semibold text-red-400">{stats.failures}</p>
+            </div>
+            <div className="rounded-md bg-amber-400/5 border border-amber-400/20 px-3 py-2 text-center">
+              <p className="text-[10px] text-amber-400/70 uppercase tracking-wide mb-0.5">Auto-pauses</p>
+              <p className="text-base font-semibold text-amber-400">{stats.autoPauses}</p>
+            </div>
+          </div>
+        )}
+
+        {!isLoading && allLogs.length > 0 && (
+          <div className="flex items-center gap-1.5 pb-1">
+            {OUTCOME_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setOutcomeFilter(f.value)}
+                className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                  outcomeFilter === f.value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto min-h-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground gap-2">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm">Loading history…</span>
             </div>
-          ) : logs.length === 0 ? (
+          ) : allLogs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
               <History className="w-10 h-10 opacity-20" />
               <p className="text-sm">No delivery attempts recorded yet</p>
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
+              <Filter className="w-8 h-8 opacity-20" />
+              <p className="text-sm">No entries match the selected filter</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-xs">Date &amp; Time</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Date &amp; Time</TableHead>
+                  <TableHead className="text-xs">Frequency</TableHead>
+                  <TableHead className="text-xs">Format</TableHead>
                   <TableHead className="text-xs">Triggered By</TableHead>
                   <TableHead className="text-xs">Outcome</TableHead>
                   <TableHead className="text-xs">Failure Reason</TableHead>
@@ -362,12 +439,35 @@ function ScheduleHistoryDialog({
               </TableHeader>
               <TableBody>
                 {logs.map((log) => (
-                  <TableRow key={log.id}>
+                  <TableRow
+                    key={log.id}
+                    className={
+                      log.isAutoPause
+                        ? "bg-amber-400/5"
+                        : !log.success
+                        ? "bg-red-400/5"
+                        : undefined
+                    }
+                  >
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
-                      <span className="ml-1 text-muted-foreground/60">
-                        ({formatDistanceToNow(new Date(log.attemptedAt), { addSuffix: true })})
-                      </span>
+                      <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+                        {formatDistanceToNow(new Date(log.attemptedAt), { addSuffix: true })}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {log.frequency ? (
+                        <FrequencyBadge frequency={log.frequency} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground/40">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {log.format ? (
+                        <FormatBadge format={log.format} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground/40">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <TriggeredByBadge value={(log as any).triggeredBy} email={(log as any).triggeredByEmail} />
@@ -378,7 +478,7 @@ function ScheduleHistoryDialog({
                         {outcomeLabel(log)}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-xs">
+                    <TableCell className="text-xs text-muted-foreground max-w-[200px] break-words">
                       {log.failureReason ?? <span className="opacity-40">—</span>}
                     </TableCell>
                   </TableRow>
@@ -389,7 +489,9 @@ function ScheduleHistoryDialog({
         </div>
 
         <p className="text-xs text-muted-foreground pt-2 border-t border-border">
-          Showing last {logs.length} attempt{logs.length !== 1 ? "s" : ""} (max 50)
+          {outcomeFilter === "all"
+            ? `Showing ${logs.length} attempt${logs.length !== 1 ? "s" : ""} (most recent first, max 100)`
+            : `Showing ${logs.length} of ${allLogs.length} attempt${allLogs.length !== 1 ? "s" : ""} · filtered by "${outcomeFilter}"`}
         </p>
       </DialogContent>
     </Dialog>
@@ -1015,6 +1117,7 @@ function ScheduledReportsPanel() {
                         title="View delivery history"
                       >
                         <History className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">History</span>
                       </Button>
                       {!s.isActive && s.consecutiveFailures > 0 && (
                         <Button

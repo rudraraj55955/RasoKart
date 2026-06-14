@@ -2216,8 +2216,8 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
-            default: 20
-          description: Maximum number of history entries to return (default 20, max 100)
+            default: 100
+          description: Maximum number of history entries to return (default 100, max 100)
       responses:
         "200":
           description: Delivery history entries newest-first
