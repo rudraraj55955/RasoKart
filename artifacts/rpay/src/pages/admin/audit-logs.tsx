@@ -31,12 +31,13 @@ import {
   Users, Loader2, QrCode, Landmark,
   Clock, Mail, Plus, Ban, Send, History, ChevronDown, ChevronUp, AlertCircle, Settings,
   MonitorPlay, RefreshCw, KeyRound, RotateCcw, ClipboardCheck, AlertTriangle, Building2, BellRing,
-  ArrowUpRight, AtSign, Network,
+  ArrowUpRight, AtSign, Network, CalendarDays,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { format, parseISO, formatDistanceToNow } from "date-fns";
+import { format, parseISO, formatDistanceToNow, subDays, eachDayOfInterval } from "date-fns";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 import { toast } from "sonner";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
@@ -2180,6 +2181,40 @@ function GlobalDeliveryHistoryPanel() {
     setEmailFilter("");
   }
 
+  const timelineChartData = useMemo(() => {
+    if (logs.length === 0) return [];
+    const end = new Date();
+    const start = subDays(end, 29);
+    const recentLogs = logs.filter(l => {
+      const d = new Date(l.sentAt);
+      return d >= start && d <= end;
+    });
+    if (recentLogs.length === 0) return [];
+    const dayMap = new Map<string, { date: string; success: number; failed: number }>();
+    const days = eachDayOfInterval({ start, end });
+    for (const d of days) {
+      const key = format(d, "dd MMM");
+      dayMap.set(key, { date: key, success: 0, failed: 0 });
+    }
+    for (const log of recentLogs) {
+      const key = format(new Date(log.sentAt), "dd MMM");
+      const entry = dayMap.get(key);
+      if (entry) {
+        if (log.success) entry.success++;
+        else entry.failed++;
+      }
+    }
+    return Array.from(dayMap.values());
+  }, [logs]);
+
+  const timelineSuccessRate = useMemo(() => {
+    if (timelineChartData.length === 0) return null;
+    const total = timelineChartData.reduce((s, d) => s + d.success + d.failed, 0);
+    if (total === 0) return null;
+    const success = timelineChartData.reduce((s, d) => s + d.success, 0);
+    return Math.round((success / total) * 100);
+  }, [timelineChartData]);
+
   function toggleCycle(cycleId: string) {
     setOpenCycles(prev => {
       const next = new Set(prev);
@@ -2264,6 +2299,65 @@ function GlobalDeliveryHistoryPanel() {
             <span className="text-[11px] text-muted-foreground ml-auto">
               {cycles.length} of {allCycles.length}
             </span>
+          </div>
+        )}
+        {!isLoading && timelineChartData.length > 0 && (
+          <div className="mb-4">
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+              <CalendarDays className="w-3.5 h-3.5 text-violet-400" />
+              Delivery Timeline — last 30 days
+              {timelineSuccessRate != null && (
+                <span
+                  className={[
+                    "ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none",
+                    timelineSuccessRate >= 90
+                      ? "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30"
+                      : timelineSuccessRate >= 75
+                      ? "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30"
+                      : "bg-red-500/15 text-red-400 ring-1 ring-red-500/30",
+                  ].join(" ")}
+                >
+                  {timelineSuccessRate}% delivered
+                </span>
+              )}
+            </p>
+            <ResponsiveContainer width="100%" height={100}>
+              <BarChart
+                data={timelineChartData}
+                margin={{ top: 0, right: 8, left: -20, bottom: 16 }}
+                barCategoryGap="20%"
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={Math.floor(timelineChartData.length / 7)}
+                  angle={-40}
+                  textAnchor="end"
+                  dy={4}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <RechartsTooltip
+                  cursor={{ fill: "hsl(var(--muted)/0.15)" }}
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 6,
+                    fontSize: 11,
+                  }}
+                  formatter={(val: number, name: string) => [val, name === "success" ? "Delivered" : "Failed"]}
+                />
+                <Bar dataKey="success" name="success" stackId="a" fill="hsl(142 71% 45%)" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="failed" name="failed" stackId="a" fill="hsl(0 84% 60%)" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
         {isLoading ? (
