@@ -81,6 +81,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   report_schedule_override_set:          { label: "Report Schedule Next-Run Overridden",  color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
   report_schedule_override_cleared:      { label: "Report Schedule Override Cleared",     color: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
   report_schedule_deleted:               { label: "Report Schedule Deleted",              color: "bg-red-500/10 text-red-400 border-red-500/20" },
+  report_schedule_auto_paused:           { label: "Report Schedule Auto-Paused",          color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
 };
 
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
@@ -1164,6 +1165,76 @@ function ReportScheduleDeletedDetails({ log }: { log: any }) {
   );
 }
 
+function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
+  let parsed: {
+    merchantId?: number | null;
+    businessName?: string | null;
+    consecutiveFailures?: number | null;
+    autoPauseAfterFailures?: number | null;
+    frequency?: string | null;
+    format?: string | null;
+  } = {};
+  try { if (log.details) parsed = JSON.parse(log.details); } catch { /* ignore */ }
+
+  const FREQUENCY_LABELS_LOCAL: Record<string, string> = {
+    daily: "Daily",
+    weekly: "Weekly",
+    monthly: "Monthly",
+  };
+  const FORMAT_LABELS: Record<string, string> = {
+    xlsx: "XLSX",
+    csv: "CSV",
+    pdf: "PDF",
+    json: "JSON",
+  };
+
+  const freqLabel = parsed.frequency ? (FREQUENCY_LABELS_LOCAL[parsed.frequency] ?? parsed.frequency) : null;
+  const fmtLabel = parsed.format ? (FORMAT_LABELS[parsed.format] ?? parsed.format.toUpperCase()) : null;
+
+  const failureCount = parsed.consecutiveFailures ?? null;
+  const threshold = parsed.autoPauseAfterFailures ?? null;
+
+  return (
+    <div className="space-y-3">
+      <SummaryCard
+        icon={<Ban className="w-5 h-5 text-orange-400" />}
+        title="Report schedule auto-paused by system"
+        subtitle={
+          parsed.businessName
+            ? `Merchant: ${parsed.businessName}`
+            : parsed.merchantId != null
+            ? `Merchant #${parsed.merchantId}`
+            : undefined
+        }
+        colorClass="bg-orange-500/10 border-orange-500/20"
+      />
+      <div className="rounded-lg bg-muted/20 p-3 space-y-1.5">
+        {parsed.businessName && <DetailRow label="Merchant" value={parsed.businessName} />}
+        {parsed.merchantId != null && (
+          <DetailRow label="Merchant ID" value={<span className="font-mono">#{parsed.merchantId}</span>} />
+        )}
+        {failureCount != null && threshold != null && (
+          <DetailRow
+            label="Failure count"
+            value={
+              <span className="font-medium text-orange-400">
+                {failureCount} of {threshold} consecutive failures
+              </span>
+            }
+          />
+        )}
+        {freqLabel && <DetailRow label="Frequency" value={freqLabel} />}
+        {fmtLabel && <DetailRow label="Report format" value={fmtLabel} />}
+      </div>
+      <div className="rounded-lg bg-orange-500/5 border border-orange-500/20 p-3">
+        <p className="text-xs text-orange-300/80">
+          This schedule was automatically paused by the system after reaching the consecutive failure threshold. An admin must investigate the delivery issue and re-enable the schedule.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function RawJsonDetails({ log }: { log: any }) {
   return (
     <div className="rounded-lg bg-muted/20 p-3">
@@ -1241,6 +1312,8 @@ function ActionDetails({ log }: { log: any }) {
       return <ReportScheduleOverrideClearedDetails log={log} />;
     case "report_schedule_deleted":
       return <ReportScheduleDeletedDetails log={log} />;
+    case "report_schedule_auto_paused":
+      return <ReportScheduleAutoPausedDetails log={log} />;
     default:
       return <RawJsonDetails log={log} />;
   }

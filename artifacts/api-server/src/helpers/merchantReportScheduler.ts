@@ -1,7 +1,7 @@
 import cron, { type ScheduledTask } from "node-cron";
 import XLSX from "xlsx";
 import PDFDocument from "pdfkit";
-import { db, reportSchedulesTable, reportDeliveryLogsTable, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, usersTable, systemSettingsTable } from "@workspace/db";
+import { db, reportSchedulesTable, reportDeliveryLogsTable, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, usersTable, systemSettingsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, desc, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail, type MailOptions } from "./mailer";
@@ -562,6 +562,23 @@ async function handleReportFailure(
       consecutiveFailures: newConsecutiveFailures,
       autoPauseAfterFailures: schedule.autoPauseAfterFailures,
     });
+
+    await db.insert(auditLogsTable).values({
+      adminId: 0,
+      adminEmail: "system",
+      action: "report_schedule_auto_paused",
+      targetType: "report_schedule",
+      targetId: schedule.merchantId,
+      details: JSON.stringify({
+        merchantId: schedule.merchantId,
+        businessName: merchantName,
+        consecutiveFailures: newConsecutiveFailures,
+        autoPauseAfterFailures: schedule.autoPauseAfterFailures,
+        frequency: schedule.frequency,
+        format: schedule.format,
+      }),
+      ipAddress: null,
+    }).catch(err => logger.error({ err, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to write audit log for report schedule auto-pause"));
 
     if (merchantInfo?.email) {
       const dedupWindowStart = new Date(Date.now() - AUTO_PAUSE_EMAIL_DEDUP_WINDOW_MS);
