@@ -1,0 +1,125 @@
+name: Build RasoKart Debug APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'artifacts/rasokart-apk/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # ── Generate PNG launcher icons using Pillow ──────────────────────────
+      - name: Install Pillow
+        run: pip install Pillow
+
+      - name: Generate launcher icons
+        working-directory: artifacts/rasokart-apk
+        run: |
+          python3 << 'PYEOF'
+          import os
+          from PIL import Image, ImageDraw, ImageFont
+
+          SIZES = {
+              'mipmap-mdpi':    48,
+              'mipmap-hdpi':    72,
+              'mipmap-xhdpi':   96,
+              'mipmap-xxhdpi':  144,
+              'mipmap-xxxhdpi': 192,
+          }
+
+          BG  = (15, 23, 42)      # #0f172a  dark navy
+          FG  = (245, 158, 11)    # #f59e0b  amber gold
+          FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+          for folder, size in SIZES.items():
+              path = f"app/src/main/res/{folder}"
+              os.makedirs(path, exist_ok=True)
+
+              img  = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+              draw = ImageDraw.Draw(img)
+
+              # Rounded-square background
+              r  = size // 5
+              m  = size // 12
+              draw.rounded_rectangle([m, m, size - m, size - m], radius=r, fill=BG)
+
+              # "RK" text centred
+              font_size = max(10, size // 3)
+              try:
+                  font = ImageFont.truetype(FONT_PATH, font_size)
+              except Exception:
+                  font = ImageFont.load_default()
+
+              text = "RK"
+              bbox = draw.textbbox((0, 0), text, font=font)
+              tw   = bbox[2] - bbox[0]
+              th   = bbox[3] - bbox[1]
+              x    = (size - tw) // 2 - bbox[0]
+              y    = (size - th) // 2 - bbox[1]
+              draw.text((x, y), text, fill=FG, font=font)
+
+              img.save(f"{path}/ic_launcher.png",       'PNG')
+              img.save(f"{path}/ic_launcher_round.png", 'PNG')
+              print(f"  {folder}: {size}×{size} ✓")
+
+          print("Icon generation complete.")
+          PYEOF
+
+      # ── Gradle build ──────────────────────────────────────────────────────
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable (if present)
+        working-directory: artifacts/rasokart-apk
+        run: chmod +x gradlew 2>/dev/null || true
+
+      - name: Build debug APK
+        working-directory: artifacts/rasokart-apk
+        run: gradle assembleDebug
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
+
+      # ── Rename and upload ─────────────────────────────────────────────────
+      - name: Rename APK
+        run: |
+          mkdir -p artifacts/rasokart-apk/output
+          cp artifacts/rasokart-apk/app/build/outputs/apk/debug/app-debug.apk \
+             artifacts/rasokart-apk/output/RasoKart-v1.0.1-debug.apk
+          echo "APK size: $(du -sh artifacts/rasokart-apk/output/RasoKart-v1.0.1-debug.apk | cut -f1)"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RasoKart-v1.0.1-debug
+          path: artifacts/rasokart-apk/output/RasoKart-v1.0.1-debug.apk
+          retention-days: 30
+
+      - name: Build summary
+        run: |
+          echo "## ✅ RasoKart v1.0.1 Debug APK" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| App name | RasoKart |" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | com.rasokart.app.debug |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | 1.0.1 (code 2) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Min SDK | 26 (Android 8.0) |" >> $GITHUB_STEP_SUMMARY
+          echo "| URL | https://rasokart.com |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the APK from the **Artifacts** section above." >> $GITHUB_STEP_SUMMARY

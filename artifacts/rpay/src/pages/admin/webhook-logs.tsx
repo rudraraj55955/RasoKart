@@ -449,7 +449,7 @@ function EkqrWebhookLogsTab() {
                   <TableHead>Client Txn ID</TableHead>
                   <TableHead>Merchant</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>EKQR Status</TableHead>
+                  <TableHead>Payment Status</TableHead>
                   <TableHead>Result</TableHead>
                 </TableRow>
               </TableHeader>

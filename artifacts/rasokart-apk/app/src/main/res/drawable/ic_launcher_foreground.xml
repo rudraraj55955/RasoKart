@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive icon foreground — "RK" monogram in amber/gold on transparent.
+    Safe zone: 66dp centred in 108dp viewport (inset 21dp each side).
+    R occupies x 21–63, K occupies x 67–87.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- ── R ── -->
+    <!-- Stem -->
+    <path android:fillColor="#F59E0B"
+        android:pathData="M21,24 L31,24 L31,84 L21,84 Z" />
+    <!-- Arch outer (filled solid) -->
+    <path android:fillColor="#F59E0B"
+        android:pathData="M31,24 L54,24 Q65,24 65,38 Q65,52 54,53 L31,53 Z" />
+    <!-- Arch inner cutout (matches background) -->
+    <path android:fillColor="#0F172A"
+        android:pathData="M31,33 L52,33 Q56,33 56,38 Q56,44 52,44 L31,44 Z" />
+    <!-- Diagonal leg -->
+    <path android:fillColor="#F59E0B"
+        android:pathData="M43,53 L31,53 L31,62 L52,84 L63,84 Z" />
+
+    <!-- ── K ── -->
+    <!-- Stem -->
+    <path android:fillColor="#F59E0B"
+        android:pathData="M67,24 L77,24 L77,84 L67,84 Z" />
+    <!-- Upper arm -->
+    <path android:fillColor="#F59E0B"
+        android:pathData="M77,54 L83,54 L87,24 L81,24 Z" />
+    <!-- Lower arm -->
+    <path android:fillColor="#F59E0B"
+        android:pathData="M77,54 L83,54 L87,84 L81,84 Z" />
+
+</vector>

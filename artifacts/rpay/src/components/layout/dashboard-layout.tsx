@@ -349,6 +349,14 @@ const ADMIN_NAV = [
     ],
   },
   {
+    group: "Gateways",
+    items: [
+      { title: "Payment Gateways", icon: Zap, href: "/admin/payment-gateways" },
+      { title: "Cashfree Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
+      { title: "Cashfree Payout", icon: Landmark, href: "/admin/cashfree-payout" },
+    ],
+  },
+  {
     group: "Monitoring",
     items: [
       { title: "Webhook Logs", icon: Webhook, href: "/admin/webhook-logs" },
@@ -362,12 +370,9 @@ const ADMIN_NAV = [
       { title: "Module Control", icon: ToggleLeft, href: "/admin/module-control" },
       { title: "Feature Control", icon: Sliders, href: "/admin/feature-control" },
       { title: "Account Details", icon: CreditCard, href: "/admin/account-details" },
-      { title: "Payment Gateways", icon: CreditCard, href: "/admin/payment-gateways" },
       { title: "Provider Integrations", icon: Layers, href: "/admin/provider-integrations" },
       { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
       { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
-      { title: "Cashfree Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
-      { title: "Cashfree Payout", icon: Landmark, href: "/admin/cashfree-payout" },
       { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
       { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
       { title: "Merchant Access", icon: LayoutGrid, href: "/admin/merchant-access" },

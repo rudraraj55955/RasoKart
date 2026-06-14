@@ -209,7 +209,7 @@ function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
                 <div className="bg-white p-3 rounded-xl border-2 border-teal-500/40">
                   <QRCodeCanvas value={qr.ekqrPaymentUrl} size={120} level="H" includeMargin />
                 </div>
-                <span className="text-xs text-teal-400 font-medium">EKQR Payment Link</span>
+                <span className="text-xs text-teal-400 font-medium">Payment Collection Link</span>
               </div>
             )}
           </div>
@@ -289,7 +289,7 @@ function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
               </Button>
               {qr.ekqrPaymentUrl && (
                 <Button size="sm" variant="outline" onClick={handleCopyEkqrLink} className="h-7 text-xs px-3 border-teal-500/40 text-teal-400 hover:bg-teal-500/10 hover:text-teal-300">
-                  <Link2 className="w-3.5 h-3.5 mr-1.5" />{copiedEkqr ? "Copied!" : "Copy EKQR Link"}
+                  <Link2 className="w-3.5 h-3.5 mr-1.5" />{copiedEkqr ? "Copied!" : "Copy Payment Link"}
                 </Button>
               )}
               {qr.ekqrOrderId && (
@@ -299,7 +299,7 @@ function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
                   onClick={handleSync}
                   disabled={syncMutation.isPending}
                   className="h-7 text-xs px-3 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
-                  title={`Sync EKQR status for order ${qr.ekqrOrderId}`}
+                  title={`Sync payment status for order ${qr.ekqrOrderId}`}
                 >
                   <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
                   {syncMutation.isPending ? "Syncing…" : "Sync Status"}
@@ -308,7 +308,7 @@ function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
             </div>
             {syncResult && (
               <div className="mt-2 rounded-md border border-teal-500/25 bg-teal-500/8 px-3 py-2.5 space-y-1">
-                <p className="text-xs font-semibold text-teal-400 uppercase tracking-wide">EKQR Sync Result</p>
+                <p className="text-xs font-semibold text-teal-400 uppercase tracking-wide">Payment Sync Result</p>
                 <p className="text-xs text-muted-foreground">
                   Status: <span className="font-mono text-foreground">{syncResult.qrStatus}</span>
                 </p>
@@ -320,7 +320,7 @@ function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
 
             {qr.ekqrOrderId && !syncResult && (
               <p className="text-xs text-muted-foreground mt-1">
-                EKQR Order ID: <span className="font-mono text-teal-400">{qr.ekqrOrderId}</span>
+                Payment Order Ref: <span className="font-mono text-teal-400">{qr.ekqrOrderId}</span>
               </p>
             )}
 

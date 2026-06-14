@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Splash screen animated icon — "RK" centred in 288×288 dp canvas.
+    Displayed by core-splashscreen on top of the dark splash background.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+
+    <!-- ── R ── (centred left half: x 56–168, y 64–224) -->
+    <path android:fillColor="#F59E0B"
+        android:pathData="M56,64 L83,64 L83,224 L56,224 Z" />
+    <path android:fillColor="#F59E0B"
+        android:pathData="M83,64 L145,64 Q173,64 173,101 Q173,138 145,140 L83,140 Z" />
+    <path android:fillColor="#0F172A"
+        android:pathData="M83,88 L140,88 Q149,88 149,101 Q149,115 140,115 L83,115 Z" />
+    <path android:fillColor="#F59E0B"
+        android:pathData="M115,140 L83,140 L83,165 L139,224 L169,224 Z" />
+
+    <!-- ── K ── (centred right half: x 178–232, y 64–224) -->
+    <path android:fillColor="#F59E0B"
+        android:pathData="M178,64 L205,64 L205,224 L178,224 Z" />
+    <path android:fillColor="#F59E0B"
+        android:pathData="M205,144 L221,144 L232,64 L216,64 Z" />
+    <path android:fillColor="#F59E0B"
+        android:pathData="M205,144 L221,144 L232,224 L216,224 Z" />
+
+</vector>
