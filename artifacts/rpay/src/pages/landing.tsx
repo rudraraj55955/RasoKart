@@ -126,11 +126,14 @@ export default function Landing() {
             <a href="#services" className="transition-colors hover:text-foreground">Services</a>
             <a href="#features" className="transition-colors hover:text-foreground">Dashboard</a>
             <a href="#settlement" className="transition-colors hover:text-foreground">Settlement</a>
-            <a href="#api-docs" className="transition-colors hover:text-foreground">API Docs</a>
+            <Link href="/merchant/api-docs" className="transition-colors hover:text-foreground">API Docs</Link>
             <a href="#plans" className="transition-colors hover:text-foreground">Plans</a>
             <a href="#contact" className="transition-colors hover:text-foreground">Contact</a>
           </nav>
           <div className="flex items-center gap-2">
+            <Link href="/merchant/api-docs">
+              <Button variant="ghost" size="sm" className="md:hidden">API Docs</Button>
+            </Link>
             <Link href="/merchant">
               <Button variant="ghost" size="sm">Merchant Login</Button>
             </Link>
