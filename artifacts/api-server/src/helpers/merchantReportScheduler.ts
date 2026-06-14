@@ -548,6 +548,8 @@ async function handleReportFailure(
           frequency: schedule.frequency,
           consecutiveFailures: newConsecutiveFailures,
           autoPauseAfterFailures: schedule.autoPauseAfterFailures,
+          merchantId: schedule.merchantId,
+          scheduleId: schedule.id,
         });
         if (!notifyEmailSent) {
           notifyEmailFailureReason = "SMTP returned failure — merchant auto-pause notification email not delivered.";

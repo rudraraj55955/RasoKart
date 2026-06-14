@@ -1,9 +1,60 @@
+import jwt from "jsonwebtoken";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { sendMail } from "./mailer";
 import { logger } from "../lib/logger";
 
 const APP_DOMAIN = process.env["APP_DOMAIN"] ?? "https://rasokart.com";
+
+/**
+ * Signing secret for re-enable tokens. Falls back to SESSION_SECRET so that
+ * existing deployments work without adding a new env var. Throws at call-time
+ * if neither is set — this route must never fall back to a hardcoded string
+ * because it accepts unauthenticated state-changing requests.
+ */
+function getReenableSecret(): string {
+  const secret = process.env["REPORT_REENABLE_TOKEN_SECRET"] ?? process.env["SESSION_SECRET"];
+  if (!secret) {
+    throw new Error("REPORT_REENABLE_TOKEN_SECRET (or SESSION_SECRET) must be set to generate re-enable tokens");
+  }
+  return secret;
+}
+
+/**
+ * How long a re-enable link stays valid. Configurable via env var
+ * REPORT_REENABLE_TOKEN_EXPIRY_DAYS (integer, default 7).
+ */
+function getReenableTokenExpiryDays(): number {
+  const raw = process.env["REPORT_REENABLE_TOKEN_EXPIRY_DAYS"];
+  if (raw) {
+    const parsed = parseInt(raw, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+    logger.warn({ raw }, "REPORT_REENABLE_TOKEN_EXPIRY_DAYS is not a valid positive integer — falling back to 7 days");
+  }
+  return 7;
+}
+
+export interface ReenableTokenPayload {
+  purpose: "reenable-report-schedule";
+  merchantId: number;
+  scheduleId: number;
+}
+
+export function generateReenableToken(merchantId: number, scheduleId: number): string {
+  const expiryDays = getReenableTokenExpiryDays();
+  return jwt.sign(
+    { purpose: "reenable-report-schedule", merchantId, scheduleId } satisfies ReenableTokenPayload,
+    getReenableSecret(),
+    { expiresIn: `${expiryDays}d` },
+  );
+}
+
+export function verifyReenableToken(token: string): ReenableTokenPayload {
+  const payload = jwt.verify(token, getReenableSecret()) as ReenableTokenPayload;
+  if (payload.purpose !== "reenable-report-schedule") {
+    throw new Error("Invalid token purpose");
+  }
+  return payload;}
 
 export function buildReportScheduleUpdatedHtml(opts: {
   businessName: string;
@@ -87,10 +138,12 @@ function buildReportScheduleAutoPausedMerchantHtml(opts: {
   frequency: string;
   consecutiveFailures: number;
   autoPauseAfterFailures: number;
+  reenableToken: string;
 }): string {
-  const { businessName, frequency, consecutiveFailures, autoPauseAfterFailures } = opts;
+  const { businessName, frequency, consecutiveFailures, autoPauseAfterFailures, reenableToken } = opts;
   const freqLabel = frequency.charAt(0).toUpperCase() + frequency.slice(1);
   const reportsLink = `${APP_DOMAIN}/merchant/reports`;
+  const reenableLink = `${APP_DOMAIN}/api/reports/schedule/reenable?token=${encodeURIComponent(reenableToken)}`;
 
   return `<!DOCTYPE html>
 <html>
@@ -112,7 +165,7 @@ function buildReportScheduleAutoPausedMerchantHtml(opts: {
       </p>
       <p style="margin: 0 0 20px; color: #d1d5db; font-size: 14px; line-height: 1.6;">
         This is typically caused by an email configuration issue on the platform. Your platform administrator has been notified and will investigate.
-        Once the issue is resolved, you can re-enable your report schedule from your Reports page.
+        Once the issue is resolved, you can re-enable your report schedule using the button below — no login required.
       </p>
 
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
@@ -128,18 +181,27 @@ function buildReportScheduleAutoPausedMerchantHtml(opts: {
           <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Schedule Status</td>
           <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #fb923c; font-weight: 600;">Auto-Paused</td>
         </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Link Expires</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #a1a1aa;">7 days from receipt</td>
+        </tr>
       </table>
 
-      <div style="text-align: center; margin-bottom: 20px;">
-        <a href="${reportsLink}"
-           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
-          Go to My Reports Page
+      <div style="text-align: center; margin-bottom: 16px;">
+        <a href="${reenableLink}"
+           style="display: inline-block; background: #16a34a; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          Re-enable My Schedule
         </a>
       </div>
 
+      <p style="margin: 0 0 20px; color: #71717a; font-size: 12px; text-align: center;">
+        This link re-enables your schedule in one click — no login required.<br>
+        Alternatively, <a href="${reportsLink}" style="color: #818cf8; text-decoration: none;">log in and manage your schedule</a> from your dashboard.
+      </p>
+
       <p style="margin: 0; color: #71717a; font-size: 12px;">
-        If the link above doesn't work, copy this URL into your browser:<br>
-        <span style="color: #818cf8;">${reportsLink}</span>
+        If the button above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8; word-break: break-all;">${reenableLink}</span>
       </p>
     </div>
     <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
@@ -159,11 +221,14 @@ export async function sendReportScheduleAutoPausedMerchantEmail(opts: {
   frequency: string;
   consecutiveFailures: number;
   autoPauseAfterFailures: number;
+  merchantId: number;
+  scheduleId: number;
 }): Promise<boolean> {
-  const { to, businessName, frequency, consecutiveFailures, autoPauseAfterFailures } = opts;
+  const { to, businessName, frequency, consecutiveFailures, autoPauseAfterFailures, merchantId, scheduleId } = opts;
   const freqLabel = frequency.charAt(0).toUpperCase() + frequency.slice(1);
   const subject = `[RasoKart] Your ${freqLabel} Report Schedule Has Been Paused`;
-  const html = buildReportScheduleAutoPausedMerchantHtml({ businessName, frequency, consecutiveFailures, autoPauseAfterFailures });
+  const reenableToken = generateReenableToken(merchantId, scheduleId);
+  const html = buildReportScheduleAutoPausedMerchantHtml({ businessName, frequency, consecutiveFailures, autoPauseAfterFailures, reenableToken });
 
   const sent = await sendMail({ to, subject, html });
   if (!sent) {

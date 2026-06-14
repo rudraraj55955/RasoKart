@@ -4,9 +4,122 @@ import { eq, and, sql, gte, lte, or, inArray, isNotNull, isNull, desc } from "dr
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMerchantReport } from "../helpers/merchantReportScheduler";
 import { createNotification, createBulkNotifications } from "../helpers/notifications";
-import { sendReportScheduleUpdatedEmail, buildReportScheduleUpdatedHtml, sendReportScheduleDeletedEmail } from "../helpers/reportScheduleEmail";
+import { sendReportScheduleUpdatedEmail, buildReportScheduleUpdatedHtml, sendReportScheduleDeletedEmail, verifyReenableToken } from "../helpers/reportScheduleEmail";
 
 const router = Router();
+
+// ─── Public: one-click schedule re-enable via signed email link ───────────────
+
+// GET /api/reports/schedule/reenable?token=<jwt>
+// No authentication required — the signed token acts as proof of identity.
+router.get("/schedule/reenable", async (req, res, next) => {
+  const APP_DOMAIN = process.env["APP_DOMAIN"] ?? "https://rasokart.com";
+  const reportsLink = `${APP_DOMAIN}/merchant/reports`;
+
+  function renderPage(success: boolean, message: string): string {
+    const color = success ? "#16a34a" : "#dc2626";
+    const icon = success ? "✓" : "✗";
+    const heading = success ? "Schedule Re-enabled" : "Re-enable Failed";
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RasoKart — ${heading}</title>
+  ${success ? `<meta http-equiv="refresh" content="4;url=${reportsLink}">` : ""}
+</head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 40px 24px; display: flex; align-items: center; justify-content: center; min-height: 80vh;">
+  <div style="max-width: 480px; width: 100%; background: #1a1a1a; border-radius: 10px; border: 1px solid #2a2a2a; padding: 40px; text-align: center;">
+    <div style="width: 60px; height: 60px; border-radius: 50%; background: ${color}22; border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 28px; line-height: 60px;">
+      ${icon}
+    </div>
+    <h1 style="margin: 0 0 12px; font-size: 22px; color: #fff;">${heading}</h1>
+    <p style="margin: 0 0 28px; color: #a1a1aa; font-size: 15px; line-height: 1.6;">${message}</p>
+    <a href="${reportsLink}"
+       style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600;">
+      Go to Reports Page
+    </a>
+    ${success ? `<p style="margin: 20px 0 0; color: #52525b; font-size: 12px;">Redirecting automatically in a few seconds…</p>` : ""}
+  </div>
+</body>
+</html>`;
+  }
+
+  try {
+    const token = req.query["token"] as string | undefined;
+    if (!token) {
+      res.status(400).send(renderPage(false, "The re-enable link is missing a token. Please use the link from your notification email."));
+      return;
+    }
+
+    let payload: ReturnType<typeof verifyReenableToken>;
+    try {
+      payload = verifyReenableToken(token);
+    } catch {
+      res.status(400).send(renderPage(false, "This re-enable link is invalid or has expired (links are valid for 7 days). Please contact support or re-enable your schedule from your Reports page after logging in."));
+      return;
+    }
+
+    const { merchantId, scheduleId } = payload;
+
+    const [existing] = await db
+      .select()
+      .from(reportSchedulesTable)
+      .where(and(
+        eq(reportSchedulesTable.id, scheduleId),
+        eq(reportSchedulesTable.merchantId, merchantId),
+      ))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).send(renderPage(false, "No matching schedule was found. It may have been deleted. Please log in to your Reports page to configure a new schedule."));
+      return;
+    }
+
+    if (existing.isActive) {
+      res.send(renderPage(true, "Your report schedule is already active — no changes were needed. Future reports will continue on their normal cadence."));
+      return;
+    }
+
+    await db
+      .update(reportSchedulesTable)
+      .set({ isActive: true, consecutiveFailures: 0, updatedAt: new Date() })
+      .where(and(
+        eq(reportSchedulesTable.id, scheduleId),
+        eq(reportSchedulesTable.merchantId, merchantId),
+      ));
+
+    await db.insert(reportDeliveryLogsTable).values({
+      scheduleId: existing.id,
+      merchantId,
+      success: true,
+      isAutoPause: false,
+      outcome: "re-enabled via email link",
+      triggeredBy: "email-link",
+    });
+
+    const [merchantUser] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.merchantId, merchantId))
+      .limit(1);
+
+    if (merchantUser) {
+      createNotification({
+        userId: merchantUser.id,
+        type: "report_schedule_reenabled",
+        title: "Report Schedule Re-enabled",
+        body: "Your report schedule has been re-enabled via the one-click email link. Future reports will resume on the normal cadence.",
+        metadata: { scheduleId: existing.id },
+      }).catch(() => {});
+    }
+
+    res.send(renderPage(true, "Your report schedule has been successfully re-enabled. Your next report will be delivered on the normal cadence. You will be redirected to your Reports page shortly."));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.use(requireAuth);
 
 // GET /api/reports/transactions
