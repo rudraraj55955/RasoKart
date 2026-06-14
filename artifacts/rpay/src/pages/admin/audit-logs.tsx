@@ -6,6 +6,7 @@ import {
   useUpdateAuditReportSchedule, useDeleteAuditReportSchedule,
   useSendAuditReportNow,
   getListAuditReportSchedulesQueryKey,
+  getListAdminAuditLogsQueryKey,
   useListAuditReportScheduleLogs,
   useListAllAuditReportScheduleLogs,
   previewAuditReportEmail,
@@ -14,6 +15,7 @@ import {
   useGetSecurityComplianceSummary,
   useSendSecurityReviewReminder,
   useCreateAdminAuditLog,
+  useReenableAdminMerchantReportSchedule,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -1196,6 +1198,24 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
   const failureCount = parsed.consecutiveFailures ?? null;
   const threshold = parsed.autoPauseAfterFailures ?? null;
 
+  const [reenabled, setReenabled] = useState(false);
+  const queryClient = useQueryClient();
+  const reenable = useReenableAdminMerchantReportSchedule();
+
+  function handleReenable() {
+    if (parsed.merchantId == null) return;
+    reenable.mutate({ merchantId: parsed.merchantId }, {
+      onSuccess: () => {
+        setReenabled(true);
+        queryClient.invalidateQueries({ queryKey: getListAdminAuditLogsQueryKey() });
+        toast.success("Report schedule re-enabled successfully.");
+      },
+      onError: () => {
+        toast.error("Failed to re-enable the report schedule. Please try again.");
+      },
+    });
+  }
+
   return (
     <div className="space-y-3">
       <SummaryCard
@@ -1233,6 +1253,28 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
           This schedule was automatically paused by the system after reaching the consecutive failure threshold. An admin must investigate the delivery issue and re-enable the schedule.
         </p>
       </div>
+      {parsed.merchantId != null && (
+        reenabled ? (
+          <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <p className="text-xs text-emerald-300">Schedule re-enabled. The audit log has been refreshed.</p>
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full border-orange-500/30 text-orange-300 hover:bg-orange-500/10 hover:text-orange-200"
+            onClick={handleReenable}
+            disabled={reenable.isPending}
+          >
+            {reenable.isPending ? (
+              <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Re-enabling…</>
+            ) : (
+              <><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Re-enable Schedule</>
+            )}
+          </Button>
+        )
+      )}
     </div>
   );
 }
