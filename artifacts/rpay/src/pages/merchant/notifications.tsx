@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Bell, Check, CheckCheck, AlertCircle, CreditCard, Zap, Megaphone, RefreshCw, ExternalLink, Calendar, PlayCircle, CheckCircle2, Trash2, PauseCircle, Clock, Send, User, Moon, Mail, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { toast } from "sonner";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -143,9 +143,31 @@ function QueuedNotificationsSkeleton() {
 }
 
 export default function NotificationsPage() {
-  const [tab, setTab] = useState<TabValue>("all");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [page, setPage] = useState(1);
+  const searchStr = useSearch();
+  const [notifLocation, notifNavigate] = useLocation();
+
+  const _nqp = new URLSearchParams(searchStr);
+  const rawTab = _nqp.get("tab");
+  const tab: TabValue = rawTab === "unread" || rawTab === "queued" ? rawTab : "all";
+  const rawType = _nqp.get("type");
+  const typeFilter: TypeFilter =
+    rawType === "settlements" || rawType === "plans" || rawType === "limits" || rawType === "system_notice" || rawType === "reports"
+      ? rawType
+      : "all";
+  const page = Math.max(1, parseInt(_nqp.get("page") ?? "1") || 1);
+
+  const setNotifFilter = (updates: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchStr);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value == null || value === "") {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+    }
+    notifNavigate(`${notifLocation}?${next.toString()}`);
+  };
+
   const [flushingQueue, setFlushingQueue] = useState(false);
   const qc = useQueryClient();
   const [, navigate] = useLocation();
@@ -188,13 +210,11 @@ export default function NotificationsPage() {
   const scheduleIsActive = scheduleData?.schedule?.isActive ?? false;
 
   function handleTabChange(v: string) {
-    setTab(v as TabValue);
-    setPage(1);
+    setNotifFilter({ tab: v === "all" ? null : v, page: null });
   }
 
   function handleTypeFilter(v: TypeFilter) {
-    setTypeFilter(v);
-    setPage(1);
+    setNotifFilter({ type: v === "all" ? null : v, page: null });
   }
 
   function invalidateUnreadCounts() {
@@ -508,8 +528,8 @@ export default function NotificationsPage() {
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>Page {page} of {totalPages} • {total} total</span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setNotifFilter({ page: String(page - 1) })}>Previous</Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setNotifFilter({ page: String(page + 1) })}>Next</Button>
               </div>
             </div>
           )}
@@ -662,8 +682,8 @@ export default function NotificationsPage() {
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>Page {page} of {totalPages} • {total} total</span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setNotifFilter({ page: String(page - 1) })}>Previous</Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setNotifFilter({ page: String(page + 1) })}>Next</Button>
               </div>
             </div>
           )}

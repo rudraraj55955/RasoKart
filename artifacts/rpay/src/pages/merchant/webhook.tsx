@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearch, useLocation } from "wouter";
 import { EVENT_TYPE_COLORS, EventTypeBadge } from "@/components/ui/event-type-badge";
 import { useGetWebhookConfig, useUpdateWebhookConfig, getGetWebhookConfigQueryKey, useGetCallbackSecret, useRotateCallbackSecret, getGetCallbackSecretQueryKey, useGetWebhookLogs, getGetWebhookLogsQueryKey, useSendWebhookTest, useRetryWebhookLog, useGetWebhookLogStats, getGetWebhookLogStatsQueryKey, useGetWebhookRetryDefaults, useGetWebhookPlatformDefaults, WebhookTestRequestEventType, GetWebhookLogsStatus } from "@workspace/api-client-react";
 import { SECRET_WARN_DAYS, SECRET_ROTATION_OVERDUE_DAYS } from "@/lib/webhook-constants";
@@ -755,49 +756,35 @@ export default function MerchantWebhook() {
   const { data: config, isLoading } = useGetWebhookConfig();
   const { data: platformDefaults } = useGetWebhookPlatformDefaults();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
-  const WEBHOOK_DATE_RANGE_KEY = "rasokart_webhook_date_range";
-  const WEBHOOK_EVENT_FILTER_KEY = "rasokart_webhook_event_filter";
-  const WEBHOOK_STATUS_FILTER_KEY = "rasokart_webhook_status_filter";
-  const [eventTypeFilter, setEventTypeFilterRaw] = useState<string | null>(() => {
-    try { return localStorage.getItem(WEBHOOK_EVENT_FILTER_KEY) ?? null; } catch { return null; }
-  });
-  const setEventTypeFilter = (value: string | null) => {
-    setEventTypeFilterRaw(value);
-    try {
-      if (value == null) {
-        localStorage.removeItem(WEBHOOK_EVENT_FILTER_KEY);
-      } else {
-        localStorage.setItem(WEBHOOK_EVENT_FILTER_KEY, value);
-      }
-    } catch { /* ignore */ }
-  };
-  const [statusFilter, setStatusFilterRaw] = useState<"all" | "success" | "failed" | "pending_retry">(() => {
-    try {
-      const stored = localStorage.getItem(WEBHOOK_STATUS_FILTER_KEY);
-      if (stored === "success" || stored === "failed" || stored === "pending_retry") return stored;
-    } catch { /* ignore */ }
-    return "all";
-  });
-  const setStatusFilter = (value: "all" | "success" | "failed" | "pending_retry") => {
-    setStatusFilterRaw(value);
-    try {
-      if (value === "all") {
-        localStorage.removeItem(WEBHOOK_STATUS_FILTER_KEY);
-      } else {
-        localStorage.setItem(WEBHOOK_STATUS_FILTER_KEY, value);
-      }
-    } catch { /* ignore */ }
-  };
-  const [fromDate, setFromDate] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(WEBHOOK_DATE_RANGE_KEY) ?? "{}").from ?? ""; } catch { return ""; }
-  });
-  const [toDate, setToDate] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(WEBHOOK_DATE_RANGE_KEY) ?? "{}").to ?? ""; } catch { return ""; }
-  });
+  const searchStr = useSearch();
+  const [whLocation, whNavigate] = useLocation();
+
+  const _whQp = new URLSearchParams(searchStr);
+  const eventTypeFilter = _whQp.get("event") ?? null;
+  const rawStatus = _whQp.get("status");
+  const statusFilter: "all" | "success" | "failed" | "pending_retry" =
+    rawStatus === "success" || rawStatus === "failed" || rawStatus === "pending_retry" ? rawStatus : "all";
+  const fromDate = _whQp.get("from") ?? "";
+  const toDate = _whQp.get("to") ?? "";
   const hasDateFilter = fromDate !== "" || toDate !== "";
-  const saveWebhookDateRange = (from: string, to: string) => {
-    try { localStorage.setItem(WEBHOOK_DATE_RANGE_KEY, JSON.stringify({ from, to })); } catch { /* ignore */ }
+
+  const setWhFilter = (updates: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchStr);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value == null || value === "") {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+    }
+    whNavigate(`${whLocation}?${next.toString()}`);
   };
+
+  const setEventTypeFilter = (value: string | null) => setWhFilter({ event: value });
+  const setStatusFilter = (value: "all" | "success" | "failed" | "pending_retry") =>
+    setWhFilter({ status: value === "all" ? null : value });
+  const setFromDate = (value: string) => setWhFilter({ from: value || null });
+  const setToDate = (value: string) => setWhFilter({ to: value || null });
   const logsParams = {
     limit: 50,
     ...(eventTypeFilter != null ? { eventType: eventTypeFilter } : {}),
@@ -1280,7 +1267,7 @@ onError: () => toast.error("Failed to send test event"),
               <input
                 type="datetime-local"
                 value={fromDate}
-                onChange={e => { setFromDate(e.target.value); saveWebhookDateRange(e.target.value, toDate); }}
+                onChange={e => setFromDate(e.target.value)}
                 className="h-7 rounded border border-border/50 bg-muted/30 px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 [color-scheme:dark]"
               />
             </div>
@@ -1289,13 +1276,13 @@ onError: () => toast.error("Failed to send test event"),
               <input
                 type="datetime-local"
                 value={toDate}
-                onChange={e => { setToDate(e.target.value); saveWebhookDateRange(fromDate, e.target.value); }}
+                onChange={e => setToDate(e.target.value)}
                 className="h-7 rounded border border-border/50 bg-muted/30 px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 [color-scheme:dark]"
               />
             </div>
             {hasDateFilter && (
               <button
-                onClick={() => { setFromDate(""); setToDate(""); try { localStorage.removeItem(WEBHOOK_DATE_RANGE_KEY); } catch { /* ignore */ } }}
+                onClick={() => setWhFilter({ from: null, to: null })}
                 className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-400 hover:bg-rose-500/20 hover:border-rose-500/50 transition-colors"
               >
                 <X className="w-3 h-3" />
