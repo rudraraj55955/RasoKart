@@ -1497,7 +1497,7 @@ function ScheduledReportsPanel() {
                     if (clearFlashTimer.current != null) { clearTimeout(clearFlashTimer.current); clearFlashTimer.current = null; }
                     setSelectedFailureIds(new Set());
                     if (res.failed === 0) {
-                      toast.success(`Retried ${res.sent} report${res.sent !== 1 ? "s" : ""} — all delivered successfully`);
+                      toast.success("All failures resolved — reports delivered successfully");
                       setSendFailures(null);
                       setClearedMerchantIds(new Set());
                     } else if (res.sent === 0) {
