@@ -10,7 +10,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -860,6 +860,10 @@ export default function AdminSettings() {
       onError: (err: Error) => toast.error(err.message),
     },
   });
+
+  const { data: githubSyncStatus } = useGetGithubSyncStatus({
+    query: { refetchInterval: 60_000 },
+  } as any);
 
 
   const { data: quietHoursFlushData, isLoading: quietHoursFlushLoading } = useGetQuietHoursFlushConfig({
@@ -2828,6 +2832,28 @@ export default function AdminSettings() {
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>GitHub sync is <strong>enabled</strong> — the sync script will run on schedule.</span>
+            </div>
+          )}
+
+          {githubSyncStatus && (
+            <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-xs ${githubSyncStatus.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : githubSyncStatus.status === "failure" ? "border-red-500/20 bg-red-500/5" : "border-border/50 bg-muted/5"}`}>
+              {githubSyncStatus.status === "success" && <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />}
+              {githubSyncStatus.status === "failure" && <XCircle className="w-4 h-4 shrink-0 text-red-400" />}
+              {githubSyncStatus.status === "never" && <History className="w-4 h-4 shrink-0 text-muted-foreground" />}
+              <div className="flex flex-col gap-0.5">
+                <span className={`font-medium ${githubSyncStatus.status === "success" ? "text-emerald-400" : githubSyncStatus.status === "failure" ? "text-red-400" : "text-muted-foreground"}`}>
+                  Last sync: {githubSyncStatus.status === "never" ? "never run" : githubSyncStatus.status}
+                </span>
+                {githubSyncStatus.syncedAt && (
+                  <span className="text-muted-foreground">
+                    {formatTimeAgo(githubSyncStatus.syncedAt)} — {new Date(githubSyncStatus.syncedAt).toLocaleString()}
+                    {githubSyncStatus.repo && <span className="ml-1 opacity-60">({githubSyncStatus.repo})</span>}
+                  </span>
+                )}
+                {githubSyncStatus.status === "failure" && githubSyncStatus.errorMessage && (
+                  <span className="text-red-300 mt-0.5">{githubSyncStatus.errorMessage}</span>
+                )}
+              </div>
             </div>
           )}
 
