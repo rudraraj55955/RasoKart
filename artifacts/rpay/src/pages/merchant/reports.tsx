@@ -373,6 +373,27 @@ function SchedulePanel() {
     });
   };
 
+  const handleRetryNow = () => {
+    sendNow.mutate(undefined, {
+      onSuccess: (data) => {
+        reenable.mutate(undefined, {
+          onSuccess: () => {
+            toast.success(`Report delivered to ${(data as any).to} — schedule re-enabled.`);
+            invalidate();
+          },
+          onError: () => {
+            toast.success(`Report delivered to ${(data as any).to}.`);
+            invalidate();
+          },
+        });
+      },
+      onError: () => {
+        toast.error("Delivery failed — see updated failure log below.");
+        invalidate();
+      },
+    });
+  };
+
   const handleSave = () => {
     const data: Record<string, unknown> = { frequency, format: fileFormat, isActive: true, autoPauseAfterFailures };
     if (frequency === "weekly") data["dayOfWeek"] = dayOfWeek;
@@ -498,13 +519,22 @@ function SchedulePanel() {
                 </div>
               )}
 
-              <button
-                className="mt-3 text-xs font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200 transition-colors"
-                onClick={handleReenable}
-                disabled={reenable.isPending}
-              >
-                {reenable.isPending ? "Resuming…" : "Resume schedule"}
-              </button>
+              <div className="mt-3 flex items-center gap-4">
+                <button
+                  className="text-xs font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleRetryNow}
+                  disabled={sendNow.isPending || reenable.isPending}
+                >
+                  {sendNow.isPending ? "Sending…" : "Retry now"}
+                </button>
+                <button
+                  className="text-xs font-medium text-amber-300/70 underline underline-offset-2 hover:text-amber-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleReenable}
+                  disabled={reenable.isPending || sendNow.isPending}
+                >
+                  {reenable.isPending && !sendNow.isPending ? "Resuming…" : "Resume schedule"}
+                </button>
+              </div>
             </div>
           </div>
         )}
