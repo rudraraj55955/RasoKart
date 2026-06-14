@@ -13,7 +13,8 @@ export async function notifyMerchantOfPlanChange(opts: {
   merchantEmail: string;
   businessName: string;
   planName: string;
-  action: "assigned" | "suspended" | "reinstated";
+  action: "assigned" | "upgraded" | "downgraded" | "suspended" | "reinstated";
+  previousPlanName?: string | null;
   expiresAt?: string | null;
   notes?: string | null;
 }): Promise<void> {
@@ -42,6 +43,24 @@ export async function notifyMerchantOfPlanChange(opts: {
       html = buildPlanAssignedHtml({
         businessName: opts.businessName,
         planName: opts.planName,
+        expiresAt: opts.expiresAt ?? null,
+        notes: opts.notes ?? null,
+      });
+    } else if (opts.action === "upgraded") {
+      subject = `[RasoKart] Your plan has been upgraded to ${opts.planName}`;
+      html = buildPlanUpgradedHtml({
+        businessName: opts.businessName,
+        planName: opts.planName,
+        previousPlanName: opts.previousPlanName ?? null,
+        expiresAt: opts.expiresAt ?? null,
+        notes: opts.notes ?? null,
+      });
+    } else if (opts.action === "downgraded") {
+      subject = `[RasoKart] Your plan has been changed to ${opts.planName}`;
+      html = buildPlanDowngradedHtml({
+        businessName: opts.businessName,
+        planName: opts.planName,
+        previousPlanName: opts.previousPlanName ?? null,
         expiresAt: opts.expiresAt ?? null,
         notes: opts.notes ?? null,
       });
@@ -296,6 +315,197 @@ export function buildPlanAssignedHtml(opts: {
     <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
       <p style="margin: 0; color: #52525b; font-size: 11px;">
         This notification was sent by RasoKart because your subscription plan was updated.
+        For support, contact <a href="mailto:support@rasokart.com" style="color: #818cf8; text-decoration: none;">support@rasokart.com</a>.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`.trim();
+}
+
+export function buildPlanUpgradedHtml(opts: {
+  businessName: string;
+  planName: string;
+  previousPlanName: string | null;
+  expiresAt: string | null;
+  notes: string | null;
+}): string {
+  const { businessName, planName, previousPlanName, expiresAt, notes } = opts;
+  const dashboardLink = `${APP_DOMAIN}/merchant/dashboard`;
+  const expiryLine = expiresAt
+    ? new Date(expiresAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #1e3a5f; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — Plan Upgraded</h1>
+      <p style="margin: 4px 0 0; color: #bfdbfe; font-size: 13px;">Your subscription has moved to a higher tier</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #e5e5e5; font-size: 15px;">
+        Dear <strong>${businessName}</strong>,
+      </p>
+      <p style="margin: 0 0 20px; color: #d1d5db; font-size: 14px; line-height: 1.6;">
+        Great news — your account has been upgraded to the <strong style="color: #60a5fa;">${planName}</strong> plan.
+        You now have access to all the additional features and higher limits that come with this tier.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        ${previousPlanName ? `
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Previous Plan</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #71717a;">${previousPlanName}</td>
+        </tr>` : ""}
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">New Plan</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600; color: #60a5fa;">${planName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Status</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600; color: #4ade80;">Active</td>
+        </tr>
+        ${expiryLine ? `
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Valid Until</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${expiryLine}</td>
+        </tr>` : `
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Valid Until</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #71717a;">No expiry date</td>
+        </tr>`}
+        ${notes ? `
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Note</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #d1d5db;">${notes}</td>
+        </tr>` : ""}
+      </table>
+
+      <div style="background: #0f1f3d; border: 1px solid #1e3a5f; border-radius: 6px; padding: 16px; margin-bottom: 24px;">
+        <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #93c5fd;">What's new with your upgrade</p>
+        <ul style="margin: 0; padding-left: 18px; color: #a1a1aa; font-size: 13px; line-height: 1.8;">
+          <li>Higher transaction limits and volume capacity</li>
+          <li>Access to additional payment channels and providers</li>
+          <li>Expanded API access and webhook delivery</li>
+          <li>Priority support and faster settlement processing</li>
+        </ul>
+      </div>
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${dashboardLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          Go to My Dashboard
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        If the link above doesn't work, copy this URL into your browser:<br>
+        <span style="color: #818cf8;">${dashboardLink}</span>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This notification was sent by RasoKart because your subscription plan was upgraded.
+        For support, contact <a href="mailto:support@rasokart.com" style="color: #818cf8; text-decoration: none;">support@rasokart.com</a>.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`.trim();
+}
+
+export function buildPlanDowngradedHtml(opts: {
+  businessName: string;
+  planName: string;
+  previousPlanName: string | null;
+  expiresAt: string | null;
+  notes: string | null;
+}): string {
+  const { businessName, planName, previousPlanName, expiresAt, notes } = opts;
+  const dashboardLink = `${APP_DOMAIN}/merchant/dashboard`;
+  const supportLink = `mailto:support@rasokart.com`;
+  const expiryLine = expiresAt
+    ? new Date(expiresAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #3b1f0a; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — Plan Changed</h1>
+      <p style="margin: 4px 0 0; color: #fdba74; font-size: 13px;">Your subscription has moved to a lower tier</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #e5e5e5; font-size: 15px;">
+        Dear <strong>${businessName}</strong>,
+      </p>
+      <p style="margin: 0 0 20px; color: #d1d5db; font-size: 14px; line-height: 1.6;">
+        Your account has been moved to the <strong style="color: #fb923c;">${planName}</strong> plan.
+        Some features from your previous plan may no longer be available — please review the details below.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        ${previousPlanName ? `
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Previous Plan</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #71717a;">${previousPlanName}</td>
+        </tr>` : ""}
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">New Plan</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600; color: #fb923c;">${planName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Status</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600; color: #4ade80;">Active</td>
+        </tr>
+        ${expiryLine ? `
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Valid Until</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${expiryLine}</td>
+        </tr>` : `
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Valid Until</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #71717a;">No expiry date</td>
+        </tr>`}
+        ${notes ? `
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Reason</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #d1d5db;">${notes}</td>
+        </tr>` : ""}
+      </table>
+
+      <div style="background: #1c1917; border: 1px solid #2a2a2a; border-radius: 6px; padding: 16px; margin-bottom: 24px;">
+        <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #fdba74;">What this means for your account</p>
+        <ul style="margin: 0; padding-left: 18px; color: #a1a1aa; font-size: 13px; line-height: 1.8;">
+          <li>Your account remains active and your data is preserved</li>
+          <li>Transaction and volume limits reflect the new plan tier</li>
+          <li>Some advanced features may be restricted or unavailable</li>
+          <li>Contact support if you wish to upgrade again at any time</li>
+        </ul>
+      </div>
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <a href="${dashboardLink}"
+           style="display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;">
+          Go to My Dashboard
+        </a>
+      </div>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        Questions about this change? Contact us at<br>
+        <a href="${supportLink}" style="color: #818cf8; text-decoration: none;">support@rasokart.com</a>
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This notification was sent by RasoKart because your subscription plan was changed.
         For support, contact <a href="mailto:support@rasokart.com" style="color: #818cf8; text-decoration: none;">support@rasokart.com</a>.
       </p>
     </div>

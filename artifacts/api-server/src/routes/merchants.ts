@@ -1098,6 +1098,7 @@ router.post("/:id/plan/upgrade", requireAdmin, async (req, res) => {
   } else {
     [result] = await db.insert(merchantPlansTable).values({ merchantId: id, planId, assignedBy: user.id, expiresAt: expiresAtDate ?? undefined }).returning();
   }
+  const [fromPlan] = fromPlanId ? await db.select({ name: plansTable.name }).from(plansTable).where(eq(plansTable.id, fromPlanId)).limit(1) : [];
   await logPlanHistory({ merchantId: id, fromPlanId, toPlanId: planId, action: "upgraded", adminId: user.id, adminEmail: user.email, notes, expiresAt: expiresAtDate });
 
   void notifyMerchantOfPlanChange({
@@ -1105,7 +1106,8 @@ router.post("/:id/plan/upgrade", requireAdmin, async (req, res) => {
     merchantEmail: merchant.email,
     businessName: merchant.businessName,
     planName: plan.name,
-    action: "assigned",
+    action: "upgraded",
+    previousPlanName: fromPlan?.name ?? null,
     expiresAt: result.expiresAt?.toISOString() ?? null,
     notes: notes ?? null,
   });
@@ -1136,6 +1138,7 @@ router.post("/:id/plan/downgrade", requireAdmin, async (req, res) => {
   } else {
     [result] = await db.insert(merchantPlansTable).values({ merchantId: id, planId, assignedBy: user.id, expiresAt: expiresAtDate ?? undefined }).returning();
   }
+  const [fromPlan] = fromPlanId ? await db.select({ name: plansTable.name }).from(plansTable).where(eq(plansTable.id, fromPlanId)).limit(1) : [];
   await logPlanHistory({ merchantId: id, fromPlanId, toPlanId: planId, action: "downgraded", adminId: user.id, adminEmail: user.email, notes, expiresAt: expiresAtDate });
 
   void notifyMerchantOfPlanChange({
@@ -1143,7 +1146,8 @@ router.post("/:id/plan/downgrade", requireAdmin, async (req, res) => {
     merchantEmail: merchant.email,
     businessName: merchant.businessName,
     planName: plan.name,
-    action: "assigned",
+    action: "downgraded",
+    previousPlanName: fromPlan?.name ?? null,
     expiresAt: result.expiresAt?.toISOString() ?? null,
     notes: notes ?? null,
   });
