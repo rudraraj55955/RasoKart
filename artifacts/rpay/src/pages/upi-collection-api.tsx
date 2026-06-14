@@ -8,13 +8,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { getToken } from "@/lib/auth";
 import {
   QrCode, Zap, Shield, BarChart3, Webhook, Key,
   Copy, Check, ArrowRight, RefreshCw, Globe,
   CheckCircle2, Code2, Landmark, Link2, Bell,
   Activity, FileText, Lock, FlaskConical, Play,
   AlertCircle, ChevronDown, ChevronUp, Loader2,
-  Clock, Trash2,
+  Clock, Trash2, Send, ExternalLink,
 } from "lucide-react";
 
 function CodeBlock({ code, language = "json" }: { code: string; language?: string }) {
@@ -518,6 +519,297 @@ function SandboxTester() {
   );
 }
 
+// ── Webhook Event Simulator ───────────────────────────────────────────────────
+
+const WEBHOOK_EVENT_OPTIONS = [
+  { value: "payment.success",      label: "payment.success",      desc: "Payment completed successfully" },
+  { value: "payment.failed",       label: "payment.failed",       desc: "Payment failed or was declined" },
+  { value: "payment.pending",      label: "payment.pending",      desc: "Payment is awaiting confirmation" },
+  { value: "withdrawal.approved",  label: "withdrawal.approved",  desc: "Withdrawal / settlement approved" },
+  { value: "withdrawal.rejected",  label: "withdrawal.rejected",  desc: "Withdrawal / settlement rejected" },
+  { value: "settlement.processed", label: "settlement.processed", desc: "Settlement batch processed" },
+] as const;
+
+type SimulateResult = {
+  delivered: boolean;
+  httpStatus: number | null;
+  responseBody: string | null;
+  durationMs: number;
+  webhookUrl: string;
+  signed: boolean;
+  requestBody: string;
+  signatureHeader?: string;
+  error?: string;
+};
+
+function WebhookSimulator() {
+  const [webhookUrl, setWebhookUrl]   = useState("");
+  const [eventType, setEventType]     = useState<string>("payment.success");
+  const [amount, setAmount]           = useState("1000");
+  const [reference, setReference]     = useState("INV-2024-0042");
+  const [loading, setLoading]         = useState(false);
+  const [result, setResult]           = useState<SimulateResult | null>(null);
+  const [showPayload, setShowPayload] = useState(false);
+  const [copiedSig, setCopiedSig]     = useState(false);
+  const [copiedResp, setCopiedResp]   = useState(false);
+
+  const handleFire = async () => {
+    if (!webhookUrl.trim()) {
+      toast.error("Please enter a webhook URL");
+      return;
+    }
+    setLoading(true);
+    setResult(null);
+    try {
+      const token = getToken();
+      const res = await fetch("/api/webhooks/simulate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ webhookUrl: webhookUrl.trim(), eventType, amount, reference }),
+      });
+      const data = await res.json() as SimulateResult & { error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? "Simulation failed");
+        setResult(null);
+      } else {
+        setResult(data);
+        if (data.delivered) {
+          toast.success(`Delivered — HTTP ${data.httpStatus}`);
+        } else {
+          toast.error(`Not delivered — HTTP ${data.httpStatus ?? "no response"}`);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err?.message ?? "Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copySignature = () => {
+    if (!result?.signatureHeader) return;
+    navigator.clipboard.writeText(result.signatureHeader);
+    setCopiedSig(true);
+    setTimeout(() => setCopiedSig(false), 2000);
+  };
+
+  const copyResponse = () => {
+    if (!result?.responseBody) return;
+    navigator.clipboard.writeText(result.responseBody);
+    setCopiedResp(true);
+    setTimeout(() => setCopiedResp(false), 2000);
+  };
+
+  const selectedEvent = WEBHOOK_EVENT_OPTIONS.find((e) => e.value === eventType);
+
+  return (
+    <Card className="border-violet-500/25 bg-violet-500/5">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-violet-500/15">
+            <Send className="w-4 h-4 text-violet-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base flex items-center gap-2">
+              Webhook Event Simulator
+              <Badge className="bg-violet-500/15 text-violet-400 border-violet-500/25 text-[10px] font-semibold">
+                LIVE
+              </Badge>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Fire a signed HMAC-SHA256 payload to any HTTPS endpoint and see the live response.
+            </p>
+          </div>
+          <Button asChild variant="ghost" size="sm" className="text-violet-400 hover:text-violet-300 gap-1.5 text-xs shrink-0">
+            <Link href="/merchant/webhooks">
+              Configure <ExternalLink className="w-3 h-3" />
+            </Link>
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+
+        {/* URL field */}
+        <div className="space-y-1.5">
+          <Label htmlFor="sim-url" className="text-xs">
+            Webhook URL <span className="text-rose-400">*</span>
+          </Label>
+          <Input
+            id="sim-url"
+            type="url"
+            placeholder="https://your-server.com/webhooks/rasokart"
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            className="bg-black/40 border-border/60 font-mono text-sm"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Must be HTTPS. Public internet addresses only — private/localhost IPs are blocked.
+          </p>
+        </div>
+
+        <Separator className="bg-border/40" />
+
+        {/* Event type + amount + reference */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1.5 sm:col-span-1">
+            <Label className="text-xs">Event Type <span className="text-rose-400">*</span></Label>
+            <Select value={eventType} onValueChange={setEventType}>
+              <SelectTrigger className="font-mono text-xs bg-black/40 border-border/60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WEBHOOK_EVENT_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    <span className="font-mono text-xs">{opt.label}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedEvent && (
+              <p className="text-[11px] text-muted-foreground">{selectedEvent.desc}</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="sim-amount" className="text-xs">Amount (₹)</Label>
+            <Input
+              id="sim-amount"
+              type="number"
+              min="1"
+              placeholder="1000"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="bg-black/40 border-border/60 font-mono text-sm h-9"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="sim-ref" className="text-xs">Reference</Label>
+            <Input
+              id="sim-ref"
+              placeholder="INV-2024-0042"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              className="bg-black/40 border-border/60 font-mono text-sm h-9"
+            />
+          </div>
+        </div>
+
+        {/* Payload preview toggle */}
+        <div>
+          <button
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setShowPayload((p) => !p)}
+          >
+            {showPayload ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            {showPayload ? "Hide" : "Show"} example payload
+          </button>
+          {showPayload && (
+            <div className="mt-2">
+              <CodeBlock
+                code={JSON.stringify({
+                  event: eventType,
+                  test: true,
+                  timestamp: new Date().toISOString(),
+                  data: {
+                    transactionId: "txn_test_••••••••••••••••",
+                    amount: parseFloat(amount) || 1000,
+                    currency: "INR",
+                    reference: reference || "INV-2024-0042",
+                    description: "Test event from RasoKart webhook tester",
+                  },
+                }, null, 2)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Fire button */}
+        <Button
+          onClick={handleFire}
+          disabled={loading || !webhookUrl.trim()}
+          className="bg-violet-600 hover:bg-violet-500 text-white gap-2 w-full sm:w-auto"
+        >
+          {loading
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Firing…</>
+            : <><Send className="w-4 h-4" /> Fire Test Event</>}
+        </Button>
+
+        {/* Result panel */}
+        {result && (
+          <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <Separator className="bg-border/40" />
+
+            {/* Status row */}
+            <div className="flex flex-wrap items-center gap-3">
+              {result.delivered
+                ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                : <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />}
+              <span className={`text-sm font-semibold ${result.delivered ? "text-emerald-400" : "text-rose-400"}`}>
+                {result.delivered ? "Delivered" : "Not delivered"}
+              </span>
+              {result.httpStatus != null && (
+                <Badge
+                  className={`text-[10px] font-bold border ${
+                    result.delivered
+                      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
+                      : "bg-rose-500/15 text-rose-400 border-rose-500/25"
+                  }`}
+                >
+                  HTTP {result.httpStatus}
+                </Badge>
+              )}
+              <span className="flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+                <Clock className="w-3 h-3" /> {result.durationMs}ms
+              </span>
+            </div>
+
+            {/* Signature info */}
+            {result.signed && result.signatureHeader && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-xs font-medium text-emerald-400">HMAC-SHA256 signed</span>
+                  </div>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={copySignature} title="Copy signature">
+                    {copiedSig ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  </Button>
+                </div>
+                <code className="text-[11px] font-mono text-muted-foreground break-all">{result.signatureHeader}</code>
+              </div>
+            )}
+
+            {/* Response body */}
+            {result.responseBody != null && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">Response body</span>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={copyResponse} title="Copy response">
+                    {copiedResp ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  </Button>
+                </div>
+                <pre className="bg-black/70 border border-border/50 rounded-lg p-3 text-xs font-mono overflow-x-auto text-green-300 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                  {result.responseBody}
+                </pre>
+              </div>
+            )}
+
+            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+              <Send className="w-3 h-3 text-violet-400/70" />
+              This was a real HTTPS request to your server. No funds were moved.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Page constants ────────────────────────────────────────────────────────────
 
 const FEATURES = [
@@ -797,6 +1089,20 @@ export default function UpiCollectionApi() {
           Fire mock API requests and inspect realistic responses — no API key or real account needed.
         </p>
         <SandboxTester />
+      </div>
+
+      {/* ── Webhook Event Simulator ───────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-semibold">Webhook event simulator</h2>
+          <Badge className="bg-violet-500/15 text-violet-400 border-violet-500/25 text-[10px] font-semibold">
+            LIVE
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground -mt-2">
+          Enter your endpoint URL, pick an event type, and fire a real HMAC-signed payload — see the live HTTP response inline.
+        </p>
+        <WebhookSimulator />
       </div>
 
       {/* ── Capabilities checklist ───────────────────────────────────────────── */}

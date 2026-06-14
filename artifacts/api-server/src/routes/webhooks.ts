@@ -584,6 +584,120 @@ router.post("/test", async (req, res) => {
   res.json({ delivered, httpStatus, responseBody, durationMs, targetUrl, signed, requestBody: body, ...(signatureHeader ? { signatureHeader } : {}) });
 });
 
+// POST /api/webhooks/simulate — send a signed test event to ANY URL the merchant provides.
+// Unlike /test (which fires to the merchant's saved webhook URL), this lets merchants
+// paste any endpoint URL to verify their handler before saving it.
+router.post("/simulate", async (req, res) => {
+  const user = (req as any).user;
+  const merchantId = user.role === "merchant" ? user.merchantId! : undefined;
+  if (!merchantId) {
+    res.status(403).json({ error: "Merchants only" });
+    return;
+  }
+
+  const { webhookUrl, eventType: rawEventType, amount: rawAmount, reference: rawReference } = req.body as {
+    webhookUrl?: string;
+    eventType?: string;
+    amount?: string | number;
+    reference?: string;
+  };
+
+  if (!webhookUrl || typeof webhookUrl !== "string") {
+    res.status(400).json({ error: "webhookUrl is required" });
+    return;
+  }
+
+  const eventType = (rawEventType ?? "payment.success") as SupportedTestEvent;
+  if (!SUPPORTED_TEST_EVENTS.includes(eventType)) {
+    res.status(400).json({ error: `Unsupported event type. Must be one of: ${SUPPORTED_TEST_EVENTS.join(", ")}` });
+    return;
+  }
+
+  // SSRF guard
+  try {
+    await assertSafeWebhookUrl(webhookUrl);
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message ?? "Invalid webhook URL" });
+    return;
+  }
+
+  // Build base payload then apply caller-supplied overrides for amount / reference
+  const payload = buildTestPayload(eventType, merchantId) as Record<string, any>;
+  if (payload.data) {
+    if (rawAmount !== undefined && rawAmount !== "") {
+      const parsed = parseFloat(String(rawAmount));
+      if (!isNaN(parsed)) payload.data.amount = parsed;
+    }
+    if (rawReference !== undefined && rawReference !== "") {
+      payload.data.reference = rawReference;
+    }
+  }
+
+  const body = JSON.stringify(payload);
+
+  // Sign with the merchant's webhook secret if one is configured
+  const [webhook] = await db
+    .select({ secret: webhooksTable.secret })
+    .from(webhooksTable)
+    .where(eq(webhooksTable.merchantId, merchantId))
+    .limit(1);
+
+  const signed = !!(webhook?.secret);
+  let signatureHeader: string | undefined;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent": "RasoKart-Webhooks/1.0",
+    "X-RasoKart-Event": eventType,
+    "X-RasoKart-Delivery": crypto.randomUUID(),
+  };
+  if (webhook?.secret) {
+    signatureHeader = "sha256=" + crypto.createHmac("sha256", webhook.secret).update(body).digest("hex");
+    headers["X-Signature"] = signatureHeader;
+  }
+
+  const start = Date.now();
+  let httpStatus: number | null = null;
+  let responseBody: string | null = null;
+  let delivered = false;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers,
+      body,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    httpStatus = response.status;
+    delivered = response.status >= 200 && response.status < 300;
+
+    const raw = await response.text();
+    responseBody = raw.length > 500 ? raw.slice(0, 500) + "…" : raw || null;
+  } catch (err: any) {
+    delivered = false;
+    responseBody = err?.name === "AbortError" ? "Request timed out after 10s" : String(err?.message ?? err);
+  }
+
+  const durationMs = Date.now() - start;
+
+  req.log.info({ merchantId, eventType, webhookUrl, httpStatus, delivered }, "Webhook simulator fired");
+
+  res.json({
+    delivered,
+    httpStatus,
+    responseBody,
+    durationMs,
+    webhookUrl,
+    signed,
+    requestBody: body,
+    ...(signatureHeader ? { signatureHeader } : {}),
+  });
+});
+
 // POST /api/webhooks/backfill (admin only)
 // Finds webhook records with an empty events array and populates them with the
 // full set of supported event types. Logs the repair action to the audit trail.
