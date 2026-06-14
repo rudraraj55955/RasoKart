@@ -2176,6 +2176,55 @@ paths:
         "502":
           description: SMTP error
 
+  /reports/schedules/{merchantId}/logs/{logId}/retry:
+    post:
+      operationId: retryAdminReportDeliveryLog
+      tags: [reports]
+      summary: Admin — retry a specific failed delivery log entry on behalf of a merchant
+      description: Re-attempts delivery for the given failed delivery log entry on any merchant's behalf. Only entries where success=false and isAutoPause=false are retryable.
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the merchant who owns the log entry
+        - name: logId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the delivery log entry to retry
+      responses:
+        "200":
+          description: Retry succeeded — new delivery log entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, retriedLogId]
+                properties:
+                  ok:
+                    type: boolean
+                  retriedLogId:
+                    type: integer
+                    description: ID of the original failed log entry that was retried
+                  newLog:
+                    allOf:
+                      - $ref: "#/components/schemas/AdminReportDeliveryLog"
+                    nullable: true
+                    description: The newly created delivery log entry from this retry attempt
+        "400":
+          description: Log entry is not a failed delivery or has an invalid id
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden — admin role required
+        "404":
+          description: Log entry, schedule, or merchant not found
+        "502":
+          description: Retry failed — SMTP error
+
   /reports/schedules/{merchantId}/email-preview:
     get:
       operationId: previewAdminMerchantReportScheduleEmail

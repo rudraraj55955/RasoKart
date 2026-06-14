@@ -17,6 +17,7 @@ import {
   getGetAdminReportDeliveryHistoryQueryKey,
   previewAdminMerchantReportScheduleEmail,
   useGetReportDeliveryHealth,
+  useRetryAdminReportDeliveryLog,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1705,6 +1706,7 @@ function DeliveryHistoryPanel() {
   };
 
   const [reEnabling, setReEnabling] = useState<number | null>(null);
+  const [retrying, setRetrying] = useState<number | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const [collapsedMerchants, setCollapsedMerchants] = useState<number[]>([]);
   const [problemOnly, setProblemOnly] = useState(false);
@@ -1728,6 +1730,20 @@ function DeliveryHistoryPanel() {
   const logs = data?.logs ?? [];
 
   const reenable = useReenableAdminMerchantReportSchedule();
+  const retryMutation = useRetryAdminReportDeliveryLog();
+
+  const handleRetry = async (logId: number, merchantId: number, merchantName: string) => {
+    setRetrying(logId);
+    try {
+      await retryMutation.mutateAsync({ merchantId, logId });
+      await queryClient.invalidateQueries({ queryKey: getGetAdminReportDeliveryHistoryQueryKey() });
+      toast.success(`Retry sent for ${merchantName}`);
+    } catch {
+      toast.error("Retry failed — check SMTP configuration");
+    } finally {
+      setRetrying(null);
+    }
+  };
 
   const handleReEnable = async (merchantId: number, merchantName: string) => {
     setReEnabling(merchantId);
@@ -2404,23 +2420,39 @@ function DeliveryHistoryPanel() {
                               {log.failureReason ?? "—"}
                             </TableCell>
                             <TableCell className="text-right">
-                              {log.isAutoPause ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
-                                  onClick={(e) => { e.stopPropagation(); handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`); }}
-                                  disabled={reEnabling === log.merchantId}
-                                  title="Resume this merchant's auto-paused report schedule"
-                                >
-                                  {reEnabling === log.merchantId
-                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                    : <ToggleRight className="w-3.5 h-3.5" />}
-                                  Resume
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
+                              <div className="flex items-center justify-end gap-1">
+                                {log.isAutoPause ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
+                                    onClick={(e) => { e.stopPropagation(); handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`); }}
+                                    disabled={reEnabling === log.merchantId}
+                                    title="Resume this merchant's auto-paused report schedule"
+                                  >
+                                    {reEnabling === log.merchantId
+                                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      : <ToggleRight className="w-3.5 h-3.5" />}
+                                    Resume
+                                  </Button>
+                                ) : !log.success && log.outcome !== "re-enabled" ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs gap-1 text-amber-400 hover:text-amber-300"
+                                    onClick={(e) => { e.stopPropagation(); handleRetry(log.id, log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`); }}
+                                    disabled={retrying === log.id}
+                                    title="Retry this failed delivery on behalf of this merchant"
+                                  >
+                                    {retrying === log.id
+                                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      : <Send className="w-3.5 h-3.5" />}
+                                    Retry
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -2502,23 +2534,39 @@ function DeliveryHistoryPanel() {
                         {log.failureReason ?? "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        {log.isAutoPause ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
-                            onClick={() => handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`)}
-                            disabled={reEnabling === log.merchantId}
-                            title="Resume this merchant's auto-paused report schedule"
-                          >
-                            {reEnabling === log.merchantId
-                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <ToggleRight className="w-3.5 h-3.5" />}
-                            Resume
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        <div className="flex items-center justify-end gap-1">
+                          {log.isAutoPause ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
+                              onClick={() => handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`)}
+                              disabled={reEnabling === log.merchantId}
+                              title="Resume this merchant's auto-paused report schedule"
+                            >
+                              {reEnabling === log.merchantId
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <ToggleRight className="w-3.5 h-3.5" />}
+                              Resume
+                            </Button>
+                          ) : !log.success && log.outcome !== "re-enabled" ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs gap-1 text-amber-400 hover:text-amber-300"
+                              onClick={() => handleRetry(log.id, log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`)}
+                              disabled={retrying === log.id}
+                              title="Retry this failed delivery on behalf of this merchant"
+                            >
+                              {retrying === log.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Send className="w-3.5 h-3.5" />}
+                              Retry
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

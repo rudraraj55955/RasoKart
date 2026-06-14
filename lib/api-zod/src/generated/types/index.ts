@@ -431,6 +431,7 @@ export * from './resendReconciliationAlertEmail200';
 export * from './resendReconciliationReportEmail200';
 export * from './resetWebhookFailureAlertCooldown200';
 export * from './resetWebhookFailureAlertCooldownParams';
+export * from './retryAdminReportDeliveryLog200';
 export * from './retryCallback200';
 export * from './retryReportDeliveryLog200';
 export * from './retryWebhookLog200';

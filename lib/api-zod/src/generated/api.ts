@@ -2131,6 +2131,40 @@ export const SendAdminMerchantReportNowResponse = zod.object({
 
 
 /**
+ * Re-attempts delivery for the given failed delivery log entry on any merchant's behalf. Only entries where success=false and isAutoPause=false are retryable.
+ * @summary Admin — retry a specific failed delivery log entry on behalf of a merchant
+ */
+export const RetryAdminReportDeliveryLogParams = zod.object({
+  "merchantId": zod.coerce.number().describe('ID of the merchant who owns the log entry'),
+  "logId": zod.coerce.number().describe('ID of the delivery log entry to retry')
+})
+
+export const RetryAdminReportDeliveryLogResponse = zod.object({
+  "ok": zod.boolean(),
+  "retriedLogId": zod.number().describe('ID of the original failed log entry that was retried'),
+  "newLog": zod.object({
+  "id": zod.number(),
+  "scheduleId": zod.number(),
+  "merchantId": zod.number(),
+  "attemptedAt": zod.string().describe('ISO timestamp of the delivery attempt'),
+  "success": zod.boolean(),
+  "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
+  "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
+  "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
+  "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
+  "triggeredBy": zod.string().nullish().describe('What triggered this delivery attempt — manual (admin or merchant send-now), bulk (admin send-all-overdue), or scheduler (automated cron)'),
+  "triggeredByEmail": zod.string().nullish().describe('Email of the admin who manually triggered the delivery, if applicable'),
+  "performedByAdminId": zod.number().nullish().describe('ID of the admin who performed this action (e.g. re-enabling a paused schedule)'),
+  "performedByAdminEmail": zod.string().nullish().describe('Email of the admin who performed this action, denormalised for display without a join')
+}).and(zod.object({
+  "businessName": zod.string().nullish().describe('Merchant\'s business name'),
+  "merchantEmail": zod.string().nullish().describe('Merchant\'s email address')
+})).nullish().describe('The newly created delivery log entry from this retry attempt')
+})
+
+
+/**
  * @summary Admin — preview the schedule-update email that would be sent to a merchant
  */
 export const PreviewAdminMerchantReportScheduleEmailParams = zod.object({

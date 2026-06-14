@@ -4993,6 +4993,14 @@ export type SendAdminMerchantReportNow200 = {
   to: string;
 };
 
+export type RetryAdminReportDeliveryLog200 = {
+  ok: boolean;
+  /** ID of the original failed log entry that was retried */
+  retriedLogId: number;
+  /** The newly created delivery log entry from this retry attempt */
+  newLog?: AdminReportDeliveryLog | null;
+};
+
 export type PreviewAdminMerchantReportScheduleEmailParams = {
 /**
  * ISO 8601 timestamp for the new next-run date. Omit or leave empty to preview the "schedule reverted to normal cadence" variant.
