@@ -154,7 +154,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPermissionRequest(request: PermissionRequest) {
-                request.grant(request.resources)
+                val trusted = setOf("https://rasokart.com", "https://www.rasokart.com")
+                val allowed = arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                if (request.origin.toString() in trusted) {
+                    val granted = request.resources.filter { it in allowed }.toTypedArray()
+                    if (granted.isNotEmpty()) request.grant(granted) else request.deny()
+                } else {
+                    request.deny()
+                }
             }
         }
 
