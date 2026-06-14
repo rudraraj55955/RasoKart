@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RasoKart UPI Collection API</title>
+  <meta name="description" content="RasoKart UPI Collection API landing page with Dynamic QR, UPI Collect, UPI Intent, webhooks, settlements and payment ecosystem sections." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page-glow page-glow-one"></div>
+  <div class="page-glow page-glow-two"></div>
+
+  <header class="site-header" id="top">
+    <nav class="navbar container" aria-label="Main navigation">
+      <a class="brand" href="#top" aria-label="RasoKart home">
+        <span class="brand-mark">R</span>
+        <span>RasoKart</span>
+      </a>
+
+      <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+
+      <div class="nav-links" id="navLinks">
+        <a href="#solutions">Solutions</a>
+        <a href="#api">API Services</a>
+        <a href="#docs">Docs</a>
+        <a href="#ecosystem">Ecosystem</a>
+        <a href="#contact">Company</a>
+      </div>
+
+      <div class="nav-actions">
+        <a class="login-link" href="/login">Login</a>
+        <a class="btn btn-small btn-primary" href="/register">Get Started</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero section-pad">
+      <div class="container hero-inner">
+        <div class="notice-pill animate-in">
+          <span class="spark">✦</span>
+          Accept UPI payments with secure APIs, live webhook tracking and configurable settlements.
+        </div>
+
+        <div class="badge-row animate-in delay-1">
+          <span>Secure API</span>
+          <span>Instant Webhook</span>
+          <span>Fast Settlement</span>
+          <span>24/7 Monitoring</span>
+        </div>
+
+        <p class="eyebrow animate-in delay-1">Collection methods</p>
+        <h1 class="animate-in delay-2">3 Ways to <span>Collect UPI Payments</span></h1>
+        <p class="hero-copy animate-in delay-3">
+          Choose the collection mode that fits your business. Launch Dynamic QR, UPI Collect and UPI Intent flows under one RasoKart dashboard.
+        </p>
+
+        <div class="method-grid" id="solutions">
+          <article class="method-card animate-in delay-3">
+            <div class="icon-card">▣</div>
+            <h2>Dynamic QR Code</h2>
+            <p>Generate unique QR codes for every transaction with amount, expiry and merchant-side tracking.</p>
+            <a href="#docs">Explore API</a>
+          </article>
+          <article class="method-card animate-in delay-4">
+            <div class="icon-card gold">●</div>
+            <h2>UPI Collect Request</h2>
+            <p>Send payment approval requests directly to customer UPI handles with webhook confirmation.</p>
+            <a href="#docs">Explore API</a>
+          </article>
+          <article class="method-card animate-in delay-5">
+            <div class="icon-card purple">↗</div>
+            <h2>UPI Intent / Deeplink</h2>
+            <p>Open supported UPI apps from mobile checkout and complete payment with a smooth redirect flow.</p>
+            <a href="#docs">Explore API</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-pad compact" id="api">
+      <div class="container split-grid">
+        <div class="qr-panel glass-card">
+          <p class="small-label">Live payment QR preview</p>
+          <div class="qr-shell" aria-hidden="true">
+            <svg class="qr-svg" viewBox="0 0 120 120" role="img" aria-label="QR code preview">
+              <rect width="120" height="120" rx="16" fill="#f8fbff" />
+              <rect x="13" y="13" width="26" height="26" fill="#071120" />
+              <rect x="19" y="19" width="14" height="14" fill="#f8fbff" />
+              <rect x="81" y="13" width="26" height="26" fill="#071120" />
+              <rect x="87" y="19" width="14" height="14" fill="#f8fbff" />
+              <rect x="13" y="81" width="26" height="26" fill="#071120" />
+              <rect x="19" y="87" width="14" height="14" fill="#f8fbff" />
+              <rect x="50" y="16" width="8" height="8" fill="#071120" />
+              <rect x="62" y="16" width="10" height="10" fill="#071120" />
+              <rect x="48" y="32" width="18" height="8" fill="#071120" />
+              <rect x="73" y="47" width="12" height="12" fill="#071120" />
+              <rect x="93" y="52" width="10" height="10" fill="#071120" />
+              <rect x="48" y="55" width="8" height="26" fill="#071120" />
+              <rect x="62" y="66" width="20" height="8" fill="#071120" />
+              <rect x="92" y="74" width="14" height="14" fill="#071120" />
+              <rect x="52" y="92" width="10" height="10" fill="#071120" />
+              <rect x="70" y="92" width="8" height="8" fill="#071120" />
+              <rect x="84" y="98" width="18" height="8" fill="#071120" />
+            </svg>
+          </div>
+          <h3>Scan to Pay RasoKart</h3>
+          <p>Merchant checkout payment simulation</p>
+          <button class="btn btn-secondary" type="button">Generate QR</button>
+          <div class="app-chips">
+            <span>UPI Apps</span><span>Bank Apps</span><span>Wallets</span><span>Netbanking</span><span>All Banks</span>
+          </div>
+        </div>
+
+        <div class="content-panel">
+          <p class="eyebrow left">Why choose RasoKart</p>
+          <h2>The Fastest Way to Accept <span>Payments in India</span></h2>
+          <p>
+            RasoKart brings QR checkout, payment links, UPI intent, webhook logs and settlement control into one clean dashboard. Built for high-speed operations with merchant-wise access control.
+          </p>
+          <p>
+            Keep provider details private, show only your own brand to customers, and manage every payment flow from Super Admin settings.
+          </p>
+          <div class="stats-grid">
+            <div><strong>0%</strong><span>MDR placeholder</span></div>
+            <div><strong>T+0 / T+1</strong><span>Settlement label</span></div>
+            <div><strong>99.9%</strong><span>Monitoring uptime</span></div>
+            <div><strong>24/7</strong><span>Webhook tracking</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-pad compact" id="docs">
+      <div class="container api-grid">
+        <div>
+          <p class="eyebrow left">API Reference</p>
+          <h2>Request <span>Parameters</span></h2>
+          <div class="table-wrap glass-card">
+            <table>
+              <thead>
+                <tr><th>Parameter</th><th>Type</th><th>Status</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>amount</td><td>number</td><td><span class="required">Required</span></td><td>Collection amount in INR</td></tr>
+                <tr><td>currency</td><td>string</td><td><span class="required">Required</span></td><td>Payment currency</td></tr>
+                <tr><td>type</td><td>string</td><td><span class="required">Required</span></td><td>QR, Collect request or Intent link</td></tr>
+                <tr><td>note</td><td>string</td><td><span>Optional</span></td><td>Transaction note</td></tr>
+                <tr><td>customer_name</td><td>string</td><td><span>Optional</span></td><td>Customer display name</td></tr>
+                <tr><td>customer_mobile</td><td>string</td><td><span>Optional</span></td><td>SMS/mobile identifier</td></tr>
+                <tr><td>customer_email</td><td>string</td><td><span>Optional</span></td><td>Email receipt address</td></tr>
+                <tr><td>redirect_url</td><td>string</td><td><span>Optional</span></td><td>Redirect after payment</td></tr>
+                <tr><td>webhook_url</td><td>string</td><td><span class="required">Required</span></td><td>Payment callback endpoint</td></tr>
+                <tr><td>expire_minutes</td><td>number</td><td><span>Optional</span></td><td>Payment expiry time</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note-box">RasoKart only exposes your brand on customer pages. Provider visibility stays under Super Admin control.</p>
+        </div>
+
+        <div class="code-card glass-card">
+          <div class="code-top"><span></span><span></span><span></span><b>POST /api/v1/collect</b></div>
+          <pre><code>{
+  "amount": 1500,
+  "currency": "INR",
+  "type": "dynamic_qr",
+  "note": "Order #RK1024",
+  "customer_name": "Rahul Sharma",
+  "customer_mobile": "9999999999",
+  "webhook_url": "https://merchant.com/webhook",
+  "redirect_url": "https://merchant.com/success",
+  "expire_minutes": 10
+}</code></pre>
+          <button class="copy-btn" type="button" data-copy='{"amount":1500,"currency":"INR","type":"dynamic_qr","webhook_url":"https://merchant.com/webhook"}'>Copy sample</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-pad compact">
+      <div class="container flow-grid">
+        <div>
+          <p class="eyebrow left">Settlement Flow</p>
+          <h2>Instant To <span>Settlement</span></h2>
+          <div class="timeline">
+            <div><b>1</b><h3>Customer scans QR / opens link</h3><p>RasoKart creates a unique payment session for the merchant order.</p></div>
+            <div><b>2</b><h3>Customer approves payment</h3><p>Payment is completed inside the customer’s selected UPI app.</p></div>
+            <div><b>3</b><h3>RasoKart processes transaction</h3><p>Status, UTR, amount and merchant mapping are verified in the dashboard.</p></div>
+            <div><b>4</b><h3>Webhook + settlement</h3><p>Merchant receives callback and settlement label follows admin settings.</p></div>
+          </div>
+        </div>
+
+        <div>
+          <p class="eyebrow left">Key Features</p>
+          <div class="feature-list">
+            <article><span>🏷️</span><div><h3>White-label QR/VPA</h3><p>Customer-facing screens stay under RasoKart branding.</p></div></article>
+            <article><span>⚡</span><div><h3>Real-time Webhooks</h3><p>Instant callback logs for successful, failed and pending payments.</p></div></article>
+            <article><span>📊</span><div><h3>Perfect Dashboard</h3><p>Transaction history, account rules, filters and reports.</p></div></article>
+            <article><span>↩️</span><div><h3>Auto Refund Support</h3><p>Refund request and tracking workflow for eligible payments.</p></div></article>
+            <article><span>🧾</span><div><h3>Dynamic Reconciliation</h3><p>UTR and order matching to reduce manual checking.</p></div></article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-pad compact">
+      <div class="container">
+        <p class="eyebrow">Use Cases</p>
+        <h2 class="center-title">Who Uses RasoKart <span>UPI Collection API?</span></h2>
+        <div class="card-grid six-grid">
+          <article><span>🛒</span><h3>E-commerce Checkout</h3><p>Collect payments for online stores with QR, link and webhook status.</p></article>
+          <article><span>📱</span><h3>Recharge / Utility</h3><p>Fast payment collection for service and utility platforms.</p></article>
+          <article><span>🧾</span><h3>Invoice Collection</h3><p>Send payment links and track UTR against invoices.</p></article>
+          <article><span>📲</span><h3>Mobile App Payments</h3><p>Add UPI intent flow in apps for faster checkout.</p></article>
+          <article><span>🏫</span><h3>Fee Collection</h3><p>Collect school, coaching and membership fees.</p></article>
+          <article><span>🏥</span><h3>Healthcare Payments</h3><p>QR and link-based payment collection for clinics.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-pad compact" id="ecosystem">
+      <div class="container">
+        <p class="eyebrow">Build and scale</p>
+        <h2 class="center-title">Complete the <span>Payment Ecosystem</span></h2>
+        <div class="card-grid ecosystem-grid">
+          <article><span>💸</span><h3>Payout API</h3><p>Send vendor and user payouts with status tracking.</p></article>
+          <article><span>▣</span><h3>QR Code & UPI API</h3><p>Generate static and dynamic UPI collection flows.</p></article>
+          <article><span>🏦</span><h3>Virtual Account API</h3><p>Create mapped collection accounts for merchants.</p></article>
+          <article><span>🔐</span><h3>Payment Gateway</h3><p>Manage checkout, payment links and card/bank flows.</p></article>
+          <article><span>📄</span><h3>BBPS API</h3><p>Bill payment ecosystem for recharge and utilities.</p></article>
+          <article><span>💼</span><h3>Money Transfer API</h3><p>Domestic transfer workflow with ledger records.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-pad compact" id="contact">
+      <div class="container cta-card">
+        <div>
+          <p class="eyebrow left">Start now</p>
+          <h2>Start Collecting UPI Payments Today</h2>
+          <p>White-label API suite with dashboard controls, merchant settings, webhooks and reports.</p>
+        </div>
+        <div class="cta-actions">
+          <a href="/docs" class="btn btn-primary">API Docs</a>
+          <a href="/merchant/api-keys" class="btn btn-outline">Get API Keys →</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <button class="chat-bubble" type="button" aria-label="Chat with RasoKart">💬</button>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p>© 2026 RasoKart. All rights reserved.</p>
+      <p>White-label payment infrastructure for modern merchants.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
