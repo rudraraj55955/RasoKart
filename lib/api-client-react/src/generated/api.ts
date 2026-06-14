@@ -218,6 +218,7 @@ import type {
   MerchantBrandingInput,
   MerchantConnection,
   MerchantConnectionInput,
+  MerchantEmailOptOutStats,
   MerchantFeaturesEntry,
   MerchantFeaturesInput,
   MerchantFeaturesListResponse,
@@ -2405,6 +2406,83 @@ export const useBulkUnassignMerchantPlan = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getBulkUnassignMerchantPlanMutationOptions(options));
     }
+
+export const getGetMerchantsEmailOptOutStatsUrl = () => {
+
+
+
+
+  return `/api/merchants/email-opt-out-stats`
+}
+
+/**
+ * @summary Get email opt-out counts per email type across all merchant users (admin only)
+ */
+export const getMerchantsEmailOptOutStats = async ( options?: RequestInit): Promise<MerchantEmailOptOutStats> => {
+
+  return customFetch<MerchantEmailOptOutStats>(getGetMerchantsEmailOptOutStatsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMerchantsEmailOptOutStatsQueryKey = () => {
+    return [
+    `/api/merchants/email-opt-out-stats`
+    ] as const;
+    }
+
+
+export const getGetMerchantsEmailOptOutStatsQueryOptions = <TData = Awaited<ReturnType<typeof getMerchantsEmailOptOutStats>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantsEmailOptOutStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMerchantsEmailOptOutStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMerchantsEmailOptOutStats>>> = ({ signal }) => getMerchantsEmailOptOutStats({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMerchantsEmailOptOutStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMerchantsEmailOptOutStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getMerchantsEmailOptOutStats>>>
+export type GetMerchantsEmailOptOutStatsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get email opt-out counts per email type across all merchant users (admin only)
+ */
+
+export function useGetMerchantsEmailOptOutStats<TData = Awaited<ReturnType<typeof getMerchantsEmailOptOutStats>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantsEmailOptOutStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMerchantsEmailOptOutStatsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetMerchantsWebhookFailureCountsUrl = (params: GetMerchantsWebhookFailureCountsParams,) => {
   const normalizedParams = new URLSearchParams();

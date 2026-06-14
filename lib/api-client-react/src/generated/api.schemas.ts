@@ -1656,6 +1656,25 @@ export interface LastReconSummary {
   triggeredBy?: string;
 }
 
+export interface MerchantEmailOptOutStats {
+  /** Merchants who opted out of settlement state change emails */
+  settlementEmails: number;
+  /** Merchants who opted out of login alert emails */
+  loginAlertEmails: number;
+  /** Merchants who opted out of report schedule change emails */
+  reportScheduleEmails: number;
+  /** Merchants who opted out of plan expiry alert emails */
+  planExpiryAlertEmails: number;
+  /** Merchants who have at least one security email type disabled */
+  securityEmails: number;
+  /** Merchants who opted out of reconciliation alert emails */
+  reconciliationAlertEmails: number;
+  /** Merchants who opted out of weekly delivery digest emails */
+  weeklyDigestEmails: number;
+  /** Total number of merchant user accounts */
+  totalMerchantUsers: number;
+}
+
 export interface DashboardStats {
   totalDeposits: number;
   totalWithdrawals: number;

@@ -774,6 +774,21 @@ export const BulkUnassignMerchantPlanResponse = zod.object({
 
 
 /**
+ * @summary Get email opt-out counts per email type across all merchant users (admin only)
+ */
+export const GetMerchantsEmailOptOutStatsResponse = zod.object({
+  "settlementEmails": zod.number().describe('Merchants who opted out of settlement state change emails'),
+  "loginAlertEmails": zod.number().describe('Merchants who opted out of login alert emails'),
+  "reportScheduleEmails": zod.number().describe('Merchants who opted out of report schedule change emails'),
+  "planExpiryAlertEmails": zod.number().describe('Merchants who opted out of plan expiry alert emails'),
+  "securityEmails": zod.number().describe('Merchants who have at least one security email type disabled'),
+  "reconciliationAlertEmails": zod.number().describe('Merchants who opted out of reconciliation alert emails'),
+  "weeklyDigestEmails": zod.number().describe('Merchants who opted out of weekly delivery digest emails'),
+  "totalMerchantUsers": zod.number().describe('Total number of merchant user accounts')
+})
+
+
+/**
  * @summary Get webhook failure alert counts per merchant (admin only)
  */
 export const GetMerchantsWebhookFailureCountsQueryParams = zod.object({

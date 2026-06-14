@@ -325,6 +325,7 @@ export * from './merchantCredentialEvent';
 export * from './merchantCredentialEventEventType';
 export * from './merchantDocument';
 export * from './merchantDocumentDocType';
+export * from './merchantEmailOptOutStats';
 export * from './merchantFeaturesEntry';
 export * from './merchantFeaturesInput';
 export * from './merchantFeaturesListResponse';

@@ -209,11 +209,26 @@ export default function AdminMerchants() {
   const [expiryStatus, setExpiryStatus] = useState<"" | "expiring" | "expired">("");
   const [rejectionReasonFilter, setRejectionReasonFilter] = useState("");
   const [callbackSecretFilter, setCallbackSecretFilter] = useState<"" | "true" | "false">("");
-  const [loginAlertFilter, setLoginAlertFilter] = useState<"" | "false">("");
-  const [securityEmailsDisabledFilter, setSecurityEmailsDisabledFilter] = useState<"" | "true">("");
-  const [settlementStateEmailsFilter, setSettlementStateEmailsFilter] = useState<"" | "false">("");
-  const [reportScheduleEmailsFilter, setReportScheduleEmailsFilter] = useState<"" | "false">("");
-  const [planExpiryAlertEmailsFilter, setPlanExpiryAlertEmailsFilter] = useState<"" | "false">("");
+  const [loginAlertFilter, setLoginAlertFilter] = useState<"" | "false">(() => {
+    const v = new URLSearchParams(window.location.search).get("loginAlertEmails");
+    return v === "false" ? "false" : "";
+  });
+  const [securityEmailsDisabledFilter, setSecurityEmailsDisabledFilter] = useState<"" | "true">(() => {
+    const v = new URLSearchParams(window.location.search).get("securityEmailsDisabled");
+    return v === "true" ? "true" : "";
+  });
+  const [settlementStateEmailsFilter, setSettlementStateEmailsFilter] = useState<"" | "false">(() => {
+    const v = new URLSearchParams(window.location.search).get("settlementStateEmails");
+    return v === "false" ? "false" : "";
+  });
+  const [reportScheduleEmailsFilter, setReportScheduleEmailsFilter] = useState<"" | "false">(() => {
+    const v = new URLSearchParams(window.location.search).get("reportScheduleEmails");
+    return v === "false" ? "false" : "";
+  });
+  const [planExpiryAlertEmailsFilter, setPlanExpiryAlertEmailsFilter] = useState<"" | "false">(() => {
+    const v = new URLSearchParams(window.location.search).get("planExpiryAlertEmails");
+    return v === "false" ? "false" : "";
+  });
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");

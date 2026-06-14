@@ -803,6 +803,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkMerchantActionResult"
 
+  /merchants/email-opt-out-stats:
+    get:
+      operationId: getMerchantsEmailOptOutStats
+      tags: [merchants]
+      summary: Get email opt-out counts per email type across all merchant users (admin only)
+      responses:
+        "200":
+          description: Email opt-out counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantEmailOptOutStats"
+
   /merchants/webhook-failure-counts:
     get:
       operationId: getMerchantsWebhookFailureCounts
@@ -10514,6 +10527,35 @@ components:
           type: number
         triggeredBy:
           type: string
+
+    MerchantEmailOptOutStats:
+      type: object
+      required: [settlementEmails, loginAlertEmails, reportScheduleEmails, planExpiryAlertEmails, securityEmails, reconciliationAlertEmails, weeklyDigestEmails, totalMerchantUsers]
+      properties:
+        settlementEmails:
+          type: integer
+          description: Merchants who opted out of settlement state change emails
+        loginAlertEmails:
+          type: integer
+          description: Merchants who opted out of login alert emails
+        reportScheduleEmails:
+          type: integer
+          description: Merchants who opted out of report schedule change emails
+        planExpiryAlertEmails:
+          type: integer
+          description: Merchants who opted out of plan expiry alert emails
+        securityEmails:
+          type: integer
+          description: Merchants who have at least one security email type disabled
+        reconciliationAlertEmails:
+          type: integer
+          description: Merchants who opted out of reconciliation alert emails
+        weeklyDigestEmails:
+          type: integer
+          description: Merchants who opted out of weekly delivery digest emails
+        totalMerchantUsers:
+          type: integer
+          description: Total number of merchant user accounts
 
     DashboardStats:
       type: object

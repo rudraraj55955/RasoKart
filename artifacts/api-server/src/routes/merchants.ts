@@ -345,6 +345,39 @@ router.get("/webhook-failure-counts", requireAdmin, async (req, res, next) => {
   }
 });
 
+// GET /api/merchants/email-opt-out-stats  (admin only)
+// Returns per-email-type opt-out counts across all merchant users
+router.get("/email-opt-out-stats", requireAdmin, async (req, res, next) => {
+  try {
+    const [row] = await db
+      .select({
+        settlementEmails: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.settlementStateChangedEmails} = false)`,
+        loginAlertEmails: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.loginAlertEmails} = false)`,
+        reportScheduleEmails: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.reportScheduleChangedEmails} = false)`,
+        planExpiryAlertEmails: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.planExpiryAlertEmails} = false)`,
+        securityEmails: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.signatureFailureAlertEmails} = false OR ${usersTable.webhookFailureEmails} = false OR ${usersTable.apiKeyGeneratedEmails} = false OR ${usersTable.apiKeyRevokedEmails} = false)`,
+        reconciliationAlertEmails: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.reconciliationAlertEmails} = false)`,
+        weeklyDigestEmails: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.weeklyDeliveryDigestEmails} = false)`,
+        total: count(),
+      })
+      .from(usersTable)
+      .where(eq(usersTable.role, "merchant"));
+
+    res.json({
+      settlementEmails: Number(row.settlementEmails),
+      loginAlertEmails: Number(row.loginAlertEmails),
+      reportScheduleEmails: Number(row.reportScheduleEmails),
+      planExpiryAlertEmails: Number(row.planExpiryAlertEmails),
+      securityEmails: Number(row.securityEmails),
+      reconciliationAlertEmails: Number(row.reconciliationAlertEmails),
+      weeklyDigestEmails: Number(row.weeklyDigestEmails),
+      totalMerchantUsers: Number(row.total),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/merchants/:id  (admin, or the merchant viewing their own profile)
 router.get("/:id", async (req, res) => {
   const user = (req as any).user;

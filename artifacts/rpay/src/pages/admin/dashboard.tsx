@@ -1,7 +1,7 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes, useGetGithubSyncStatus, useGetDashboardWebhookHealth, useGetEkqrWebhookStats } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes, useGetGithubSyncStatus, useGetDashboardWebhookHealth, useGetEkqrWebhookStats, useGetMerchantsEmailOptOutStats } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap, Github, Webhook, Radio } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap, Github, Webhook, Radio, MailX } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from "recharts";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -32,6 +32,7 @@ export default function AdminDashboard() {
   const { data: githubSync } = useGetGithubSyncStatus();
   const { data: webhookHealth } = useGetDashboardWebhookHealth();
   const { data: ekqrStats } = useGetEkqrWebhookStats();
+  const { data: emailOptOut } = useGetMerchantsEmailOptOutStats();
 
   return (
     <div className="space-y-6">
@@ -214,6 +215,100 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </Link>
+        );
+      })()}
+
+      {emailOptOut && emailOptOut.totalMerchantUsers > 0 && (() => {
+        const items = [
+          {
+            label: "Settlement emails",
+            count: emailOptOut.settlementEmails,
+            filter: "settlementStateEmails=false",
+          },
+          {
+            label: "Login alerts",
+            count: emailOptOut.loginAlertEmails,
+            filter: "loginAlertEmails=false",
+          },
+          {
+            label: "Report schedule",
+            count: emailOptOut.reportScheduleEmails,
+            filter: "reportScheduleEmails=false",
+          },
+          {
+            label: "Plan expiry alerts",
+            count: emailOptOut.planExpiryAlertEmails,
+            filter: "planExpiryAlertEmails=false",
+          },
+          {
+            label: "Security emails",
+            count: emailOptOut.securityEmails,
+            filter: "securityEmailsDisabled=true",
+          },
+          {
+            label: "Reconciliation alerts",
+            count: emailOptOut.reconciliationAlertEmails,
+            filter: null,
+          },
+          {
+            label: "Weekly digest",
+            count: emailOptOut.weeklyDigestEmails,
+            filter: null,
+          },
+        ];
+        const totalOptOuts = items.reduce((s, i) => s + i.count, 0);
+        const hasAny = totalOptOuts > 0;
+        return (
+          <Card className={hasAny ? "border-amber-500/30 bg-amber-500/5" : "border-emerald-500/30 bg-emerald-500/5"}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MailX className={`w-4 h-4 ${hasAny ? "text-amber-400" : "text-emerald-400"}`} />
+                  <CardTitle className="text-base">Communication Health</CardTitle>
+                  <span className="text-xs text-muted-foreground">
+                    {emailOptOut.totalMerchantUsers} merchant {emailOptOut.totalMerchantUsers === 1 ? "account" : "accounts"}
+                  </span>
+                </div>
+                <Link href="/admin/merchants">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+                    All merchants <ChevronRight className="w-3 h-3" />
+                  </span>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {hasAny ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {items.map((item) => {
+                    const content = (
+                      <div className={`rounded-lg border p-3 transition-all ${item.count > 0 ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 cursor-pointer" : "border-border/30 bg-muted/5 opacity-50"}`}>
+                        <p className={`text-xl font-bold ${item.count > 0 ? "text-amber-400" : "text-muted-foreground"}`}>{item.count}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+                        {item.count > 0 && item.filter && (
+                          <p className="text-[10px] text-amber-400/60 mt-1">opted out</p>
+                        )}
+                        {item.count > 0 && !item.filter && (
+                          <p className="text-[10px] text-amber-400/60 mt-1">opted out</p>
+                        )}
+                      </div>
+                    );
+                    return item.filter && item.count > 0 ? (
+                      <Link key={item.label} href={`/admin/merchants?${item.filter}`}>
+                        {content}
+                      </Link>
+                    ) : (
+                      <div key={item.label}>{content}</div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 py-1">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <p className="text-sm text-emerald-400">All merchants have full email coverage</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         );
       })()}
 
