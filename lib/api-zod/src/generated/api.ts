@@ -1201,6 +1201,37 @@ export const UpdateMerchantWebhookMaxRetriesResponse = zod.object({
 
 
 /**
+ * Allows an admin to toggle individual email notification preferences for a merchant's user account. Only the fields provided in the request body are updated; omitted fields are left unchanged.
+ * @summary Update merchant notification email preferences (admin only)
+ */
+export const UpdateMerchantEmailPreferencesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateMerchantEmailPreferencesBody = zod.object({
+  "loginAlertEmails": zod.boolean().optional(),
+  "signatureFailureAlertEmails": zod.boolean().optional(),
+  "webhookFailureEmails": zod.boolean().optional(),
+  "apiKeyGeneratedEmails": zod.boolean().optional(),
+  "apiKeyRevokedEmails": zod.boolean().optional(),
+  "reportScheduleChangedEmails": zod.boolean().optional(),
+  "settlementStateChangedEmails": zod.boolean().optional(),
+  "planExpiryAlertEmails": zod.boolean().optional()
+}).describe('Partial update of a merchant\'s email notification preferences. Only the fields included in the request body are modified.')
+
+export const UpdateMerchantEmailPreferencesResponse = zod.object({
+  "loginAlertEmails": zod.boolean(),
+  "signatureFailureAlertEmails": zod.boolean(),
+  "webhookFailureEmails": zod.boolean(),
+  "apiKeyGeneratedEmails": zod.boolean(),
+  "apiKeyRevokedEmails": zod.boolean(),
+  "reportScheduleChangedEmails": zod.boolean(),
+  "settlementStateChangedEmails": zod.boolean(),
+  "planExpiryAlertEmails": zod.boolean()
+})
+
+
+/**
  * Returns key_generated, key_revoked, and secret_rotated events for a merchant, newest first. Optionally filter by eventType.
  * @summary List credential events for a merchant (admin only)
  */

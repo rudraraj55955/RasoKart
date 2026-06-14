@@ -1256,6 +1256,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /merchants/{id}/email-preferences:
+    patch:
+      operationId: updateMerchantEmailPreferences
+      tags: [merchants]
+      summary: Update merchant notification email preferences (admin only)
+      description: Allows an admin to toggle individual email notification preferences for a merchant's user account. Only the fields provided in the request body are updated; omitted fields are left unchanged.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MerchantEmailPreferencesInput"
+      responses:
+        "200":
+          description: Updated email preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantEmailPreferencesResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Admin access only
+        "404":
+          description: Merchant not found
+
   /merchants/{id}/credential-events:
     get:
       operationId: listMerchantCredentialEvents
@@ -9106,6 +9142,48 @@ components:
           additionalProperties:
             type: integer
           description: Map of merchant ID (as string key) to total webhook failure alert count
+
+    MerchantEmailPreferencesInput:
+      type: object
+      description: Partial update of a merchant's email notification preferences. Only the fields included in the request body are modified.
+      properties:
+        loginAlertEmails:
+          type: boolean
+        signatureFailureAlertEmails:
+          type: boolean
+        webhookFailureEmails:
+          type: boolean
+        apiKeyGeneratedEmails:
+          type: boolean
+        apiKeyRevokedEmails:
+          type: boolean
+        reportScheduleChangedEmails:
+          type: boolean
+        settlementStateChangedEmails:
+          type: boolean
+        planExpiryAlertEmails:
+          type: boolean
+
+    MerchantEmailPreferencesResponse:
+      type: object
+      required: [loginAlertEmails, signatureFailureAlertEmails, webhookFailureEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, reportScheduleChangedEmails, settlementStateChangedEmails, planExpiryAlertEmails]
+      properties:
+        loginAlertEmails:
+          type: boolean
+        signatureFailureAlertEmails:
+          type: boolean
+        webhookFailureEmails:
+          type: boolean
+        apiKeyGeneratedEmails:
+          type: boolean
+        apiKeyRevokedEmails:
+          type: boolean
+        reportScheduleChangedEmails:
+          type: boolean
+        settlementStateChangedEmails:
+          type: boolean
+        planExpiryAlertEmails:
+          type: boolean
 
     MerchantWebhookMaxRetriesInput:
       type: object

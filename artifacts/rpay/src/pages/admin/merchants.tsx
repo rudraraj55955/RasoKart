@@ -19,6 +19,7 @@ import {
   useGetWebhookFailureAlertHistory,
   useGetMerchantsWebhookFailureCounts,
   useGetKycSummary, useListKycDocuments, useReviewKycDocument,
+  useUpdateMerchantEmailPreferences,
   getListMerchantsQueryKey,
   listMerchants,
   previewMerchantPlanEmail,
@@ -36,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -387,6 +389,26 @@ export default function AdminMerchants() {
       },
     },
   });
+  const updateEmailPrefsMutation = useUpdateMerchantEmailPreferences({
+    mutation: {
+      onSuccess: (data, vars) => {
+        setAssignPlanMerchant(prev => prev ? { ...prev, ...data } : prev);
+        qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+      },
+      onError: () => {
+        toast.error("Failed to update email preference");
+      },
+    },
+  });
+
+  const toggleEmailPref = (field: string, label: string, enabled: boolean) => {
+    if (!assignPlanMerchant) return;
+    updateEmailPrefsMutation.mutate(
+      { id: assignPlanMerchant.id, data: { [field]: enabled } as any },
+      { onSuccess: () => toast.success(`${label} ${enabled ? "enabled" : "disabled"}`) }
+    );
+  };
+
   // Fetch the deep-link merchant by ID so the panel opens regardless of which page they're on
   const { data: deepLinkMerchant } = useGetMerchant(
     deepLinkId ?? 0,
@@ -2474,7 +2496,7 @@ export default function AdminMerchants() {
                 <BellOff className="w-4 h-4 text-muted-foreground shrink-0" />
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Security Email Preferences</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-1.5">
                 {(
                   [
                     { key: "loginAlertEmails", label: "Login Alerts" },
@@ -2485,22 +2507,19 @@ export default function AdminMerchants() {
                   ] as const
                 ).map(({ key, label }) => {
                   const enabled = assignPlanMerchant?.[key] !== false;
+                  const isPending = updateEmailPrefsMutation.isPending;
                   return (
-                    <span
-                      key={key}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border ${
-                        enabled
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                          : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                      }`}
-                    >
-                      {enabled ? (
-                        <CheckCircle className="w-3 h-3 shrink-0" />
-                      ) : (
-                        <BellOff className="w-3 h-3 shrink-0" />
-                      )}
-                      {label}
-                    </span>
+                    <div key={key} className="flex items-center justify-between gap-2 py-0.5">
+                      <span className={`text-xs font-medium ${enabled ? "text-foreground" : "text-muted-foreground"}`}>
+                        {label}
+                      </span>
+                      <Switch
+                        checked={enabled}
+                        disabled={isPending}
+                        onCheckedChange={(checked) => toggleEmailPref(key, label, checked)}
+                        className="shrink-0"
+                      />
+                    </div>
                   );
                 })}
               </div>
@@ -2532,7 +2551,7 @@ export default function AdminMerchants() {
                   );
                 })()}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-1.5">
                 {(
                   [
                     { key: "reportScheduleChangedEmails", label: "Report Schedule Changes" },
@@ -2541,22 +2560,19 @@ export default function AdminMerchants() {
                   ] as const
                 ).map(({ key, label }) => {
                   const enabled = assignPlanMerchant?.[key] !== false;
+                  const isPending = updateEmailPrefsMutation.isPending;
                   return (
-                    <span
-                      key={key}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border ${
-                        enabled
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                          : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                      }`}
-                    >
-                      {enabled ? (
-                        <CheckCircle className="w-3 h-3 shrink-0" />
-                      ) : (
-                        <BellOff className="w-3 h-3 shrink-0" />
-                      )}
-                      {label}
-                    </span>
+                    <div key={key} className="flex items-center justify-between gap-2 py-0.5">
+                      <span className={`text-xs font-medium ${enabled ? "text-foreground" : "text-muted-foreground"}`}>
+                        {label}
+                      </span>
+                      <Switch
+                        checked={enabled}
+                        disabled={isPending}
+                        onCheckedChange={(checked) => toggleEmailPref(key, label, checked)}
+                        className="shrink-0"
+                      />
+                    </div>
                   );
                 })}
               </div>

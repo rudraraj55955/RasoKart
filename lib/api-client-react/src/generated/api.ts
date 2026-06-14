@@ -219,6 +219,8 @@ import type {
   MerchantConnection,
   MerchantConnectionInput,
   MerchantEmailOptOutStats,
+  MerchantEmailPreferencesInput,
+  MerchantEmailPreferencesResponse,
   MerchantFeaturesEntry,
   MerchantFeaturesInput,
   MerchantFeaturesListResponse,
@@ -3604,6 +3606,79 @@ export const useUpdateMerchantWebhookMaxRetries = <TError = ErrorType<ErrorRespo
         TContext
       > => {
       return useMutation(getUpdateMerchantWebhookMaxRetriesMutationOptions(options));
+    }
+
+export const getUpdateMerchantEmailPreferencesUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/email-preferences`
+}
+
+/**
+ * Allows an admin to toggle individual email notification preferences for a merchant's user account. Only the fields provided in the request body are updated; omitted fields are left unchanged.
+ * @summary Update merchant notification email preferences (admin only)
+ */
+export const updateMerchantEmailPreferences = async (id: number,
+    merchantEmailPreferencesInput: MerchantEmailPreferencesInput, options?: RequestInit): Promise<MerchantEmailPreferencesResponse> => {
+
+  return customFetch<MerchantEmailPreferencesResponse>(getUpdateMerchantEmailPreferencesUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      merchantEmailPreferencesInput,)
+  }
+);}
+
+
+
+
+export const getUpdateMerchantEmailPreferencesMutationOptions = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMerchantEmailPreferences>>, TError,{id: number;data: BodyType<MerchantEmailPreferencesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMerchantEmailPreferences>>, TError,{id: number;data: BodyType<MerchantEmailPreferencesInput>}, TContext> => {
+
+const mutationKey = ['updateMerchantEmailPreferences'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMerchantEmailPreferences>>, {id: number;data: BodyType<MerchantEmailPreferencesInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMerchantEmailPreferences(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMerchantEmailPreferencesMutationResult = NonNullable<Awaited<ReturnType<typeof updateMerchantEmailPreferences>>>
+    export type UpdateMerchantEmailPreferencesMutationBody = BodyType<MerchantEmailPreferencesInput>
+    export type UpdateMerchantEmailPreferencesMutationError = ErrorType<ErrorResponse | void>
+
+    /**
+ * @summary Update merchant notification email preferences (admin only)
+ */
+export const useUpdateMerchantEmailPreferences = <TError = ErrorType<ErrorResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMerchantEmailPreferences>>, TError,{id: number;data: BodyType<MerchantEmailPreferencesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMerchantEmailPreferences>>,
+        TError,
+        {id: number;data: BodyType<MerchantEmailPreferencesInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateMerchantEmailPreferencesMutationOptions(options));
     }
 
 export const getListMerchantCredentialEventsUrl = (id: number,

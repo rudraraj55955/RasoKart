@@ -556,6 +556,76 @@ router.get("/:id/webhook-config", requireAdmin, async (req, res) => {
   res.json({ ...webhook, globalMaxRetries: globalConfig.maxAttempts - 1 });
 });
 
+// PATCH /api/merchants/:id/email-preferences  (admin only)
+router.patch("/:id/email-preferences", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
+
+  const allowed = [
+    "loginAlertEmails",
+    "signatureFailureAlertEmails",
+    "webhookFailureEmails",
+    "apiKeyGeneratedEmails",
+    "apiKeyRevokedEmails",
+    "reportScheduleChangedEmails",
+    "settlementStateChangedEmails",
+    "planExpiryAlertEmails",
+  ] as const;
+
+  const body = req.body as Record<string, unknown>;
+  const update: Partial<Record<typeof allowed[number], boolean>> = {};
+  for (const field of allowed) {
+    if (field in body) {
+      if (typeof body[field] !== "boolean") {
+        res.status(400).json({ error: `Field '${field}' must be a boolean` });
+        return;
+      }
+      update[field] = body[field] as boolean;
+    }
+  }
+
+  if (Object.keys(update).length === 0) {
+    res.status(400).json({ error: "No valid fields provided" });
+    return;
+  }
+
+  const [merchant] = await db
+    .select({ id: merchantsTable.id, businessName: merchantsTable.businessName })
+    .from(merchantsTable)
+    .where(eq(merchantsTable.id, id));
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+  const [updatedUser] = await db
+    .update(usersTable)
+    .set(update)
+    .where(eq(usersTable.merchantId, id))
+    .returning({
+      loginAlertEmails: usersTable.loginAlertEmails,
+      signatureFailureAlertEmails: usersTable.signatureFailureAlertEmails,
+      webhookFailureEmails: usersTable.webhookFailureEmails,
+      apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
+      apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
+      reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails,
+      settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
+      planExpiryAlertEmails: usersTable.planExpiryAlertEmails,
+    });
+
+  if (!updatedUser) { res.status(404).json({ error: "Merchant user account not found" }); return; }
+
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "merchant_email_preferences_updated",
+    targetType: "merchant",
+    targetId: id,
+    details: JSON.stringify({ businessName: merchant.businessName, changes: update }),
+    ipAddress: req.ip ?? null,
+  });
+
+  req.log.info({ adminId: admin.id, merchantId: id, changes: update }, "Admin updated merchant email preferences");
+  res.json(updatedUser);
+});
+
 // PATCH /api/merchants/:id/webhook-max-retries  (admin only)
 router.patch("/:id/webhook-max-retries", requireAdmin, async (req, res) => {
   const id = parseInt(req.params['id'] as string);

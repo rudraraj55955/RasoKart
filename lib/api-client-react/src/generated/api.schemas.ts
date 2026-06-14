@@ -375,6 +375,31 @@ export interface MerchantWebhookFailureCountsResponse {
   counts: MerchantWebhookFailureCountsResponseCounts;
 }
 
+/**
+ * Partial update of a merchant's email notification preferences. Only the fields included in the request body are modified.
+ */
+export interface MerchantEmailPreferencesInput {
+  loginAlertEmails?: boolean;
+  signatureFailureAlertEmails?: boolean;
+  webhookFailureEmails?: boolean;
+  apiKeyGeneratedEmails?: boolean;
+  apiKeyRevokedEmails?: boolean;
+  reportScheduleChangedEmails?: boolean;
+  settlementStateChangedEmails?: boolean;
+  planExpiryAlertEmails?: boolean;
+}
+
+export interface MerchantEmailPreferencesResponse {
+  loginAlertEmails: boolean;
+  signatureFailureAlertEmails: boolean;
+  webhookFailureEmails: boolean;
+  apiKeyGeneratedEmails: boolean;
+  apiKeyRevokedEmails: boolean;
+  reportScheduleChangedEmails: boolean;
+  settlementStateChangedEmails: boolean;
+  planExpiryAlertEmails: boolean;
+}
+
 export interface MerchantWebhookMaxRetriesInput {
   /**
      * Maximum number of automatic delivery retries (1–10).
