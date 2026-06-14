@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, Fragment } from "react";
 import { useSearch, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -78,6 +78,7 @@ import {
   X,
   ChevronUp,
   ChevronDown,
+  ChevronRight,
   ChevronsUpDown,
   History,
   CheckCircle,
@@ -1453,6 +1454,7 @@ function DeliveryHistoryPanel() {
   });
   const [reEnabling, setReEnabling] = useState<number | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
+  const [collapsedMerchants, setCollapsedMerchants] = useState<number[]>([]);
 
   useEffect(() => {
     try {
@@ -1606,6 +1608,41 @@ function DeliveryHistoryPanel() {
     const success = timelineChartData.reduce((s, d) => s + d.success, 0);
     return Math.round((success / total) * 100);
   }, [timelineChartData]);
+
+  const merchantSummaries = useMemo(() => {
+    const map = new Map<number, { merchantId: number; name: string; total: number; delivered: number; failed: number }>();
+    for (const log of logs) {
+      const name = log.businessName ?? `Merchant #${log.merchantId}`;
+      const entry = map.get(log.merchantId) ?? { merchantId: log.merchantId, name, total: 0, delivered: 0, failed: 0 };
+      entry.total++;
+      if (log.success) entry.delivered++;
+      else entry.failed++;
+      map.set(log.merchantId, entry);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      const rateA = a.total > 0 ? a.delivered / a.total : 1;
+      const rateB = b.total > 0 ? b.delivered / b.total : 1;
+      return rateA - rateB;
+    });
+  }, [logs]);
+
+  const logsByMerchant = useMemo(() => {
+    const map = new Map<number, typeof logs>();
+    for (const log of logs) {
+      const arr = map.get(log.merchantId) ?? [];
+      arr.push(log);
+      map.set(log.merchantId, arr);
+    }
+    return map;
+  }, [logs]);
+
+  const toggleMerchantCollapse = (merchantId: number) => {
+    setCollapsedMerchants((prev) =>
+      prev.includes(merchantId)
+        ? prev.filter((id) => id !== merchantId)
+        : [...prev, merchantId]
+    );
+  };
 
   const showCharts = !isLoading && logs.length > 0;
 
@@ -1903,100 +1940,233 @@ function DeliveryHistoryPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedLogs.map((log) => (
-                  <TableRow key={log.id} className={!log.success ? "bg-red-950/10 hover:bg-red-950/20" : undefined}>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
-                      <span className="ml-1 text-muted-foreground/60">
-                        ({formatDistanceToNow(new Date(log.attemptedAt), { addSuffix: true })})
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-medium text-sm">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span>{log.businessName ?? `Merchant #${log.merchantId}`}</span>
-                        {(() => {
-                          const rate = merchantSuccessRates.get(log.merchantId);
-                          if (!rate || rate.total === 0) return null;
-                          const pct = Math.round((rate.success / rate.total) * 100);
-                          const color =
-                            pct >= 90
-                              ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
-                              : pct >= 70
-                              ? "text-amber-400 bg-amber-400/10 border-amber-400/20"
-                              : "text-red-400 bg-red-400/10 border-red-400/20";
-                          return (
-                            <span
-                              className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold leading-5 ${color}`}
-                              title={`${rate.success} of ${rate.total} delivered (from visible logs)`}
-                            >
-                              {pct}% delivered
-                            </span>
-                          );
-                        })()}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{log.merchantEmail ?? "—"}</TableCell>
-                    <TableCell>
-                      <TriggeredByBadge value={(log as any).triggeredBy} email={(log as any).triggeredByEmail} />
-                    </TableCell>
-                    <TableCell>
-                      {log.frequency ? (
-                        <FrequencyBadge frequency={log.frequency as "weekly" | "monthly"} />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {log.format ? (
-                        <FormatBadge format={log.format as "xlsx" | "pdf"} />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {log.success ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
-                          <CheckCircle2 className="w-3.5 h-3.5" />Delivered
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400">
-                          <XCircle className="w-3.5 h-3.5" />Failed
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {log.isAutoPause ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
-                          <Clock className="w-3.5 h-3.5" />Yes
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[280px] truncate" title={log.failureReason ?? undefined}>
-                      {log.failureReason ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {log.isAutoPause ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
-                          onClick={() => handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`)}
-                          disabled={reEnabling === log.merchantId}
-                          title="Resume this merchant's auto-paused report schedule"
+                {merchantFilter === "all" ? (
+                  merchantSummaries.map((summary) => {
+                    const rate = summary.total > 0 ? Math.round((summary.delivered / summary.total) * 100) : 0;
+                    const isCollapsed = collapsedMerchants.includes(summary.merchantId);
+                    const merchantLogs = logsByMerchant.get(summary.merchantId) ?? [];
+                    const badgeColor =
+                      rate >= 90
+                        ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
+                        : rate >= 70
+                        ? "text-amber-400 bg-amber-400/10 border-amber-400/20"
+                        : "text-red-400 bg-red-400/10 border-red-400/20";
+                    return (
+                      <Fragment key={summary.merchantId}>
+                        <TableRow
+                          className="bg-muted/40 border-t-2 border-border/80 hover:bg-muted/60 cursor-pointer select-none"
+                          onClick={() => toggleMerchantCollapse(summary.merchantId)}
                         >
-                          {reEnabling === log.merchantId
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <ToggleRight className="w-3.5 h-3.5" />}
-                          Resume
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          <TableCell className="py-2">
+                            <button
+                              type="button"
+                              aria-label={isCollapsed ? `Expand ${summary.name}` : `Collapse ${summary.name}`}
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap hover:text-foreground transition-colors"
+                              onClick={(e) => { e.stopPropagation(); toggleMerchantCollapse(summary.merchantId); }}
+                            >
+                              {isCollapsed
+                                ? <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                                : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
+                              {summary.total} attempt{summary.total !== 1 ? "s" : ""}
+                            </button>
+                          </TableCell>
+                          <TableCell className="py-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm">{summary.name}</span>
+                              <span
+                                className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold leading-5 ${badgeColor}`}
+                                title={`${summary.delivered} of ${summary.total} delivered`}
+                              >
+                                {rate}% delivered
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell colSpan={6} className="py-2">
+                            <div className="flex items-center gap-4 text-xs">
+                              <span className="text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                {summary.delivered} delivered
+                              </span>
+                              <span className="text-red-400 flex items-center gap-1">
+                                <XCircle className="w-3 h-3" />
+                                {summary.failed} failed
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell colSpan={2} />
+                        </TableRow>
+                        {!isCollapsed && merchantLogs.map((log) => (
+                          <TableRow key={log.id} className={!log.success ? "bg-red-950/10 hover:bg-red-950/20" : undefined}>
+                            <TableCell className="text-xs text-muted-foreground whitespace-nowrap pl-8">
+                              {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
+                              <span className="ml-1 text-muted-foreground/60">
+                                ({formatDistanceToNow(new Date(log.attemptedAt), { addSuffix: true })})
+                              </span>
+                            </TableCell>
+                            <TableCell className="font-medium text-sm">
+                              <span className="text-muted-foreground text-xs">{log.businessName ?? `Merchant #${log.merchantId}`}</span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{log.merchantEmail ?? "—"}</TableCell>
+                            <TableCell>
+                              <TriggeredByBadge value={(log as any).triggeredBy} email={(log as any).triggeredByEmail} />
+                            </TableCell>
+                            <TableCell>
+                              {log.frequency ? (
+                                <FrequencyBadge frequency={log.frequency as "weekly" | "monthly"} />
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {log.format ? (
+                                <FormatBadge format={log.format as "xlsx" | "pdf"} />
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {log.success ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />Delivered
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400">
+                                  <XCircle className="w-3.5 h-3.5" />Failed
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {log.isAutoPause ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
+                                  <Clock className="w-3.5 h-3.5" />Yes
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[280px] truncate" title={log.failureReason ?? undefined}>
+                              {log.failureReason ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {log.isAutoPause ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
+                                  onClick={(e) => { e.stopPropagation(); handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`); }}
+                                  disabled={reEnabling === log.merchantId}
+                                  title="Resume this merchant's auto-paused report schedule"
+                                >
+                                  {reEnabling === log.merchantId
+                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    : <ToggleRight className="w-3.5 h-3.5" />}
+                                  Resume
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </Fragment>
+                    );
+                  })
+                ) : (
+                  sortedLogs.map((log) => (
+                    <TableRow key={log.id} className={!log.success ? "bg-red-950/10 hover:bg-red-950/20" : undefined}>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {format(new Date(log.attemptedAt), "dd MMM yyyy, HH:mm")}
+                        <span className="ml-1 text-muted-foreground/60">
+                          ({formatDistanceToNow(new Date(log.attemptedAt), { addSuffix: true })})
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-medium text-sm">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{log.businessName ?? `Merchant #${log.merchantId}`}</span>
+                          {(() => {
+                            const rate = merchantSuccessRates.get(log.merchantId);
+                            if (!rate || rate.total === 0) return null;
+                            const pct = Math.round((rate.success / rate.total) * 100);
+                            const color =
+                              pct >= 90
+                                ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
+                                : pct >= 70
+                                ? "text-amber-400 bg-amber-400/10 border-amber-400/20"
+                                : "text-red-400 bg-red-400/10 border-red-400/20";
+                            return (
+                              <span
+                                className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold leading-5 ${color}`}
+                                title={`${rate.success} of ${rate.total} delivered (from visible logs)`}
+                              >
+                                {pct}% delivered
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{log.merchantEmail ?? "—"}</TableCell>
+                      <TableCell>
+                        <TriggeredByBadge value={(log as any).triggeredBy} email={(log as any).triggeredByEmail} />
+                      </TableCell>
+                      <TableCell>
+                        {log.frequency ? (
+                          <FrequencyBadge frequency={log.frequency as "weekly" | "monthly"} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {log.format ? (
+                          <FormatBadge format={log.format as "xlsx" | "pdf"} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {log.success ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
+                            <CheckCircle2 className="w-3.5 h-3.5" />Delivered
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400">
+                            <XCircle className="w-3.5 h-3.5" />Failed
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {log.isAutoPause ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
+                            <Clock className="w-3.5 h-3.5" />Yes
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[280px] truncate" title={log.failureReason ?? undefined}>
+                        {log.failureReason ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {log.isAutoPause ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
+                            onClick={() => handleReEnable(log.merchantId, log.businessName ?? `Merchant #${log.merchantId}`)}
+                            disabled={reEnabling === log.merchantId}
+                            title="Resume this merchant's auto-paused report schedule"
+                          >
+                            {reEnabling === log.merchantId
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <ToggleRight className="w-3.5 h-3.5" />}
+                            Resume
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
             {logs.length >= 200 && (
