@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert, BadgeCheck, X } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert, BadgeCheck, X, BellOff } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";
@@ -181,6 +181,24 @@ export default function MerchantDashboard() {
 
   const showKycBanner = kycSummary != null && !kycSummary.isVerified && !kycBannerDismissed;
 
+  // Notification reminder banner: show when any email notification has been disabled for ≥30 days
+  const NOTIF_REMINDER_THRESHOLD_DAYS = 30;
+  const NOTIF_REMINDER_DISMISS_KEY = user?.id ? `rasokart_notif_reminder_dismissed_${user.id}` : null;
+  const notifPrefsDisabledAt = user?.notifPrefsDisabledAt ? new Date(user.notifPrefsDisabledAt) : null;
+  const notifDisabledDays = notifPrefsDisabledAt != null ? differenceInDays(new Date(), notifPrefsDisabledAt) : null;
+  const [notifReminderDismissedAt, setNotifReminderDismissedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!NOTIF_REMINDER_DISMISS_KEY) return;
+    const stored = localStorage.getItem(NOTIF_REMINDER_DISMISS_KEY);
+    setNotifReminderDismissedAt(stored ? Number(stored) : null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [NOTIF_REMINDER_DISMISS_KEY]);
+  const notifReminderDismissedRecently = notifReminderDismissedAt != null
+    && (Date.now() - notifReminderDismissedAt) < NOTIF_REMINDER_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
+  const showNotifReminderBanner = notifDisabledDays != null
+    && notifDisabledDays >= NOTIF_REMINDER_THRESHOLD_DAYS
+    && !notifReminderDismissedRecently;
+
   const isExpiringSoon = myPlan && !myPlan.isExpired && myPlan.daysUntilExpiry != null && myPlan.daysUntilExpiry <= 7;
 
   const secretAgeInDays = secretStatus?.isSet && secretStatus.lastRotatedAt != null
@@ -349,6 +367,41 @@ export default function MerchantDashboard() {
                   setKycBannerDismissed(true);
                 }}
                 aria-label="Dismiss KYC verification banner"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Notification reminder banner */}
+      {showNotifReminderBanner && (
+        <Card className="border-amber-500/40 bg-amber-950/20">
+          <CardContent className="py-4 flex items-center gap-3">
+            <BellOff className="w-5 h-5 text-amber-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-amber-400 font-medium">Email Notifications Turned Off</p>
+              <p className="text-xs text-amber-400/70">
+                You have had one or more email notifications disabled for over {notifDisabledDays} days. Re-enable them to stay informed about important security and account events.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link href="/merchant/security?section=notifications">
+                <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hidden sm:flex">
+                  Review Settings
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-amber-400/60 hover:text-amber-400 hover:bg-amber-500/10"
+                onClick={() => {
+                  const now = Date.now();
+                  if (NOTIF_REMINDER_DISMISS_KEY) localStorage.setItem(NOTIF_REMINDER_DISMISS_KEY, String(now));
+                  setNotifReminderDismissedAt(now);
+                }}
+                aria-label="Dismiss notification reminder banner"
               >
                 <X className="w-4 h-4" />
               </Button>

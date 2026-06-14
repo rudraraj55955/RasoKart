@@ -323,6 +323,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
         ekqrSyncAlertEmails: usersTable.ekqrSyncAlertEmails,
         planChangeEmails: usersTable.planChangeEmails,
+        notifPrefsDisabledAt: usersTable.notifPrefsDisabledAt,
       })
       .from(usersTable)
       .where(eq(usersTable.id, user.id))
@@ -349,6 +350,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       settlementStateChangedEmails: row?.settlementStateChangedEmails ?? true,
       ekqrSyncAlertEmails: row?.ekqrSyncAlertEmails ?? true,
       planChangeEmails: row?.planChangeEmails ?? true,
+      notifPrefsDisabledAt: row?.notifPrefsDisabledAt ?? null,
       createdAt: user.createdAt,
     });
   } catch (err) {
@@ -362,7 +364,7 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
     const user = (req as any).user;
     const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, planChangeEmails } = req.body;
 
-    const patch: Record<string, boolean> = {};
+    const patch: Record<string, boolean | Date | null> = {};
 
     if (reconciliationAlertEmails !== undefined) {
       if (typeof reconciliationAlertEmails !== "boolean") {
@@ -514,10 +516,25 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
         settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
         ekqrSyncAlertEmails: usersTable.ekqrSyncAlertEmails,
         planChangeEmails: usersTable.planChangeEmails,
+        notifPrefsDisabledAt: usersTable.notifPrefsDisabledAt,
       })
       .from(usersTable)
       .where(eq(usersTable.id, user.id))
       .limit(1);
+
+    // Compute notifPrefsDisabledAt: set when any pref first goes false, clear when all re-enabled
+    if (current) {
+      const mergedValues: Record<string, boolean> = {};
+      for (const field of prefFields) {
+        mergedValues[field] = (field in patch ? patch[field] : current[field]) as boolean;
+      }
+      const anyDisabled = prefFields.some(f => !mergedValues[f]);
+      if (anyDisabled && current.notifPrefsDisabledAt == null) {
+        patch["notifPrefsDisabledAt"] = new Date();
+      } else if (!anyDisabled && current.notifPrefsDisabledAt != null) {
+        patch["notifPrefsDisabledAt"] = null;
+      }
+    }
 
     const [updated] = await db
       .update(usersTable)
@@ -579,6 +596,7 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       settlementStateChangedEmails: updated.settlementStateChangedEmails,
       ekqrSyncAlertEmails: updated.ekqrSyncAlertEmails,
       planChangeEmails: updated.planChangeEmails,
+      notifPrefsDisabledAt: updated.notifPrefsDisabledAt ?? null,
       createdAt: updated.createdAt,
     });
   } catch (err) {

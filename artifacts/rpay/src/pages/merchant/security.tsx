@@ -406,6 +406,16 @@ export default function MerchantSecurity() {
   });
 
   const credEventRef = useRef<HTMLDivElement>(null);
+  const notificationSettingsRef = useRef<HTMLDivElement>(null);
+
+  // Deep-link: scroll to notification settings when ?section=notifications
+  useEffect(() => {
+    const params = new URLSearchParams(locationSearch);
+    if (params.get("section") === "notifications") {
+      setTimeout(() => notificationSettingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function applyIpFilter(ip: string) {
     setIpFilter(ip);
@@ -1762,7 +1772,7 @@ export default function MerchantSecurity() {
       )}
 
       {/* Security Notifications */}
-      <Card>
+      <Card ref={notificationSettingsRef}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Bell className="w-4 h-4 text-muted-foreground" />

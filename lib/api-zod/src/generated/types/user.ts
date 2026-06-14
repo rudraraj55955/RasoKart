@@ -36,5 +36,10 @@ export interface User {
   ekqrSyncAlertEmails?: boolean;
   /** Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true. */
   planChangeEmails?: boolean;
+  /**
+     * ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.
+     * @nullable
+     */
+  notifPrefsDisabledAt?: string | null;
   createdAt: string;
 }

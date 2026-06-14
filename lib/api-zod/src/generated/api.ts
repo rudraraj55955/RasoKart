@@ -48,6 +48,7 @@ export const LoginResponse = zod.object({
   "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
+  "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
   "createdAt": zod.string()
 })
 })
@@ -91,6 +92,7 @@ export const GetMeResponse = zod.object({
   "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
+  "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
   "createdAt": zod.string()
 })
 
@@ -137,6 +139,7 @@ export const UpdateMyPreferencesResponse = zod.object({
   "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
+  "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
   "createdAt": zod.string()
 })
 
@@ -1648,6 +1651,10 @@ export const GetReportScheduleResponse = zod.object({
   "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
   "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "nextRunAt": zod.string().nullish().describe('Admin-set override for the next scheduled run. Cleared automatically after the report fires.'),
+  "lastDeliveryAt": zod.string().nullish().describe('ISO timestamp of the most recent delivery attempt (success or failure). Null if no attempts exist.'),
+  "lastDeliverySuccess": zod.boolean().nullish().describe('Whether the most recent delivery attempt succeeded. Null if no attempts exist.'),
+  "sevenDayTotal": zod.number().optional().describe('Total delivery attempts in the last 7 days.'),
+  "sevenDaySuccesses": zod.number().optional().describe('Successful delivery attempts in the last 7 days.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
   "recentFailures": zod.array(zod.object({
@@ -1658,6 +1665,7 @@ export const GetReportScheduleResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -1711,6 +1719,10 @@ export const UpsertReportScheduleResponse = zod.object({
   "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
   "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "nextRunAt": zod.string().nullish().describe('Admin-set override for the next scheduled run. Cleared automatically after the report fires.'),
+  "lastDeliveryAt": zod.string().nullish().describe('ISO timestamp of the most recent delivery attempt (success or failure). Null if no attempts exist.'),
+  "lastDeliverySuccess": zod.boolean().nullish().describe('Whether the most recent delivery attempt succeeded. Null if no attempts exist.'),
+  "sevenDayTotal": zod.number().optional().describe('Total delivery attempts in the last 7 days.'),
+  "sevenDaySuccesses": zod.number().optional().describe('Successful delivery attempts in the last 7 days.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
   "recentFailures": zod.array(zod.object({
@@ -1721,6 +1733,7 @@ export const UpsertReportScheduleResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -1764,6 +1777,10 @@ export const ReenableReportScheduleResponse = zod.object({
   "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
   "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "nextRunAt": zod.string().nullish().describe('Admin-set override for the next scheduled run. Cleared automatically after the report fires.'),
+  "lastDeliveryAt": zod.string().nullish().describe('ISO timestamp of the most recent delivery attempt (success or failure). Null if no attempts exist.'),
+  "lastDeliverySuccess": zod.boolean().nullish().describe('Whether the most recent delivery attempt succeeded. Null if no attempts exist.'),
+  "sevenDayTotal": zod.number().optional().describe('Total delivery attempts in the last 7 days.'),
+  "sevenDaySuccesses": zod.number().optional().describe('Successful delivery attempts in the last 7 days.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
   "recentFailures": zod.array(zod.object({
@@ -1774,6 +1791,7 @@ export const ReenableReportScheduleResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -1811,6 +1829,7 @@ export const GetReportScheduleHistoryResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -1870,6 +1889,7 @@ export const ListMerchantReportSchedulesResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -1909,6 +1929,10 @@ export const GetAdminMerchantReportScheduleResponse = zod.object({
   "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
   "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "nextRunAt": zod.string().nullish().describe('Admin-set override for the next scheduled run. Cleared automatically after the report fires.'),
+  "lastDeliveryAt": zod.string().nullish().describe('ISO timestamp of the most recent delivery attempt (success or failure). Null if no attempts exist.'),
+  "lastDeliverySuccess": zod.boolean().nullish().describe('Whether the most recent delivery attempt succeeded. Null if no attempts exist.'),
+  "sevenDayTotal": zod.number().optional().describe('Total delivery attempts in the last 7 days.'),
+  "sevenDaySuccesses": zod.number().optional().describe('Successful delivery attempts in the last 7 days.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
   "recentFailures": zod.array(zod.object({
@@ -1919,6 +1943,7 @@ export const GetAdminMerchantReportScheduleResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -1974,6 +1999,10 @@ export const UpsertAdminMerchantReportScheduleResponse = zod.object({
   "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
   "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "nextRunAt": zod.string().nullish().describe('Admin-set override for the next scheduled run. Cleared automatically after the report fires.'),
+  "lastDeliveryAt": zod.string().nullish().describe('ISO timestamp of the most recent delivery attempt (success or failure). Null if no attempts exist.'),
+  "lastDeliverySuccess": zod.boolean().nullish().describe('Whether the most recent delivery attempt succeeded. Null if no attempts exist.'),
+  "sevenDayTotal": zod.number().optional().describe('Total delivery attempts in the last 7 days.'),
+  "sevenDaySuccesses": zod.number().optional().describe('Successful delivery attempts in the last 7 days.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
   "recentFailures": zod.array(zod.object({
@@ -1984,6 +2013,7 @@ export const UpsertAdminMerchantReportScheduleResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -2054,6 +2084,7 @@ export const GetAdminReportDeliveryHistoryResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -2095,6 +2126,10 @@ export const ReenableAdminMerchantReportScheduleResponse = zod.object({
   "consecutiveFailures": zod.number().describe('Count of consecutive delivery failures since the last success'),
   "autoPauseAfterFailures": zod.number().describe('Threshold — schedule is auto-paused when consecutiveFailures reaches this value'),
   "nextRunAt": zod.string().nullish().describe('Admin-set override for the next scheduled run. Cleared automatically after the report fires.'),
+  "lastDeliveryAt": zod.string().nullish().describe('ISO timestamp of the most recent delivery attempt (success or failure). Null if no attempts exist.'),
+  "lastDeliverySuccess": zod.boolean().nullish().describe('Whether the most recent delivery attempt succeeded. Null if no attempts exist.'),
+  "sevenDayTotal": zod.number().optional().describe('Total delivery attempts in the last 7 days.'),
+  "sevenDaySuccesses": zod.number().optional().describe('Successful delivery attempts in the last 7 days.'),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
   "recentFailures": zod.array(zod.object({
@@ -2105,6 +2140,7 @@ export const ReenableAdminMerchantReportScheduleResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -2150,6 +2186,7 @@ export const RetryAdminReportDeliveryLogResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -2229,6 +2266,7 @@ export const RetryReportDeliveryLogResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -2265,6 +2303,7 @@ export const GetAdminMerchantReportScheduleHistoryResponse = zod.object({
   "success": zod.boolean(),
   "failureReason": zod.string().nullish().describe('Human-readable failure reason, present when success is false'),
   "isAutoPause": zod.boolean().describe('Whether this entry represents the moment the schedule was auto-paused'),
+  "retryCount": zod.number().optional().describe('Number of retry attempts made before the final outcome (0 means succeeded or failed on the first try)'),
   "frequency": zod.string().nullish().describe('Schedule frequency at time of delivery (weekly or monthly)'),
   "format": zod.string().nullish().describe('File format used for this delivery (xlsx or pdf)'),
   "outcome": zod.string().nullish().describe('Distinct outcome marker for special events; \"re-enabled\" when a paused schedule is re-activated'),
@@ -3204,6 +3243,7 @@ export const ListUsersResponse = zod.object({
   "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
+  "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -3259,6 +3299,7 @@ export const UpdateUserResponse = zod.object({
   "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state. Defaults to true.'),
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
+  "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
   "createdAt": zod.string()
 })
 
