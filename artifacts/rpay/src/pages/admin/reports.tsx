@@ -94,6 +94,8 @@ import {
   Info,
   Eye,
   Mail,
+  BellOff,
+  Bell,
 } from "lucide-react";
 import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths, eachDayOfInterval, parseISO } from "date-fns";
 import {
@@ -107,6 +109,8 @@ import {
   Legend,
 } from "recharts";
 import { toast } from "sonner";
+import { REPORTS_SNOOZE_EVENT, getReportSnoozeKey } from "@/components/layout/dashboard-layout";
+import { useAuth } from "@/lib/auth-context";
 
 const DATE_PRESETS = [
   {
@@ -625,6 +629,44 @@ function ScheduledReportsPanel() {
   const [sendAllSummary, setSendAllSummary] = useState<{ sent: number; ranAt: Date } | null>(null);
   const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const { user } = useAuth();
+  const snoozeKey = getReportSnoozeKey(user?.id);
+
+  const [snoozeUntil, setSnoozeUntil] = useState<number | null>(null);
+  const snoozeExpireTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const v = localStorage.getItem(snoozeKey);
+    const ts = v ? parseInt(v, 10) : NaN;
+    setSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+  }, [snoozeKey]);
+
+  useEffect(() => {
+    if (snoozeExpireTimer.current) clearTimeout(snoozeExpireTimer.current);
+    if (snoozeUntil == null) return;
+    const remaining = snoozeUntil - Date.now();
+    if (remaining <= 0) { setSnoozeUntil(null); return; }
+    snoozeExpireTimer.current = setTimeout(() => setSnoozeUntil(null), Math.min(remaining, 2_147_483_647));
+    return () => { if (snoozeExpireTimer.current) clearTimeout(snoozeExpireTimer.current); };
+  }, [snoozeUntil]);
+
+  const isSnoozed = snoozeUntil != null && snoozeUntil > Date.now();
+
+  const handleSnooze = (hours: number) => {
+    const until = Date.now() + hours * 60 * 60 * 1000;
+    localStorage.setItem(snoozeKey, String(until));
+    window.dispatchEvent(new CustomEvent(REPORTS_SNOOZE_EVENT));
+    setSnoozeUntil(until);
+    toast.success(`Failure badge snoozed for ${hours}h — it will reappear automatically`);
+  };
+
+  const handleCancelSnooze = () => {
+    localStorage.removeItem(snoozeKey);
+    window.dispatchEvent(new CustomEvent(REPORTS_SNOOZE_EVENT));
+    setSnoozeUntil(null);
+    toast.info("Snooze cancelled — failure badge is now visible");
+  };
+
   useEffect(() => {
     return () => {
       if (clearFlashTimer.current != null) clearTimeout(clearFlashTimer.current);
@@ -960,6 +1002,20 @@ function ScheduledReportsPanel() {
           <div className="flex items-center gap-2 text-sm font-medium">
             <CalendarClock className="w-4 h-4 text-primary" />
             Scheduled Report Delivery
+            {isSnoozed && snoozeUntil != null && (
+              <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-500/30 bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-medium text-slate-400">
+                <BellOff className="w-3 h-3 shrink-0" />
+                Badge snoozed until {format(new Date(snoozeUntil), "HH:mm, dd MMM")}
+                <button
+                  type="button"
+                  onClick={handleCancelSnooze}
+                  className="ml-0.5 text-slate-400/60 hover:text-slate-300 transition-colors"
+                  aria-label="Cancel snooze"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             All merchants with an active report schedule — admin can resume auto-paused schedules, pause, delete, trigger immediate delivery, or set a custom next run date.
@@ -1006,6 +1062,46 @@ function ScheduledReportsPanel() {
               >
                 View auto-paused
               </button>
+              {!isSnoozed ? (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-amber-400/80 border border-amber-500/30 rounded px-2 py-0.5 hover:bg-amber-500/10 hover:text-amber-300 transition-colors"
+                    >
+                      <BellOff className="w-3 h-3" />
+                      Snooze badge
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="bottom" align="end" className="w-52 p-2">
+                    <p className="text-xs font-medium text-muted-foreground px-1 pb-1.5">Snooze sidebar badge for…</p>
+                    {[
+                      { label: "4 hours", hours: 4 },
+                      { label: "8 hours", hours: 8 },
+                      { label: "24 hours", hours: 24 },
+                      { label: "48 hours", hours: 48 },
+                    ].map(({ label, hours }) => (
+                      <button
+                        key={hours}
+                        type="button"
+                        onClick={() => handleSnooze(hours)}
+                        className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted/60 transition-colors"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </PopoverContent>
+                </Popover>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCancelSnooze}
+                  className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-slate-400/80 border border-slate-500/30 rounded px-2 py-0.5 hover:bg-slate-500/10 hover:text-slate-300 transition-colors"
+                >
+                  <Bell className="w-3 h-3" />
+                  Unsnooze
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setBannerDismissed(true)}

@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule } from "@workspace/api-client-react";
+
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -12,6 +13,11 @@ import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { Card, CardContent } from "@/components/ui/card";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { InstallAppButton } from "@/components/ui/install-app-banner";
+
+export const REPORTS_SNOOZE_EVENT = "rasokart-reports-snooze-changed";
+export function getReportSnoozeKey(userId: number | string | undefined): string {
+  return userId != null ? `rasokart_reports_snooze_until_${userId}` : "rasokart_reports_snooze_until";
+}
 
 function SuspensionBanner() {
   const { user, logout } = useAuth();
@@ -389,6 +395,7 @@ function getScheduleNextDue(lastSentAt: string | null | undefined, frequency: st
 
 function AdminSidebar() {
   const [location] = useLocation();
+  const { user } = useAuth();
   const { data: complianceData } = useGetSecurityComplianceSummary();
   const neverCount = complianceData?.neverCount ?? 0;
 
@@ -410,6 +417,45 @@ function AdminSidebar() {
     (deliveryHealth?.stats.autoPausedSchedules ?? 0) > 0 ||
     (deliveryHealth?.stats.overallFailureRate ?? 0) >= 0.2;
 
+  const snoozeKey = getReportSnoozeKey(user?.id);
+
+  const [snoozeUntil, setSnoozeUntil] = useState<number | null>(null);
+
+  useEffect(() => {
+    const v = localStorage.getItem(snoozeKey);
+    const ts = v ? parseInt(v, 10) : NaN;
+    setSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+  }, [snoozeKey]);
+
+  useEffect(() => {
+    if (snoozeUntil == null) return;
+    const remaining = snoozeUntil - Date.now();
+    if (remaining <= 0) { setSnoozeUntil(null); return; }
+    const timer = setTimeout(() => setSnoozeUntil(null), Math.min(remaining, 2_147_483_647));
+    return () => clearTimeout(timer);
+  }, [snoozeUntil]);
+
+  useEffect(() => {
+    const readCurrent = () => {
+      const v = localStorage.getItem(snoozeKey);
+      const ts = v ? parseInt(v, 10) : NaN;
+      setSnoozeUntil(!isNaN(ts) && ts > Date.now() ? ts : null);
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== snoozeKey) return;
+      readCurrent();
+    };
+    const onCustom = () => readCurrent();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(REPORTS_SNOOZE_EVENT, onCustom);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(REPORTS_SNOOZE_EVENT, onCustom);
+    };
+  }, [snoozeKey]);
+
+  const isSnoozed = snoozeUntil != null && snoozeUntil > Date.now();
+
   return (
     <>
       {ADMIN_NAV.map((group) => (
@@ -423,7 +469,7 @@ function AdminSidebar() {
                 const isActive = location === item.href || (isAuditLogs && location.startsWith("/admin/audit-logs"));
                 const linkHref = isAuditLogs && neverCount > 0
                   ? "/admin/audit-logs?tab=compliance"
-                  : isReports && hasDeliveryAlert
+                  : isReports && !isSnoozed && hasDeliveryAlert
                   ? "/admin/reports?tab=delivery-health"
                   : item.href;
                 return (
@@ -442,12 +488,12 @@ function AdminSidebar() {
                             {overdueCount > 99 ? "99+" : overdueCount}
                           </span>
                         )}
-                        {isReports && deliveryFailureCount > 0 && (
+                        {isReports && !isSnoozed && deliveryFailureCount > 0 && (
                           <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-[10px] font-bold text-white px-1 leading-none">
                             {deliveryFailureCount > 99 ? "99+" : deliveryFailureCount}
                           </span>
                         )}
-                        {isReports && hasDeliveryAlert && (
+                        {isReports && !isSnoozed && hasDeliveryAlert && (
                           <span className="flex items-center justify-center w-2 h-2 rounded-full bg-amber-400 shrink-0" aria-label="Delivery health alert" />
                         )}
                       </Link>
