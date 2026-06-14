@@ -199,6 +199,7 @@ import type {
   ListProvidersAdminParams,
   ListProvidersParams,
   ListQrCodesParams,
+  ListQuietHoursQueue200,
   ListReconciliationRunItemsParams,
   ListReconciliationRunsParams,
   ListSavedFilters200,
@@ -774,6 +775,84 @@ export const useUpdateMyPreferences = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getUpdateMyPreferencesMutationOptions(options));
     }
+
+export const getListQuietHoursQueueUrl = () => {
+
+
+
+
+  return `/api/auth/quiet-hours/queue`
+}
+
+/**
+ * Returns all unflushed emails currently held in the quiet-hours queue for the authenticated user, ordered by scheduled delivery time.
+ * @summary List queued quiet-hours emails
+ */
+export const listQuietHoursQueue = async ( options?: RequestInit): Promise<ListQuietHoursQueue200> => {
+
+  return customFetch<ListQuietHoursQueue200>(getListQuietHoursQueueUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListQuietHoursQueueQueryKey = () => {
+    return [
+    `/api/auth/quiet-hours/queue`
+    ] as const;
+    }
+
+
+export const getListQuietHoursQueueQueryOptions = <TData = Awaited<ReturnType<typeof listQuietHoursQueue>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listQuietHoursQueue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListQuietHoursQueueQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listQuietHoursQueue>>> = ({ signal }) => listQuietHoursQueue({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listQuietHoursQueue>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListQuietHoursQueueQueryResult = NonNullable<Awaited<ReturnType<typeof listQuietHoursQueue>>>
+export type ListQuietHoursQueueQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List queued quiet-hours emails
+ */
+
+export function useListQuietHoursQueue<TData = Awaited<ReturnType<typeof listQuietHoursQueue>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listQuietHoursQueue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListQuietHoursQueueQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetQuietHoursQueueCountUrl = () => {
 

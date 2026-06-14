@@ -293,6 +293,8 @@ export * from './listProvidersParams';
 export * from './listQrCodesParams';
 export * from './listQrCodesStatus';
 export * from './listQrCodesType';
+export * from './listQuietHoursQueue200';
+export * from './listQuietHoursQueue200ItemsItem';
 export * from './listReconciliationRunItemsParams';
 export * from './listReconciliationRunsParams';
 export * from './listSavedFilters200';

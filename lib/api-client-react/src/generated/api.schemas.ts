@@ -4504,6 +4504,21 @@ export type UpdateMyPreferencesBody = {
   quietHoursTimezone?: string | null;
 };
 
+export type ListQuietHoursQueue200ItemsItem = {
+  /** Queue entry ID. */
+  id: number;
+  /** Email subject line. */
+  subject: string;
+  /** Scheduled delivery time (ISO 8601). */
+  deliverAfter: string;
+  /** When the email was queued (ISO 8601). */
+  createdAt: string;
+};
+
+export type ListQuietHoursQueue200 = {
+  items: ListQuietHoursQueue200ItemsItem[];
+};
+
 export type GetQuietHoursQueueCount200 = {
   /** Number of unflushed emails in the quiet-hours queue. */
   count: number;

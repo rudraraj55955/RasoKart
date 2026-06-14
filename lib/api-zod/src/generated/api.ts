@@ -163,6 +163,20 @@ export const UpdateMyPreferencesResponse = zod.object({
 
 
 /**
+ * Returns all unflushed emails currently held in the quiet-hours queue for the authenticated user, ordered by scheduled delivery time.
+ * @summary List queued quiet-hours emails
+ */
+export const ListQuietHoursQueueResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number().describe('Queue entry ID.'),
+  "subject": zod.string().describe('Email subject line.'),
+  "deliverAfter": zod.coerce.date().describe('Scheduled delivery time (ISO 8601).'),
+  "createdAt": zod.coerce.date().describe('When the email was queued (ISO 8601).')
+}))
+})
+
+
+/**
  * Returns the number of unflushed emails currently held in the quiet-hours queue for the authenticated user.
  * @summary Get quiet-hours queue count
  */

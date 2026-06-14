@@ -846,6 +846,34 @@ router.delete("/trusted-ips/:id", requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /api/auth/quiet-hours/queue
+// Returns the list of unflushed emails in the quiet-hours queue for the current user.
+router.get("/quiet-hours/queue", requireAuth, async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { db, quietHoursQueueTable } = await import("@workspace/db");
+    const { eq, and, asc } = await import("drizzle-orm");
+    const rows = await db
+      .select({
+        id: quietHoursQueueTable.id,
+        subject: quietHoursQueueTable.subject,
+        deliverAfter: quietHoursQueueTable.deliverAfter,
+        createdAt: quietHoursQueueTable.createdAt,
+      })
+      .from(quietHoursQueueTable)
+      .where(
+        and(
+          eq(quietHoursQueueTable.userId, user.id),
+          eq(quietHoursQueueTable.flushed, false)
+        )
+      )
+      .orderBy(asc(quietHoursQueueTable.deliverAfter));
+    res.json({ items: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/auth/quiet-hours/queue-count
 // Returns the number of unflushed emails in the quiet-hours queue for the current user.
 router.get("/quiet-hours/queue-count", requireAuth, async (req, res, next) => {

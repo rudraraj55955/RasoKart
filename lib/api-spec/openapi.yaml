@@ -224,6 +224,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/quiet-hours/queue:
+    get:
+      operationId: listQuietHoursQueue
+      tags: [auth]
+      summary: List queued quiet-hours emails
+      description: Returns all unflushed emails currently held in the quiet-hours queue for the authenticated user, ordered by scheduled delivery time.
+      responses:
+        "200":
+          description: List of queued emails
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, subject, deliverAfter, createdAt]
+                      properties:
+                        id:
+                          type: number
+                          description: Queue entry ID.
+                        subject:
+                          type: string
+                          description: Email subject line.
+                        deliverAfter:
+                          type: string
+                          format: date-time
+                          description: Scheduled delivery time (ISO 8601).
+                        createdAt:
+                          type: string
+                          format: date-time
+                          description: When the email was queued (ISO 8601).
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /auth/quiet-hours/queue-count:
     get:
       operationId: getQuietHoursQueueCount
