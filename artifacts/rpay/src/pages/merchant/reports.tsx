@@ -459,8 +459,9 @@ function SchedulePanel() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-amber-300">Schedule auto-paused</p>
               <p className="text-xs text-amber-400/80 mt-0.5">
-                Your schedule was automatically paused after {schedule.consecutiveFailures} consecutive delivery{" "}
-                {schedule.consecutiveFailures === 1 ? "failure" : "failures"}. Re-enable it below once the issue is resolved.
+                Your schedule was automatically paused after reaching{" "}
+                <span className="font-semibold text-amber-300">{schedule.consecutiveFailures} of {schedule.autoPauseAfterFailures}</span>{" "}
+                consecutive delivery {schedule.consecutiveFailures === 1 ? "failure" : "failures"}. Re-enable it below once the issue is resolved.
               </p>
 
               {/* ─── Recent failure details ─── */}
@@ -684,7 +685,7 @@ function SchedulePanel() {
               {schedule.consecutiveFailures > 0 && (
                 <span className="flex items-center gap-1 text-xs text-amber-400 shrink-0">
                   <AlertTriangle className="w-3 h-3" />
-                  {schedule.consecutiveFailures} consecutive {schedule.consecutiveFailures === 1 ? "failure" : "failures"}
+                  {schedule.consecutiveFailures}/{schedule.autoPauseAfterFailures} consecutive {schedule.consecutiveFailures === 1 ? "failure" : "failures"}
                 </span>
               )}
               <ChevronRight
@@ -837,43 +838,34 @@ function SchedulePanel() {
                               Re-enabled
                             </span>
                           ) : log.isAutoPause ? (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400 cursor-default">
-                                    <PauseCircle className="w-3 h-3" />
-                                    Auto-paused
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="left" className="max-w-xs text-xs">
-                                  Schedule automatically paused due to repeated failures
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
+                                <PauseCircle className="w-3 h-3" />
+                                Auto-paused
+                              </span>
+                              {log.failureReason && (
+                                <p className="text-xs text-amber-400/70 leading-tight break-words max-w-[200px]">
+                                  {log.failureReason}
+                                </p>
+                              )}
+                            </div>
                           ) : log.success ? (
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
                               <CheckCircle2 className="w-3 h-3" />
                               Delivered
                             </span>
-                          ) : log.failureReason ? (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400 cursor-default">
-                                    <XCircle className="w-3 h-3" />
-                                    Failed
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="left" className="max-w-xs text-xs">
-                                  {log.failureReason}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400">
-                              <XCircle className="w-3 h-3" />
-                              Failed
-                            </span>
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-400">
+                                <XCircle className="w-3 h-3" />
+                                Failed
+                              </span>
+                              {log.failureReason && (
+                                <p className="text-xs text-red-400/70 leading-tight break-words max-w-[200px]">
+                                  {log.failureReason}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
