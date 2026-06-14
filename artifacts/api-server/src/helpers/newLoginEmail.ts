@@ -1,6 +1,6 @@
-import { sendMail } from "./mailer";
 import { logger } from "../lib/logger";
 import { maskIp } from "./apiKeyEmail";
+import { maybeQueueOrSendEmail } from "./quietHours";
 
 function escapeHtml(str: string): string {
   return str
@@ -12,13 +12,14 @@ function escapeHtml(str: string): string {
 }
 
 export async function sendNewLoginAlertEmail(opts: {
+  userId: number;
   to: string;
   businessName: string;
   loginIp: string;
   loginAt: Date;
   trustToken: string;
 }): Promise<void> {
-  const { to, businessName, loginIp, loginAt, trustToken } = opts;
+  const { userId, to, businessName, loginIp, loginAt, trustToken } = opts;
 
   const formattedDate = loginAt.toUTCString();
   const maskedIp = maskIp(loginIp);
@@ -139,7 +140,8 @@ export async function sendNewLoginAlertEmail(opts: {
 </html>
   `.trim();
 
-  const sent = await sendMail({
+  const sent = await maybeQueueOrSendEmail({
+    userId,
     to,
     subject: "Security Alert: New Login Detected — RasoKart",
     html,

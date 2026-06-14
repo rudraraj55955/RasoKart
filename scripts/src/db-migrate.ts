@@ -233,6 +233,26 @@ async function migrate() {
 
     -- ── users: add weekly_delivery_digest_emails column ─────────────────────────
     ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_emails BOOLEAN NOT NULL DEFAULT TRUE;
+
+    -- ── users: notification preference columns ───────────────────────────────────
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_sync_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_change_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_prefs_disabled_at TIMESTAMPTZ;
+
+    -- ── users: quiet hours columns ───────────────────────────────────────────────
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_start TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_end TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_timezone TEXT;
+
+    -- ── quiet_hours_queue ────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS quiet_hours_queue (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      subject TEXT NOT NULL,
+      html TEXT NOT NULL,
+      queued_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS quiet_hours_queue_user_id_idx ON quiet_hours_queue(user_id);
   `);
 
   console.log("DB migrations complete.");

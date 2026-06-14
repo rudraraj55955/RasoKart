@@ -105,6 +105,7 @@ router.post("/login", loginLimiter, async (req, res, next) => {
           if (merchant) {
             const trustToken = generateTrustToken(user.id, loginIp!);
             sendNewLoginAlertEmail({
+              userId: user.id,
               to: user.email,
               businessName: merchant.businessName,
               loginIp: loginIp!,
@@ -324,6 +325,9 @@ router.get("/me", requireAuth, async (req, res, next) => {
         ekqrSyncAlertEmails: usersTable.ekqrSyncAlertEmails,
         planChangeEmails: usersTable.planChangeEmails,
         notifPrefsDisabledAt: usersTable.notifPrefsDisabledAt,
+        quietHoursStart: usersTable.quietHoursStart,
+        quietHoursEnd: usersTable.quietHoursEnd,
+        quietHoursTimezone: usersTable.quietHoursTimezone,
       })
       .from(usersTable)
       .where(eq(usersTable.id, user.id))
@@ -351,6 +355,9 @@ router.get("/me", requireAuth, async (req, res, next) => {
       ekqrSyncAlertEmails: row?.ekqrSyncAlertEmails ?? true,
       planChangeEmails: row?.planChangeEmails ?? true,
       notifPrefsDisabledAt: row?.notifPrefsDisabledAt ?? null,
+      quietHoursStart: row?.quietHoursStart ?? null,
+      quietHoursEnd: row?.quietHoursEnd ?? null,
+      quietHoursTimezone: row?.quietHoursTimezone ?? null,
       createdAt: user.createdAt,
     });
   } catch (err) {
@@ -362,9 +369,9 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, planChangeEmails } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, planChangeEmails, quietHoursStart, quietHoursEnd, quietHoursTimezone } = req.body;
 
-    const patch: Record<string, boolean | Date | null> = {};
+    const patch: Record<string, boolean | Date | string | null> = {};
 
     if (reconciliationAlertEmails !== undefined) {
       if (typeof reconciliationAlertEmails !== "boolean") {
@@ -476,6 +483,37 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
         return;
       }
       patch["planChangeEmails"] = planChangeEmails;
+    }
+
+    const HH_MM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (quietHoursStart !== undefined) {
+      if (quietHoursStart !== null && (typeof quietHoursStart !== "string" || !HH_MM_RE.test(quietHoursStart))) {
+        res.status(400).json({ error: "quietHoursStart must be a HH:mm string (24h) or null" });
+        return;
+      }
+      patch["quietHoursStart"] = quietHoursStart;
+    }
+    if (quietHoursEnd !== undefined) {
+      if (quietHoursEnd !== null && (typeof quietHoursEnd !== "string" || !HH_MM_RE.test(quietHoursEnd))) {
+        res.status(400).json({ error: "quietHoursEnd must be a HH:mm string (24h) or null" });
+        return;
+      }
+      patch["quietHoursEnd"] = quietHoursEnd;
+    }
+    if (quietHoursTimezone !== undefined) {
+      if (quietHoursTimezone !== null) {
+        if (typeof quietHoursTimezone !== "string") {
+          res.status(400).json({ error: "quietHoursTimezone must be an IANA timezone string or null" });
+          return;
+        }
+        try {
+          Intl.DateTimeFormat(undefined, { timeZone: quietHoursTimezone });
+        } catch {
+          res.status(400).json({ error: `quietHoursTimezone '${quietHoursTimezone}' is not a valid IANA timezone` });
+          return;
+        }
+      }
+      patch["quietHoursTimezone"] = quietHoursTimezone;
     }
 
     if (Object.keys(patch).length === 0) {
@@ -597,6 +635,9 @@ router.put("/preferences", requireAuth, async (req, res, next) => {
       ekqrSyncAlertEmails: updated.ekqrSyncAlertEmails,
       planChangeEmails: updated.planChangeEmails,
       notifPrefsDisabledAt: updated.notifPrefsDisabledAt ?? null,
+      quietHoursStart: updated.quietHoursStart ?? null,
+      quietHoursEnd: updated.quietHoursEnd ?? null,
+      quietHoursTimezone: updated.quietHoursTimezone ?? null,
       createdAt: updated.createdAt,
     });
   } catch (err) {
@@ -663,6 +704,19 @@ router.delete("/trusted-ips/:id", requireAuth, async (req, res, next) => {
     await db.delete(merchantTrustedIpsTable).where(eq(merchantTrustedIpsTable.id, id));
 
     res.json({ message: "Trusted IP removed" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/auth/quiet-hours/flush
+// Immediately delivers any queued emails whose deliver-after time has passed for the current user.
+router.post("/quiet-hours/flush", requireAuth, async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { flushQuietHoursQueueForUser } = await import("../helpers/quietHours");
+    const result = await flushQuietHoursQueueForUser(user.id);
+    res.json({ message: `Flushed ${result.flushed} queued notification(s)`, flushed: result.flushed });
   } catch (err) {
     next(err);
   }

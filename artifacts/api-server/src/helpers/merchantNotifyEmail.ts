@@ -1,7 +1,7 @@
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { sendMail } from "./mailer";
 import { logger } from "../lib/logger";
+import { maybeQueueOrSendEmail } from "./quietHours";
 
 // ---------------------------------------------------------------------------
 // Plan change notification emails → merchant
@@ -19,7 +19,7 @@ export async function notifyMerchantOfPlanChange(opts: {
 }): Promise<void> {
   try {
     const [user] = await db
-      .select({ planChangeEmails: usersTable.planChangeEmails })
+      .select({ id: usersTable.id, planChangeEmails: usersTable.planChangeEmails })
       .from(usersTable)
       .where(eq(usersTable.merchantId, opts.merchantId))
       .limit(1);
@@ -61,7 +61,7 @@ export async function notifyMerchantOfPlanChange(opts: {
       });
     }
 
-    const sent = await sendMail({ to: opts.merchantEmail, subject, html });
+    const sent = await maybeQueueOrSendEmail({ userId: user.id, to: opts.merchantEmail, subject, html });
     if (!sent) {
       logger.warn({ merchantId: opts.merchantId, action: opts.action }, "Plan change email could not be sent (SMTP not configured or failed)");
     }
@@ -194,7 +194,7 @@ export async function notifyMerchantOfSettlementStateChange(opts: {
 }): Promise<void> {
   try {
     const [user] = await db
-      .select({ settlementStateChangedEmails: usersTable.settlementStateChangedEmails })
+      .select({ id: usersTable.id, settlementStateChangedEmails: usersTable.settlementStateChangedEmails })
       .from(usersTable)
       .where(eq(usersTable.merchantId, opts.merchantId))
       .limit(1);
@@ -213,7 +213,7 @@ export async function notifyMerchantOfSettlementStateChange(opts: {
     const subject = `[RasoKart] Settlement #${opts.settlementId} — Status updated to ${statusLabel}`;
     const html = buildMerchantSettlementStateHtml(opts);
 
-    const sent = await sendMail({ to: opts.merchantEmail, subject, html });
+    const sent = await maybeQueueOrSendEmail({ userId: user.id, to: opts.merchantEmail, subject, html });
     if (!sent) {
       logger.warn({ merchantId: opts.merchantId, settlementId: opts.settlementId }, "Merchant settlement state change email could not be sent (SMTP not configured or failed)");
     }

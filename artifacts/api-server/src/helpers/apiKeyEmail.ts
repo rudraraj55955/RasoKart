@@ -1,14 +1,15 @@
-import { sendMail } from "./mailer";
 import { logger } from "../lib/logger";
+import { maybeQueueOrSendEmail } from "./quietHours";
 
 export async function sendApiKeyGeneratedEmail(opts: {
+  userId: number;
   to: string;
   businessName: string;
   keyPrefix: string;
   generatedAt: Date;
   ipAddress: string;
 }): Promise<void> {
-  const { to, businessName, keyPrefix, generatedAt, ipAddress } = opts;
+  const { userId, to, businessName, keyPrefix, generatedAt, ipAddress } = opts;
 
   const formattedDate = generatedAt.toUTCString();
   const maskedIp = maskIp(ipAddress);
@@ -32,7 +33,8 @@ export async function sendApiKeyGeneratedEmail(opts: {
     footerWarning: "If you did not generate this key, please contact <a href=\"mailto:support@rasokart.com\" style=\"color:#f97316;text-decoration:none;\">support@rasokart.com</a> immediately.",
   });
 
-  const sent = await sendMail({
+  const sent = await maybeQueueOrSendEmail({
+    userId,
     to,
     subject: "Security Alert: New API Key Generated — RasoKart",
     html,
@@ -44,13 +46,14 @@ export async function sendApiKeyGeneratedEmail(opts: {
 }
 
 export async function sendApiKeyRevokedEmail(opts: {
+  userId: number;
   to: string;
   businessName: string;
   keyPrefix: string;
   revokedAt: Date;
   ipAddress: string;
 }): Promise<void> {
-  const { to, businessName, keyPrefix, revokedAt, ipAddress } = opts;
+  const { userId, to, businessName, keyPrefix, revokedAt, ipAddress } = opts;
 
   const formattedDate = revokedAt.toUTCString();
   const maskedIp = maskIp(ipAddress);
@@ -74,7 +77,8 @@ export async function sendApiKeyRevokedEmail(opts: {
     footerWarning: "If you did not revoke this key, please contact <a href=\"mailto:support@rasokart.com\" style=\"color:#f97316;text-decoration:none;\">support@rasokart.com</a> immediately.",
   });
 
-  const sent = await sendMail({
+  const sent = await maybeQueueOrSendEmail({
+    userId,
     to,
     subject: "Security Alert: API Key Revoked — RasoKart",
     html,

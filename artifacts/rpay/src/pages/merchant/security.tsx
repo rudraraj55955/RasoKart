@@ -36,6 +36,8 @@ import {
   Monitor,
   MapPin,
   Trash2,
+  Moon,
+  Send,
 } from "lucide-react";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -479,6 +481,56 @@ export default function MerchantSecurity() {
   ];
 
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
+
+  // Quiet hours draft state (local until saved)
+  const [qhStart, setQhStart] = useState<string>("");
+  const [qhEnd, setQhEnd] = useState<string>("");
+  const [qhTimezone, setQhTimezone] = useState<string>("");
+  const [qhEnabled, setQhEnabled] = useState<boolean>(false);
+  const [flushingQueue, setFlushingQueue] = useState(false);
+
+  // Sync quiet hours draft state from server data when me loads
+  useEffect(() => {
+    if (!me) return;
+    const start = (me as any).quietHoursStart ?? null;
+    const end = (me as any).quietHoursEnd ?? null;
+    const tz = (me as any).quietHoursTimezone ?? null;
+    const enabled = !!(start && end && tz);
+    setQhEnabled(enabled);
+    setQhStart(start ?? "22:00");
+    setQhEnd(end ?? "07:00");
+    setQhTimezone(tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  }, [me?.email]);
+
+  function handleSaveQuietHours() {
+    if (qhEnabled) {
+      if (!qhStart || !qhEnd || !qhTimezone) {
+        toast.error("Please fill in start time, end time, and timezone.");
+        return;
+      }
+      updatePrefs({ data: { quietHoursStart: qhStart, quietHoursEnd: qhEnd, quietHoursTimezone: qhTimezone } as any });
+    } else {
+      updatePrefs({ data: { quietHoursStart: null, quietHoursEnd: null, quietHoursTimezone: null } as any });
+    }
+  }
+
+  async function handleFlushQueue() {
+    setFlushingQueue(true);
+    try {
+      const token = localStorage.getItem("rasokart_token");
+      const res = await fetch("/api/auth/quiet-hours/flush", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Failed to flush queue");
+      const json = await res.json();
+      toast.success(json.message ?? `Flushed ${json.flushed} queued email(s)`);
+    } catch {
+      toast.error("Failed to flush queued emails");
+    } finally {
+      setFlushingQueue(false);
+    }
+  }
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
     mutation: {
@@ -2160,6 +2212,125 @@ export default function MerchantSecurity() {
               You will not receive the weekly report delivery digest.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Quiet Hours */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Moon className="w-4 h-4 text-indigo-400" />
+            Quiet Hours
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Set a do-not-disturb window. Emails triggered during quiet hours are held and delivered as a single digest when the window ends.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Moon className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-sm font-medium">Enable quiet hours</p>
+              </div>
+              <p className="text-xs text-muted-foreground pl-5">
+                When enabled, notifications sent during the configured window will be queued.
+              </p>
+            </div>
+            <Switch
+              checked={qhEnabled}
+              onCheckedChange={setQhEnabled}
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+
+          {qhEnabled && (
+            <div className="space-y-3 pl-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="qh-start" className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Quiet from
+                  </Label>
+                  <Input
+                    id="qh-start"
+                    type="time"
+                    value={qhStart}
+                    onChange={e => setQhStart(e.target.value)}
+                    className="h-8 text-sm [color-scheme:dark]"
+                    disabled={savingPrefs}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="qh-end" className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Quiet until
+                  </Label>
+                  <Input
+                    id="qh-end"
+                    type="time"
+                    value={qhEnd}
+                    onChange={e => setQhEnd(e.target.value)}
+                    className="h-8 text-sm [color-scheme:dark]"
+                    disabled={savingPrefs}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="qh-timezone" className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Timezone
+                </Label>
+                <Input
+                  id="qh-timezone"
+                  type="text"
+                  value={qhTimezone}
+                  onChange={e => setQhTimezone(e.target.value)}
+                  placeholder="e.g. Asia/Kolkata"
+                  className="h-8 text-sm"
+                  disabled={savingPrefs}
+                  list="iana-tzones"
+                />
+                <datalist id="iana-tzones">
+                  {[
+                    "Asia/Kolkata","Asia/Colombo","Asia/Dhaka","Asia/Karachi",
+                    "America/New_York","America/Chicago","America/Denver","America/Los_Angeles",
+                    "Europe/London","Europe/Paris","Europe/Berlin","Europe/Moscow",
+                    "Australia/Sydney","Australia/Melbourne","Pacific/Auckland",
+                    "UTC","Asia/Singapore","Asia/Tokyo","Asia/Dubai","Africa/Nairobi",
+                  ].map(tz => (
+                    <option key={tz} value={tz} />
+                  ))}
+                </datalist>
+                <p className="text-xs text-muted-foreground/60">
+                  Enter an IANA timezone identifier. Your local timezone is detected automatically.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Example: <span className="font-mono text-foreground/70">22:00 – 07:00 Asia/Kolkata</span> means emails sent between 10 PM and 7 AM IST are queued and delivered together at 7 AM.
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              size="sm"
+              className="h-8 text-xs gap-1.5"
+              onClick={handleSaveQuietHours}
+              disabled={savingPrefs || me === undefined}
+            >
+              {savingPrefs ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              Save quiet hours
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 hover:border-indigo-500/50"
+              onClick={handleFlushQueue}
+              disabled={flushingQueue}
+              title="Immediately deliver any queued emails whose delivery time has already passed"
+            >
+              {flushingQueue ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              Deliver queued now
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

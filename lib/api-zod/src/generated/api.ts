@@ -49,6 +49,9 @@ export const LoginResponse = zod.object({
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
   "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
+  "quietHoursStart": zod.string().nullish().describe('Start of quiet hours window in HH:mm format (e.g. \"22:00\"). Null means quiet hours disabled.'),
+  "quietHoursEnd": zod.string().nullish().describe('End of quiet hours window in HH:mm format (e.g. \"07:00\"). Null means quiet hours disabled.'),
+  "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "createdAt": zod.string()
 })
 })
@@ -93,6 +96,9 @@ export const GetMeResponse = zod.object({
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
   "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
+  "quietHoursStart": zod.string().nullish().describe('Start of quiet hours window in HH:mm format (e.g. \"22:00\"). Null means quiet hours disabled.'),
+  "quietHoursEnd": zod.string().nullish().describe('End of quiet hours window in HH:mm format (e.g. \"07:00\"). Null means quiet hours disabled.'),
+  "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "createdAt": zod.string()
 })
 
@@ -114,7 +120,10 @@ export const UpdateMyPreferencesBody = zod.object({
   "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an admin changes their report schedule.'),
   "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their settlement request changes state.'),
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected.'),
-  "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin.')
+  "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin.'),
+  "quietHoursStart": zod.string().nullish().describe('Start of quiet hours window in HH:mm 24h format (e.g. \"22:00\"). Null clears quiet hours.'),
+  "quietHoursEnd": zod.string().nullish().describe('End of quiet hours window in HH:mm 24h format (e.g. \"07:00\"). Null clears quiet hours.'),
+  "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for interpreting quiet hours (e.g. \"Asia\/Kolkata\"). Null clears quiet hours.')
 })
 
 export const UpdateMyPreferencesResponse = zod.object({
@@ -140,7 +149,20 @@ export const UpdateMyPreferencesResponse = zod.object({
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
   "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
+  "quietHoursStart": zod.string().nullish().describe('Start of quiet hours window in HH:mm format (e.g. \"22:00\"). Null means quiet hours disabled.'),
+  "quietHoursEnd": zod.string().nullish().describe('End of quiet hours window in HH:mm format (e.g. \"07:00\"). Null means quiet hours disabled.'),
+  "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "createdAt": zod.string()
+})
+
+
+/**
+ * Immediately delivers any queued notification emails whose deliver-after time has already passed for the authenticated user.
+ * @summary Flush queued quiet-hours emails
+ */
+export const FlushQuietHoursQueueResponse = zod.object({
+  "message": zod.string(),
+  "flushed": zod.number()
 })
 
 
@@ -3293,6 +3315,9 @@ export const ListUsersResponse = zod.object({
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
   "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
+  "quietHoursStart": zod.string().nullish().describe('Start of quiet hours window in HH:mm format (e.g. \"22:00\"). Null means quiet hours disabled.'),
+  "quietHoursEnd": zod.string().nullish().describe('End of quiet hours window in HH:mm format (e.g. \"07:00\"). Null means quiet hours disabled.'),
+  "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -3349,6 +3374,9 @@ export const UpdateUserResponse = zod.object({
   "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant wants an email when an EKQR synchronisation issue is detected. Defaults to true.'),
   "planChangeEmails": zod.boolean().optional().describe('Whether the merchant wants an email when their subscription plan is changed by an admin. Defaults to true.'),
   "notifPrefsDisabledAt": zod.string().nullish().describe('ISO timestamp of when any email notification preference was first disabled. Null if all are currently enabled.'),
+  "quietHoursStart": zod.string().nullish().describe('Start of quiet hours window in HH:mm format (e.g. \"22:00\"). Null means quiet hours disabled.'),
+  "quietHoursEnd": zod.string().nullish().describe('End of quiet hours window in HH:mm format (e.g. \"07:00\"). Null means quiet hours disabled.'),
+  "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "createdAt": zod.string()
 })
 

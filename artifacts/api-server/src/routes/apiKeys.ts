@@ -157,6 +157,7 @@ router.post("/", apiKeyCreateLimiter, requireModule("api_access"), async (req, r
     if (!merchant?.email) return;
 
     await sendApiKeyGeneratedEmail({
+      userId: user.id,
       to: merchant.email,
       businessName: merchant.businessName,
       keyPrefix,
@@ -214,6 +215,7 @@ router.delete("/:id", async (req, res) => {
     if (!merchant?.email) return;
 
     await sendApiKeyRevokedEmail({
+      userId: user.id,
       to: merchant.email,
       businessName: merchant.businessName,
       keyPrefix: key.keyPrefix,

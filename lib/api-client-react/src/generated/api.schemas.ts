@@ -250,6 +250,21 @@ export interface User {
      * @nullable
      */
   notifPrefsDisabledAt?: string | null;
+  /**
+     * Start of quiet hours window in HH:mm format (e.g. "22:00"). Null means quiet hours disabled.
+     * @nullable
+     */
+  quietHoursStart?: string | null;
+  /**
+     * End of quiet hours window in HH:mm format (e.g. "07:00"). Null means quiet hours disabled.
+     * @nullable
+     */
+  quietHoursEnd?: string | null;
+  /**
+     * IANA timezone for quiet hours interpretation (e.g. "Asia/Kolkata"). Null means quiet hours disabled.
+     * @nullable
+     */
+  quietHoursTimezone?: string | null;
   createdAt: string;
 }
 
@@ -4387,6 +4402,26 @@ export type UpdateMyPreferencesBody = {
   ekqrSyncAlertEmails?: boolean;
   /** Whether the merchant wants an email when their subscription plan is changed by an admin. */
   planChangeEmails?: boolean;
+  /**
+     * Start of quiet hours window in HH:mm 24h format (e.g. "22:00"). Null clears quiet hours.
+     * @nullable
+     */
+  quietHoursStart?: string | null;
+  /**
+     * End of quiet hours window in HH:mm 24h format (e.g. "07:00"). Null clears quiet hours.
+     * @nullable
+     */
+  quietHoursEnd?: string | null;
+  /**
+     * IANA timezone for interpreting quiet hours (e.g. "Asia/Kolkata"). Null clears quiet hours.
+     * @nullable
+     */
+  quietHoursTimezone?: string | null;
+};
+
+export type FlushQuietHoursQueue200 = {
+  message: string;
+  flushed: number;
 };
 
 export type ListMerchantsParams = {

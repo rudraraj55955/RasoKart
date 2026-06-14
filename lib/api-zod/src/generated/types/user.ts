@@ -41,5 +41,20 @@ export interface User {
      * @nullable
      */
   notifPrefsDisabledAt?: string | null;
+  /**
+     * Start of quiet hours window in HH:mm format (e.g. "22:00"). Null means quiet hours disabled.
+     * @nullable
+     */
+  quietHoursStart?: string | null;
+  /**
+     * End of quiet hours window in HH:mm format (e.g. "07:00"). Null means quiet hours disabled.
+     * @nullable
+     */
+  quietHoursEnd?: string | null;
+  /**
+     * IANA timezone for quiet hours interpretation (e.g. "Asia/Kolkata"). Null means quiet hours disabled.
+     * @nullable
+     */
+  quietHoursTimezone?: string | null;
   createdAt: string;
 }

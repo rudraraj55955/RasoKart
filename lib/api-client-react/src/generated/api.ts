@@ -117,6 +117,7 @@ import type {
   ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
   ExportVaBalanceAuditCsvParams,
+  FlushQuietHoursQueue200,
   GetAdminMerchantReportSchedule200,
   GetAdminMerchantReportScheduleHistory200,
   GetAdminMerchantReportScheduleHistoryParams,
@@ -766,6 +767,77 @@ export const useUpdateMyPreferences = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateMyPreferencesMutationOptions(options));
+    }
+
+export const getFlushQuietHoursQueueUrl = () => {
+
+
+
+
+  return `/api/auth/quiet-hours/flush`
+}
+
+/**
+ * Immediately delivers any queued notification emails whose deliver-after time has already passed for the authenticated user.
+ * @summary Flush queued quiet-hours emails
+ */
+export const flushQuietHoursQueue = async ( options?: RequestInit): Promise<FlushQuietHoursQueue200> => {
+
+  return customFetch<FlushQuietHoursQueue200>(getFlushQuietHoursQueueUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getFlushQuietHoursQueueMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof flushQuietHoursQueue>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof flushQuietHoursQueue>>, TError,void, TContext> => {
+
+const mutationKey = ['flushQuietHoursQueue'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof flushQuietHoursQueue>>, void> = () => {
+
+
+          return  flushQuietHoursQueue(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FlushQuietHoursQueueMutationResult = NonNullable<Awaited<ReturnType<typeof flushQuietHoursQueue>>>
+
+    export type FlushQuietHoursQueueMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Flush queued quiet-hours emails
+ */
+export const useFlushQuietHoursQueue = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof flushQuietHoursQueue>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof flushQuietHoursQueue>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getFlushQuietHoursQueueMutationOptions(options));
     }
 
 export const getLogoutUrl = () => {
