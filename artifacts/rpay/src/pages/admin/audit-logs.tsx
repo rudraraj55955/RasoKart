@@ -74,7 +74,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   security_activity_exported:        { label: "Security Activity Exported",        color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
   compliance_report_exported:        { label: "Compliance Report Exported",        color: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
   security_review_reminded:              { label: "Security Review Reminder Sent",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-  audit_schedule_failure_acknowledged:   { label: "Schedule Failure Acknowledged",       color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  audit_schedule_failure_acknowledged:   { label: "Failure Acknowledged",               color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
   report_schedule_created:               { label: "Report Schedule Created",              color: "bg-primary/10 text-primary border-primary/20" },
   report_schedule_updated:               { label: "Report Schedule Updated",              color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   report_schedule_reenabled:             { label: "Report Schedule Re-enabled",           color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
