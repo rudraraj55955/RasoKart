@@ -230,6 +230,9 @@ async function migrate() {
 
     -- ── merchants: add verification_status column ───────────────────────────────
     ALTER TABLE merchants ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending';
+
+    -- ── users: add weekly_delivery_digest_emails column ─────────────────────────
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_emails BOOLEAN NOT NULL DEFAULT TRUE;
   `);
 
   console.log("DB migrations complete.");

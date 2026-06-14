@@ -2,7 +2,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import XLSX from "xlsx";
 import PDFDocument from "pdfkit";
 import { db, reportSchedulesTable, reportDeliveryLogsTable, transactionsTable, merchantsTable, merchantConnectionsTable, ledgerEntriesTable, settlementsTable, usersTable } from "@workspace/db";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail, type MailOptions } from "./mailer";
 import { createNotification, createBulkNotifications } from "./notifications";
@@ -13,6 +13,7 @@ let scheduledTask: ScheduledTask | null = null;
 
 const REPORT_DELIVERY_MAX_ATTEMPTS = 3;
 const REPORT_DELIVERY_BACKOFF_BASE_MS = 1000;
+const AUTO_PAUSE_EMAIL_DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -539,40 +540,62 @@ async function handleReportFailure(
     });
 
     if (merchantInfo?.email) {
-      let notifyEmailSent = false;
-      let notifyEmailFailureReason: string | null = null;
-      try {
-        notifyEmailSent = await sendReportScheduleAutoPausedMerchantEmail({
-          to: merchantInfo.email,
-          businessName: merchantName,
-          frequency: schedule.frequency,
-          consecutiveFailures: newConsecutiveFailures,
-          autoPauseAfterFailures: schedule.autoPauseAfterFailures,
-          merchantId: schedule.merchantId,
-          scheduleId: schedule.id,
-          failureReason: failureReason ?? null,
-        });
-        if (!notifyEmailSent) {
-          notifyEmailFailureReason = "SMTP returned failure — merchant auto-pause notification email not delivered.";
+      const dedupWindowStart = new Date(Date.now() - AUTO_PAUSE_EMAIL_DEDUP_WINDOW_MS);
+      const [recentAutoPauseEmail] = await db
+        .select({ id: reportDeliveryLogsTable.id, attemptedAt: reportDeliveryLogsTable.attemptedAt })
+        .from(reportDeliveryLogsTable)
+        .where(
+          and(
+            eq(reportDeliveryLogsTable.scheduleId, schedule.id),
+            eq(reportDeliveryLogsTable.isAutoPause, true),
+            eq(reportDeliveryLogsTable.outcome, "merchant_notification_email"),
+            gte(reportDeliveryLogsTable.attemptedAt, dedupWindowStart),
+          ),
+        )
+        .orderBy(desc(reportDeliveryLogsTable.attemptedAt))
+        .limit(1);
+
+      if (recentAutoPauseEmail) {
+        logger.warn(
+          { scheduleId: schedule.id, merchantId: schedule.merchantId, priorLogId: recentAutoPauseEmail.id, priorAttemptedAt: recentAutoPauseEmail.attemptedAt, dedupWindowMs: AUTO_PAUSE_EMAIL_DEDUP_WINDOW_MS },
+          "Auto-pause merchant notification email skipped — duplicate send detected within dedup window",
+        );
+      } else {
+        let notifyEmailSent = false;
+        let notifyEmailFailureReason: string | null = null;
+        try {
+          notifyEmailSent = await sendReportScheduleAutoPausedMerchantEmail({
+            to: merchantInfo.email,
+            businessName: merchantName,
+            frequency: schedule.frequency,
+            consecutiveFailures: newConsecutiveFailures,
+            autoPauseAfterFailures: schedule.autoPauseAfterFailures,
+            merchantId: schedule.merchantId,
+            scheduleId: schedule.id,
+            failureReason: failureReason ?? null,
+          });
+          if (!notifyEmailSent) {
+            notifyEmailFailureReason = "SMTP returned failure — merchant auto-pause notification email not delivered.";
+          }
+        } catch (emailErr) {
+          notifyEmailSent = false;
+          notifyEmailFailureReason = emailErr instanceof Error ? emailErr.message : String(emailErr);
+          logger.error({ err: emailErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to send auto-pause merchant notification email");
         }
-      } catch (emailErr) {
-        notifyEmailSent = false;
-        notifyEmailFailureReason = emailErr instanceof Error ? emailErr.message : String(emailErr);
-        logger.error({ err: emailErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to send auto-pause merchant notification email");
+        await db.insert(reportDeliveryLogsTable).values({
+          scheduleId: schedule.id,
+          merchantId: schedule.merchantId,
+          success: notifyEmailSent,
+          failureReason: notifyEmailFailureReason,
+          isAutoPause: true,
+          frequency: schedule.frequency,
+          format: schedule.format,
+          outcome: "merchant_notification_email",
+          triggeredBy: triggeredBy ?? null,
+        }).catch(logErr => {
+          logger.error({ err: logErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to persist merchant auto-pause notification delivery log");
+        });
       }
-      await db.insert(reportDeliveryLogsTable).values({
-        scheduleId: schedule.id,
-        merchantId: schedule.merchantId,
-        success: notifyEmailSent,
-        failureReason: notifyEmailFailureReason,
-        isAutoPause: true,
-        frequency: schedule.frequency,
-        format: schedule.format,
-        outcome: "merchant_notification_email",
-        triggeredBy: triggeredBy ?? null,
-      }).catch(logErr => {
-        logger.error({ err: logErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to persist merchant auto-pause notification delivery log");
-      });
     }
   }
 }
