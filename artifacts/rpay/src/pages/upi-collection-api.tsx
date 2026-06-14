@@ -3,12 +3,17 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
   QrCode, Zap, Shield, BarChart3, Webhook, Key,
   Copy, Check, ArrowRight, RefreshCw, Globe,
   CheckCircle2, Code2, Landmark, Link2, Bell,
-  Activity, FileText, Lock,
+  Activity, FileText, Lock, FlaskConical, Play,
+  AlertCircle, ChevronDown, ChevronUp, Loader2,
 } from "lucide-react";
 
 function CodeBlock({ code, language = "json" }: { code: string; language?: string }) {
@@ -35,6 +40,360 @@ function CodeBlock({ code, language = "json" }: { code: string; language?: strin
     </div>
   );
 }
+
+// ── Sandbox tester ────────────────────────────────────────────────────────────
+
+type SandboxEndpoint = {
+  id: string;
+  method: "POST" | "GET" | "DELETE";
+  path: string;
+  description: string;
+  fields: SandboxField[];
+  mockResponse: (fields: Record<string, string>) => { status: number; body: object };
+};
+
+type SandboxField = {
+  name: string;
+  label: string;
+  placeholder: string;
+  defaultValue?: string;
+  required?: boolean;
+  type?: "text" | "number";
+};
+
+const SANDBOX_ENDPOINTS: SandboxEndpoint[] = [
+  {
+    id: "create-qr",
+    method: "POST",
+    path: "/api/qr-codes",
+    description: "Create a dynamic payment collection QR",
+    fields: [
+      { name: "label",     label: "Label",     placeholder: "Order #INV-2024-0042",   defaultValue: "Order #INV-2024-0042",  required: true },
+      { name: "amount",    label: "Amount (₹)", placeholder: "2499.00",               defaultValue: "2499.00",               required: true, type: "number" },
+      { name: "reference", label: "Reference",  placeholder: "INV-2024-0042",         defaultValue: "INV-2024-0042" },
+    ],
+    mockResponse: (f) => ({
+      status: 201,
+      body: {
+        id: Math.floor(100 + Math.random() * 900),
+        label: f["label"] || "Order #INV-2024-0042",
+        type: "dynamic",
+        status: "active",
+        amount: parseFloat(f["amount"] || "2499").toFixed(2),
+        reference: f["reference"] || null,
+        ekqrPaymentUrl: `https://pay.rasokart.com/qr/${Math.floor(100 + Math.random() * 900)}`,
+        createdAt: new Date().toISOString(),
+      },
+    }),
+  },
+  {
+    id: "list-qr",
+    method: "GET",
+    path: "/api/qr-codes",
+    description: "List QR codes (most recent first)",
+    fields: [
+      { name: "limit",  label: "Limit",  placeholder: "10", defaultValue: "10", type: "number" },
+      { name: "status", label: "Status (optional)", placeholder: "active | expired | all", defaultValue: "" },
+    ],
+    mockResponse: (f) => {
+      const limit = Math.min(parseInt(f["limit"] || "10", 10) || 3, 5);
+      return {
+        status: 200,
+        body: {
+          data: Array.from({ length: limit }, (_, i) => ({
+            id: 180 + i,
+            label: `Order #INV-2024-00${40 + i}`,
+            type: "dynamic",
+            status: i === 0 ? "active" : "expired",
+            amount: ((i + 1) * 999).toFixed(2),
+            reference: `INV-2024-00${40 + i}`,
+            createdAt: new Date(Date.now() - i * 86_400_000).toISOString(),
+          })),
+          total: 42,
+          limit,
+          offset: 0,
+        },
+      };
+    },
+  },
+  {
+    id: "get-qr",
+    method: "GET",
+    path: "/api/qr-codes/:id",
+    description: "Fetch a single QR code by ID",
+    fields: [
+      { name: "id", label: "QR Code ID", placeholder: "184", defaultValue: "184", required: true, type: "number" },
+    ],
+    mockResponse: (f) => ({
+      status: 200,
+      body: {
+        id: parseInt(f["id"] || "184", 10),
+        label: "Order #INV-2024-0042",
+        type: "dynamic",
+        status: "active",
+        amount: "2499.00",
+        reference: "INV-2024-0042",
+        ekqrPaymentUrl: `https://pay.rasokart.com/qr/${f["id"] || "184"}`,
+        depositsCount: 0,
+        createdAt: "2025-06-14T10:32:00.000Z",
+      },
+    }),
+  },
+  {
+    id: "list-deposits",
+    method: "GET",
+    path: "/api/deposits",
+    description: "List received deposits",
+    fields: [
+      { name: "limit",  label: "Limit",  placeholder: "10", defaultValue: "5", type: "number" },
+      { name: "status", label: "Status (optional)", placeholder: "completed | pending | all", defaultValue: "" },
+    ],
+    mockResponse: (f) => {
+      const limit = Math.min(parseInt(f["limit"] || "5", 10) || 3, 5);
+      return {
+        status: 200,
+        body: {
+          data: Array.from({ length: limit }, (_, i) => ({
+            id: 300 + i,
+            amount: ((i + 1) * 1250).toFixed(2),
+            status: "completed",
+            utrNumber: `UTR${Date.now() - i}`,
+            qrCodeId: 180 + i,
+            paidAt: new Date(Date.now() - i * 3_600_000).toISOString(),
+          })),
+          total: 17,
+          limit,
+          offset: 0,
+        },
+      };
+    },
+  },
+  {
+    id: "delete-qr",
+    method: "DELETE",
+    path: "/api/qr-codes/:id",
+    description: "Deactivate a QR code",
+    fields: [
+      { name: "id", label: "QR Code ID", placeholder: "184", defaultValue: "184", required: true, type: "number" },
+    ],
+    mockResponse: (f) => ({
+      status: 200,
+      body: {
+        id: parseInt(f["id"] || "184", 10),
+        status: "deactivated",
+        message: "QR code has been deactivated successfully.",
+      },
+    }),
+  },
+];
+
+const METHOD_COLOR: Record<string, string> = {
+  GET:    "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  POST:   "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  DELETE: "bg-rose-500/20 text-rose-400 border-rose-500/30",
+};
+
+const STATUS_COLOR = (status: number) =>
+  status >= 200 && status < 300 ? "text-emerald-400" : "text-rose-400";
+
+function SandboxTester() {
+  const [selectedId, setSelectedId]     = useState<string>("create-qr");
+  const [fieldValues, setFieldValues]   = useState<Record<string, string>>({});
+  const [loading, setLoading]           = useState(false);
+  const [result, setResult]             = useState<{ status: number; body: object } | null>(null);
+  const [showRequest, setShowRequest]   = useState(false);
+  const [copied, setCopied]             = useState(false);
+
+  const endpoint = SANDBOX_ENDPOINTS.find((e) => e.id === selectedId)!;
+
+  const getValue = (field: SandboxField) =>
+    fieldValues[field.name] ?? field.defaultValue ?? "";
+
+  const setField = (name: string, value: string) =>
+    setFieldValues((prev) => ({ ...prev, [name]: value }));
+
+  const handleRun = () => {
+    const merged: Record<string, string> = {};
+    for (const f of endpoint.fields) merged[f.name] = getValue(f);
+
+    setLoading(true);
+    setResult(null);
+    setTimeout(() => {
+      setResult(endpoint.mockResponse(merged));
+      setLoading(false);
+      setShowRequest(false);
+    }, 600 + Math.random() * 400);
+  };
+
+  const resolvedPath = endpoint.path.replace(
+    ":id",
+    getValue(endpoint.fields.find((f) => f.name === "id") ?? endpoint.fields[0]),
+  );
+
+  const requestPreview = (() => {
+    const merged: Record<string, string> = {};
+    for (const f of endpoint.fields) merged[f.name] = getValue(f);
+
+    const bodyFields = endpoint.fields.filter((f) => f.name !== "id" && !["limit", "status"].includes(f.name));
+    const hasBody = endpoint.method === "POST" && bodyFields.length > 0;
+
+    const bodyObj: Record<string, string | number> = {};
+    if (hasBody) {
+      for (const f of bodyFields) {
+        bodyObj[f.name] = f.type === "number" ? parseFloat(merged[f.name] || "0") : merged[f.name] || "";
+      }
+    }
+
+    return [
+      `${endpoint.method} ${resolvedPath}`,
+      `Authorization: Bearer rasokart_live_••••••••••••••••`,
+      hasBody ? `\n${JSON.stringify(bodyObj, null, 2)}` : "",
+    ].filter(Boolean).join("\n");
+  })();
+
+  const handleCopyResponse = () => {
+    if (!result) return;
+    navigator.clipboard.writeText(JSON.stringify(result.body, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Card className="border-amber-500/25 bg-amber-500/5">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-amber-500/15">
+            <FlaskConical className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-base flex items-center gap-2">
+              Sandbox API Tester
+              <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/25 text-[10px] font-semibold">
+                SANDBOX
+              </Badge>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Mock responses only — no real transactions or funds are moved.
+            </p>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+        {/* Endpoint selector */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Endpoint</Label>
+          <Select value={selectedId} onValueChange={(v) => { setSelectedId(v); setResult(null); setFieldValues({}); }}>
+            <SelectTrigger className="font-mono text-sm bg-black/40 border-border/60">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SANDBOX_ENDPOINTS.map((ep) => (
+                <SelectItem key={ep.id} value={ep.id}>
+                  <span className="flex items-center gap-2">
+                    <Badge className={`text-[10px] font-bold border ${METHOD_COLOR[ep.method]}`}>{ep.method}</Badge>
+                    <span className="font-mono text-xs">{ep.path}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">{endpoint.description}</p>
+        </div>
+
+        <Separator className="bg-border/40" />
+
+        {/* Fields */}
+        {endpoint.fields.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {endpoint.fields.map((field) => (
+              <div key={field.name} className="space-y-1.5">
+                <Label htmlFor={`sb-${field.name}`} className="text-xs">
+                  {field.label}
+                  {field.required && <span className="text-rose-400 ml-0.5">*</span>}
+                </Label>
+                <Input
+                  id={`sb-${field.name}`}
+                  type={field.type === "number" ? "number" : "text"}
+                  placeholder={field.placeholder}
+                  value={getValue(field)}
+                  onChange={(e) => setField(field.name, e.target.value)}
+                  className="bg-black/40 border-border/60 font-mono text-sm h-8"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Request preview toggle */}
+        <div>
+          <button
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setShowRequest((p) => !p)}
+          >
+            {showRequest ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            {showRequest ? "Hide" : "Show"} request preview
+          </button>
+          {showRequest && (
+            <div className="mt-2">
+              <CodeBlock code={requestPreview} language="http" />
+            </div>
+          )}
+        </div>
+
+        {/* Run button */}
+        <Button
+          onClick={handleRun}
+          disabled={loading}
+          className="bg-teal-600 hover:bg-teal-500 text-white gap-2 w-full sm:w-auto"
+        >
+          {loading
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
+            : <><Play className="w-4 h-4" /> Send Request</>}
+        </Button>
+
+        {/* Response panel */}
+        {result && (
+          <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {result.status >= 200 && result.status < 300
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  : <AlertCircle className="w-3.5 h-3.5 text-rose-400" />}
+                <span className={`text-xs font-semibold ${STATUS_COLOR(result.status)}`}>
+                  HTTP {result.status}
+                </span>
+                <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[10px]">
+                  MOCK
+                </Badge>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={handleCopyResponse}
+                title="Copy response"
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              </Button>
+            </div>
+            <div className="relative group">
+              <pre className="bg-black/70 border border-border/50 rounded-lg p-4 text-xs font-mono overflow-x-auto text-green-300 whitespace-pre leading-relaxed max-h-72 overflow-y-auto">
+                {JSON.stringify(result.body, null, 2)}
+              </pre>
+            </div>
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+              <FlaskConical className="w-3 h-3 text-amber-400/70" />
+              This is a simulated sandbox response. No API key is required and no data is stored.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Page constants ────────────────────────────────────────────────────────────
 
 const FEATURES = [
   {
@@ -148,7 +507,7 @@ const ENDPOINTS = [
   { method: "GET",  path: "/api/callbacks", description: "View the full webhook delivery log" },
 ];
 
-const METHOD_COLOR: Record<string, string> = {
+const EP_METHOD_COLOR: Record<string, string> = {
   GET: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   POST: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   DELETE: "bg-rose-500/20 text-rose-400 border-rose-500/30",
@@ -264,7 +623,7 @@ export default function UpiCollectionApi() {
             <div className="space-y-0">
               {ENDPOINTS.map((ep, i) => (
                 <div key={`${ep.method}-${ep.path}`} className={`flex items-start gap-3 py-2.5 ${i < ENDPOINTS.length - 1 ? "border-b border-border/30" : ""}`}>
-                  <Badge className={`text-[10px] font-bold shrink-0 border ${METHOD_COLOR[ep.method] ?? "bg-muted"}`}>{ep.method}</Badge>
+                  <Badge className={`text-[10px] font-bold shrink-0 border ${EP_METHOD_COLOR[ep.method] ?? "bg-muted"}`}>{ep.method}</Badge>
                   <div className="min-w-0">
                     <code className="text-sm font-mono text-foreground">{ep.path}</code>
                     <p className="text-xs text-muted-foreground mt-0.5">{ep.description}</p>
@@ -299,6 +658,20 @@ export default function UpiCollectionApi() {
           </p>
           <CodeBlock code={WEBHOOK_PAYLOAD} language="http" />
         </div>
+      </div>
+
+      {/* ── Sandbox Tester ───────────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-semibold">Try it yourself</h2>
+          <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/25 text-[10px] font-semibold">
+            SANDBOX
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground -mt-2">
+          Fire mock API requests and inspect realistic responses — no API key or real account needed.
+        </p>
+        <SandboxTester />
       </div>
 
       {/* ── Capabilities checklist ───────────────────────────────────────────── */}
