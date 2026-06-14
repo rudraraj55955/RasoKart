@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey, useGetQuietHoursQueueCount, getGetQuietHoursQueueCountQueryKey, useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
-import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2 } from "lucide-react";
+import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey, useGetQuietHoursQueueCount, getGetQuietHoursQueueCountQueryKey, useGetMe, getGetMeQueryKey, useUpdateMyPreferences } from "@workspace/api-client-react";
+import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -63,6 +64,25 @@ const IN_APP_NOTIF_FIELDS = [
   "planChangeNotifs",
 ] as const;
 
+type InAppNotifField = typeof IN_APP_NOTIF_FIELDS[number];
+
+const IN_APP_NOTIF_LABELS: Record<InAppNotifField, string> = {
+  apiKeyGeneratedNotifs: "API key generated",
+  apiKeyRevokedNotifs: "API key revoked",
+  signatureFailureAlertNotifs: "Signature failure alerts",
+  loginAlertNotifs: "New login alerts",
+  reportScheduleChangedNotifs: "Report schedule changed",
+  settlementStateChangedNotifs: "Settlement state changed",
+  reconciliationAlertNotifs: "Reconciliation alerts",
+  planExpiryAlertNotifs: "Plan expiry alerts",
+  settlementStateNotifs: "Settlement state updates",
+  webhookFailureNotifs: "Webhook failures",
+  reportFailureAlertNotifs: "Report failure alerts",
+  weeklyDeliveryDigestNotifs: "Weekly delivery digest",
+  ekqrSyncAlertNotifs: "EKQR sync alerts",
+  planChangeNotifs: "Plan changes",
+};
+
 function countMutedInAppTypes(me: Record<string, unknown> | null | undefined): number {
   if (!me) return 0;
   return IN_APP_NOTIF_FIELDS.filter(field => me[field] === false).length;
@@ -74,6 +94,7 @@ interface NotificationBellProps {
 
 export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
+  const [showPrefs, setShowPrefs] = useState(false);
   const qc = useQueryClient();
   const [, navigate] = useLocation();
 
@@ -97,6 +118,14 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
   const markAll = useMarkAllNotificationsRead();
   const markOne = useMarkNotificationRead();
 
+  const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
+    mutation: {
+      onSuccess: (updated) => {
+        qc.setQueryData(getGetMeQueryKey(), (old: any) => ({ ...old, ...updated }));
+      },
+    },
+  });
+
   useEffect(() => {
     const id = setInterval(() => {
       qc.invalidateQueries({ queryKey: ["/api/notifications"] });
@@ -111,7 +140,8 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
   const unread = unreadCountsData?.total ?? 0;
   const queueCount = (!isAdmin ? (queueCountData?.count ?? 0) : 0);
   const items = data?.data ?? [];
-  const mutedCount = !isAdmin ? countMutedInAppTypes(meData as Record<string, unknown> | null | undefined) : 0;
+  const meRecord = meData as Record<string, unknown> | null | undefined;
+  const mutedCount = !isAdmin ? countMutedInAppTypes(meRecord) : 0;
 
   function handleMarkAll() {
     markAll.mutate(undefined, {
@@ -141,9 +171,13 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
     }
   }
 
+  function handleToggleField(field: InAppNotifField, value: boolean) {
+    updatePrefs({ data: { [field]: value } as any });
+  }
+
   return (
     <TooltipProvider>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setShowPrefs(false); }}>
         <PopoverTrigger asChild>
           <Button variant="ghost" size="icon" className="relative h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground">
             <Bell className="w-4 h-4" />
@@ -271,21 +305,70 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
             </div>
           )}
           {!isAdmin && (
-            <div className="border-t border-border/50 px-4 py-2">
-              <Link
-                href="/merchant/security#notification-settings"
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            <div className="border-t border-border/50">
+              <button
+                type="button"
+                onClick={() => setShowPrefs((v) => !v)}
+                className="flex items-center gap-2 w-full px-6 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
               >
                 <Settings2 className="w-3.5 h-3.5 shrink-0" />
-                <span className="flex-1">Manage notification preferences</span>
-                {mutedCount > 0 && (
+                <span className="flex-1 text-left">Manage notification preferences</span>
+                {mutedCount > 0 && !showPrefs && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
                     <BellOff className="w-2.5 h-2.5" />
                     {mutedCount} muted
                   </span>
                 )}
-              </Link>
+                {showPrefs ? (
+                  <ChevronUp className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60" />
+                )}
+              </button>
+
+              {showPrefs && (
+                <div className="border-t border-border/40 bg-muted/10">
+                  <div className="flex items-center justify-between px-4 pt-2.5 pb-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 flex items-center gap-1">
+                      <Bell className="w-3 h-3" />
+                      In-app alerts
+                    </span>
+                    {mutedCount > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                        <BellOff className="w-2.5 h-2.5" />
+                        {mutedCount} muted
+                      </span>
+                    )}
+                  </div>
+                  <ul className="divide-y divide-border/30 max-h-56 overflow-y-auto">
+                    {IN_APP_NOTIF_FIELDS.map((field) => {
+                      const isEnabled = meRecord ? (meRecord[field] !== false) : true;
+                      return (
+                        <li key={field} className="flex items-center gap-3 px-4 py-2">
+                          <span className={`flex-1 text-xs ${isEnabled ? "text-foreground" : "text-muted-foreground/60"}`}>
+                            {IN_APP_NOTIF_LABELS[field]}
+                          </span>
+                          <Switch
+                            checked={isEnabled}
+                            onCheckedChange={(val) => handleToggleField(field, val)}
+                            disabled={savingPrefs || meData === undefined}
+                            className="scale-75 origin-right"
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="px-4 py-2 border-t border-border/40">
+                    <Link
+                      href="/merchant/security#notification-settings"
+                      onClick={() => { setShowPrefs(false); setOpen(false); }}
+                      className="text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                    >
+                      Full settings →
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </PopoverContent>
