@@ -3787,6 +3787,7 @@ export default function AdminAuditLogs() {
   const [dateTo, setDateTo] = useState("");
   const [merchantIdInput, setMerchantIdInput] = useState("");
   const [merchantId, setMerchantId] = useState<number | undefined>(undefined);
+  const [actorEmailInput, setActorEmailInput] = useState("");
   const [settingKey, setSettingKey] = useState("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<any | null>(null);
@@ -3813,6 +3814,7 @@ export default function AdminAuditLogs() {
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
       if (merchantId != null) params.set("merchantId", String(merchantId));
+      if (actorEmailInput.trim()) params.set("actorEmail", actorEmailInput.trim());
       if (showSettingKeyFilter && settingKey !== "all") params.set("settingKey", settingKey);
       if (performedBy && performedBy !== "all") params.set("performedBy", performedBy);
 
@@ -3846,6 +3848,7 @@ export default function AdminAuditLogs() {
   const hasDateFilter = dateFrom !== "" || dateTo !== "";
   const hasTargetType = targetType !== "all";
   const hasMerchantId = merchantId != null;
+  const hasActorEmail = actorEmailInput.trim() !== "";
   const hasSettingKey = showSettingKeyFilter && settingKey !== "all";
   const hasPerformedBy = performedBy !== "all";
 
@@ -3858,6 +3861,7 @@ export default function AdminAuditLogs() {
     setDateTo("");
     setMerchantIdInput("");
     setMerchantId(undefined);
+    setActorEmailInput("");
     setSettingKey("all");
     setPage(1);
   }
@@ -3877,6 +3881,7 @@ export default function AdminAuditLogs() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     merchantId,
+    actorEmail: actorEmailInput.trim() || undefined,
     settingKey: hasSettingKey ? settingKey : undefined,
     page,
     limit: 20,
@@ -4065,8 +4070,27 @@ export default function AdminAuditLogs() {
                   </button>
                 )}
               </div>
+              <div className="relative shrink-0">
+                <AtSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  className="pl-8 pr-7 text-sm h-9 w-44"
+                  placeholder="Actor email"
+                  value={actorEmailInput}
+                  onChange={e => { setActorEmailInput(e.target.value); setPage(1); }}
+                  aria-label="Filter by actor email"
+                />
+                {actorEmailInput && (
+                  <button
+                    onClick={() => { setActorEmailInput(""); setPage(1); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear actor email filter"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2 shrink-0">
-                {(hasDateFilter || search !== "" || action !== "all" || hasTargetType || hasMerchantId || hasPerformedBy) && (
+                {(hasDateFilter || search !== "" || action !== "all" || hasTargetType || hasMerchantId || hasPerformedBy || hasActorEmail) && (
                   <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground hover:text-foreground">
                     <X className="w-3.5 h-3.5 mr-1.5" />
                     Clear filters
@@ -4101,7 +4125,7 @@ export default function AdminAuditLogs() {
           </div>
         </CardHeader>
 
-        {(hasTargetType || hasDateFilter || hasMerchantId || hasSettingKey || hasPerformedBy) && (
+        {(hasTargetType || hasDateFilter || hasMerchantId || hasSettingKey || hasPerformedBy || hasActorEmail) && (
           <div className="flex items-center gap-2 px-6 py-2 border-t border-border/40 bg-muted/10 flex-wrap">
             {hasPerformedBy && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-0.5 text-xs font-medium text-teal-400">
@@ -4111,6 +4135,19 @@ export default function AdminAuditLogs() {
                   onClick={() => { setPerformedBy("all"); setPage(1); }}
                   className="ml-0.5 hover:text-teal-300 transition-colors"
                   aria-label="Clear performed-by filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {hasActorEmail && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-0.5 text-xs font-medium text-sky-400">
+                <AtSign className="w-3 h-3" />
+                Actor: {actorEmailInput.trim()}
+                <button
+                  onClick={() => { setActorEmailInput(""); setPage(1); }}
+                  className="ml-0.5 hover:text-sky-300 transition-colors"
+                  aria-label="Clear actor email filter"
                 >
                   <X className="w-3 h-3" />
                 </button>

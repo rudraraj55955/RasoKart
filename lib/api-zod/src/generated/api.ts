@@ -4809,7 +4809,8 @@ export const ListAdminAuditLogsQueryParams = zod.object({
   "dateTo": zod.date().optional().describe('Filter logs on or before this date (ISO 8601, e.g. 2025-12-31)'),
   "merchantId": zod.coerce.number().optional().describe('Filter logs by merchant ID — matches rows where target_id equals the merchant, as well as bulk-action rows whose details.merchantIds array includes the merchant'),
   "settingKey": zod.coerce.string().optional().describe('Sub-filter for setting\/config logs. For action=setting_updated, matches details->>\'key\'. For action=system_config_updated, matches details->>\'section\'.'),
-  "performedBy": zod.enum(['system', 'admin']).optional().describe('Filter by actor type: \'system\' returns only automated\/scheduler entries (adminEmail=\'system\' or adminId=0); \'admin\' returns only human-initiated entries.')
+  "performedBy": zod.enum(['system', 'admin']).optional().describe('Filter by actor type: \'system\' returns only automated\/scheduler entries (adminEmail=\'system\' or adminId=0); \'admin\' returns only human-initiated entries.'),
+  "actorEmail": zod.coerce.string().optional().describe('Filter logs by actor email using a partial case-insensitive match (ilike). Useful for narrowing down to a specific admin user\'s actions.')
 })
 
 export const ListAdminAuditLogsResponse = zod.object({

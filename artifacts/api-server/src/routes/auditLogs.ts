@@ -238,7 +238,7 @@ router.get("/stats", async (req, res) => {
 router.get("/", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
-  const { page = "1", limit = "20", action, targetType, search, dateFrom, dateTo, merchantId, settingKey, performedBy } = req.query as Record<string, string>;
+  const { page = "1", limit = "20", action, targetType, search, dateFrom, dateTo, merchantId, settingKey, performedBy, actorEmail } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -246,6 +246,9 @@ router.get("/", async (req, res) => {
   const conditions: any[] = [];
   if (action && action !== "all") conditions.push(eq(auditLogsTable.action, action));
   if (targetType && targetType !== "all") conditions.push(eq(auditLogsTable.targetType, targetType));
+  if (actorEmail && actorEmail.trim() !== "") {
+    conditions.push(ilike(auditLogsTable.adminEmail, `%${actorEmail.trim()}%`));
+  }
   if (performedBy === "system") {
     conditions.push(
       or(
@@ -322,11 +325,14 @@ router.get("/export", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
   const user = (req as any).user;
 
-  const { action, targetType, search, dateFrom, dateTo, performedBy } = req.query as Record<string, string>;
+  const { action, targetType, search, dateFrom, dateTo, performedBy, actorEmail, merchantId } = req.query as Record<string, string>;
 
   const conditions: any[] = [];
   if (action && action !== "all") conditions.push(eq(auditLogsTable.action, action));
   if (targetType && targetType !== "all") conditions.push(eq(auditLogsTable.targetType, targetType));
+  if (actorEmail && actorEmail.trim() !== "") {
+    conditions.push(ilike(auditLogsTable.adminEmail, `%${actorEmail.trim()}%`));
+  }
   if (performedBy === "system") {
     conditions.push(
       or(
@@ -360,6 +366,17 @@ router.get("/export", async (req, res) => {
     const to = new Date(dateTo);
     to.setUTCHours(23, 59, 59, 999);
     if (!isNaN(to.getTime())) conditions.push(lte(auditLogsTable.createdAt, to));
+  }
+  if (merchantId) {
+    const merchantIdNum = parseInt(merchantId);
+    if (!isNaN(merchantIdNum)) {
+      conditions.push(
+        or(
+          eq(auditLogsTable.targetId, merchantIdNum),
+          sql`${auditLogsTable.details}::jsonb -> 'merchantIds' @> ${JSON.stringify([merchantIdNum])}::jsonb`,
+        )!
+      );
+    }
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -401,7 +418,7 @@ router.get("/export", async (req, res) => {
     targetId: null,
     details: JSON.stringify({
       rowCount: rows.length,
-      filters: { action: action ?? null, targetType: targetType ?? null, search: search ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null, performedBy: performedBy ?? null },
+      filters: { action: action ?? null, targetType: targetType ?? null, search: search ?? null, dateFrom: dateFrom ?? null, dateTo: dateTo ?? null, performedBy: performedBy ?? null, actorEmail: actorEmail ?? null, merchantId: merchantId ?? null },
     }),
     ipAddress: req.ip ?? null,
   });

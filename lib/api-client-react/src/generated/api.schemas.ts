@@ -5795,6 +5795,10 @@ settingKey?: string;
  * Filter by actor type: 'system' returns only automated/scheduler entries (adminEmail='system' or adminId=0); 'admin' returns only human-initiated entries.
  */
 performedBy?: ListAdminAuditLogsPerformedBy;
+/**
+ * Filter logs by actor email using a partial case-insensitive match (ilike). Useful for narrowing down to a specific admin user's actions.
+ */
+actorEmail?: string;
 };
 
 export type ListAdminAuditLogsPerformedBy = typeof ListAdminAuditLogsPerformedBy[keyof typeof ListAdminAuditLogsPerformedBy];
