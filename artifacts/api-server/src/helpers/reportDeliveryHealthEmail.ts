@@ -13,7 +13,7 @@
 
 import cron from "node-cron";
 import { db, reportDeliveryLogsTable, reportSchedulesTable, merchantsTable, usersTable } from "@workspace/db";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
 
@@ -50,7 +50,11 @@ async function getAdminDigestEmails(): Promise<{ email: string; id: number }[]> 
   return rows;
 }
 
-async function buildHealthData(since: Date): Promise<{ merchants: MerchantHealthRow[]; stats: DigestStats }> {
+export async function buildHealthData(from: Date, to?: Date): Promise<{ merchants: MerchantHealthRow[]; stats: DigestStats }> {
+  const dateConditions = to
+    ? and(gte(reportDeliveryLogsTable.attemptedAt, from), lte(reportDeliveryLogsTable.attemptedAt, to))
+    : gte(reportDeliveryLogsTable.attemptedAt, from);
+
   const logsWithMerchant = await db
     .select({
       merchantId: reportDeliveryLogsTable.merchantId,
@@ -61,7 +65,7 @@ async function buildHealthData(since: Date): Promise<{ merchants: MerchantHealth
     })
     .from(reportDeliveryLogsTable)
     .innerJoin(merchantsTable, eq(reportDeliveryLogsTable.merchantId, merchantsTable.id))
-    .where(gte(reportDeliveryLogsTable.attemptedAt, since))
+    .where(dateConditions)
     .groupBy(reportDeliveryLogsTable.merchantId, merchantsTable.businessName);
 
   const scheduleStatusMap = new Map<number, boolean>();
@@ -296,7 +300,7 @@ export async function sendDeliveryHealthDigest(): Promise<DeliveryHealthDigestRe
 
   const [admins, { merchants, stats }] = await Promise.all([
     getAdminDigestEmails(),
-    buildHealthData(periodFrom),
+    buildHealthData(periodFrom, periodTo),
   ]);
 
   if (admins.length === 0) {

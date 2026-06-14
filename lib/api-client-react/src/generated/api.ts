@@ -128,6 +128,8 @@ import type {
   GetMyVerificationResponse,
   GetQrCodeStatsParams,
   GetReconciliationRunEmailLogs200,
+  GetReportDeliveryHealth200,
+  GetReportDeliveryHealthParams,
   GetReportSchedule200,
   GetReportScheduleHistory200,
   GetReportScheduleHistoryParams,
@@ -5731,6 +5733,90 @@ export function usePreviewAdminMerchantReportScheduleEmail<TData = Awaited<Retur
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getPreviewAdminMerchantReportScheduleEmailQueryOptions(merchantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetReportDeliveryHealthUrl = (params?: GetReportDeliveryHealthParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/delivery-health?${stringifiedParams}` : `/api/reports/delivery-health`
+}
+
+/**
+ * @summary Admin — 7-day (or custom range) delivery health summary across all merchants
+ */
+export const getReportDeliveryHealth = async (params?: GetReportDeliveryHealthParams, options?: RequestInit): Promise<GetReportDeliveryHealth200> => {
+
+  return customFetch<GetReportDeliveryHealth200>(getGetReportDeliveryHealthUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReportDeliveryHealthQueryKey = (params?: GetReportDeliveryHealthParams,) => {
+    return [
+    `/api/reports/delivery-health`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetReportDeliveryHealthQueryOptions = <TData = Awaited<ReturnType<typeof getReportDeliveryHealth>>, TError = ErrorType<void>>(params?: GetReportDeliveryHealthParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportDeliveryHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReportDeliveryHealthQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReportDeliveryHealth>>> = ({ signal }) => getReportDeliveryHealth(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReportDeliveryHealth>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReportDeliveryHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getReportDeliveryHealth>>>
+export type GetReportDeliveryHealthQueryError = ErrorType<void>
+
+
+/**
+ * @summary Admin — 7-day (or custom range) delivery health summary across all merchants
+ */
+
+export function useGetReportDeliveryHealth<TData = Awaited<ReturnType<typeof getReportDeliveryHealth>>, TError = ErrorType<void>>(
+ params?: GetReportDeliveryHealthParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportDeliveryHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReportDeliveryHealthQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

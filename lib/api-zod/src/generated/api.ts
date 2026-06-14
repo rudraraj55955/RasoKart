@@ -2090,6 +2090,35 @@ export const PreviewAdminMerchantReportScheduleEmailResponse = zod.object({
 
 
 /**
+ * @summary Admin — 7-day (or custom range) delivery health summary across all merchants
+ */
+export const GetReportDeliveryHealthQueryParams = zod.object({
+  "dateFrom": zod.coerce.string().optional().describe('ISO date — start of the period (defaults to 7 days ago)'),
+  "dateTo": zod.coerce.string().optional().describe('ISO date — end of the period, inclusive (defaults to today)')
+})
+
+export const GetReportDeliveryHealthResponse = zod.object({
+  "stats": zod.object({
+  "totalDeliveries": zod.number(),
+  "totalSuccesses": zod.number(),
+  "totalFailures": zod.number(),
+  "autoPausedSchedules": zod.number(),
+  "overallFailureRate": zod.number().describe('Fraction 0–1'),
+  "merchantsWithFailures": zod.number()
+}),
+  "merchants": zod.array(zod.object({
+  "merchantId": zod.number(),
+  "businessName": zod.string(),
+  "successCount": zod.number(),
+  "failureCount": zod.number(),
+  "autoPauseCount": zod.number(),
+  "failureRate": zod.number().describe('Fraction 0–1'),
+  "scheduleActive": zod.boolean().nullish()
+}))
+})
+
+
+/**
  * @summary Admin — get delivery history for a merchant's report schedule
  */
 export const GetAdminMerchantReportScheduleHistoryParams = zod.object({

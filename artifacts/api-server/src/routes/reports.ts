@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMerchantReport } from "../helpers/merchantReportScheduler";
 import { createNotification, createBulkNotifications } from "../helpers/notifications";
 import { sendReportScheduleUpdatedEmail, buildReportScheduleUpdatedHtml, sendReportScheduleDeletedEmail, verifyReenableToken } from "../helpers/reportScheduleEmail";
+import { buildHealthData } from "../helpers/reportDeliveryHealthEmail";
 
 const router = Router();
 
@@ -1365,6 +1366,58 @@ router.post("/schedules/:merchantId/send-now", requireAdmin, async (req, res, ne
     }
 
     res.json({ ok: true, to: merchantRow.email });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/delivery-health — admin: delivery health summary for a date range
+router.get("/delivery-health", requireAdmin, async (req, res, next) => {
+  try {
+    const { dateFrom, dateTo } = req.query as Record<string, string>;
+
+    let from: Date;
+    let to: Date;
+
+    if (dateFrom) {
+      from = new Date(dateFrom);
+    } else {
+      from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    }
+
+    if (dateTo) {
+      to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+    } else {
+      to = new Date();
+    }
+
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+      res.status(400).json({ error: "Invalid dateFrom or dateTo" });
+      return;
+    }
+
+    const { merchants, stats } = await buildHealthData(from, to);
+
+    res.json({
+      stats: {
+        totalDeliveries: stats.totalDeliveries,
+        totalSuccesses: stats.totalSuccesses,
+        totalFailures: stats.totalFailures,
+        autoPausedSchedules: stats.autoPausedSchedules,
+        overallFailureRate: stats.overallFailureRate,
+        merchantsWithFailures: stats.merchantsWithFailures,
+      },
+      merchants: merchants.map(m => ({
+        merchantId: m.merchantId,
+        businessName: m.businessName,
+        successCount: m.successCount,
+        failureCount: m.failureCount,
+        autoPauseCount: m.autoPauseCount,
+        failureRate: m.failureRate,
+        scheduleActive: m.scheduleActive,
+      })),
+    });
   } catch (err) {
     next(err);
   }

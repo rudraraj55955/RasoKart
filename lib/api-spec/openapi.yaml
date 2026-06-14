@@ -2199,6 +2199,44 @@ paths:
         "404":
           description: Merchant not found
 
+  /reports/delivery-health:
+    get:
+      operationId: getReportDeliveryHealth
+      tags: [reports]
+      summary: Admin — 7-day (or custom range) delivery health summary across all merchants
+      parameters:
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+          description: ISO date — start of the period (defaults to 7 days ago)
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+          description: ISO date — end of the period, inclusive (defaults to today)
+      responses:
+        "200":
+          description: Delivery health summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stats, merchants]
+                properties:
+                  stats:
+                    $ref: "#/components/schemas/DeliveryHealthStats"
+                  merchants:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DeliveryHealthMerchantRow"
+        "400":
+          description: Invalid date parameters
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
   /reports/schedules/{merchantId}/history:
     get:
       operationId: getAdminMerchantReportScheduleHistory
@@ -9115,6 +9153,44 @@ components:
         performedByAdminEmail:
           type: ["string", "null"]
           description: Email of the admin who performed this action, denormalised for display without a join
+
+    DeliveryHealthStats:
+      type: object
+      required: [totalDeliveries, totalSuccesses, totalFailures, autoPausedSchedules, overallFailureRate, merchantsWithFailures]
+      properties:
+        totalDeliveries:
+          type: integer
+        totalSuccesses:
+          type: integer
+        totalFailures:
+          type: integer
+        autoPausedSchedules:
+          type: integer
+        overallFailureRate:
+          type: number
+          description: Fraction 0–1
+        merchantsWithFailures:
+          type: integer
+
+    DeliveryHealthMerchantRow:
+      type: object
+      required: [merchantId, businessName, successCount, failureCount, autoPauseCount, failureRate]
+      properties:
+        merchantId:
+          type: integer
+        businessName:
+          type: string
+        successCount:
+          type: integer
+        failureCount:
+          type: integer
+        autoPauseCount:
+          type: integer
+        failureRate:
+          type: number
+          description: Fraction 0–1
+        scheduleActive:
+          type: ["boolean", "null"]
 
     AdminReportDeliveryLog:
       allOf:

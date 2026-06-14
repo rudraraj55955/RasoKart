@@ -16,6 +16,7 @@ import {
   useGetAdminReportDeliveryHistory,
   getGetAdminReportDeliveryHistoryQueryKey,
   previewAdminMerchantReportScheduleEmail,
+  useGetReportDeliveryHealth,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -2307,6 +2308,11 @@ export default function AdminReports() {
   const [stlActivePreset, setStlActivePreset] = useState<string | null>(null);
   const [stlExporting, setStlExporting] = useState<"pdf" | "xlsx" | null>(null);
 
+  // Delivery health filter state
+  const [dhDateFrom, setDhDateFrom] = useState(() => format(subDays(new Date(), 6), "yyyy-MM-dd"));
+  const [dhDateTo, setDhDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [dhActivePreset, setDhActivePreset] = useState<string | null>("Last 7 days");
+
   const { data: merchantsData } = useListMerchants({ page: 1, limit: 200 });
   const merchants = merchantsData?.data ?? [];
 
@@ -2328,8 +2334,14 @@ export default function AdminReports() {
     merchantId: stlMerchantId !== "all" ? parseInt(stlMerchantId) : undefined,
   };
 
+  const dhParams = {
+    dateFrom: dhDateFrom || undefined,
+    dateTo: dhDateTo || undefined,
+  };
+
   const { data: txData, isLoading: txLoading, isFetching: txFetching } = useGetTransactionReport(txParams);
   const { data: stlData, isLoading: stlLoading, isFetching: stlFetching } = useGetSettlementReport(stlParams);
+  const { data: dhData, isLoading: dhLoading, isFetching: dhFetching } = useGetReportDeliveryHealth(dhParams);
 
   const transactions = txData?.data ?? [];
   const txStats = txData?.stats;
@@ -2356,6 +2368,13 @@ export default function AdminReports() {
     setStlDateFrom(range.from);
     setStlDateTo(range.to);
     setStlActivePreset(preset.label);
+  };
+
+  const applyDhPreset = (preset: typeof DATE_PRESETS[number]) => {
+    const range = preset.getRange();
+    setDhDateFrom(range.from);
+    setDhDateTo(range.to);
+    setDhActivePreset(preset.label);
   };
 
   // ── Transaction exports ───────────────────────────────────────────────────
@@ -2673,6 +2692,10 @@ export default function AdminReports() {
           <TabsTrigger value="delivery-history" className="flex items-center gap-1.5">
             <History className="w-3.5 h-3.5" />
             Delivery History
+          </TabsTrigger>
+          <TabsTrigger value="delivery-health" className="flex items-center gap-1.5">
+            <Mail className="w-3.5 h-3.5" />
+            Delivery Health
           </TabsTrigger>
         </TabsList>
 
@@ -3249,6 +3272,228 @@ export default function AdminReports() {
         {/* ── Delivery History Tab ────────────────────────────────────────── */}
         <TabsContent value="delivery-history" className="space-y-6">
           <DeliveryHistoryPanel />
+        </TabsContent>
+
+        {/* ── Delivery Health Tab ─────────────────────────────────────────── */}
+        <TabsContent value="delivery-health" className="space-y-6">
+          {/* Date range filter */}
+          <Card>
+            <CardContent className="pt-4 pb-3 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {DATE_PRESETS.map((p) => (
+                  <Button
+                    key={p.label}
+                    variant={dhActivePreset === p.label ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => applyDhPreset(p)}
+                  >
+                    {p.label}
+                  </Button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3 max-w-xs">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">From</Label>
+                  <Input
+                    type="date"
+                    value={dhDateFrom}
+                    onChange={(e) => { setDhDateFrom(e.target.value); setDhActivePreset(null); }}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">To</Label>
+                  <Input
+                    type="date"
+                    value={dhDateTo}
+                    onChange={(e) => { setDhDateTo(e.target.value); setDhActivePreset(null); }}
+                    className="h-8 text-sm"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Overall stats */}
+          {(dhLoading || dhData) && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {[
+                {
+                  label: "Total Deliveries",
+                  icon: <Mail className="w-3 h-3 text-primary" />,
+                  value: dhLoading ? "—" : (dhData?.stats.totalDeliveries ?? 0).toLocaleString("en-IN"),
+                  cls: "",
+                },
+                {
+                  label: "Successful",
+                  icon: <CheckCircle2 className="w-3 h-3 text-emerald-400" />,
+                  value: dhLoading ? "—" : (dhData?.stats.totalSuccesses ?? 0).toLocaleString("en-IN"),
+                  cls: "text-emerald-400",
+                },
+                {
+                  label: "Failed",
+                  icon: <XCircle className="w-3 h-3 text-red-400" />,
+                  value: dhLoading ? "—" : (dhData?.stats.totalFailures ?? 0).toLocaleString("en-IN"),
+                  cls: (dhData?.stats.totalFailures ?? 0) > 0 ? "text-red-400" : "text-emerald-400",
+                },
+                {
+                  label: "Failure Rate",
+                  icon: <BarChart3 className="w-3 h-3 text-amber-400" />,
+                  value: dhLoading ? "—" : `${((dhData?.stats.overallFailureRate ?? 0) * 100).toFixed(1)}%`,
+                  cls: (() => {
+                    const r = dhData?.stats.overallFailureRate ?? 0;
+                    if (r === 0) return "text-emerald-400";
+                    if (r < 0.2) return "text-amber-400";
+                    return "text-red-400";
+                  })(),
+                },
+                {
+                  label: "Auto-Paused",
+                  icon: <PauseCircle className="w-3 h-3 text-orange-400" />,
+                  value: dhLoading ? "—" : (dhData?.stats.autoPausedSchedules ?? 0).toString(),
+                  cls: (dhData?.stats.autoPausedSchedules ?? 0) > 0 ? "text-orange-400" : "text-emerald-400",
+                },
+                {
+                  label: "With Failures",
+                  icon: <AlertTriangle className="w-3 h-3 text-amber-400" />,
+                  value: dhLoading ? "—" : (dhData?.stats.merchantsWithFailures ?? 0).toString(),
+                  cls: (dhData?.stats.merchantsWithFailures ?? 0) > 0 ? "text-amber-400" : "text-emerald-400",
+                },
+              ].map((stat) => (
+                <Card key={stat.label}>
+                  <CardContent className="pt-4 pb-3">
+                    <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                      {stat.icon}{stat.label}
+                    </p>
+                    <p className={`text-base font-bold ${stat.cls}`}>{stat.value}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Overall health badge */}
+          {dhData && !dhLoading && (() => {
+            const r = dhData.stats.overallFailureRate;
+            const paused = dhData.stats.autoPausedSchedules;
+            if (r === 0 && paused === 0) return (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-400/10 border border-emerald-400/20 text-emerald-400 text-sm font-medium">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                All deliveries healthy — 100% success rate in this period
+              </div>
+            );
+            if (r >= 0.2 || paused > 0) return (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-red-400/10 border border-red-400/20 text-red-400 text-sm font-medium">
+                <XCircle className="w-4 h-4 shrink-0" />
+                {r >= 0.2 ? "High failure rate detected — check SMTP configuration." : ""}
+                {paused > 0 ? ` ${paused} schedule${paused !== 1 ? "s" : ""} auto-paused due to repeated failures.` : ""}
+              </div>
+            );
+            return (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-400/10 border border-amber-400/20 text-amber-400 text-sm font-medium">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                Delivery health degraded — some failures detected
+              </div>
+            );
+          })()}
+
+          {/* Per-merchant table */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <Store className="w-4 h-4 text-primary" />
+                  Per-Merchant Breakdown
+                </p>
+                {(dhLoading || dhFetching) && (
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {dhLoading ? (
+                <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Loading delivery health…</span>
+                </div>
+              ) : !dhData || dhData.merchants.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                  <Mail className="w-10 h-10 opacity-20" />
+                  <p className="text-sm">No delivery activity in this period</p>
+                  <p className="text-xs opacity-60">Try expanding the date range</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Merchant</TableHead>
+                        <TableHead className="text-xs text-center">✓ Sent</TableHead>
+                        <TableHead className="text-xs text-center">✗ Failed</TableHead>
+                        <TableHead className="text-xs text-center">Fail Rate</TableHead>
+                        <TableHead className="text-xs text-center">Schedule</TableHead>
+                        <TableHead className="text-xs text-center">Auto-Pauses</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dhData.merchants.map((m) => {
+                        const failRate = m.failureRate;
+                        const rateColor = failRate === 0 ? "text-emerald-400" : failRate < 0.2 ? "text-amber-400" : "text-red-400";
+                        return (
+                          <TableRow key={m.merchantId}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">{m.businessName}</span>
+                                {m.autoPauseCount > 0 && (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-red-400 bg-red-400/10 rounded px-1.5 py-0.5">
+                                    <PauseCircle className="w-2.5 h-2.5" />AUTO-PAUSED
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="text-sm font-semibold text-emerald-400">
+                                {m.successCount.toLocaleString("en-IN")}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className={`text-sm font-semibold ${m.failureCount > 0 ? "text-red-400" : "text-emerald-400"}`}>
+                                {m.failureCount.toLocaleString("en-IN")}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className={`text-sm font-semibold ${rateColor}`}>
+                                {(failRate * 100).toFixed(1)}%
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {m.scheduleActive === true ? (
+                                <span className="text-xs font-medium text-emerald-400">Active</span>
+                              ) : m.scheduleActive === false ? (
+                                <span className="text-xs font-medium text-orange-400">Paused</span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {m.autoPauseCount > 0 ? (
+                                <span className="text-sm font-semibold text-red-400">
+                                  {m.autoPauseCount}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">0</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

@@ -700,6 +700,28 @@ export interface ReportDeliveryLog {
   performedByAdminEmail?: string | null;
 }
 
+export interface DeliveryHealthStats {
+  totalDeliveries: number;
+  totalSuccesses: number;
+  totalFailures: number;
+  autoPausedSchedules: number;
+  /** Fraction 0–1 */
+  overallFailureRate: number;
+  merchantsWithFailures: number;
+}
+
+export interface DeliveryHealthMerchantRow {
+  merchantId: number;
+  businessName: string;
+  successCount: number;
+  failureCount: number;
+  autoPauseCount: number;
+  /** Fraction 0–1 */
+  failureRate: number;
+  /** @nullable */
+  scheduleActive?: boolean | null;
+}
+
 export type AdminReportDeliveryLog = ReportDeliveryLog & ({
   /**
      * Merchant's business name
@@ -4901,6 +4923,22 @@ export type PreviewAdminMerchantReportScheduleEmail200 = {
   html: string;
   /** Subject line of the email */
   subject: string;
+};
+
+export type GetReportDeliveryHealthParams = {
+/**
+ * ISO date — start of the period (defaults to 7 days ago)
+ */
+dateFrom?: string;
+/**
+ * ISO date — end of the period, inclusive (defaults to today)
+ */
+dateTo?: string;
+};
+
+export type GetReportDeliveryHealth200 = {
+  stats: DeliveryHealthStats;
+  merchants: DeliveryHealthMerchantRow[];
 };
 
 export type GetAdminMerchantReportScheduleHistoryParams = {
