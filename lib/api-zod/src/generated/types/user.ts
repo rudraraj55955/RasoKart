@@ -43,6 +43,11 @@ export interface User {
      */
   notifPrefsDisabledAt?: string | null;
   /**
+     * ISO timestamp of when the last notification reminder was sent to this user. Null if no reminder has ever been sent.
+     * @nullable
+     */
+  notifReminderSentAt?: string | null;
+  /**
      * Map of notification field name to ISO timestamp of when that specific field was disabled. Only present for fields that are currently disabled. Null or empty if all are enabled.
      * @nullable
      */

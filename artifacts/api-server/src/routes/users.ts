@@ -15,6 +15,8 @@ const formatUser = (u: any) => ({
   isActive: u.isActive,
   merchantId: u.merchantId,
   reconciliationAlertEmails: u.reconciliationAlertEmails,
+  notifPrefsDisabledAt: u.notifPrefsDisabledAt?.toISOString() ?? null,
+  notifReminderSentAt: u.notifReminderSentAt?.toISOString() ?? null,
   createdAt: u.createdAt,
 });
 

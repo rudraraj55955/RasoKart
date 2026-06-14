@@ -5,17 +5,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Bell, BellOff, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Bell, BellOff, AlertTriangle, Clock, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+
+type User = {
+  id: number;
+  email: string;
+  role: string;
+  name: string;
+  isActive?: boolean;
+  merchantId?: number | null;
+  reconciliationAlertEmails?: boolean;
+  notifPrefsDisabledAt?: string | null;
+  notifReminderSentAt?: string | null;
+  createdAt: string;
+};
 
 export default function AdminUsers() {
   const qc = useQueryClient();
@@ -23,6 +37,7 @@ export default function AdminUsers() {
   const [role, setRole] = useState("all");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [detailUser, setDetailUser] = useState<User | null>(null);
   const [form, setForm] = useState({ email: "", password: "", name: "", role: "admin" });
 
   const { data, isLoading } = useListUsers({ role: role as any, page, limit: 20 });
@@ -139,9 +154,19 @@ export default function AdminUsers() {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{format(new Date(u.createdAt), "MMM d, yyyy")}</TableCell>
                   <TableCell className="text-right">
-                    {u.id !== currentUser?.id && (
-                      <Button variant="ghost" size="icon" className="text-rose-500 hover:text-rose-400" onClick={() => handleDelete(u.id)}><Trash2 className="w-4 h-4" /></Button>
-                    )}
+                    <div className="flex items-center justify-end gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" onClick={() => setDetailUser(u as User)}>
+                            <Info className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>View details</TooltipContent>
+                      </Tooltip>
+                      {u.id !== currentUser?.id && (
+                        <Button variant="ghost" size="icon" className="text-rose-500 hover:text-rose-400" onClick={() => handleDelete(u.id)}><Trash2 className="w-4 h-4" /></Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -171,6 +196,77 @@ export default function AdminUsers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Sheet open={!!detailUser} onOpenChange={open => { if (!open) setDetailUser(null); }}>
+        <SheetContent className="w-[420px] sm:w-[480px] overflow-y-auto">
+          {detailUser && (
+            <>
+              <SheetHeader className="mb-6">
+                <SheetTitle>User Details</SheetTitle>
+              </SheetHeader>
+
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Name</span>
+                    <span className="text-sm font-medium">{detailUser.name}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Email</span>
+                    <span className="text-sm font-medium">{detailUser.email}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Role</span>
+                    <Badge variant={detailUser.role === "admin" ? "default" : "secondary"}>{detailUser.role}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <Badge variant={detailUser.isActive ? "outline" : "secondary"} className={detailUser.isActive ? "text-emerald-500 border-emerald-500/40" : ""}>
+                      {detailUser.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Joined</span>
+                    <span className="text-sm">{format(new Date(detailUser.createdAt), "MMM d, yyyy")}</span>
+                  </div>
+                </div>
+
+                <div className="border-t pt-6 space-y-4">
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Bell className="w-4 h-4" />
+                    Notification Preferences
+                  </h3>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Prefs disabled since</span>
+                      <span className="text-sm">
+                        {detailUser.notifPrefsDisabledAt
+                          ? format(new Date(detailUser.notifPrefsDisabledAt), "MMM d, yyyy, h:mm a")
+                          : <span className="text-muted-foreground/50">Never disabled</span>
+                        }
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Last reminder sent
+                      </span>
+                      <span className="text-sm">
+                        {detailUser.notifReminderSentAt
+                          ? format(new Date(detailUser.notifReminderSentAt), "MMM d, yyyy, h:mm a")
+                          : <span className="text-muted-foreground/50">Never</span>
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
