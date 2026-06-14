@@ -605,7 +605,7 @@ async function handleReportFailure(
         let notifyEmailSent = false;
         let notifyEmailFailureReason: string | null = null;
         try {
-          notifyEmailSent = await sendReportScheduleAutoPausedMerchantEmail({
+          const result = await sendReportScheduleAutoPausedMerchantEmail({
             to: merchantInfo.email,
             businessName: merchantName,
             frequency: schedule.frequency,
@@ -615,13 +615,37 @@ async function handleReportFailure(
             scheduleId: schedule.id,
             failureReason: failureReason ?? null,
           });
-          if (!notifyEmailSent) {
-            notifyEmailFailureReason = "SMTP returned failure — merchant auto-pause notification email not delivered.";
+          notifyEmailSent = result.sent;
+          if (!result.sent) {
+            if (result.reason === "opted-out") {
+              logger.info(
+                { scheduleId: schedule.id, merchantId: schedule.merchantId },
+                "Auto-pause merchant notification email skipped — merchant opted out of schedule change emails",
+              );
+            } else if (result.reason === "smtp-failure") {
+              notifyEmailFailureReason = "SMTP not configured or returned failure — auto-pause notification email not delivered.";
+              logger.warn(
+                { scheduleId: schedule.id, merchantId: schedule.merchantId },
+                "Auto-pause merchant notification email not sent — SMTP is not configured or failed; merchant was NOT notified by email",
+              );
+            } else if (result.reason === "no-user") {
+              notifyEmailFailureReason = "No user account found for merchant — auto-pause notification email skipped.";
+              logger.info(
+                { scheduleId: schedule.id, merchantId: schedule.merchantId },
+                "Auto-pause merchant notification email skipped — no user account found for merchant",
+              );
+            } else if (result.reason === "db-error") {
+              notifyEmailFailureReason = "Database error checking email opt-out preference — auto-pause notification email skipped.";
+              logger.error(
+                { scheduleId: schedule.id, merchantId: schedule.merchantId },
+                "Auto-pause merchant notification email skipped — failed to check opt-out preference due to a database error",
+              );
+            }
           }
         } catch (emailErr) {
           notifyEmailSent = false;
           notifyEmailFailureReason = emailErr instanceof Error ? emailErr.message : String(emailErr);
-          logger.error({ err: emailErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Failed to send auto-pause merchant notification email");
+          logger.error({ err: emailErr, scheduleId: schedule.id, merchantId: schedule.merchantId }, "Unexpected error sending auto-pause merchant notification email");
         }
         await db.insert(reportDeliveryLogsTable).values({
           scheduleId: schedule.id,

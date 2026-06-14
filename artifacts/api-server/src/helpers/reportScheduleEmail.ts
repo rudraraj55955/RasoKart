@@ -40,6 +40,10 @@ export interface ReenableTokenPayload {
   scheduleId: number;
 }
 
+export type EmailSendResult =
+  | { sent: true }
+  | { sent: false; reason: "opted-out" | "smtp-failure" | "no-user" | "db-error" };
+
 export function generateReenableToken(merchantId: number, scheduleId: number): string {
   const expiryDays = getReenableTokenExpiryDays();
   return jwt.sign(
@@ -230,7 +234,7 @@ export async function sendReportScheduleAutoPausedMerchantEmail(opts: {
   merchantId: number;
   scheduleId: number;
   failureReason?: string | null;
-}): Promise<boolean> {
+}): Promise<EmailSendResult> {
   const { to, businessName, frequency, consecutiveFailures, autoPauseAfterFailures, merchantId, scheduleId, failureReason } = opts;
 
   try {
@@ -242,16 +246,16 @@ export async function sendReportScheduleAutoPausedMerchantEmail(opts: {
 
     if (!user) {
       logger.info({ merchantId }, "No user found for merchant — skipping report schedule auto-pause email");
-      return false;
+      return { sent: false, reason: "no-user" };
     }
 
     if (!user.reportScheduleChangedEmails) {
       logger.info({ merchantId }, "Merchant opted out of report schedule changed emails — skipping auto-pause notification");
-      return false;
+      return { sent: false, reason: "opted-out" };
     }
   } catch (err) {
     logger.error({ err, merchantId }, "Failed to check merchant report schedule email preference — skipping auto-pause notification");
-    return false;
+    return { sent: false, reason: "db-error" };
   }
 
   const freqLabel = frequency.charAt(0).toUpperCase() + frequency.slice(1);
@@ -262,8 +266,9 @@ export async function sendReportScheduleAutoPausedMerchantEmail(opts: {
   const sent = await sendMail({ to, subject, html });
   if (!sent) {
     logger.warn({ to, businessName, merchantId }, "Report schedule auto-pause merchant email could not be sent (SMTP not configured or failed)");
+    return { sent: false, reason: "smtp-failure" };
   }
-  return sent;
+  return { sent: true };
 }
 
 export function buildReportScheduleDeletedHtml(opts: {
@@ -328,7 +333,7 @@ export async function sendReportScheduleDeletedEmail(opts: {
   merchantId: number;
   to: string;
   businessName: string;
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   const { merchantId, to, businessName } = opts;
 
   try {
@@ -340,16 +345,16 @@ export async function sendReportScheduleDeletedEmail(opts: {
 
     if (!user) {
       logger.info({ merchantId }, "No user found for merchant — skipping report schedule deleted email");
-      return;
+      return { sent: false, reason: "no-user" };
     }
 
     if (!user.reportScheduleChangedEmails) {
       logger.info({ merchantId }, "Merchant opted out of report schedule changed emails — skipping");
-      return;
+      return { sent: false, reason: "opted-out" };
     }
   } catch (err) {
     logger.error({ err, merchantId }, "Failed to check merchant report schedule email preference — skipping");
-    return;
+    return { sent: false, reason: "db-error" };
   }
 
   const subject = "[RasoKart] Your report schedule has been removed";
@@ -358,7 +363,9 @@ export async function sendReportScheduleDeletedEmail(opts: {
   const sent = await sendMail({ to, subject, html });
   if (!sent) {
     logger.warn({ to, businessName, merchantId }, "Report schedule deleted email could not be sent (SMTP not configured or failed)");
+    return { sent: false, reason: "smtp-failure" };
   }
+  return { sent: true };
 }
 
 export async function sendReportScheduleUpdatedEmail(opts: {
@@ -366,7 +373,7 @@ export async function sendReportScheduleUpdatedEmail(opts: {
   to: string;
   businessName: string;
   nextRunAt: string | null;
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   const { merchantId, to, businessName, nextRunAt } = opts;
 
   try {
@@ -378,16 +385,16 @@ export async function sendReportScheduleUpdatedEmail(opts: {
 
     if (!user) {
       logger.info({ merchantId }, "No user found for merchant — skipping report schedule email");
-      return;
+      return { sent: false, reason: "no-user" };
     }
 
     if (!user.reportScheduleChangedEmails) {
       logger.info({ merchantId }, "Merchant opted out of report schedule changed emails — skipping");
-      return;
+      return { sent: false, reason: "opted-out" };
     }
   } catch (err) {
     logger.error({ err, merchantId }, "Failed to check merchant report schedule email preference — skipping");
-    return;
+    return { sent: false, reason: "db-error" };
   }
 
   const formattedDate = nextRunAt
@@ -407,5 +414,7 @@ export async function sendReportScheduleUpdatedEmail(opts: {
   const sent = await sendMail({ to, subject, html });
   if (!sent) {
     logger.warn({ to, businessName, merchantId }, "Report schedule update email could not be sent (SMTP not configured or failed)");
+    return { sent: false, reason: "smtp-failure" };
   }
+  return { sent: true };
 }
