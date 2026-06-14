@@ -305,14 +305,25 @@ function ScheduleHistoryDialog({
   );
   const logs = data?.logs ?? [];
 
-  function outcomeIcon(log: { success: boolean; isAutoPause: boolean }) {
+  function outcomeIcon(log: { success: boolean; isAutoPause: boolean; outcome?: string | null }) {
     if (log.isAutoPause) return <PauseCircle className="w-4 h-4 text-amber-400 shrink-0" />;
+    if (log.outcome === "re-enabled by admin") return <CheckCircle className="w-4 h-4 text-sky-400 shrink-0" />;
     if (log.success) return <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />;
     return <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />;
   }
 
-  function outcomeLabel(log: { success: boolean; isAutoPause: boolean }) {
+  function outcomeLabel(log: { success: boolean; isAutoPause: boolean; outcome?: string | null; performedByAdminEmail?: string | null }) {
     if (log.isAutoPause) return <span className="text-amber-400 font-medium">Auto-paused</span>;
+    if (log.outcome === "re-enabled by admin") {
+      return (
+        <span className="flex flex-col gap-0.5">
+          <span className="text-sky-400 font-medium">Re-enabled by admin</span>
+          {log.performedByAdminEmail && (
+            <span className="text-xs text-muted-foreground">{log.performedByAdminEmail}</span>
+          )}
+        </span>
+      );
+    }
     if (log.success) return <span className="text-emerald-400 font-medium">Success</span>;
     return <span className="text-red-400 font-medium">Failed</span>;
   }

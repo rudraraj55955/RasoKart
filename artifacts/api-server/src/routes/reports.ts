@@ -1103,6 +1103,9 @@ router.patch("/schedules/:merchantId/reenable", requireAdmin, async (req, res, n
       isAutoPause: false,
       outcome: "re-enabled by admin",
       triggeredBy: "manual",
+      triggeredByEmail: admin.email,
+      performedByAdminId: admin.id,
+      performedByAdminEmail: admin.email,
     });
 
     // Audit log for traceability

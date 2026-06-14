@@ -45,4 +45,14 @@ export interface ReportDeliveryLog {
      * @nullable
      */
   triggeredByEmail?: string | null;
+  /**
+     * ID of the admin who performed this action (e.g. re-enabling a paused schedule)
+     * @nullable
+     */
+  performedByAdminId?: number | null;
+  /**
+     * Email of the admin who performed this action, denormalised for display without a join
+     * @nullable
+     */
+  performedByAdminEmail?: string | null;
 }

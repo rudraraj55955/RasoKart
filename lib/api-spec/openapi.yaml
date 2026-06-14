@@ -9023,6 +9023,12 @@ components:
         triggeredByEmail:
           type: ["string", "null"]
           description: Email of the admin who manually triggered the delivery, if applicable
+        performedByAdminId:
+          type: ["integer", "null"]
+          description: ID of the admin who performed this action (e.g. re-enabling a paused schedule)
+        performedByAdminEmail:
+          type: ["string", "null"]
+          description: Email of the admin who performed this action, denormalised for display without a join
 
     AdminReportDeliveryLog:
       allOf:
