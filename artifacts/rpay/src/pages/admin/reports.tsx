@@ -12,6 +12,7 @@ import {
   useGetAdminMerchantReportScheduleHistory,
   useSendAllOverdueReports,
   useReenableAdminMerchantReportSchedule,
+  useResetAdminMerchantReportScheduleFailures,
   getListMerchantReportSchedulesQueryOptions,
   useGetAdminReportDeliveryHistory,
   getGetAdminReportDeliveryHistoryQueryKey,
@@ -302,7 +303,7 @@ function ScheduleHistoryDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const [outcomeFilter, setOutcomeFilter] = useState<"all" | "success" | "failed" | "auto-paused" | "re-enabled">("all");
+  const [outcomeFilter, setOutcomeFilter] = useState<"all" | "success" | "failed" | "auto-paused" | "re-enabled" | "failures-reset">("all");
 
   const { data, isLoading } = useGetAdminMerchantReportScheduleHistory(
     merchantId ?? 0,
@@ -313,10 +314,11 @@ function ScheduleHistoryDialog({
 
   const logs = useMemo(() => {
     if (outcomeFilter === "all") return allLogs;
-    if (outcomeFilter === "success") return allLogs.filter((l) => l.success && !l.isAutoPause && l.outcome !== "re-enabled by admin" && l.outcome !== "re-enabled" && l.outcome !== "re-enabled via email link");
+    if (outcomeFilter === "success") return allLogs.filter((l) => l.success && !l.isAutoPause && l.outcome !== "re-enabled by admin" && l.outcome !== "re-enabled" && l.outcome !== "re-enabled via email link" && l.outcome !== "failure count reset by admin");
     if (outcomeFilter === "failed") return allLogs.filter((l) => !l.success && !l.isAutoPause);
     if (outcomeFilter === "auto-paused") return allLogs.filter((l) => l.isAutoPause);
     if (outcomeFilter === "re-enabled") return allLogs.filter((l) => l.success && (l.outcome === "re-enabled by admin" || l.outcome === "re-enabled" || l.outcome === "re-enabled via email link"));
+    if (outcomeFilter === "failures-reset") return allLogs.filter((l) => l.outcome === "failure count reset by admin");
     return allLogs;
   }, [allLogs, outcomeFilter]);
 
@@ -330,6 +332,7 @@ function ScheduleHistoryDialog({
 
   function outcomeIcon(log: { success: boolean; isAutoPause: boolean; outcome?: string | null }) {
     if (log.isAutoPause) return <PauseCircle className="w-4 h-4 text-amber-400 shrink-0" />;
+    if (log.outcome === "failure count reset by admin") return <RotateCcw className="w-4 h-4 text-orange-400 shrink-0" />;
     if (log.outcome === "re-enabled by admin" || log.outcome === "re-enabled" || log.outcome === "re-enabled via email link")
       return <CheckCircle className="w-4 h-4 text-sky-400 shrink-0" />;
     if (log.success) return <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />;
@@ -338,6 +341,16 @@ function ScheduleHistoryDialog({
 
   function outcomeLabel(log: { success: boolean; isAutoPause: boolean; outcome?: string | null; performedByAdminEmail?: string | null }) {
     if (log.isAutoPause) return <span className="text-amber-400 font-medium">Auto-paused</span>;
+    if (log.outcome === "failure count reset by admin") {
+      return (
+        <span className="flex flex-col gap-0.5">
+          <span className="text-orange-400 font-medium">Failures reset by admin</span>
+          {log.performedByAdminEmail && (
+            <span className="text-[10px] text-muted-foreground">{log.performedByAdminEmail}</span>
+          )}
+        </span>
+      );
+    }
     if (log.outcome === "re-enabled by admin") {
       return (
         <span className="flex flex-col gap-0.5">
@@ -360,6 +373,7 @@ function ScheduleHistoryDialog({
     { value: "failed", label: "Failed" },
     { value: "auto-paused", label: "Auto-paused" },
     { value: "re-enabled", label: "Re-enabled" },
+    { value: "failures-reset", label: "Failures reset" },
   ] as const;
 
   return (
@@ -522,6 +536,7 @@ function ScheduledReportsPanel() {
   const sendNow = useSendAdminMerchantReportNow();
   const sendAllOverdue = useSendAllOverdueReports();
   const reenable = useReenableAdminMerchantReportSchedule();
+  const resetFailures = useResetAdminMerchantReportScheduleFailures();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -591,6 +606,16 @@ function ScheduledReportsPanel() {
       toast.success(`Schedule re-enabled for ${name}`);
     } catch {
       toast.error(`Failed to re-enable schedule for ${name}`);
+    }
+  };
+
+  const handleResetFailures = async (merchantId: number, name: string) => {
+    try {
+      await resetFailures.mutateAsync({ merchantId });
+      invalidate();
+      toast.success(`Failure count reset for ${name}`);
+    } catch {
+      toast.error(`Failed to reset failure count for ${name}`);
     }
   };
 
@@ -1147,6 +1172,21 @@ function ScheduledReportsPanel() {
                             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             : <RotateCcw className="w-3.5 h-3.5" />}
                           Resume
+                        </Button>
+                      )}
+                      {s.isActive && s.consecutiveFailures > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1 text-orange-400 hover:text-orange-300"
+                          onClick={() => handleResetFailures(s.merchantId, s.businessName)}
+                          disabled={resetFailures.isPending}
+                          title={`Reset failure count to 0 (currently ${s.consecutiveFailures} consecutive failure${s.consecutiveFailures !== 1 ? "s" : ""})`}
+                        >
+                          {resetFailures.isPending
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <RotateCcw className="w-3.5 h-3.5" />}
+                          <span className="hidden sm:inline">Reset Failures</span>
                         </Button>
                       )}
                       <Button

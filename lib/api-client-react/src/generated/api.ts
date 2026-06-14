@@ -290,6 +290,7 @@ import type {
   ReorderMerchantSavedFiltersInput,
   ResendReconciliationAlertEmail200,
   ResendReconciliationReportEmail200,
+  ResetAdminMerchantReportScheduleFailures200,
   ResetWebhookFailureAlertCooldown200,
   ResetWebhookFailureAlertCooldownParams,
   RetryAdminReportDeliveryLog200,
@@ -5586,6 +5587,76 @@ export const useReenableAdminMerchantReportSchedule = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getReenableAdminMerchantReportScheduleMutationOptions(options));
+    }
+
+export const getResetAdminMerchantReportScheduleFailuresUrl = (merchantId: number,) => {
+
+
+
+
+  return `/api/reports/schedules/${merchantId}/reset-failures`
+}
+
+/**
+ * @summary Admin — reset the consecutive failure count on a merchant's report schedule to 0
+ */
+export const resetAdminMerchantReportScheduleFailures = async (merchantId: number, options?: RequestInit): Promise<ResetAdminMerchantReportScheduleFailures200> => {
+
+  return customFetch<ResetAdminMerchantReportScheduleFailures200>(getResetAdminMerchantReportScheduleFailuresUrl(merchantId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getResetAdminMerchantReportScheduleFailuresMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAdminMerchantReportScheduleFailures>>, TError,{merchantId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetAdminMerchantReportScheduleFailures>>, TError,{merchantId: number}, TContext> => {
+
+const mutationKey = ['resetAdminMerchantReportScheduleFailures'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetAdminMerchantReportScheduleFailures>>, {merchantId: number}> = (props) => {
+          const {merchantId} = props ?? {};
+
+          return  resetAdminMerchantReportScheduleFailures(merchantId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetAdminMerchantReportScheduleFailuresMutationResult = NonNullable<Awaited<ReturnType<typeof resetAdminMerchantReportScheduleFailures>>>
+
+    export type ResetAdminMerchantReportScheduleFailuresMutationError = ErrorType<void>
+
+    /**
+ * @summary Admin — reset the consecutive failure count on a merchant's report schedule to 0
+ */
+export const useResetAdminMerchantReportScheduleFailures = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetAdminMerchantReportScheduleFailures>>, TError,{merchantId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetAdminMerchantReportScheduleFailures>>,
+        TError,
+        {merchantId: number},
+        TContext
+      > => {
+      return useMutation(getResetAdminMerchantReportScheduleFailuresMutationOptions(options));
     }
 
 export const getSendAdminMerchantReportNowUrl = (merchantId: number,) => {

@@ -1419,6 +1419,70 @@ router.patch("/schedules/:merchantId/reenable", requireAdmin, async (req, res, n
   }
 });
 
+// POST /api/reports/schedules/:merchantId/reset-failures — admin: reset consecutive failure count to 0
+router.post("/schedules/:merchantId/reset-failures", requireAdmin, async (req, res, next) => {
+  try {
+    const mid = parseInt(req.params['merchantId'] as string);
+    if (isNaN(mid)) {
+      res.status(400).json({ error: "Invalid merchantId" });
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(reportSchedulesTable)
+      .where(eq(reportSchedulesTable.merchantId, mid))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: "No schedule configured for this merchant" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(reportSchedulesTable)
+      .set({ consecutiveFailures: 0, updatedAt: new Date() })
+      .where(eq(reportSchedulesTable.merchantId, mid))
+      .returning();
+
+    const admin = (req as any).user;
+
+    // Delivery log entry so the reset appears in delivery history
+    await db.insert(reportDeliveryLogsTable).values({
+      scheduleId: existing.id,
+      merchantId: mid,
+      success: true,
+      isAutoPause: false,
+      outcome: "failure count reset by admin",
+      triggeredBy: "manual",
+      triggeredByEmail: admin.email,
+      performedByAdminId: admin.id,
+      performedByAdminEmail: admin.email,
+    });
+
+    // Audit log for traceability
+    await db.insert(auditLogsTable).values({
+      adminId: admin.id,
+      adminEmail: admin.email,
+      action: "report_schedule_failures_reset",
+      targetType: "report_schedule",
+      targetId: mid,
+      details: JSON.stringify({
+        merchantId: mid,
+        previousConsecutiveFailures: existing.consecutiveFailures,
+        consecutiveFailuresReset: 0,
+        frequency: existing.frequency,
+        format: existing.format,
+      }),
+      ipAddress: req.ip ?? null,
+    });
+
+    res.json({ schedule: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/reports/schedules/:merchantId/send-now — admin: trigger immediate send for a merchant
 router.post("/schedules/:merchantId/send-now", requireAdmin, async (req, res, next) => {
   try {

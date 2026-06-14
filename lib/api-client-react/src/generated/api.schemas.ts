@@ -4995,6 +4995,10 @@ export type ReenableAdminMerchantReportSchedule200 = {
   schedule: ReportSchedule;
 };
 
+export type ResetAdminMerchantReportScheduleFailures200 = {
+  schedule: ReportSchedule;
+};
+
 export type SendAdminMerchantReportNow200 = {
   ok: boolean;
   to: string;

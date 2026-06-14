@@ -81,6 +81,7 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   report_schedule_created:               { label: "Report Schedule Created",              color: "bg-primary/10 text-primary border-primary/20" },
   report_schedule_updated:               { label: "Report Schedule Updated",              color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   report_schedule_reenabled:             { label: "Report Schedule Re-enabled",           color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  report_schedule_failures_reset:        { label: "Report Schedule Failures Reset",        color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
   report_schedule_override_set:          { label: "Report Schedule Next-Run Overridden",  color: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
   report_schedule_override_cleared:      { label: "Report Schedule Override Cleared",     color: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
   report_schedule_deleted:               { label: "Report Schedule Deleted",              color: "bg-red-500/10 text-red-400 border-red-500/20" },
