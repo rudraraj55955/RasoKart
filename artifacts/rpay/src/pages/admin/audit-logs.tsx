@@ -1436,6 +1436,14 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
 
   const hasMerchantId = parsed.merchantId != null;
 
+  // Compute a 30-day window ending on the auto-pause date for the delivery-history deep-link
+  const pauseDate = (() => {
+    try { return log.createdAt ? new Date(log.createdAt) : new Date(); } catch { return new Date(); }
+  })();
+  const dlFrom = format(subDays(pauseDate, 29), "yyyy-MM-dd");
+  const dlTo = format(pauseDate, "yyyy-MM-dd");
+  const dlDateRange = `&from=${dlFrom}&to=${dlTo}`;
+
   const deliveryParams = hasMerchantId
     ? { merchantId: parsed.merchantId!, success: GetAdminReportDeliveryHistorySuccess.false, limit: 5 }
     : undefined;
@@ -1480,7 +1488,7 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent Delivery Failures</p>
             <Link
-              href={`/admin/reports?tab=delivery-history&merchantId=${parsed.merchantId}&success=false`}
+              href={`/admin/reports?tab=delivery-history&merchantId=${parsed.merchantId}&success=false${dlDateRange}`}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
             >
               View delivery history
@@ -1499,7 +1507,7 @@ function ReportScheduleAutoPausedDetails({ log }: { log: any }) {
               {recentFailures.map((entry) => {
                 let attemptFormatted = entry.attemptedAt;
                 try { attemptFormatted = format(parseISO(entry.attemptedAt), "MMM d, yyyy HH:mm"); } catch { /* ignore */ }
-                const detailHref = `/admin/reports?tab=delivery-history&merchantId=${parsed.merchantId}&success=false`;
+                const detailHref = `/admin/reports?tab=delivery-history&merchantId=${parsed.merchantId}&success=false${dlDateRange}`;
                 return (
                   <Link key={entry.id} href={detailHref} className="flex gap-2 items-start rounded-md bg-rose-500/5 border border-rose-500/15 px-2.5 py-2 hover:bg-rose-500/10 hover:border-rose-500/30 transition-colors cursor-pointer group">
                     <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />

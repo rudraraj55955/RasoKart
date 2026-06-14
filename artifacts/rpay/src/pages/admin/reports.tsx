@@ -2075,8 +2075,9 @@ function DeliveryHistoryPanel() {
   const merchantFilter = _qp.get("merchantId") ?? "all";
   const successFilter = _qp.get("success") ?? "all";
   const triggeredByFilter = _qp.get("triggeredBy") ?? "all";
-  const dateFrom = _qp.get("dateFrom") ?? "";
-  const dateTo = _qp.get("dateTo") ?? "";
+  // Support both `dateFrom`/`dateTo` (URL-native) and `from`/`to` (deep-link from auto-pause panel)
+  const dateFrom = _qp.get("dateFrom") || _qp.get("from") || "";
+  const dateTo = _qp.get("dateTo") || _qp.get("to") || "";
   const timelinePreset: string | null = _qp.get("timelinePreset") ?? null;
 
   const STORAGE_KEY = "rasokart_delivery_history_filter";
