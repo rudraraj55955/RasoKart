@@ -646,11 +646,13 @@ function ScheduledReportsPanel() {
         if (clearFlashTimer.current != null) clearTimeout(clearFlashTimer.current);
         setClearedMerchantIds(new Set());
         setSendFailures(res.failures);
+        setSelectedFailureIds(prev => new Set([...prev].filter(id => res.failures.some((f: { merchantId: number }) => f.merchantId === id))));
       } else {
         toast.warning(`Sent ${res.sent}, failed ${res.failed} of ${res.total} overdue reports`);
         if (clearFlashTimer.current != null) clearTimeout(clearFlashTimer.current);
         setClearedMerchantIds(new Set());
         setSendFailures(res.failures);
+        setSelectedFailureIds(prev => new Set([...prev].filter(id => res.failures.some((f: { merchantId: number }) => f.merchantId === id))));
       }
       invalidate();
     } catch {
@@ -1311,7 +1313,7 @@ function ScheduledReportsPanel() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={sendFailures != null} onOpenChange={(open) => { if (!open) { if (clearFlashTimer.current != null) { clearTimeout(clearFlashTimer.current); clearFlashTimer.current = null; } setSendFailures(null); setClearedMerchantIds(new Set()); setSelectedFailureIds(new Set()); } }}>
+      <Dialog open={sendFailures != null} onOpenChange={(open) => { if (!open) { if (clearFlashTimer.current != null) { clearTimeout(clearFlashTimer.current); clearFlashTimer.current = null; } setSendFailures(null); setClearedMerchantIds(new Set()); } }}>
         <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm">
@@ -1461,7 +1463,7 @@ function ScheduledReportsPanel() {
             )}
           </div>
           <DialogFooter className="gap-2 flex-wrap">
-            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { if (clearFlashTimer.current != null) { clearTimeout(clearFlashTimer.current); clearFlashTimer.current = null; } setSendFailures(null); setClearedMerchantIds(new Set()); setSelectedFailureIds(new Set()); }}>
+            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { if (clearFlashTimer.current != null) { clearTimeout(clearFlashTimer.current); clearFlashTimer.current = null; } setSendFailures(null); setClearedMerchantIds(new Set()); }}>
               Close
             </Button>
             {sendFailures && selectedFailureIds.size > 0 && (
