@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useGetMe, useGetReportDeliveryHealth } from "@workspace/api-client-react";
+import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule } from "@workspace/api-client-react";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
@@ -168,6 +168,12 @@ function MerchantSidebar() {
   });
   const isKycVerified = kycSummary?.isVerified === true;
   const { data: me } = useGetMe();
+  const { data: reportSchedule } = useGetReportSchedule({
+    query: { refetchInterval: 5 * 60 * 1000, queryKey: ["/api/reports/schedule"] },
+  });
+  const hasReportScheduleWarning =
+    reportSchedule?.schedule != null &&
+    (reportSchedule.schedule.consecutiveFailures > 0 || !reportSchedule.schedule.isActive);
   const disabledNotifCount = me == null ? 0 : [
     me.apiKeyGeneratedEmails,
     me.apiKeyRevokedEmails,
@@ -273,6 +279,9 @@ function MerchantSidebar() {
                           <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-[10px] font-bold text-black px-1 leading-none shrink-0">
                             {disabledNotifCount}
                           </span>
+                        )}
+                        {item.href === "/merchant/reports" && hasReportScheduleWarning && (
+                          <span className="flex items-center justify-center w-2 h-2 rounded-full bg-amber-400 shrink-0" aria-label="Report schedule issue" />
                         )}
                       </Link>
                     </SidebarMenuButton>
