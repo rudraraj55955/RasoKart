@@ -3049,8 +3049,14 @@ const DH_ACTIVE_PRESET_KEY = "rasokart_admin_dh_active_preset";
 
 export default function AdminReports() {
   const searchStr = useSearch();
-  const urlTab = new URLSearchParams(searchStr).get("tab") ?? "transactions";
-  const [activeTab, setActiveTab] = useState(urlTab);
+  const [location, navigate] = useLocation();
+  const activeTab = new URLSearchParams(searchStr).get("tab") ?? "transactions";
+
+  const handleTabChange = useCallback((tab: string) => {
+    const next = new URLSearchParams(searchStr);
+    next.set("tab", tab);
+    navigate(`${location}?${next.toString()}`);
+  }, [searchStr, location, navigate]);
 
   // Transaction filter state
   const [txDateFrom, setTxDateFrom] = useState(() => format(startOfMonth(new Date()), "yyyy-MM-dd"));
@@ -3669,7 +3675,7 @@ export default function AdminReports() {
               )}
               <button
                 type="button"
-                onClick={() => setActiveTab("delivery-health")}
+                onClick={() => handleTabChange("delivery-health")}
                 className="ml-auto text-[10px] text-primary hover:text-primary/80 flex items-center gap-0.5 transition-colors"
               >
                 View details <ChevronRight className="w-3 h-3" />
@@ -3807,7 +3813,7 @@ export default function AdminReports() {
         </Card>
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="mb-4">
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="settlements">Settlements</TabsTrigger>
