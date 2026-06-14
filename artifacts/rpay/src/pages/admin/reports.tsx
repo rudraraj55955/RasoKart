@@ -16,6 +16,7 @@ import {
   getListMerchantReportSchedulesQueryOptions,
   useGetAdminReportDeliveryHistory,
   getGetAdminReportDeliveryHistoryQueryKey,
+  getGetAdminMerchantReportScheduleHistoryQueryKey,
   previewAdminMerchantReportScheduleEmail,
   useGetReportDeliveryHealth,
   useRetryAdminReportDeliveryLog,
@@ -319,7 +320,10 @@ function ScheduleHistoryDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const qc = useQueryClient();
   const [outcomeFilter, setOutcomeFilter] = useState<"all" | "success" | "failed" | "auto-paused" | "re-enabled" | "failures-reset">("all");
+  const [retrying, setRetrying] = useState<number | null>(null);
+  const retryMutation = useRetryAdminReportDeliveryLog();
 
   const { data, isLoading } = useGetAdminMerchantReportScheduleHistory(
     merchantId ?? 0,
@@ -327,6 +331,24 @@ function ScheduleHistoryDialog({
     { query: { enabled: open && merchantId != null } as any },
   );
   const allLogs = data?.logs ?? [];
+
+  const handleRetry = async (logId: number) => {
+    if (merchantId == null) return;
+    setRetrying(logId);
+    try {
+      await retryMutation.mutateAsync({ merchantId, logId });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getGetAdminMerchantReportScheduleHistoryQueryKey(merchantId, { limit: 100 }) }),
+        qc.invalidateQueries({ queryKey: getGetAdminReportDeliveryHistoryQueryKey() }),
+      ]);
+      toast.success(`Retry sent for ${merchantName}`);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(msg ?? "Retry failed — check SMTP configuration");
+    } finally {
+      setRetrying(null);
+    }
+  };
 
   const logs = useMemo(() => {
     if (outcomeFilter === "all") return allLogs;
@@ -469,6 +491,7 @@ function ScheduleHistoryDialog({
                   <TableHead className="text-xs">Outcome</TableHead>
                   <TableHead className="text-xs">Retries</TableHead>
                   <TableHead className="text-xs">Failure Reason</TableHead>
+                  <TableHead className="text-xs text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -540,6 +563,25 @@ function ScheduleHistoryDialog({
                           </div>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {!log.success && !log.isAutoPause ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1 text-amber-400 hover:text-amber-300"
+                          onClick={() => handleRetry(log.id)}
+                          disabled={retrying === log.id}
+                          title="Retry this failed delivery"
+                        >
+                          {retrying === log.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <RotateCcw className="w-3.5 h-3.5" />}
+                          Retry
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/40">—</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
