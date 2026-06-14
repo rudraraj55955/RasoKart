@@ -772,6 +772,13 @@ export async function seed() {
     .values({ key: "reconciliation_schedule", value: "daily" })
     .onConflictDoNothing();
 
+  // Seed delivery success-rate alert threshold (default 50 %).
+  // Admins can change this value in Admin → Settings → System Settings.
+  await db
+    .insert(systemSettingsTable)
+    .values({ key: "delivery_success_rate_alert_threshold", value: "50" })
+    .onConflictDoNothing();
+
   // Partial unique index for provider limit notification deduplication.
   // Enforces at most one provider_limit_warning and one provider_limit_reached
   // per (userId, provider, calendar month), making onConflictDoNothing() reliable.
@@ -787,6 +794,15 @@ export async function seed() {
     CREATE UNIQUE INDEX IF NOT EXISTS notifications_provider_limit_reset_dedup_idx
       ON notifications(user_id, (metadata->>'provider'), (metadata->>'currentMonthKey'))
       WHERE type = 'provider_limit_reset'
+  `);
+
+  // Dedup index: at most one report_delivery_low_success_rate alert per admin user
+  // per schedule per calendar day (dedupeKey = "rate_alert_<scheduleId>_<YYYY-MM-DD>").
+  // Enforces the ~24 h cool-down window for the delivery success-rate alert scheduler.
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_delivery_rate_alert_dedup_idx
+      ON notifications(user_id, type, (metadata->>'dedupeKey'))
+      WHERE type = 'report_delivery_low_success_rate'
   `);
 
   // Backfill connectionId on historical transactions that have a provider but no connectionId.

@@ -23,7 +23,8 @@ export type NotificationType =
   | "merchant_dormant"
   | "kyc_approved"
   | "kyc_rejected"
-  | "kyc_status_updated";
+  | "kyc_status_updated"
+  | "report_delivery_low_success_rate";
 
 export interface CreateNotificationInput {
   userId: number;

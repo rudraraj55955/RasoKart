@@ -94,6 +94,17 @@ export const notificationsTable = pgTable("notifications", {
       sql`((metadata->>'scheduleId'))`,
     )
     .where(sql`type = 'scheduled_report_auto_paused'`),
+  // Dedup index: at most one report_delivery_low_success_rate alert per admin user
+  // per schedule per calendar day (dedupeKey = "rate_alert_<scheduleId>_<YYYY-MM-DD>").
+  // onConflictDoNothing() in runDeliverySuccessRateAlertScan() relies on this.
+  // This enforces the ~24 h cool-down window described in the task spec.
+  uniqueIndex("notifications_delivery_rate_alert_dedup_idx")
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'dedupeKey'))`,
+    )
+    .where(sql`type = 'report_delivery_low_success_rate'`),
 ]);
 
 export type Notification = typeof notificationsTable.$inferSelect;

@@ -19,6 +19,7 @@ import { initEkqrSyncScheduler } from "./helpers/ekqrSyncScheduler";
 import { initMerchantReportScheduler } from "./helpers/merchantReportScheduler";
 import { initOverdueReportScheduler, runOverdueReportScan } from "./helpers/overdueReportScheduler";
 import { initDeliveryHealthDigestScheduler } from "./helpers/reportDeliveryHealthEmail";
+import { initDeliverySuccessRateAlertScheduler, runDeliverySuccessRateAlertScan } from "./helpers/deliverySuccessRateAlertScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -78,6 +79,7 @@ async function main() {
   initMerchantReportScheduler();
   initOverdueReportScheduler();
   initDeliveryHealthDigestScheduler();
+  initDeliverySuccessRateAlertScheduler();
   scheduleCallbackRetryWorker();
 
   // Startup sweep: immediately scan all active connections so merchants receive
@@ -97,6 +99,12 @@ async function main() {
   // when the server was down at the daily run time. Dedup keys make this safe.
   runOverdueReportScan().catch((err) => {
     logger.warn({ err }, "Startup overdue report sweep failed");
+  });
+
+  // Startup sweep: check delivery success rates so admins are alerted even when
+  // the server was down at the scheduled run time. Dedup keys make this safe.
+  runDeliverySuccessRateAlertScan().catch((err) => {
+    logger.warn({ err }, "Startup delivery success-rate alert sweep failed");
   });
 
   app.listen(port, (err) => {
