@@ -2822,6 +2822,128 @@ export default function AdminReports() {
         </div>
       </div>
 
+      {/* ── Delivery Health Summary Card ──────────────────────────────────── */}
+      {(dhLoading || dhData) && (
+        <Card className="border-border/60">
+          <CardContent className="pt-3 pb-3">
+            <div className="flex items-center gap-2 mb-3">
+              <Mail className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Delivery Health
+              </span>
+              {dhDateFrom && dhDateTo && (
+                <span className="text-[10px] text-muted-foreground/50">
+                  {dhDateFrom} → {dhDateTo}
+                </span>
+              )}
+              {(dhLoading || dhFetching) && (
+                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveTab("delivery-health")}
+                className="ml-auto text-[10px] text-primary hover:text-primary/80 flex items-center gap-0.5 transition-colors"
+              >
+                View details <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                {
+                  label: "Total Sent",
+                  icon: <Mail className="w-3 h-3 text-primary" />,
+                  value: dhLoading
+                    ? "—"
+                    : (dhData?.stats.totalDeliveries ?? 0).toLocaleString("en-IN"),
+                  cls: "",
+                },
+                {
+                  label: "Delivered",
+                  icon: <CheckCircle2 className="w-3 h-3 text-emerald-400" />,
+                  value: dhLoading
+                    ? "—"
+                    : (dhData?.stats.totalSuccesses ?? 0).toLocaleString("en-IN"),
+                  cls: "text-emerald-400",
+                },
+                {
+                  label: "Failed",
+                  icon: <XCircle className="w-3 h-3 text-red-400" />,
+                  value: dhLoading
+                    ? "—"
+                    : (dhData?.stats.totalFailures ?? 0).toLocaleString("en-IN"),
+                  cls:
+                    (dhData?.stats.totalFailures ?? 0) > 0
+                      ? "text-red-400"
+                      : "text-emerald-400",
+                },
+                {
+                  label: "Success Rate",
+                  icon: <TrendingUp className="w-3 h-3" />,
+                  value: dhLoading
+                    ? "—"
+                    : (() => {
+                        const total = dhData?.stats.totalDeliveries ?? 0;
+                        if (total === 0) return "—";
+                        return `${(((dhData?.stats.totalSuccesses ?? 0) / total) * 100).toFixed(1)}%`;
+                      })(),
+                  cls: (() => {
+                    const r = dhData?.stats.overallFailureRate ?? 0;
+                    if (r === 0) return "text-emerald-400";
+                    if (r < 0.2) return "text-amber-400";
+                    return "text-red-400";
+                  })(),
+                },
+              ].map((stat) => (
+                <div key={stat.label}>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1 flex items-center gap-1">
+                    {stat.icon}
+                    {stat.label}
+                  </p>
+                  <p className={`text-xl font-bold ${stat.cls}`}>{stat.value}</p>
+                </div>
+              ))}
+            </div>
+            {dhData && !dhLoading && (
+              <div className="mt-3 pt-3 border-t border-border/50">
+                {(() => {
+                  const r = dhData.stats.overallFailureRate;
+                  const paused = dhData.stats.autoPausedSchedules;
+                  if (dhData.stats.totalDeliveries === 0)
+                    return (
+                      <span className="text-xs text-muted-foreground">
+                        No deliveries in this period — try expanding the date range
+                      </span>
+                    );
+                  if (r === 0 && paused === 0)
+                    return (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        All deliveries healthy — 100% success rate
+                      </span>
+                    );
+                  if (r >= 0.2 || paused > 0)
+                    return (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-400">
+                        <XCircle className="w-3.5 h-3.5 shrink-0" />
+                        {r >= 0.2 ? "High failure rate detected." : ""}
+                        {paused > 0
+                          ? ` ${paused} schedule${paused !== 1 ? "s" : ""} auto-paused.`
+                          : ""}
+                      </span>
+                    );
+                  return (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-400">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Delivery health degraded — some failures detected
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
