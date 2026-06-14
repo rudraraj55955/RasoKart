@@ -186,7 +186,7 @@ function EditIntegrationDialog({ integration, onClose }: { integration: Integrat
             <strong>Credentials</strong> (Client ID, Secret, Webhook Secret) are managed separately in{" "}
             <Link href={integration.productType === "payout" ? "/admin/cashfree-payout" : "/admin/cashfree-gateway"}
               className="underline underline-offset-2 hover:text-amber-300">
-              System Config → {integration.productType === "payout" ? "Cashfree Payout" : "Cashfree Gateway"}
+              System Config → {integration.productType === "payout" ? "Payout Gateway" : "Payin Gateway"}
             </Link>
           </div>
         </div>

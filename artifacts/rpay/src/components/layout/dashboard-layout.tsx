@@ -352,8 +352,8 @@ const ADMIN_NAV = [
     group: "Gateways",
     items: [
       { title: "Payment Gateways", icon: Zap, href: "/admin/payment-gateways" },
-      { title: "Cashfree Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
-      { title: "Cashfree Payout", icon: Landmark, href: "/admin/cashfree-payout" },
+      { title: "Payin Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
+      { title: "Payout Gateway", icon: Landmark, href: "/admin/cashfree-payout" },
     ],
   },
   {
