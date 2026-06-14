@@ -3481,6 +3481,14 @@ export default function AdminMerchants() {
               </div>
             )}
           </div>
+          {assignPlanMerchant?.reportScheduleChangedEmails === false && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-amber-400">
+              <BellOff className="w-4 h-4 shrink-0 mt-0.5" />
+              <p className="text-xs leading-relaxed">
+                <span className="font-semibold">This merchant has opted out of plan assignment emails</span> and will not receive a notification when the plan is assigned.
+              </p>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={closeAssignPlan}>Cancel</Button>
             {selectedPlanId && (
