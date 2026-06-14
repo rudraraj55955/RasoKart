@@ -64,8 +64,7 @@ const TYPE_LABELS: Record<string, string> = {
 type TypeFilter =
   | "all"
   | "settlements"
-  | "plan_expiring"
-  | "plan_expired"
+  | "plans"
   | "limits"
   | "system_notice"
   | "reports";
@@ -73,8 +72,7 @@ type TypeFilter =
 const TYPE_CHIPS: { value: TypeFilter; label: string; icon: React.ReactNode }[] = [
   { value: "all", label: "All Types", icon: <Bell className="w-3 h-3" /> },
   { value: "settlements", label: "Settlements", icon: <CreditCard className="w-3 h-3" /> },
-  { value: "plan_expiring", label: "Expiring", icon: <Zap className="w-3 h-3" /> },
-  { value: "plan_expired", label: "Expired", icon: <Zap className="w-3 h-3" /> },
+  { value: "plans", label: "Plans", icon: <Zap className="w-3 h-3" /> },
   { value: "limits", label: "Limits", icon: <AlertCircle className="w-3 h-3" /> },
   { value: "system_notice", label: "Notice", icon: <Megaphone className="w-3 h-3" /> },
   { value: "reports", label: "Reports", icon: <Calendar className="w-3 h-3" /> },
@@ -211,6 +209,9 @@ export default function NotificationsPage() {
       return Object.entries(typeCounts)
         .filter(([t]) => PROVIDER_LIMIT_TYPES.has(t))
         .reduce((sum, [, n]) => sum + n, 0);
+    }
+    if (chipValue === "plans") {
+      return (typeCounts["plan_expiring"] ?? 0) + (typeCounts["plan_expired"] ?? 0);
     }
     return typeCounts[chipValue] ?? 0;
   }

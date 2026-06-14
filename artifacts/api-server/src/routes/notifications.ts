@@ -52,6 +52,11 @@ router.get("/", async (req, res, next) => {
       "provider_limit_reset",
     ] as const;
 
+    const PLAN_TYPES = [
+      "plan_expiring",
+      "plan_expired",
+    ] as const;
+
     const conditions: any[] = [eq(notificationsTable.userId, user.id)];
     if (isRead === "true") conditions.push(eq(notificationsTable.isRead, true));
     if (isRead === "false") conditions.push(eq(notificationsTable.isRead, false));
@@ -61,6 +66,8 @@ router.get("/", async (req, res, next) => {
       conditions.push(inArray(notificationsTable.type, [...REPORT_TYPES]));
     } else if (type === "limits") {
       conditions.push(inArray(notificationsTable.type, [...LIMIT_TYPES]));
+    } else if (type === "plans") {
+      conditions.push(inArray(notificationsTable.type, [...PLAN_TYPES]));
     } else if (type) {
       conditions.push(eq(notificationsTable.type, type));
     }
