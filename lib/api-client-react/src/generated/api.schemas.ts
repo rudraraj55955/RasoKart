@@ -300,6 +300,12 @@ export interface Merchant {
   apiKeyGeneratedEmails?: boolean;
   /** Whether the merchant has enabled API key revoked notification emails. Defaults to true. */
   apiKeyRevokedEmails?: boolean;
+  /** Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true. */
+  reportScheduleChangedEmails?: boolean;
+  /** Whether the merchant will receive an email when their settlement request changes state. Defaults to true. */
+  settlementStateChangedEmails?: boolean;
+  /** Whether the merchant will receive plan expiry alert emails. Defaults to true. */
+  planExpiryAlertEmails?: boolean;
   createdAt: string;
 }
 

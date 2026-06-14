@@ -235,6 +235,9 @@ export const ListMerchantsResponse = zod.object({
   "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
   "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
   "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -275,6 +278,9 @@ export const GetMerchantResponse = zod.object({
   "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
   "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
   "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -354,6 +360,9 @@ export const ApproveMerchantResponse = zod.object({
   "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
   "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
   "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -394,6 +403,9 @@ export const RejectMerchantResponse = zod.object({
   "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
   "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
   "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -430,6 +442,9 @@ export const SuspendMerchantResponse = zod.object({
   "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
   "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
   "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -466,6 +481,9 @@ export const UnsuspendMerchantResponse = zod.object({
   "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
   "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
   "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -891,6 +909,9 @@ export const UpdateMerchantBrandingResponse = zod.object({
   "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
   "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
   "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 
@@ -962,6 +983,9 @@ export const UpdateMerchantCallbackWindowResponse = zod.object({
   "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
   "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
   "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
   "createdAt": zod.string()
 })
 

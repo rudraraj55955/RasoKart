@@ -8684,6 +8684,15 @@ components:
         apiKeyRevokedEmails:
           type: boolean
           description: Whether the merchant has enabled API key revoked notification emails. Defaults to true.
+        reportScheduleChangedEmails:
+          type: boolean
+          description: Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.
+        settlementStateChangedEmails:
+          type: boolean
+          description: Whether the merchant will receive an email when their settlement request changes state. Defaults to true.
+        planExpiryAlertEmails:
+          type: boolean
+          description: Whether the merchant will receive plan expiry alert emails. Defaults to true.
         createdAt:
           type: string
 

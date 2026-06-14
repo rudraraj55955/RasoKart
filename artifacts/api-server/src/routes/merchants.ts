@@ -142,6 +142,9 @@ router.get("/", requireAdmin, async (req, res) => {
       webhookFailureEmails: usersTable.webhookFailureEmails,
       apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
       apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
+      reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails,
+      settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
+      planExpiryAlertEmails: usersTable.planExpiryAlertEmails,
     })
     .from(merchantsTable)
     .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
@@ -167,6 +170,9 @@ router.get("/", requireAdmin, async (req, res) => {
         webhookFailureEmails: r.webhookFailureEmails ?? true,
         apiKeyGeneratedEmails: r.apiKeyGeneratedEmails ?? true,
         apiKeyRevokedEmails: r.apiKeyRevokedEmails ?? true,
+        reportScheduleChangedEmails: r.reportScheduleChangedEmails ?? true,
+        settlementStateChangedEmails: r.settlementStateChangedEmails ?? true,
+        planExpiryAlertEmails: r.planExpiryAlertEmails ?? true,
       };
     }),
     total,
@@ -226,6 +232,9 @@ router.get("/:id", async (req, res) => {
       webhookFailureEmails: usersTable.webhookFailureEmails,
       apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
       apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
+      reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails,
+      settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
+      planExpiryAlertEmails: usersTable.planExpiryAlertEmails,
     })
     .from(merchantsTable)
     .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
@@ -239,6 +248,9 @@ router.get("/:id", async (req, res) => {
     webhookFailureEmails: row.webhookFailureEmails ?? true,
     apiKeyGeneratedEmails: row.apiKeyGeneratedEmails ?? true,
     apiKeyRevokedEmails: row.apiKeyRevokedEmails ?? true,
+    reportScheduleChangedEmails: row.reportScheduleChangedEmails ?? true,
+    settlementStateChangedEmails: row.settlementStateChangedEmails ?? true,
+    planExpiryAlertEmails: row.planExpiryAlertEmails ?? true,
   });
 });
 
