@@ -305,6 +305,23 @@ export const ListMerchantsResponse = zod.object({
 
 
 /**
+ * @summary Export filtered merchant list as CSV (admin only)
+ */
+export const ExportMerchantsCsvQueryParams = zod.object({
+  "status": zod.enum(['pending', 'approved', 'rejected', 'all']).optional(),
+  "search": zod.coerce.string().optional(),
+  "expiryStatus": zod.enum(['expiring', 'expired']).optional(),
+  "rejectionReason": zod.coerce.string().optional(),
+  "callbackSecretSet": zod.enum(['true', 'false']).optional(),
+  "loginAlertEmails": zod.enum(['true', 'false']).optional(),
+  "securityEmailsDisabled": zod.enum(['true']).optional(),
+  "settlementStateEmails": zod.enum(['false']).optional(),
+  "reportScheduleEmails": zod.enum(['false']).optional(),
+  "planExpiryAlertEmails": zod.enum(['false']).optional()
+})
+
+
+/**
  * @summary Get merchant by ID
  */
 export const GetMerchantParams = zod.object({

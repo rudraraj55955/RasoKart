@@ -4545,6 +4545,81 @@ export const ListMerchantsPlanExpiryAlertEmails = {
   false: 'false',
 } as const;
 
+export type ExportMerchantsCsvParams = {
+status?: ExportMerchantsCsvStatus;
+search?: string;
+expiryStatus?: ExportMerchantsCsvExpiryStatus;
+rejectionReason?: string;
+callbackSecretSet?: ExportMerchantsCsvCallbackSecretSet;
+loginAlertEmails?: ExportMerchantsCsvLoginAlertEmails;
+securityEmailsDisabled?: ExportMerchantsCsvSecurityEmailsDisabled;
+settlementStateEmails?: ExportMerchantsCsvSettlementStateEmails;
+reportScheduleEmails?: ExportMerchantsCsvReportScheduleEmails;
+planExpiryAlertEmails?: ExportMerchantsCsvPlanExpiryAlertEmails;
+};
+
+export type ExportMerchantsCsvStatus = typeof ExportMerchantsCsvStatus[keyof typeof ExportMerchantsCsvStatus];
+
+
+export const ExportMerchantsCsvStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+  all: 'all',
+} as const;
+
+export type ExportMerchantsCsvExpiryStatus = typeof ExportMerchantsCsvExpiryStatus[keyof typeof ExportMerchantsCsvExpiryStatus];
+
+
+export const ExportMerchantsCsvExpiryStatus = {
+  expiring: 'expiring',
+  expired: 'expired',
+} as const;
+
+export type ExportMerchantsCsvCallbackSecretSet = typeof ExportMerchantsCsvCallbackSecretSet[keyof typeof ExportMerchantsCsvCallbackSecretSet];
+
+
+export const ExportMerchantsCsvCallbackSecretSet = {
+  true: 'true',
+  false: 'false',
+} as const;
+
+export type ExportMerchantsCsvLoginAlertEmails = typeof ExportMerchantsCsvLoginAlertEmails[keyof typeof ExportMerchantsCsvLoginAlertEmails];
+
+
+export const ExportMerchantsCsvLoginAlertEmails = {
+  true: 'true',
+  false: 'false',
+} as const;
+
+export type ExportMerchantsCsvSecurityEmailsDisabled = typeof ExportMerchantsCsvSecurityEmailsDisabled[keyof typeof ExportMerchantsCsvSecurityEmailsDisabled];
+
+
+export const ExportMerchantsCsvSecurityEmailsDisabled = {
+  true: 'true',
+} as const;
+
+export type ExportMerchantsCsvSettlementStateEmails = typeof ExportMerchantsCsvSettlementStateEmails[keyof typeof ExportMerchantsCsvSettlementStateEmails];
+
+
+export const ExportMerchantsCsvSettlementStateEmails = {
+  false: 'false',
+} as const;
+
+export type ExportMerchantsCsvReportScheduleEmails = typeof ExportMerchantsCsvReportScheduleEmails[keyof typeof ExportMerchantsCsvReportScheduleEmails];
+
+
+export const ExportMerchantsCsvReportScheduleEmails = {
+  false: 'false',
+} as const;
+
+export type ExportMerchantsCsvPlanExpiryAlertEmails = typeof ExportMerchantsCsvPlanExpiryAlertEmails[keyof typeof ExportMerchantsCsvPlanExpiryAlertEmails];
+
+
+export const ExportMerchantsCsvPlanExpiryAlertEmails = {
+  false: 'false',
+} as const;
+
 export type GetMerchantsWebhookFailureCountsParams = {
 /**
  * Comma-separated list of merchant IDs to fetch counts for

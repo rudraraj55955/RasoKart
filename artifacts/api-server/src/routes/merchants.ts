@@ -190,6 +190,126 @@ router.get("/", requireAdmin, async (req, res) => {
   });
 });
 
+// GET /api/merchants/export/csv  (admin only)
+router.get("/export/csv", requireAdmin, async (req, res) => {
+  const { status, search, expiryStatus, rejectionReason, callbackSecretSet, loginAlertEmails, securityEmailsDisabled, settlementStateEmails, reportScheduleEmails, planExpiryAlertEmails } = req.query as Record<string, string>;
+
+  const now = new Date();
+  const sevenDaysLater = new Date(now.getTime() + 7 * 86400000);
+
+  const conditions = [];
+  if (status && status !== "all") conditions.push(eq(merchantsTable.status, status));
+  if (search) {
+    conditions.push(or(
+      ilike(merchantsTable.businessName, `%${search}%`),
+      ilike(merchantsTable.email, `%${search}%`),
+      ilike(merchantsTable.contactName, `%${search}%`),
+    )!);
+  }
+  if (rejectionReason) {
+    conditions.push(ilike(merchantsTable.rejectionReason, `%${rejectionReason}%`));
+  }
+  if (callbackSecretSet === "true") {
+    conditions.push(isNotNull(merchantsTable.callbackSecret));
+  } else if (callbackSecretSet === "false") {
+    conditions.push(sql`${merchantsTable.callbackSecret} IS NULL`);
+  }
+  if (loginAlertEmails === "false") {
+    conditions.push(eq(usersTable.loginAlertEmails, false));
+  } else if (loginAlertEmails === "true") {
+    conditions.push(eq(usersTable.loginAlertEmails, true));
+  }
+  if (securityEmailsDisabled === "true") {
+    conditions.push(or(
+      eq(usersTable.signatureFailureAlertEmails, false),
+      eq(usersTable.webhookFailureEmails, false),
+      eq(usersTable.apiKeyGeneratedEmails, false),
+      eq(usersTable.apiKeyRevokedEmails, false),
+    )!);
+  }
+  if (settlementStateEmails === "false") {
+    conditions.push(eq(usersTable.settlementStateChangedEmails, false));
+  }
+  if (reportScheduleEmails === "false") {
+    conditions.push(eq(usersTable.reportScheduleChangedEmails, false));
+  }
+  if (planExpiryAlertEmails === "false") {
+    conditions.push(eq(usersTable.planExpiryAlertEmails, false));
+  }
+
+  const planConditions = [];
+  if (expiryStatus === "expired") {
+    planConditions.push(isNotNull(merchantPlansTable.expiresAt));
+    planConditions.push(lt(merchantPlansTable.expiresAt, now));
+  } else if (expiryStatus === "expiring") {
+    planConditions.push(isNotNull(merchantPlansTable.expiresAt));
+    planConditions.push(gte(merchantPlansTable.expiresAt, now));
+    planConditions.push(lte(merchantPlansTable.expiresAt, sevenDaysLater));
+  }
+
+  const allConditions = [...conditions, ...planConditions];
+  const where = allConditions.length > 0 ? and(...allConditions) : undefined;
+
+  const rows = await db
+    .select({
+      merchant: merchantsTable,
+      currentPlanName: plansTable.name,
+      loginAlertEmails: usersTable.loginAlertEmails,
+      signatureFailureAlertEmails: usersTable.signatureFailureAlertEmails,
+      webhookFailureEmails: usersTable.webhookFailureEmails,
+      apiKeyGeneratedEmails: usersTable.apiKeyGeneratedEmails,
+      apiKeyRevokedEmails: usersTable.apiKeyRevokedEmails,
+      reportScheduleChangedEmails: usersTable.reportScheduleChangedEmails,
+      settlementStateChangedEmails: usersTable.settlementStateChangedEmails,
+      planExpiryAlertEmails: usersTable.planExpiryAlertEmails,
+    })
+    .from(merchantsTable)
+    .leftJoin(usersTable, eq(usersTable.merchantId, merchantsTable.id))
+    .leftJoin(merchantPlansTable, eq(merchantPlansTable.merchantId, merchantsTable.id))
+    .leftJoin(plansTable, eq(plansTable.id, merchantPlansTable.planId))
+    .where(where)
+    .orderBy(sql`${merchantsTable.createdAt} DESC`);
+
+  const escapeCell = (v: string | number | boolean | null | undefined) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+
+  const headers = [
+    "ID", "Business Name", "Contact Name", "Email", "Phone", "Status", "Plan",
+    "Login Alert Emails", "Security Emails Disabled", "Settlement State Emails",
+    "Report Schedule Emails", "Plan Expiry Alert Emails",
+    "Balance", "Total Deposits", "Total Withdrawals", "Created At",
+  ];
+
+  const csvRows = rows.map(r => {
+    const m = r.merchant;
+    const securityDisabled = (r.signatureFailureAlertEmails === false || r.webhookFailureEmails === false || r.apiKeyGeneratedEmails === false || r.apiKeyRevokedEmails === false) ? "true" : "false";
+    return [
+      escapeCell(m.id),
+      escapeCell(m.businessName),
+      escapeCell(m.contactName),
+      escapeCell(m.email),
+      escapeCell(m.phone),
+      escapeCell(m.status),
+      escapeCell(r.currentPlanName ?? ""),
+      escapeCell(r.loginAlertEmails !== false ? "true" : "false"),
+      escapeCell(securityDisabled),
+      escapeCell(r.settlementStateChangedEmails !== false ? "true" : "false"),
+      escapeCell(r.reportScheduleChangedEmails !== false ? "true" : "false"),
+      escapeCell(r.planExpiryAlertEmails !== false ? "true" : "false"),
+      escapeCell(Number(m.balance).toFixed(2)),
+      escapeCell(Number(m.totalDeposits).toFixed(2)),
+      escapeCell(Number(m.totalWithdrawals).toFixed(2)),
+      escapeCell(m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt)),
+    ].join(",");
+  });
+
+  const csv = [headers.map(h => escapeCell(h)).join(","), ...csvRows].join("\n");
+
+  const filename = `merchants-${now.toISOString().slice(0, 10)}.csv`;
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(csv);
+});
+
 // GET /api/merchants/webhook-failure-counts  (admin only)
 // Returns total webhook failure alert counts per merchant for a given list of merchant IDs
 router.get("/webhook-failure-counts", requireAdmin, async (req, res, next) => {

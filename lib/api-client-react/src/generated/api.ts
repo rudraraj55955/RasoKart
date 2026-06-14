@@ -116,6 +116,7 @@ import type {
   ExpiryCheckResult,
   ExportAdminAuditLogsCsvParams,
   ExportMerchantBalanceHistoryParams,
+  ExportMerchantsCsvParams,
   ExportVaBalanceAuditCsvParams,
   FlushQuietHoursQueue200,
   GetAdminMerchantReportSchedule200,
@@ -1364,6 +1365,90 @@ export function useListMerchants<TData = Awaited<ReturnType<typeof listMerchants
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListMerchantsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportMerchantsCsvUrl = (params?: ExportMerchantsCsvParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/merchants/export/csv?${stringifiedParams}` : `/api/merchants/export/csv`
+}
+
+/**
+ * @summary Export filtered merchant list as CSV (admin only)
+ */
+export const exportMerchantsCsv = async (params?: ExportMerchantsCsvParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportMerchantsCsvUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportMerchantsCsvQueryKey = (params?: ExportMerchantsCsvParams,) => {
+    return [
+    `/api/merchants/export/csv`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportMerchantsCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportMerchantsCsv>>, TError = ErrorType<ErrorResponse>>(params?: ExportMerchantsCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportMerchantsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportMerchantsCsvQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportMerchantsCsv>>> = ({ signal }) => exportMerchantsCsv(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportMerchantsCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportMerchantsCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportMerchantsCsv>>>
+export type ExportMerchantsCsvQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Export filtered merchant list as CSV (admin only)
+ */
+
+export function useExportMerchantsCsv<TData = Awaited<ReturnType<typeof exportMerchantsCsv>>, TError = ErrorType<ErrorResponse>>(
+ params?: ExportMerchantsCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportMerchantsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportMerchantsCsvQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

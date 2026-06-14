@@ -24,6 +24,7 @@ import {
   previewMerchantPlanEmail,
   type WebhookFailureAlertLogEntry,
 } from "@workspace/api-client-react";
+import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -943,15 +944,18 @@ export default function AdminMerchants() {
     }
   };
 
-  const exportCsv = () => {
-    if (!data?.data) return;
-    const rows = [["ID", "Business Name", "Contact", "Email", "Phone", "Status", "Balance", "Created"]];
-    data.data.forEach(m => rows.push([String(m.id), m.businessName, m.contactName, m.email, m.phone, m.status, String(m.balance), m.createdAt]));
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "merchants.csv"; a.click(); URL.revokeObjectURL(url);
-  };
+  const exportCsv = () => downloadCsvFromUrl("/api/merchants/export/csv", "merchants.csv", {
+    status: status !== "all" ? status : undefined,
+    search: search || undefined,
+    expiryStatus: expiryStatus || undefined,
+    rejectionReason: rejectionReasonFilter || undefined,
+    callbackSecretSet: callbackSecretFilter || undefined,
+    loginAlertEmails: loginAlertFilter || undefined,
+    securityEmailsDisabled: securityEmailsDisabledFilter || undefined,
+    settlementStateEmails: settlementStateEmailsFilter || undefined,
+    reportScheduleEmails: reportScheduleEmailsFilter || undefined,
+    planExpiryAlertEmails: planExpiryAlertEmailsFilter || undefined,
+  });
 
   const merchants = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -1086,7 +1090,7 @@ export default function AdminMerchants() {
           <h1 className="text-3xl font-bold tracking-tight">Merchants</h1>
           <p className="text-muted-foreground mt-1">{total} total merchants</p>
         </div>
-        <Button variant="outline" size="sm" onClick={exportCsv}>Export CSV</Button>
+        <ExportCsvButton onExport={exportCsv} />
       </div>
 
       {(expiringCount > 0 || expiredCount > 0) && (
