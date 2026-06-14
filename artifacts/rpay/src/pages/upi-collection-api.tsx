@@ -206,6 +206,7 @@ type HistoryEntry = {
 type StoredHistoryEntry = {
   id: number;
   endpointId: string;
+  fieldValues: Record<string, string>;
   resolvedPath: string;
   requestPreview: string;
   result: { status: number; body: object };
@@ -224,6 +225,7 @@ function loadHistoryFromStorage(): HistoryEntry[] {
       return [{
         id: s.id,
         endpoint: ep,
+        fieldValues: s.fieldValues ?? {},
         resolvedPath: s.resolvedPath,
         requestPreview: s.requestPreview,
         result: s.result,
@@ -241,6 +243,7 @@ function saveHistoryToStorage(history: HistoryEntry[]): void {
     const stored: StoredHistoryEntry[] = history.map((h) => ({
       id: h.id,
       endpointId: h.endpoint.id,
+      fieldValues: h.fieldValues,
       resolvedPath: h.resolvedPath,
       requestPreview: h.requestPreview,
       result: h.result,
