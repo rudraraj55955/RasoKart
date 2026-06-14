@@ -1818,7 +1818,7 @@ export default function MerchantSecurity() {
                 <p className="text-sm font-medium">Report schedule changed</p>
               </div>
               <p className="text-xs text-muted-foreground pl-5">
-                Receive an email when an admin updates or resets your automated report delivery schedule.
+                Receive an email when an admin updates or resets your report schedule, or when it is automatically paused due to repeated delivery failures.
               </p>
             </div>
             <Switch
@@ -1830,7 +1830,7 @@ export default function MerchantSecurity() {
           {!reportScheduleChangedEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5 px-1">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              You will not receive emails when your report schedule is changed by an admin.
+              You will not receive emails when your report schedule is changed by an admin or automatically paused.
             </p>
           )}
 
