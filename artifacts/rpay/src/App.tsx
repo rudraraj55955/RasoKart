@@ -11,6 +11,7 @@ import NotFound from "@/pages/not-found";
 
 // Landing Page
 import Landing from "@/pages/landing";
+import UpiCollectionApi from "@/pages/upi-collection-api";
 
 // Auth Pages
 import AdminLogin from "@/pages/admin/login";
@@ -215,6 +216,8 @@ function Router() {
       <Route path="/merchant/reports"><MerchantRoute component={MerchantReports} /></Route>
       <Route path="/merchant/support"><MerchantRoute component={MerchantSupport} /></Route>
       <Route path="/merchant/api-docs"><PublicPage component={MerchantApiDocs} /></Route>
+
+      <Route path="/upi-collection-api"><PublicPage component={UpiCollectionApi} /></Route>
 
       <Route path="/pay/:slug" component={PayPage} />
       <Route path="/qr/:id" component={QrPayPage} />

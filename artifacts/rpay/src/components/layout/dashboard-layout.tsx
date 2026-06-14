@@ -5,7 +5,7 @@ import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useG
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
@@ -228,6 +228,12 @@ function MerchantSidebar() {
       group: "Support",
       items: [
         { title: "Support", icon: Headphones, href: "/merchant/support", locked: false, lockReason: null },
+      ],
+    },
+    {
+      group: "API Services",
+      items: [
+        { title: "UPI Collection API", icon: Code2, href: "/upi-collection-api", locked: false, lockReason: null },
       ],
     },
     {
@@ -572,6 +578,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
     : "RasoKart";
 
   const publicNav = [
+    { title: "UPI Collection API", icon: Code2, href: "/upi-collection-api" },
     { title: "API Docs", icon: BookOpen, href: "/merchant/api-docs" },
   ];
 

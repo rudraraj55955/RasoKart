@@ -1,0 +1,389 @@
+import { useState } from "react";
+import { Link } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import {
+  QrCode, Zap, Shield, BarChart3, Webhook, Key,
+  Copy, Check, ArrowRight, RefreshCw, Globe,
+  CheckCircle2, Code2, Landmark, Link2, Bell,
+  Activity, FileText, Lock,
+} from "lucide-react";
+
+function CodeBlock({ code, language = "json" }: { code: string; language?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    toast.success("Copied to clipboard");
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className="relative group">
+      <pre className="bg-black/70 border border-border/50 rounded-lg p-4 text-xs font-mono overflow-x-auto text-green-300 whitespace-pre leading-relaxed">
+        {code}
+      </pre>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7"
+        onClick={handleCopy}
+      >
+        {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+      </Button>
+    </div>
+  );
+}
+
+const FEATURES = [
+  {
+    icon: QrCode,
+    title: "Dynamic QR Payments",
+    description: "Generate unique per-transaction QR codes. Each code is tied to a specific amount and expires automatically, ensuring clean reconciliation.",
+    color: "text-teal-400",
+    bg: "bg-teal-400/10",
+  },
+  {
+    icon: Zap,
+    title: "Real-Time Notifications",
+    description: "Receive instant webhook callbacks the moment a payment lands. Build responsive checkout flows with sub-second confirmation delivery.",
+    color: "text-yellow-400",
+    bg: "bg-yellow-400/10",
+  },
+  {
+    icon: RefreshCw,
+    title: "Auto-Reconciliation",
+    description: "Every deposit is automatically matched against its originating order. Discrepancies are flagged immediately — no manual ledger work.",
+    color: "text-violet-400",
+    bg: "bg-violet-400/10",
+  },
+  {
+    icon: Shield,
+    title: "Signature Verification",
+    description: "All webhook payloads are HMAC-signed. Verify authenticity with your callback secret to reject spoofed or tampered notifications.",
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+  },
+  {
+    icon: BarChart3,
+    title: "Full Payment Analytics",
+    description: "Track collection volume, success rates, and average transaction values. Filter by date, status, or payment method with detailed drill-downs.",
+    color: "text-blue-400",
+    bg: "bg-blue-400/10",
+  },
+  {
+    icon: Landmark,
+    title: "Virtual Account Assignment",
+    description: "Assign dedicated virtual bank accounts per merchant or transaction for NEFT/IMPS/RTGS collections alongside QR.",
+    color: "text-rose-400",
+    bg: "bg-rose-400/10",
+  },
+];
+
+const STEPS = [
+  {
+    step: "01",
+    title: "Get Your API Key",
+    description: "Generate a live API key from the Merchant Portal. Store it securely — it authenticates every request you make to the Collection API.",
+    icon: Key,
+  },
+  {
+    step: "02",
+    title: "Create a Collection Request",
+    description: "POST to /api/qr-codes with your order amount and reference. Receive a payment QR URL and a unique collection ID in response.",
+    icon: Code2,
+  },
+  {
+    step: "03",
+    title: "Receive Confirmation",
+    description: "When the payer completes the transaction, RasoKart delivers a signed webhook to your endpoint with the final payment status.",
+    icon: Bell,
+  },
+];
+
+const CREATE_QR_REQUEST = `POST /api/qr-codes
+Authorization: Bearer rasokart_live_••••••••••••••••
+
+{
+  "label": "Order #INV-2024-0042",
+  "type": "dynamic",
+  "amount": 2499.00,
+  "reference": "INV-2024-0042"
+}`;
+
+const CREATE_QR_RESPONSE = `HTTP 201 Created
+
+{
+  "id": 184,
+  "label": "Order #INV-2024-0042",
+  "type": "dynamic",
+  "status": "active",
+  "amount": "2499.00",
+  "reference": "INV-2024-0042",
+  "ekqrPaymentUrl": "https://pay.rasokart.com/qr/184",
+  "createdAt": "2025-06-14T10:32:00.000Z"
+}`;
+
+const WEBHOOK_PAYLOAD = `POST https://your-server.com/webhooks/rasokart
+
+X-RasoKart-Signature: sha256=a3f9c2...
+
+{
+  "event": "payment.received",
+  "qrId": 184,
+  "reference": "INV-2024-0042",
+  "amount": "2499.00",
+  "status": "completed",
+  "paidAt": "2025-06-14T10:34:17.000Z"
+}`;
+
+const ENDPOINTS = [
+  { method: "POST", path: "/api/qr-codes", description: "Create a dynamic payment collection QR" },
+  { method: "GET",  path: "/api/qr-codes", description: "List all QR codes with filters" },
+  { method: "GET",  path: "/api/qr-codes/:id", description: "Fetch a single QR code and its status" },
+  { method: "POST", path: "/api/qr-codes/:id/sync", description: "Force-sync payment status from gateway" },
+  { method: "DELETE", path: "/api/qr-codes/:id", description: "Deactivate a QR code" },
+  { method: "GET",  path: "/api/deposits", description: "List all received deposits (filterable by date, status)" },
+  { method: "GET",  path: "/api/callbacks", description: "View the full webhook delivery log" },
+];
+
+const METHOD_COLOR: Record<string, string> = {
+  GET: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  POST: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  DELETE: "bg-rose-500/20 text-rose-400 border-rose-500/30",
+};
+
+export default function UpiCollectionApi() {
+  return (
+    <div className="space-y-10 max-w-5xl">
+
+      {/* ── Hero ─────────────────────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Badge className="bg-teal-500/15 text-teal-400 border-teal-500/20 text-xs">
+            v2 API
+          </Badge>
+          <Badge variant="outline" className="text-xs">
+            REST · JSON · HTTPS
+          </Badge>
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight">UPI Collection API</h1>
+        <p className="text-muted-foreground text-base leading-relaxed max-w-2xl">
+          Accept UPI payments programmatically. Generate dynamic QR codes, receive real-time webhooks,
+          and reconcile deposits automatically — all through a single clean API.
+        </p>
+        <div className="flex flex-wrap gap-3 pt-1">
+          <Button asChild className="bg-teal-600 hover:bg-teal-500 text-white gap-2">
+            <Link href="/merchant/api-keys">
+              <Key className="w-4 h-4" />
+              Get API Key
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="gap-2">
+            <Link href="/merchant/api-docs">
+              <FileText className="w-4 h-4" />
+              Full API Docs
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Stats bar ────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Uptime SLA",      value: "99.9%",    color: "text-teal-400" },
+          { label: "Median Latency",  value: "<80ms",    color: "text-yellow-400" },
+          { label: "Webhook Retry",   value: "5×",       color: "text-violet-400" },
+          { label: "Signature Algo",  value: "HMAC-256", color: "text-emerald-400" },
+        ].map((s) => (
+          <Card key={s.label} className="bg-card/50 border-border/50">
+            <CardContent className="pt-4 pb-4 text-center">
+              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* ── Features ─────────────────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">What's included</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {FEATURES.map((f) => (
+            <Card key={f.title} className="bg-card/60 border-border/50 hover:border-border transition-colors">
+              <CardContent className="pt-5 pb-5 space-y-3">
+                <div className={`inline-flex items-center justify-center w-9 h-9 rounded-lg ${f.bg}`}>
+                  <f.icon className={`w-4 h-4 ${f.color}`} />
+                </div>
+                <div>
+                  <p className="font-medium text-sm">{f.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{f.description}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* ── How it works ─────────────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">How it works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {STEPS.map((s) => (
+            <Card key={s.step} className="bg-card/60 border-border/50 relative overflow-hidden">
+              <CardContent className="pt-5 pb-5 space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl font-black text-border/40 leading-none">{s.step}</span>
+                  <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
+                    <s.icon className="w-4 h-4 text-primary" />
+                  </div>
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">{s.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{s.description}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* ── API Reference ────────────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">API Reference</h2>
+          <Button asChild variant="ghost" size="sm" className="text-teal-400 hover:text-teal-300 gap-1.5 text-xs">
+            <Link href="/merchant/api-docs">
+              Full reference <ArrowRight className="w-3 h-3" />
+            </Link>
+          </Button>
+        </div>
+        <Card className="bg-card/60 border-border/50">
+          <CardContent className="pt-5 pb-5">
+            <div className="space-y-0">
+              {ENDPOINTS.map((ep, i) => (
+                <div key={`${ep.method}-${ep.path}`} className={`flex items-start gap-3 py-2.5 ${i < ENDPOINTS.length - 1 ? "border-b border-border/30" : ""}`}>
+                  <Badge className={`text-[10px] font-bold shrink-0 border ${METHOD_COLOR[ep.method] ?? "bg-muted"}`}>{ep.method}</Badge>
+                  <div className="min-w-0">
+                    <code className="text-sm font-mono text-foreground">{ep.path}</code>
+                    <p className="text-xs text-muted-foreground mt-0.5">{ep.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Code Examples ────────────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Code examples</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Code2 className="w-3.5 h-3.5" /> Create a QR collection
+            </p>
+            <CodeBlock code={CREATE_QR_REQUEST} language="http" />
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Response
+            </p>
+            <CodeBlock code={CREATE_QR_RESPONSE} language="json" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Webhook className="w-3.5 h-3.5 text-violet-400" /> Incoming webhook (payment confirmed)
+          </p>
+          <CodeBlock code={WEBHOOK_PAYLOAD} language="http" />
+        </div>
+      </div>
+
+      {/* ── Capabilities checklist ───────────────────────────────────────────── */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold">Capabilities</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[
+            { icon: QrCode,        text: "Dynamic and static QR code generation" },
+            { icon: Landmark,      text: "Virtual account collection (NEFT / IMPS / RTGS)" },
+            { icon: Link2,         text: "Shareable payment link generation" },
+            { icon: Webhook,       text: "Real-time signed webhook delivery (5× retry)" },
+            { icon: RefreshCw,     text: "Manual and automatic payment status sync" },
+            { icon: Activity,      text: "Full deposit and callback audit trail" },
+            { icon: BarChart3,     text: "Analytics dashboard with date-range filtering" },
+            { icon: Lock,          text: "HMAC-SHA256 signature on all webhook payloads" },
+            { icon: Globe,         text: "Whitelist IP ranges for API access" },
+            { icon: Shield,        text: "TLS 1.3 end-to-end encryption on all endpoints" },
+          ].map((c) => (
+            <div key={c.text} className="flex items-center gap-3 py-2 border-b border-border/20 last:border-0">
+              <div className="flex items-center justify-center w-7 h-7 rounded-md bg-teal-500/10 shrink-0">
+                <c.icon className="w-3.5 h-3.5 text-teal-400" />
+              </div>
+              <span className="text-sm text-foreground/80">{c.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Plans notice ─────────────────────────────────────────────────────── */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Activity className="w-4 h-4 text-primary" />
+            API access by plan
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            API key generation and webhook configuration are available on Silver, Gold, Platinum, and Enterprise plans.
+            The Starter plan supports QR and Virtual Account features via the Merchant Portal — upgrade to unlock programmatic API access.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {["Silver", "Gold", "Platinum", "Enterprise"].map((plan) => (
+              <Badge key={plan} className="bg-teal-500/10 text-teal-400 border-teal-500/20 text-xs">
+                {plan}
+              </Badge>
+            ))}
+          </div>
+          <Button asChild size="sm" variant="outline" className="gap-2 mt-1">
+            <Link href="/merchant/plan">
+              View plans &amp; pricing <ArrowRight className="w-3 h-3" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── CTA ──────────────────────────────────────────────────────────────── */}
+      <Card className="border-teal-500/20 bg-teal-500/5 overflow-hidden">
+        <CardContent className="pt-8 pb-8 text-center space-y-4">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-teal-500/15 mb-1">
+            <QrCode className="w-6 h-6 text-teal-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold">Ready to start collecting?</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Generate your API key and accept your first payment in under 5 minutes.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button asChild className="bg-teal-600 hover:bg-teal-500 text-white gap-2">
+              <Link href="/merchant/api-keys">
+                <Key className="w-4 h-4" />
+                Generate API Key
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="gap-2">
+              <Link href="/merchant/api-docs">
+                <FileText className="w-4 h-4" />
+                Read the Docs
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+    </div>
+  );
+}
