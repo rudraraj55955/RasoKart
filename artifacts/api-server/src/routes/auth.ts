@@ -832,9 +832,14 @@ router.patch("/snooze-reports-badge", requireAuth, async (req, res, next) => {
         res.status(400).json({ error: "snoozedUntil must be a valid ISO timestamp or null" });
         return;
       }
+      // If the provided timestamp is already in the past, treat it as a clear
+      // so we never persist a stale snooze value in the DB.
+      if (snoozeDate <= new Date()) {
+        snoozeDate = null;
+      }
     }
     await db.update(usersTable).set({ reportsBadgeSnoozedUntil: snoozeDate }).where(eq(usersTable.id, user.id));
-    const resultIso = snoozeDate != null && snoozeDate > new Date() ? snoozeDate.toISOString() : null;
+    const resultIso = snoozeDate != null ? snoozeDate.toISOString() : null;
     res.json({ reportsBadgeSnoozedUntil: resultIso });
   } catch (err) {
     next(err);

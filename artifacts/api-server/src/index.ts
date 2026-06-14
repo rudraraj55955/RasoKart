@@ -24,6 +24,7 @@ import { flushAllReadyQuietHoursQueues } from "./helpers/quietHours";
 import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { initNotifReminderScheduler, runNotifReminderScan } from "./helpers/notifReminderScheduler";
+import { initSnoozeCleanupScheduler, runSnoozeCleanup } from "./helpers/snoozeCleanupScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -130,6 +131,7 @@ async function main() {
   initDeliveryHealthDigestScheduler();
   initDeliverySuccessRateAlertScheduler();
   initNotifReminderScheduler();
+  initSnoozeCleanupScheduler();
   scheduleCallbackRetryWorker();
   initQuietHoursFlushScheduler();
 
@@ -163,6 +165,12 @@ async function main() {
   // notif_reminder_sent_at guards against duplicate sends within 30 days.
   runNotifReminderScan().catch((err) => {
     logger.warn({ err }, "Startup notif reminder sweep failed");
+  });
+
+  // Startup sweep: clear any snooze timestamps that expired while the server
+  // was down so they don't linger until the next nightly run.
+  runSnoozeCleanup().catch((err) => {
+    logger.warn({ err }, "Startup snooze cleanup sweep failed");
   });
 
   app.listen(port, (err) => {
