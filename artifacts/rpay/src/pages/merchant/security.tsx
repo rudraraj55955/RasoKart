@@ -1951,7 +1951,7 @@ export default function MerchantSecurity() {
       )}
 
       {/* Security Notifications */}
-      <Card ref={notificationSettingsRef}>
+      <Card ref={notificationSettingsRef} id="notification-settings">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Bell className="w-4 h-4 text-muted-foreground" />
