@@ -351,8 +351,11 @@ const ADMIN_NAV = [
     ],
   },
   {
-    group: "Gateway Config",
+    group: "Control & Access",
     items: [
+      { title: "Module Control", icon: ToggleLeft, href: "/admin/module-control" },
+      { title: "Feature Control", icon: Sliders, href: "/admin/feature-control" },
+      { title: "Account Details", icon: CreditCard, href: "/admin/account-details" },
       { title: "Payment Gateways", icon: CreditCard, href: "/admin/payment-gateways" },
       { title: "Provider Integrations", icon: Layers, href: "/admin/provider-integrations" },
       { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
@@ -360,14 +363,6 @@ const ADMIN_NAV = [
       { title: "Cashfree Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
       { title: "Cashfree Payout", icon: Landmark, href: "/admin/cashfree-payout" },
       { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
-    ],
-  },
-  {
-    group: "Control & Access",
-    items: [
-      { title: "Module Control", icon: ToggleLeft, href: "/admin/module-control" },
-      { title: "Feature Control", icon: Sliders, href: "/admin/feature-control" },
-      { title: "Account Details", icon: CreditCard, href: "/admin/account-details" },
       { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
       { title: "Merchant Access", icon: LayoutGrid, href: "/admin/merchant-access" },
     ],
