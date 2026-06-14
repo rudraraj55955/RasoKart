@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -190,6 +190,7 @@ const SANDBOX_ENDPOINTS: SandboxEndpoint[] = [
 ];
 
 const MAX_HISTORY = 10;
+const SANDBOX_HISTORY_LS_KEY = "rasokart_sandbox_history";
 
 type HistoryEntry = {
   id: number;
@@ -200,6 +201,56 @@ type HistoryEntry = {
   timestamp: Date;
   expanded: boolean;
 };
+
+type StoredHistoryEntry = {
+  id: number;
+  endpointId: string;
+  resolvedPath: string;
+  requestPreview: string;
+  result: { status: number; body: object };
+  timestamp: string;
+  expanded: boolean;
+};
+
+function loadHistoryFromStorage(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(SANDBOX_HISTORY_LS_KEY);
+    if (!raw) return [];
+    const stored: StoredHistoryEntry[] = JSON.parse(raw);
+    return stored.flatMap((s) => {
+      const ep = SANDBOX_ENDPOINTS.find((e) => e.id === s.endpointId);
+      if (!ep) return [];
+      return [{
+        id: s.id,
+        endpoint: ep,
+        resolvedPath: s.resolvedPath,
+        requestPreview: s.requestPreview,
+        result: s.result,
+        timestamp: new Date(s.timestamp),
+        expanded: false,
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function saveHistoryToStorage(history: HistoryEntry[]): void {
+  try {
+    const stored: StoredHistoryEntry[] = history.map((h) => ({
+      id: h.id,
+      endpointId: h.endpoint.id,
+      resolvedPath: h.resolvedPath,
+      requestPreview: h.requestPreview,
+      result: h.result,
+      timestamp: h.timestamp.toISOString(),
+      expanded: false,
+    }));
+    localStorage.setItem(SANDBOX_HISTORY_LS_KEY, JSON.stringify(stored));
+  } catch {
+    // storage quota exceeded or unavailable — silently ignore
+  }
+}
 
 const METHOD_COLOR: Record<string, string> = {
   GET:    "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -243,9 +294,16 @@ function SandboxTester() {
   const [result, setResult]             = useState<{ status: number; body: object } | null>(null);
   const [showRequest, setShowRequest]   = useState(false);
   const [copied, setCopied]             = useState(false);
-  const [history, setHistory]           = useState<HistoryEntry[]>([]);
+  const [history, setHistory]           = useState<HistoryEntry[]>(() => loadHistoryFromStorage());
   const [historyOpen, setHistoryOpen]   = useState(false);
-  const [historyIdSeq, setHistoryIdSeq] = useState(0);
+  const [historyIdSeq, setHistoryIdSeq] = useState<number>(() => {
+    const stored = loadHistoryFromStorage();
+    return stored.length > 0 ? Math.max(...stored.map((h) => h.id)) : 0;
+  });
+
+  useEffect(() => {
+    saveHistoryToStorage(history);
+  }, [history]);
 
   const endpoint = SANDBOX_ENDPOINTS.find((e) => e.id === selectedId)!;
 
