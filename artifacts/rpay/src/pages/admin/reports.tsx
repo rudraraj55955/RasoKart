@@ -1318,14 +1318,16 @@ function ScheduledReportsPanel() {
                                 setRetryingFailureMerchantId(f.merchantId);
                                 try {
                                   await sendNow.mutateAsync({ merchantId: f.merchantId });
-                                  setSendFailures((prev) => {
-                                    const next = prev?.filter((r) => r.merchantId !== f.merchantId) ?? null;
-                                    if (next !== null && next.length === 0) {
-                                      toast.success("Report delivered — all failures cleared");
-                                    }
-                                    return next;
-                                  });
                                   invalidate();
+                                  const remaining = (sendFailures ?? []).filter((r) => r.merchantId !== f.merchantId);
+                                  if (remaining.length === 0) {
+                                    toast.success("All failures resolved — reports delivered successfully");
+                                    if (clearFlashTimer.current != null) { clearTimeout(clearFlashTimer.current); clearFlashTimer.current = null; }
+                                    setSendFailures(null);
+                                    setClearedMerchantIds(new Set());
+                                  } else {
+                                    setSendFailures(remaining);
+                                  }
                                 } catch (err: unknown) {
                                   const msg = err instanceof Error ? err.message : "Send failed";
                                   setSendFailures((prev) =>
@@ -1383,8 +1385,15 @@ function ScheduledReportsPanel() {
                       setClearedMerchantIds(justCleared);
                       clearFlashTimer.current = setTimeout(() => {
                         clearFlashTimer.current = null;
-                        setSendFailures(res.failures);
-                        setClearedMerchantIds(new Set());
+                        const remaining = res.failures ?? [];
+                        if (remaining.length === 0) {
+                          toast.success("All failures resolved — reports delivered successfully");
+                          setSendFailures(null);
+                          setClearedMerchantIds(new Set());
+                        } else {
+                          setSendFailures(remaining);
+                          setClearedMerchantIds(new Set());
+                        }
                       }, 2500);
                     }
                     invalidate();
