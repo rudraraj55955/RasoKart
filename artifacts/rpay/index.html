@@ -47,5 +47,117 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+  
+<script id="rasokart-fold-mobile-polish">
+(function () {
+  var MOBILE = 900;
+  function isMobile(){ return window.innerWidth <= MOBILE; }
+  function txt(el){ return (el.textContent || "").replace(/\s+/g, " ").trim(); }
+  function imp(el, prop, val){ if (el && el.style) el.style.setProperty(prop, val, "important"); }
+
+  function hideMobileNavExtras(){
+    if (!isMobile()) return;
+    var hide = {"Services":1,"Dashboard":1,"Settlement":1,"Plans":1,"Contact":1};
+    document.querySelectorAll("header *, nav *").forEach(function(el){
+      var t = txt(el);
+      if (hide[t]) imp(el, "display", "none");
+    });
+  }
+
+  function compactHero(){
+    if (!isMobile()) return;
+    if (location.pathname !== "/" && location.pathname !== "") return;
+
+    var h1 = Array.prototype.slice.call(document.querySelectorAll("h1")).find(function(el){
+      return txt(el).indexOf("Collect Smarter") !== -1;
+    });
+    if (!h1) return;
+
+    var hero = h1.closest("section") || h1.parentElement;
+    var main = document.querySelector("main");
+
+    if (main) {
+      imp(main, "padding-top", "0px");
+      imp(main, "margin-top", "0px");
+    }
+
+    if (hero) {
+      imp(hero, "min-height", "auto");
+      imp(hero, "height", "auto");
+      imp(hero, "padding-top", "18px");
+      imp(hero, "padding-bottom", "36px");
+      imp(hero, "display", "block");
+      imp(hero, "align-items", "flex-start");
+      imp(hero, "justify-content", "flex-start");
+      imp(hero, "overflow", "hidden");
+    }
+
+    var node = h1;
+    var depth = 0;
+    while (node && depth < 12) {
+      imp(node, "min-height", "auto");
+      imp(node, "height", "auto");
+      imp(node, "padding-top", "0px");
+      imp(node, "margin-top", "0px");
+      imp(node, "transform", "none");
+      imp(node, "translate", "none");
+      imp(node, "align-items", "flex-start");
+      imp(node, "justify-content", "flex-start");
+      if (node.tagName && node.tagName.toLowerCase() === "main") break;
+      node = node.parentElement;
+      depth++;
+    }
+
+    if (hero) {
+      hero.querySelectorAll("*").forEach(function(el){
+        var cs = window.getComputedStyle(el);
+        var mt = parseFloat(cs.marginTop) || 0;
+        var pt = parseFloat(cs.paddingTop) || 0;
+        var mh = parseFloat(cs.minHeight) || 0;
+
+        if (mt > 80) imp(el, "margin-top", "0px");
+        if (pt > 80) imp(el, "padding-top", "0px");
+        if (mh > 360) imp(el, "min-height", "auto");
+
+        if ((cs.alignItems || "").includes("center")) imp(el, "align-items", "flex-start");
+        if ((cs.justifyContent || "").includes("center")) imp(el, "justify-content", "flex-start");
+      });
+    }
+
+    imp(h1, "font-size", "clamp(34px, 8.5vw, 48px)");
+    imp(h1, "line-height", "1.08");
+    imp(h1, "margin-top", "0px");
+
+    var badge = Array.prototype.slice.call(document.querySelectorAll("span,div,p")).find(function(el){
+      return txt(el).indexOf("Leading Payment Infrastructure") !== -1;
+    });
+    if (badge) {
+      imp(badge, "margin-top", "0px");
+    }
+  }
+
+  function run(){
+    hideMobileNavExtras();
+    compactHero();
+  }
+
+  function start(){
+    run();
+    setTimeout(run, 100);
+    setTimeout(run, 500);
+    setTimeout(run, 1200);
+    window.addEventListener("resize", run);
+    window.addEventListener("orientationchange", function(){ setTimeout(run, 300); });
+    new MutationObserver(run).observe(document.body, {childList:true, subtree:true});
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, {once:true});
+  } else {
+    start();
+  }
+})();
+</script>
+
+</body>
 </html>

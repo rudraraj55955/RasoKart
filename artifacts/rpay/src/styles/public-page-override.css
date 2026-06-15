@@ -635,3 +635,303 @@ body,
     justify-content: flex-start;
   }
 }
+
+/* ===== RasoKart Final Mobile Polish v2 ===== */
+
+body.rk-public-override-active {
+  margin: 0 !important;
+  background: #050814 !important;
+}
+
+body.rk-public-override-active,
+body.rk-public-override-active * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+#rk-public-page {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Better mobile navbar */
+@media (max-width: 768px) {
+  .rk-nav {
+    min-height: 58px !important;
+    height: 58px !important;
+    padding: 9px 12px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+  }
+
+  .rk-brand {
+    min-width: 0 !important;
+    font-size: 13px !important;
+    gap: 7px !important;
+  }
+
+  .rk-brand span {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 8px !important;
+    font-size: 11px !important;
+  }
+
+  .rk-nav-actions {
+    display: flex !important;
+    margin-left: auto !important;
+  }
+
+  .rk-nav-actions a:last-child,
+  .rk-primary {
+    min-height: 36px !important;
+    padding: 9px 14px !important;
+    font-size: 12px !important;
+    border-radius: 999px !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* Remove huge blank feeling and make hero premium */
+@media (max-width: 768px) {
+  .rk-hero {
+    padding: 46px 0 36px !important;
+  }
+
+  .rk-hero h1 {
+    margin-top: 22px !important;
+    margin-bottom: 14px !important;
+    font-size: clamp(34px, 10.5vw, 48px) !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.055em !important;
+  }
+
+  .rk-hero p {
+    font-size: 14px !important;
+    line-height: 1.65 !important;
+    max-width: 96% !important;
+  }
+
+  .rk-badges {
+    justify-content: center !important;
+    gap: 8px !important;
+  }
+
+  .rk-badges span {
+    font-size: 11px !important;
+    min-height: 32px !important;
+    padding: 8px 11px !important;
+  }
+}
+
+/* Fix section left/right padding and cut text */
+@media (max-width: 768px) {
+  .rk-section,
+  .rk-hero,
+  .rk-cta,
+  .rk-footer {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .rk-section {
+    padding-top: 56px !important;
+    padding-bottom: 56px !important;
+  }
+
+  .rk-head,
+  .rk-head.rk-left {
+    text-align: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .rk-head h2 {
+    font-size: clamp(30px, 8.8vw, 42px) !important;
+    line-height: 1.08 !important;
+    letter-spacing: -0.045em !important;
+    word-break: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .rk-head p {
+    font-size: 14px !important;
+    line-height: 1.65 !important;
+  }
+}
+
+/* Premium card spacing */
+@media (max-width: 768px) {
+  .rk-grid,
+  .rk-grid-2,
+  .rk-grid-3,
+  .rk-tier-grid,
+  .rk-two {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+    width: 100% !important;
+  }
+
+  .rk-card,
+  .rk-tier,
+  .rk-phone,
+  .rk-stat-grid div {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+    padding: 20px !important;
+    border-radius: 20px !important;
+  }
+
+  .rk-card h3,
+  .rk-tier h3 {
+    font-size: 15px !important;
+    margin-bottom: 9px !important;
+  }
+
+  .rk-card p,
+  .rk-tier p,
+  .rk-steps p {
+    font-size: 13.5px !important;
+    line-height: 1.65 !important;
+  }
+
+  .rk-icon {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 12px !important;
+    margin-bottom: 16px !important;
+  }
+}
+
+/* Service chips mobile premium wrap */
+@media (max-width: 768px) {
+  .rk-chip-cloud {
+    justify-content: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .rk-chip {
+    min-height: 31px !important;
+    padding: 7px 10px !important;
+    font-size: 11.5px !important;
+    border-radius: 999px !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* UPI QR demo and why section polish */
+@media (max-width: 768px) {
+  .rk-two {
+    align-items: stretch !important;
+  }
+
+  .rk-phone {
+    margin-top: 12px !important;
+  }
+
+  .rk-qr {
+    width: 118px !important;
+    height: 118px !important;
+    border-radius: 22px !important;
+    font-size: 62px !important;
+  }
+
+  .rk-stat-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+
+  .rk-stat-grid b {
+    font-size: 23px !important;
+  }
+
+  .rk-stat-grid small {
+    font-size: 11px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .rk-stat-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .rk-chip {
+    font-size: 11px !important;
+  }
+}
+
+/* API table/code never overflow */
+.rk-table-wrap,
+.rk-api-ref pre,
+.rk-api-ref table {
+  max-width: 100% !important;
+}
+
+@media (max-width: 768px) {
+  .rk-api-ref {
+    padding: 14px !important;
+    border-radius: 20px !important;
+  }
+
+  .rk-api-ref pre {
+    font-size: 12px !important;
+    padding: 16px !important;
+    border-radius: 16px !important;
+  }
+
+  .rk-api-ref th,
+  .rk-api-ref td {
+    font-size: 12px !important;
+    padding: 12px !important;
+  }
+}
+
+/* CTA and footer mobile professional */
+@media (max-width: 768px) {
+  .rk-cta {
+    margin-top: 45px !important;
+    padding: 22px !important;
+    border-radius: 22px !important;
+    text-align: center !important;
+  }
+
+  .rk-cta h2 {
+    font-size: 25px !important;
+    line-height: 1.15 !important;
+  }
+
+  .rk-footer {
+    padding: 24px 18px !important;
+  }
+
+  .rk-footer-grid {
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+  }
+}
+
+/* Fold special fix */
+@media (min-width: 520px) and (max-width: 900px) {
+  .rk-section,
+  .rk-hero,
+  .rk-cta,
+  .rk-footer {
+    padding-left: 22px !important;
+    padding-right: 22px !important;
+  }
+
+  .rk-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .rk-tier-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
