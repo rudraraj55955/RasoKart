@@ -27,3 +27,68 @@ pre,code,table{max-width:100%!important;overflow-x:auto!important}
   #root header a:first-child{font-size:20px!important;max-width:42vw!important}
   #root header a[href*="admin"],#root header button{font-size:13px!important;padding:9px 11px!important}
 }
+
+/* Final mobile homepage polish */
+@media (max-width: 900px) {
+  header nav a:not(:first-child):not([href*="api"]):not([href*="admin"]),
+  header nav button:not(:last-child),
+  header a[href*="dashboard"],
+  header a[href*="settlement"],
+  header a[href*="plans"],
+  header a[href*="contact"],
+  header a[href*="services"] {
+    display: none !important;
+  }
+
+  header,
+  header nav,
+  header > div {
+    height: 56px !important;
+    min-height: 56px !important;
+  }
+
+  header nav {
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+
+  header a:first-child {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    max-width: 140px !important;
+  }
+
+  header a[href*="api"],
+  header a[href*="admin"] {
+    display: inline-flex !important;
+    font-size: 12px !important;
+    padding: 9px 10px !important;
+    border-radius: 10px !important;
+  }
+
+  main section:first-child {
+    min-height: auto !important;
+    padding-top: 90px !important;
+    padding-bottom: 44px !important;
+  }
+
+  main section:first-child::before,
+  main section:first-child::after {
+    max-width: 100vw !important;
+  }
+
+  main section:first-child h1 {
+    margin-top: 0 !important;
+    font-size: clamp(36px, 9vw, 50px) !important;
+    line-height: 1.08 !important;
+  }
+
+  main section:first-child p {
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+
+  main section:first-child [class*="grid"] {
+    margin-top: 28px !important;
+  }
+}
