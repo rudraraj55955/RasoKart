@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 declare global {
   interface Window {
-    Payment Provider?: (opts: { mode: string }) => {
+    Cashfree?: (opts: { mode: string }) => {
       checkout: (opts: { paymentSessionId: string; redirectTarget?: string }) => void;
     };
   }
@@ -25,12 +25,12 @@ export default function CheckoutPage() {
 
   function launchPayment() {
     if (launched.current) return;
-    if (!window.Payment Provider) { setErrorMsg("Payment SDK not available. Please try again."); setPhase("error"); return; }
+    if (!window.Cashfree) { setErrorMsg("Payment SDK not available. Please try again."); setPhase("error"); return; }
     launched.current = true;
     setPhase("redirecting");
     try {
       const mode = env === "prod" ? "production" : "sandbox";
-      const cf = window.Payment Provider({ mode });
+      const cf = window.Cashfree({ mode });
       cf.checkout({ paymentSessionId: token, redirectTarget: "_self" });
     } catch {
       launched.current = false;
@@ -42,7 +42,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!token) { setErrorMsg("Invalid checkout link. Please go back and try again."); setPhase("error"); return; }
 
-    if (window.Payment Provider) { launchPayment(); return; }
+    if (window.Cashfree) { launchPayment(); return; }
 
     const script = document.createElement("script");
     script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";

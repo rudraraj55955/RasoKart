@@ -1,16 +1,16 @@
 import { useState, useRef } from "react";
 import {
-  useGetPayment ProviderPayoutConfig,
-  useUpdatePayment ProviderPayoutConfig,
-  useListPayment ProviderPayouts,
-  useCreatePayment ProviderPayout,
-  useBulkCreatePayment ProviderPayouts,
-  useRetryPayment ProviderPayout,
-  useSyncPayment ProviderPayoutStatus,
-  getGetPayment ProviderPayoutConfigQueryKey,
-  getListPayment ProviderPayoutsQueryKey,
-  type Payment ProviderPayoutRow,
-  type Payment ProviderPayoutCsvRow,
+  useGetCashfreePayoutConfig,
+  useUpdateCashfreePayoutConfig,
+  useListCashfreePayouts,
+  useCreateCashfreePayout,
+  useBulkCreateCashfreePayouts,
+  useRetryCashfreePayout,
+  useSyncCashfreePayoutStatus,
+  getGetCashfreePayoutConfigQueryKey,
+  getListCashfreePayoutsQueryKey,
+  type CashfreePayoutRow,
+  type CashfreePayoutCsvRow,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
@@ -97,7 +97,7 @@ function validateCsvRow(row: Record<string, string>, idx: number): string | null
 // ── Settings Tab ───────────────────────────────────────────────────────────────
 function SettingsTab() {
   const qc = useQueryClient();
-  const { data: config, isLoading } = useGetPayment ProviderPayoutConfig({ request: { headers: AUTH_HEADERS } });
+  const { data: config, isLoading } = useGetCashfreePayoutConfig({ request: { headers: AUTH_HEADERS } });
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -107,7 +107,7 @@ function SettingsTab() {
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const { mutateAsync: updateConfig } = useUpdatePayment ProviderPayoutConfig({
+  const { mutateAsync: updateConfig } = useUpdateCashfreePayoutConfig({
     request: { headers: AUTH_HEADERS },
     mutation: {},
   });
@@ -124,10 +124,10 @@ function SettingsTab() {
       // An empty field means "keep existing" — never send empty string.
       if (clientSecret.trim()) body.clientSecret = clientSecret.trim();
       await updateConfig({ data: body as any });
-      qc.invalidateQueries({ queryKey: getGetPayment ProviderPayoutConfigQueryKey() });
+      qc.invalidateQueries({ queryKey: getGetCashfreePayoutConfigQueryKey() });
       setClientId("");
       setClientSecret("");
-      toast.success("Payout Gateway settings saved");
+      toast.success("Cashfree Payout settings saved");
     } catch (err: any) {
       toast.error(err.message ?? "Failed to save settings");
     } finally {
@@ -143,7 +143,7 @@ function SettingsTab() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Banknote className="w-4 h-4 text-muted-foreground" />
-              Payout Gateway Gateway
+              Cashfree Payout Gateway
             </CardTitle>
             {!isLoading && config && <EnvBadge env={config.env} />}
           </div>
@@ -159,7 +159,7 @@ function SettingsTab() {
               {currentEnabled ? "Gateway enabled" : "Gateway disabled"}
             </Label>
             {currentEnabled
-              ? <span className="text-xs text-emerald-400">Payouts will be submitted to Payment Provider</span>
+              ? <span className="text-xs text-emerald-400">Payouts will be submitted to Cashfree</span>
               : <span className="text-xs text-muted-foreground">Enable to submit real payouts</span>}
           </div>
 
@@ -232,7 +232,7 @@ function SettingsTab() {
 
           <div className="rounded-md bg-muted/30 border border-border/40 p-3 text-xs text-muted-foreground space-y-1">
             <p className="font-medium text-foreground/70">How to get credentials</p>
-            <p>1. Log into the Payment Provider Merchant Dashboard → Payout → API Keys.</p>
+            <p>1. Log into the Cashfree Merchant Dashboard → Payout → API Keys.</p>
             <p>2. Generate a Client ID and Client Secret for the Payout product.</p>
             <p>3. These credentials are separate from the Payment Gateway credentials.</p>
           </div>
@@ -257,7 +257,7 @@ function AddPayoutDialog({ open, onClose, onSuccess }: { open: boolean; onClose:
   const [mode, setMode] = useState<"bank" | "upi">("bank");
   const [creating, setCreating] = useState(false);
 
-  const { mutateAsync: createPayout } = useCreatePayment ProviderPayout({ request: { headers: AUTH_HEADERS }, mutation: {} });
+  const { mutateAsync: createPayout } = useCreateCashfreePayout({ request: { headers: AUTH_HEADERS }, mutation: {} });
 
   async function handleSubmit() {
     if (!beneficiaryName.trim()) { toast.error("Beneficiary name is required"); return; }
@@ -361,7 +361,7 @@ function BulkUploadDialog({ open, onClose, onSuccess }: { open: boolean; onClose
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ total: number; successCount: number; failedCount: number } | null>(null);
 
-  const { mutateAsync: bulkCreate } = useBulkCreatePayment ProviderPayouts({ request: { headers: AUTH_HEADERS }, mutation: {} });
+  const { mutateAsync: bulkCreate } = useBulkCreateCashfreePayouts({ request: { headers: AUTH_HEADERS }, mutation: {} });
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -392,7 +392,7 @@ function BulkUploadDialog({ open, onClose, onSuccess }: { open: boolean; onClose
     if (csvRows.length === 0 || parseErrors.length > 0) return;
     setSubmitting(true);
     try {
-      const apiRows: Payment ProviderPayoutCsvRow[] = csvRows.map(r => ({
+      const apiRows: CashfreePayoutCsvRow[] = csvRows.map(r => ({
         beneficiary_name: r["beneficiary_name"] ?? "",
         account_number: r["account_number"] ?? "",
         ifsc: r["ifsc"] ?? "",
@@ -528,9 +528,9 @@ function PayoutsTab() {
     ...(dateTo ? { dateTo } : {}),
   };
 
-  const { data, isLoading, refetch } = useListPayment ProviderPayouts(params, { request: { headers: AUTH_HEADERS } });
-  const { mutateAsync: syncStatus } = useSyncPayment ProviderPayoutStatus({ request: { headers: AUTH_HEADERS }, mutation: {} });
-  const { mutateAsync: retryPayout } = useRetryPayment ProviderPayout({ request: { headers: AUTH_HEADERS }, mutation: {} });
+  const { data, isLoading, refetch } = useListCashfreePayouts(params, { request: { headers: AUTH_HEADERS } });
+  const { mutateAsync: syncStatus } = useSyncCashfreePayoutStatus({ request: { headers: AUTH_HEADERS }, mutation: {} });
+  const { mutateAsync: retryPayout } = useRetryCashfreePayout({ request: { headers: AUTH_HEADERS }, mutation: {} });
 
   const rows = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -551,7 +551,7 @@ function PayoutsTab() {
     try {
       const res = await syncStatus({ data: {} });
       toast.success(`Status sync complete — ${res.updatedCount} updated`);
-      qc.invalidateQueries({ queryKey: getListPayment ProviderPayoutsQueryKey(params) });
+      qc.invalidateQueries({ queryKey: getListCashfreePayoutsQueryKey(params) });
     } catch (err: any) {
       toast.error(err.message ?? "Sync failed");
     } finally {
@@ -559,7 +559,7 @@ function PayoutsTab() {
     }
   }
 
-  async function handleRetry(row: Payment ProviderPayoutRow) {
+  async function handleRetry(row: CashfreePayoutRow) {
     setRetryingId(row.id);
     try {
       await retryPayout({ id: row.id });
@@ -757,13 +757,13 @@ function PayoutsTab() {
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
-export default function AdminPayment ProviderPayout() {
+export default function AdminCashfreePayout() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Payout Gateway</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Cashfree Payout</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Initiate bank transfers and UPI payouts to beneficiaries via Payout Gateway API.
+          Initiate bank transfers and UPI payouts to beneficiaries via Cashfree Payout API.
         </p>
       </div>
 
