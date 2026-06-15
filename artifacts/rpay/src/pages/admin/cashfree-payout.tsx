@@ -127,7 +127,7 @@ function SettingsTab() {
       qc.invalidateQueries({ queryKey: getGetCashfreePayoutConfigQueryKey() });
       setClientId("");
       setClientSecret("");
-      toast.success("Cashfree Payout settings saved");
+      toast.success("Payout Gateway settings saved");
     } catch (err: any) {
       toast.error(err.message ?? "Failed to save settings");
     } finally {
@@ -175,7 +175,7 @@ function SettingsTab() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Sandbox URL: payout-gamma.cashfree.com · Live URL: payout.cashfree.com
+              Sandbox URL: sandbox-provider.example · Live URL: live-provider.example
             </p>
           </div>
 
@@ -761,9 +761,9 @@ export default function AdminCashfreePayout() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Cashfree Payout</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Payout Gateway</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Initiate bank transfers and UPI payouts to beneficiaries via Cashfree Payout API.
+          Initiate bank transfers and UPI payouts to beneficiaries via Payout Gateway API.
         </p>
       </div>
 
