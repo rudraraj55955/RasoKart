@@ -523,7 +523,7 @@ export default function AdminProviders() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Name</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: dialog === "create" ? slugify(e.target.value) : f.slug }))} placeholder="PhonePe Business" />
+                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: dialog === "create" ? slugify(e.target.value) : f.slug }))} placeholder="UPI Provider 1" />
               </div>
               <div className="space-y-1.5">
                 <Label>Slug</Label>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useGetCashfreeConfig, useUpdateCashfreeConfig, useListCashfreePaymentLogs, getGetCashfreeConfigQueryKey } from "@workspace/api-client-react";
+import { useGetPayment ProviderConfig, useUpdatePayment ProviderConfig, useListPayment ProviderPaymentLogs, getGetPayment ProviderConfigQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,13 +18,13 @@ function maskSecret(s: string, show: boolean) {
   return s ? "••••••••••••••••" : "";
 }
 
-export default function AdminCashfreeGateway() {
+export default function AdminPayment ProviderGateway() {
   const qc = useQueryClient();
-  const { data: config, isLoading } = useGetCashfreeConfig({
+  const { data: config, isLoading } = useGetPayment ProviderConfig({
     request: { headers: { Authorization: `Bearer ${getToken()}` } },
   });
 
-  const updateConfig = useUpdateCashfreeConfig();
+  const updateConfig = useUpdatePayment ProviderConfig();
 
   // Form state
   const [clientId, setClientId] = useState("");
@@ -40,7 +40,7 @@ export default function AdminCashfreeGateway() {
   // Logs
   const [logsPage, setLogsPage] = useState(1);
   const LOGS_LIMIT = 20;
-  const { data: logsData, isLoading: logsLoading, refetch: refetchLogs } = useListCashfreePaymentLogs(
+  const { data: logsData, isLoading: logsLoading, refetch: refetchLogs } = useListPayment ProviderPaymentLogs(
     { page: logsPage, limit: LOGS_LIMIT },
     { request: { headers: { Authorization: `Bearer ${getToken()}` } } },
   );
@@ -61,15 +61,15 @@ export default function AdminCashfreeGateway() {
 
       await updateConfig.mutateAsync(
         { data: body as Parameters<typeof updateConfig.mutateAsync>[0]["data"] },
-        { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetCashfreeConfigQueryKey() }); } }
+        { onSuccess: () => { qc.invalidateQueries({ queryKey: getGetPayment ProviderConfigQueryKey() }); } }
       );
 
       setClientId("");
       setClientSecret("");
       setWebhookSecret("");
-      toast.success("Cashfree configuration saved");
+      toast.success("Payment Provider configuration saved");
     } catch {
-      toast.error("Failed to save Cashfree configuration");
+      toast.error("Failed to save Payment Provider configuration");
     } finally {
       setSaving(false);
     }
@@ -90,8 +90,8 @@ export default function AdminCashfreeGateway() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Cashfree Gateway</h1>
-          <p className="text-muted-foreground mt-1">Configure Cashfree payment gateway credentials and webhook settings</p>
+          <h1 className="text-3xl font-bold tracking-tight">Payin Gateway</h1>
+          <p className="text-muted-foreground mt-1">Configure Payment Provider payment gateway credentials and webhook settings</p>
         </div>
         <div className="flex items-center gap-3">
           {isLoading ? (
@@ -126,7 +126,7 @@ export default function AdminCashfreeGateway() {
                 <div className="relative">
                   <Input
                     type={showClientId ? "text" : "password"}
-                    placeholder={config?.clientIdSet ? `Current: ${config.clientIdMasked}` : "Enter Cashfree Client ID"}
+                    placeholder={config?.clientIdSet ? `Current: ${config.clientIdMasked}` : "Enter Payment Provider Client ID"}
                     value={clientId}
                     onChange={(e) => setClientId(e.target.value)}
                     className="pr-10 font-mono text-sm"
@@ -151,7 +151,7 @@ export default function AdminCashfreeGateway() {
                 <div className="relative">
                   <Input
                     type={showClientSecret ? "text" : "password"}
-                    placeholder={config?.clientSecretSet ? "••••••••••••••••" : "Enter Cashfree Client Secret"}
+                    placeholder={config?.clientSecretSet ? "••••••••••••••••" : "Enter Payment Provider Client Secret"}
                     value={clientSecret}
                     onChange={(e) => setClientSecret(e.target.value)}
                     className="pr-10 font-mono text-sm"
@@ -205,7 +205,7 @@ export default function AdminCashfreeGateway() {
                 <div className="relative">
                   <Input
                     type={showWebhookSecret ? "text" : "password"}
-                    placeholder={config?.webhookSecretSet ? "••••••••••••••••" : "Enter Cashfree Webhook Secret"}
+                    placeholder={config?.webhookSecretSet ? "••••••••••••••••" : "Enter Payment Provider Webhook Secret"}
                     value={webhookSecret}
                     onChange={(e) => setWebhookSecret(e.target.value)}
                     className="pr-10 font-mono text-sm"
@@ -220,17 +220,17 @@ export default function AdminCashfreeGateway() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {config?.webhookSecretSet
-                    ? "Webhook secret is set. Used to verify HMAC-SHA256 signatures on incoming Cashfree webhooks."
+                    ? "Webhook secret is set. Used to verify HMAC-SHA256 signatures on incoming Payment Provider webhooks."
                     : "No webhook secret configured. Incoming webhooks will not be signature-verified."}
                 </p>
               </div>
 
               <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground space-y-1">
-                <p className="font-medium text-foreground">Webhook URL to configure in Cashfree Dashboard:</p>
+                <p className="font-medium text-foreground">Webhook URL to configure in Payment Provider Dashboard:</p>
                 <code className="block bg-background/60 rounded px-2 py-1 font-mono select-all">
                   {window.location.origin}/api/payment/cashfree-webhook
                 </code>
-                <p>Cashfree sends <code>x-webhook-signature</code> (base64 HMAC-SHA256) and <code>x-webhook-timestamp</code> headers.</p>
+                <p>Payment Provider sends <code>x-webhook-signature</code> (base64 HMAC-SHA256) and <code>x-webhook-timestamp</code> headers.</p>
               </div>
             </CardContent>
           </Card>
@@ -248,8 +248,8 @@ export default function AdminCashfreeGateway() {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">Enable Cashfree</p>
-                  <p className="text-xs text-muted-foreground">Allow merchants to use Cashfree payments</p>
+                  <p className="text-sm font-medium">Enable Payment Provider</p>
+                  <p className="text-xs text-muted-foreground">Allow merchants to use Payment Provider payments</p>
                 </div>
                 <Switch
                   checked={currentEnabled}
@@ -296,11 +296,11 @@ export default function AdminCashfreeGateway() {
               <CardTitle className="text-sm text-muted-foreground">Integration Guide</CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-muted-foreground space-y-2">
-              <p>1. Create a Cashfree account at <strong className="text-foreground">cashfree.com</strong></p>
-              <p>2. Go to <strong className="text-foreground">API Keys</strong> in the Cashfree dashboard</p>
+              <p>1. Create a Payment Provider account at <strong className="text-foreground">cashfree.com</strong></p>
+              <p>2. Go to <strong className="text-foreground">API Keys</strong> in the Payment Provider dashboard</p>
               <p>3. Copy your <strong className="text-foreground">Client ID</strong> and <strong className="text-foreground">Client Secret</strong></p>
               <p>4. Set the webhook URL to this page's endpoint (shown above)</p>
-              <p>5. Copy the <strong className="text-foreground">Webhook Secret Key</strong> from Cashfree and paste above</p>
+              <p>5. Copy the <strong className="text-foreground">Webhook Secret Key</strong> from Payment Provider and paste above</p>
               <p>6. Set environment to <strong className="text-foreground">Sandbox</strong> for testing, <strong className="text-foreground">Live</strong> for production</p>
             </CardContent>
           </Card>

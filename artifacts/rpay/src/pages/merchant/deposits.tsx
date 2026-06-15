@@ -870,8 +870,8 @@ export default function MerchantDeposits() {
   const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
   const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
 
-  // Cashfree payment dialog state
-  const [showCashfree, setShowCashfree] = useState(false);
+  // Payment Provider payment dialog state
+  const [showPayment Provider, setShowPayment Provider] = useState(false);
   const [cfAmount, setCfAmount] = useState("");
   const [cfPhone, setCfPhone] = useState("");
   const [cfName, setCfName] = useState("");
@@ -893,7 +893,7 @@ export default function MerchantDeposits() {
   });
   const cashfreeEnabled = cashfreeStatusData?.enabled ?? false;
 
-  const handleCashfreePay = async () => {
+  const handlePayment ProviderPay = async () => {
     if (!cfAmount || Number(cfAmount) <= 0) { toast.error("Enter a valid amount"); return; }
     if (!cfPhone.trim()) { toast.error("Customer phone number is required"); return; }
     setCfCreating(true);
@@ -923,7 +923,7 @@ export default function MerchantDeposits() {
       };
       if (!res.ok) throw new Error(result.error ?? "Failed to create payment order");
       if (!result.checkoutUrl) throw new Error("Invalid payment order response");
-      setShowCashfree(false);
+      setShowPayment Provider(false);
       setCfAmount(""); setCfPhone(""); setCfName(""); setCfEmail(""); setCfNote("");
       toast.success("Payment order created — opening checkout…");
       window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
@@ -1094,7 +1094,7 @@ export default function MerchantDeposits() {
             </Tooltip>
           </TooltipProvider>
           {cashfreeEnabled && (
-            <Button size="sm" variant="outline" onClick={() => setShowCashfree(true)} className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/50">
+            <Button size="sm" variant="outline" onClick={() => setShowPayment Provider(true)} className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/50">
               <CreditCard className="w-4 h-4 mr-2" />
               Pay via RasoKart
             </Button>
@@ -1771,7 +1771,7 @@ export default function MerchantDeposits() {
       )}
 
       {/* Payment Dialog */}
-      <Dialog open={showCashfree} onOpenChange={setShowCashfree}>
+      <Dialog open={showPayment Provider} onOpenChange={setShowPayment Provider}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1830,8 +1830,8 @@ export default function MerchantDeposits() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCashfree(false)} disabled={cfCreating}>Cancel</Button>
-            <Button onClick={handleCashfreePay} disabled={cfCreating || !cfAmount || !cfPhone.trim()}>
+            <Button variant="outline" onClick={() => setShowPayment Provider(false)} disabled={cfCreating}>Cancel</Button>
+            <Button onClick={handlePayment ProviderPay} disabled={cfCreating || !cfAmount || !cfPhone.trim()}>
               {cfCreating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating…</> : "Create & Pay"}
             </Button>
           </DialogFooter>

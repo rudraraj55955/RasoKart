@@ -49,8 +49,8 @@ import AdminLedger from "@/pages/admin/ledger";
 import AdminReconciliation from "@/pages/admin/reconciliation";
 import AdminPaymentLinks from "@/pages/admin/payment-links";
 import AdminSettings from "@/pages/admin/settings";
-import AdminCashfreeGateway from "@/pages/admin/cashfree-gateway";
-import AdminCashfreePayout from "@/pages/admin/cashfree-payout";
+import AdminPayment ProviderGateway from "@/pages/admin/cashfree-gateway";
+import AdminPayment ProviderPayout from "@/pages/admin/cashfree-payout";
 import AdminPaymentGateways from "@/pages/admin/payment-gateways";
 import AdminProviderIntegrations from "@/pages/admin/provider-integrations";
 import AdminSmartRouting from "@/pages/admin/smart-routing";
@@ -91,6 +91,7 @@ import AdminKycReview from "@/pages/admin/kyc-review";
 import MerchantReports from "@/pages/merchant/reports";
 import AdminReports from "@/pages/admin/reports";
 import MerchantSupport from "@/pages/merchant/support";
+import "./styles/mobile-professional.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -179,8 +180,8 @@ function Router() {
       <Route path="/admin/payment-links"><AdminRoute component={AdminPaymentLinks} /></Route>
       <Route path="/admin/settings"><AdminRoute component={AdminSettings} /></Route>
       <Route path="/admin/payment-gateways"><AdminRoute component={AdminPaymentGateways} /></Route>
-      <Route path="/admin/cashfree-gateway"><AdminRoute component={AdminCashfreeGateway} /></Route>
-      <Route path="/admin/cashfree-payout"><AdminRoute component={AdminCashfreePayout} /></Route>
+      <Route path="/admin/cashfree-gateway"><AdminRoute component={AdminPayment ProviderGateway} /></Route>
+      <Route path="/admin/cashfree-payout"><AdminRoute component={AdminPayment ProviderPayout} /></Route>
       <Route path="/admin/provider-integrations"><AdminRoute component={AdminProviderIntegrations} /></Route>
       <Route path="/admin/smart-routing"><AdminRoute component={AdminSmartRouting} /></Route>
       <Route path="/admin/module-control"><AdminRoute component={AdminModuleControl} /></Route>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
-  useGetCashfreeConfig, useGetCashfreePayoutConfig,
+  useGetPayment ProviderConfig, useGetPayment ProviderPayoutConfig,
   useGetEkqrConfig, useUpdateEkqrConfig, useTestEkqrConnection, useTestEkqrWebhook,
   getGetEkqrConfigQueryKey,
 } from "@workspace/api-client-react";
@@ -49,8 +49,8 @@ function copyToClipboard(text: string, label: string) {
 
 // ── Overview provider cards ───────────────────────────────────────────────────
 
-function CashfreePayinCard({ onConfigure }: { onConfigure: () => void }) {
-  const { data, isLoading } = useGetCashfreeConfig({ request: { headers: authHeader() } });
+function Payment ProviderPayinCard({ onConfigure }: { onConfigure: () => void }) {
+  const { data, isLoading } = useGetPayment ProviderConfig({ request: { headers: authHeader() } });
   return (
     <Card className="border-border/50 hover:border-violet-500/30 transition-colors">
       <CardHeader className="pb-3">
@@ -95,8 +95,8 @@ function CashfreePayinCard({ onConfigure }: { onConfigure: () => void }) {
   );
 }
 
-function CashfreePayoutCard({ onConfigure }: { onConfigure: () => void }) {
-  const { data, isLoading } = useGetCashfreePayoutConfig({ request: { headers: authHeader() } });
+function Payment ProviderPayoutCard({ onConfigure }: { onConfigure: () => void }) {
+  const { data, isLoading } = useGetPayment ProviderPayoutConfig({ request: { headers: authHeader() } });
   return (
     <Card className="border-border/50 hover:border-blue-500/30 transition-colors">
       <CardHeader className="pb-3">
@@ -465,10 +465,10 @@ function EkqrConfigPanel() {
   );
 }
 
-// ── Cashfree summary panels ───────────────────────────────────────────────────
+// ── Payment Provider summary panels ───────────────────────────────────────────────────
 
-function CashfreePayinPanel() {
-  const { data, isLoading } = useGetCashfreeConfig({ request: { headers: authHeader() } });
+function Payment ProviderPayinPanel() {
+  const { data, isLoading } = useGetPayment ProviderConfig({ request: { headers: authHeader() } });
   return (
     <div className="space-y-5 max-w-2xl">
       <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
@@ -509,8 +509,8 @@ function CashfreePayinPanel() {
   );
 }
 
-function CashfreePayoutPanel() {
-  const { data, isLoading } = useGetCashfreePayoutConfig({ request: { headers: authHeader() } });
+function Payment ProviderPayoutPanel() {
+  const { data, isLoading } = useGetPayment ProviderPayoutConfig({ request: { headers: authHeader() } });
   return (
     <div className="space-y-5 max-w-2xl">
       <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
@@ -686,8 +686,8 @@ export default function AdminPaymentGateways() {
           {/* ── Overview ────────────────────────────────────────────────── */}
           <TabsContent value="overview" className="mt-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <CashfreePayinCard onConfigure={() => openConfigTab("cashfree-payin")} />
-              <CashfreePayoutCard onConfigure={() => openConfigTab("cashfree-payout")} />
+              <Payment ProviderPayinCard onConfigure={() => openConfigTab("cashfree-payin")} />
+              <Payment ProviderPayoutCard onConfigure={() => openConfigTab("cashfree-payout")} />
               <EkqrCard onConfigure={() => openConfigTab("ekqr")} />
               <FuturePlaceholderCard />
             </div>
@@ -726,8 +726,8 @@ export default function AdminPaymentGateways() {
                   <Zap className="w-3 h-3 mr-1.5" />EKQR / UPI Gateway
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="cashfree-payin"><CashfreePayinPanel /></TabsContent>
-              <TabsContent value="cashfree-payout"><CashfreePayoutPanel /></TabsContent>
+              <TabsContent value="cashfree-payin"><Payment ProviderPayinPanel /></TabsContent>
+              <TabsContent value="cashfree-payout"><Payment ProviderPayoutPanel /></TabsContent>
               <TabsContent value="ekqr"><EkqrConfigPanel /></TabsContent>
             </Tabs>
           </TabsContent>

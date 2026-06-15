@@ -152,7 +152,7 @@ const DATE_PRESETS = [
 const PROVIDERS = [
   { value: "phonepe", label: "PhonePe" },
   { value: "paytm", label: "Paytm" },
-  { value: "bharatpe", label: "BharatPe" },
+  { value: "bharatpe", label: "UPI Provider 2" },
   { value: "yono_sbi", label: "YONO SBI" },
   { value: "hdfc_smarthub", label: "HDFC SmartHub" },
   { value: "upi_id", label: "UPI ID" },
