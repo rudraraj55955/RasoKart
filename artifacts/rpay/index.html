@@ -159,5 +159,157 @@
 })();
 </script>
 
+
+<!-- RASOKART_TOKEN_MASK_START -->
+<style>
+  .rk-token-copy-btn{
+    margin-left:10px;
+    padding:6px 10px;
+    border-radius:10px;
+    border:1px solid rgba(56,189,248,.35);
+    background:rgba(14,165,233,.14);
+    color:#e0f2fe;
+    font-size:12px;
+    font-weight:700;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .rk-token-copy-btn:active{transform:scale(.98)}
+  .rk-token-hidden{display:none!important}
+</style>
+<script>
+(function(){
+  var JWT_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
+
+  function isDocsRoute(){
+    return /(^|\/)(api-docs|merchant\/api-docs|admin\/api-docs)(\/|$)/i.test(location.pathname);
+  }
+
+  function isSecureRoute(){
+    return /^\/(admin|merchant)(\/|$)/i.test(location.pathname);
+  }
+
+  function hasAuthSignal(){
+    try{
+      var all = [document.cookie || ""];
+      for(var i=0;i<localStorage.length;i++){
+        var k = localStorage.key(i);
+        all.push(k + "=" + (localStorage.getItem(k) || ""));
+      }
+      for(var j=0;j<sessionStorage.length;j++){
+        var sk = sessionStorage.key(j);
+        all.push(sk + "=" + (sessionStorage.getItem(sk) || ""));
+      }
+      return /(auth|token|jwt|session|admin|merchant|rasokart)/i.test(all.join(" "));
+    }catch(e){
+      return false;
+    }
+  }
+
+  function canShowMaskedToken(){
+    return isDocsRoute() && isSecureRoute() && hasAuthSignal();
+  }
+
+  function maskToken(token){
+    if(!token || token.length <= 22) return "********";
+    return token.slice(0,10) + "..." + "****" + "..." + token.slice(-6);
+  }
+
+  function closestSafeBlock(el){
+    if(!el) return null;
+    return el.closest("section, article, form, [class*='card'], [class*='Card'], [class*='rounded'], [class*='border'], div");
+  }
+
+  function hideSharedBearerSection(){
+    if(!isDocsRoute()) return;
+
+    var allow = canShowMaskedToken();
+    var nodes = Array.prototype.slice.call(document.querySelectorAll("body *"));
+
+    nodes.forEach(function(el){
+      var txt = (el.textContent || "").trim();
+      if(/Shared Bearer Token/i.test(txt)){
+        var box = closestSafeBlock(el);
+        if(!allow && box){
+          box.classList.add("rk-token-hidden");
+        }
+      }
+    });
+  }
+
+  function addCopyButton(parent, token){
+    if(!parent || parent.querySelector(".rk-token-copy-btn")) return;
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rk-token-copy-btn";
+    btn.textContent = "Copy Token";
+    btn.addEventListener("click", function(){
+      navigator.clipboard.writeText(token).then(function(){
+        var old = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(function(){ btn.textContent = old; }, 1200);
+      }).catch(function(){
+        btn.textContent = "Copy failed";
+        setTimeout(function(){ btn.textContent = "Copy Token"; }, 1200);
+      });
+    });
+
+    parent.appendChild(btn);
+  }
+
+  function maskVisibleTokens(){
+    if(!isDocsRoute()) return;
+
+    var allow = canShowMaskedToken();
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    var textNodes = [];
+    var node;
+
+    while(node = walker.nextNode()){
+      if(JWT_RE.test(node.nodeValue || "")){
+        textNodes.push(node);
+      }
+      JWT_RE.lastIndex = 0;
+    }
+
+    textNodes.forEach(function(n){
+      var original = n.nodeValue || "";
+      var matches = original.match(JWT_RE) || [];
+
+      if(!allow){
+        n.nodeValue = original.replace(JWT_RE, "********");
+        return;
+      }
+
+      n.nodeValue = original.replace(JWT_RE, function(t){ return maskToken(t); });
+
+      var parent = n.parentElement;
+      if(parent && matches[0]){
+        addCopyButton(parent, matches[0]);
+      }
+    });
+  }
+
+  function run(){
+    hideSharedBearerSection();
+    maskVisibleTokens();
+  }
+
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", run);
+  }else{
+    run();
+  }
+
+  var t = null;
+  new MutationObserver(function(){
+    clearTimeout(t);
+    t = setTimeout(run, 120);
+  }).observe(document.documentElement, {childList:true, subtree:true});
+})();
+</script>
+<!-- RASOKART_TOKEN_MASK_END -->
+
 </body>
 </html>
