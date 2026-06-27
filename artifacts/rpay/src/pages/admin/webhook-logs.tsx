@@ -232,7 +232,7 @@ function WebhookRow({ log }: { log: any }) {
                   <div className="flex items-center gap-2 mb-1.5">
                     <p className="text-xs font-medium text-teal-400 uppercase tracking-wider">UPI Raw Payload</p>
                     <span className="inline-flex items-center gap-1 rounded border border-teal-500/30 bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-400">
-                      provider: ekqr
+                      upi gateway
                     </span>
                     <button
                       type="button"
