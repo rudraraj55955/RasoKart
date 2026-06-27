@@ -502,7 +502,7 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
 const PROVIDER_LABELS: Record<string, string> = {
   phonepe: "PhonePe",
   paytm: "Paytm",
-  bharatpe: "UPI Provider 2",
+  bharatpe: "BharatPe",
   yono_sbi: "YONO SBI",
   hdfc_smarthub: "HDFC SmartHub",
   upi_id: "UPI",
@@ -817,11 +817,11 @@ function RecordPaymentDialog({ open, onClose, onSuccess }: { open: boolean; onCl
 }
 
 const PROVIDERS = [
-  { value: "google_pay", label: "UPI Provider 3" },
+  { value: "google_pay", label: "Google Pay" },
   { value: "phonepe", label: "PhonePe" },
   { value: "paytm", label: "Paytm" },
-  { value: "bharat_pe", label: "UPI Provider 2" },
-  { value: "bharatpe", label: "UPI Provider 2 (legacy)" },
+  { value: "bharat_pe", label: "BharatPe" },
+  { value: "bharatpe", label: "BharatPe (legacy)" },
   { value: "yono_sbi", label: "YONO SBI" },
   { value: "hdfc_smarthub", label: "HDFC SmartHub" },
   { value: "upi_id", label: "UPI" },
