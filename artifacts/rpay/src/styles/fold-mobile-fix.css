@@ -1,0 +1,94 @@
+html,body,#root{width:100%!important;max-width:100%!important;min-width:0!important;overflow-x:hidden!important}
+*{box-sizing:border-box!important}
+img,svg,video,canvas,iframe{max-width:100%!important}
+pre,code,table{max-width:100%!important;overflow-x:auto!important}
+@media(max-width:900px){
+  #root,#root>div,main,section,header,footer{width:100%!important;max-width:100vw!important;min-width:0!important;overflow-x:hidden!important}
+  #root main>div,#root section>div,#root footer>div{width:100%!important;max-width:100%!important;padding-left:16px!important;padding-right:16px!important;margin-left:auto!important;margin-right:auto!important}
+  #root [class*="container"],#root [class*="mx-auto"],#root [class*="max-w-"],#root [class*="min-w-"],#root [class*="w-["]{width:100%!important;max-width:100%!important;min-width:0!important}
+  #root [class*="-mx-"],#root [class*="-ml-"],#root [class*="-mr-"]{margin-left:0!important;margin-right:0!important}
+  #root [class*="translate-x"],#root [class*="-translate-x"]{transform:none!important}
+  #root header{position:sticky!important;top:0!important;z-index:100!important;background:rgba(5,8,23,.96)!important;backdrop-filter:blur(14px);border-bottom:1px solid rgba(148,163,184,.14)!important}
+  #root header>div,#root header nav,#root header [class*="flex"]{max-width:100vw!important;min-width:0!important;padding-left:12px!important;padding-right:8px!important;gap:8px!important;flex-wrap:nowrap!important}
+  #root header a[href*="docs"],#root header a[href*="api"],#root header a[href*="merchant"],#root header a[href*="login"]:not([href*="admin"]){display:none!important}
+  #root header a,#root header button{white-space:nowrap!important;flex-shrink:0!important}
+  #root header a:first-child{display:flex!important;font-size:22px!important;line-height:1!important;max-width:46vw!important;overflow:hidden!important;text-overflow:ellipsis!important}
+  #root header a[href*="admin"],#root header button{display:inline-flex!important;min-height:44px!important;padding:10px 14px!important;border-radius:12px!important;font-size:14px!important}
+  #root main section:first-child,#root section:first-of-type{padding:44px 0 32px!important;text-align:left!important}
+  #root h1,#root [class*="text-7xl"],#root [class*="text-8xl"],#root [class*="text-9xl"],#root [class*="text-6xl"]{width:100%!important;max-width:100%!important;font-size:clamp(34px,10vw,56px)!important;line-height:1.04!important;letter-spacing:-.055em!important;overflow-wrap:break-word!important;text-align:left!important}
+  #root p,#root [class*="text-xl"],#root [class*="text-2xl"]{max-width:100%!important;font-size:16px!important;line-height:1.65!important}
+  #root main a,#root main button{max-width:100%!important}
+  #root main section:first-child a,#root main section:first-child button{width:100%!important;justify-content:center!important;min-height:50px!important}
+  #root [class*="grid"],#root [class*="grid-cols-2"],#root [class*="grid-cols-3"],#root [class*="grid-cols-4"],#root [class*="md:grid-cols"],#root [class*="lg:grid-cols"],#root [class*="xl:grid-cols"]{grid-template-columns:minmax(0,1fr)!important}
+  #root main section:first-child [class*="grid"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:420px){
+  #root main section:first-child [class*="grid"]{grid-template-columns:minmax(0,1fr)!important}
+  #root header a:first-child{font-size:20px!important;max-width:42vw!important}
+  #root header a[href*="admin"],#root header button{font-size:13px!important;padding:9px 11px!important}
+}
+
+/* Final mobile homepage polish */
+@media (max-width: 900px) {
+  header nav a:not(:first-child):not([href*="api"]):not([href*="admin"]),
+  header nav button:not(:last-child),
+  header a[href*="dashboard"],
+  header a[href*="settlement"],
+  header a[href*="plans"],
+  header a[href*="contact"],
+  header a[href*="services"] {
+    display: none !important;
+  }
+
+  header,
+  header nav,
+  header > div {
+    height: 56px !important;
+    min-height: 56px !important;
+  }
+
+  header nav {
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+
+  header a:first-child {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    max-width: 140px !important;
+  }
+
+  header a[href*="api"],
+  header a[href*="admin"] {
+    display: inline-flex !important;
+    font-size: 12px !important;
+    padding: 9px 10px !important;
+    border-radius: 10px !important;
+  }
+
+  main section:first-child {
+    min-height: auto !important;
+    padding-top: 90px !important;
+    padding-bottom: 44px !important;
+  }
+
+  main section:first-child::before,
+  main section:first-child::after {
+    max-width: 100vw !important;
+  }
+
+  main section:first-child h1 {
+    margin-top: 0 !important;
+    font-size: clamp(36px, 9vw, 50px) !important;
+    line-height: 1.08 !important;
+  }
+
+  main section:first-child p {
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+
+  main section:first-child [class*="grid"] {
+    margin-top: 28px !important;
+  }
+}

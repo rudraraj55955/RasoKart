@@ -115,25 +115,25 @@ jobs:
         run: |
           mkdir -p artifacts/rasokart-apk/output
           cp artifacts/rasokart-apk/app/build/outputs/apk/debug/app-debug.apk \
-             artifacts/rasokart-apk/output/RasoKart-v1.0.1-debug.apk
-          echo "APK size: $(du -sh artifacts/rasokart-apk/output/RasoKart-v1.0.1-debug.apk | cut -f1)"
+             artifacts/rasokart-apk/output/RasoKart-v1.0.2-debug.apk
+          echo "APK size: $(du -sh artifacts/rasokart-apk/output/RasoKart-v1.0.2-debug.apk | cut -f1)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RasoKart-v1.0.1-debug
-          path: artifacts/rasokart-apk/output/RasoKart-v1.0.1-debug.apk
+          name: RasoKart-v1.0.2-debug
+          path: artifacts/rasokart-apk/output/RasoKart-v1.0.2-debug.apk
           retention-days: 30
 
       - name: Build summary
         run: |
-          echo "## ✅ RasoKart v1.0.1 Debug APK" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ RasoKart v1.0.2 Debug APK" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| App name | RasoKart |" >> $GITHUB_STEP_SUMMARY
           echo "| Package | com.rasokart.app.debug |" >> $GITHUB_STEP_SUMMARY
-          echo "| Version | 1.0.1 (code 2) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | 1.0.2 (code 3) |" >> $GITHUB_STEP_SUMMARY
           echo "| Min SDK | 26 (Android 8.0+) |" >> $GITHUB_STEP_SUMMARY
           echo "| Target URL | https://rasokart.com |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
