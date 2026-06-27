@@ -353,7 +353,6 @@ const ADMIN_NAV = [
     items: [
       { title: "Payment Gateways", icon: Zap, href: "/admin/payment-gateways" },
       { title: "Payin Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
-    { title: "RasoKart UPI Provider", icon: CreditCard, href: "/admin/tpipay-provider-settings" },
       { title: "Payout Gateway", icon: Landmark, href: "/admin/cashfree-payout" },
     ],
   },
