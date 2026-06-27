@@ -152,11 +152,11 @@ function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
     syncMutation.mutate({ id: qr.id }, {
       onSuccess: (res: any) => {
         setSyncResult({ qrStatus: res?.qrStatus ?? "unknown", parsed: res?.parsed ?? {} });
-        toast.success(`EKQR sync complete — status: ${res?.qrStatus ?? "unknown"}`);
+        toast.success(`Sync complete — status: ${res?.qrStatus ?? "unknown"}`);
         qc.invalidateQueries({ queryKey: ["/api/qr-codes"] });
       },
       onError: (err: any) => {
-        toast.error(err?.message ?? "EKQR sync failed");
+        toast.error(err?.message ?? "Sync failed");
       },
     });
   }, [qr.id, syncMutation, qc]);
@@ -186,7 +186,7 @@ function AdminInlineQrRow({ qr }: { qr: AdminQrRow }) {
     if (!qr.ekqrPaymentUrl) return;
     navigator.clipboard.writeText(qr.ekqrPaymentUrl).then(() => {
       setCopiedEkqr(true);
-      toast.success("EKQR payment link copied to clipboard");
+      toast.success("Payment collection link copied to clipboard");
       setTimeout(() => setCopiedEkqr(false), 2000);
     });
   }, [qr.ekqrPaymentUrl]);
@@ -691,7 +691,7 @@ export default function AdminQrCodes() {
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {statusBadge(qr.status)}
                         {qr.ekqrOrderId && (
-                          <Badge className="text-xs bg-teal-500/15 text-teal-400 border-teal-500/20 hover:bg-teal-500/20 py-0 px-1.5">EKQR</Badge>
+                          <Badge className="text-xs bg-teal-500/15 text-teal-400 border-teal-500/20 hover:bg-teal-500/20 py-0 px-1.5">UPI</Badge>
                         )}
                       </div>
                     </TableCell>
