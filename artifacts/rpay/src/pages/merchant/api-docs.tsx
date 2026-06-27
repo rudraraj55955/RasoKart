@@ -290,7 +290,7 @@ function TryItPanel({ method, path, token, defaultBody = "", requiresAuth = true
                 <span className="text-muted-foreground">{response.durationMs}ms</span>
               </div>
               <pre className="bg-black/60 border border-border/50 rounded-lg p-3 text-xs font-mono overflow-x-auto text-green-300 whitespace-pre-wrap max-h-72">
-                {response.body}
+                {typeof response.body === "string" ? response.body : JSON.stringify(response.body, null, 2)}
               </pre>
             </div>
           )}
