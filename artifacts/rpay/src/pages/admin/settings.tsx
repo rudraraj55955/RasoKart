@@ -3055,7 +3055,7 @@ export default function AdminSettings() {
             <Zap className="w-4 h-4 text-teal-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">EKQR / UPI Gateway</p>
+            <p className="text-sm font-medium">UPI Gateway</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Configuration has moved to the Payment Gateways hub — API key, mode, webhook secret, connection test and sandbox/live toggle are all available there.
             </p>
