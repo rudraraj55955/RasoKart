@@ -195,7 +195,7 @@ export default function AdminDashboard() {
                       <Radio className={`w-4 h-4 ${hasErrors ? "text-rose-400" : "text-teal-400"}`} />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">EKQR Incoming — Last 24h</p>
+                      <p className="text-xs text-muted-foreground">UPI Incoming — Last 24h</p>
                       <div className="flex items-center gap-3 mt-0.5">
                         <span className="text-sm font-semibold">{ekqrStats.received} received</span>
                         <span className="text-xs text-emerald-400 font-medium">{ekqrStats.credited} credited</span>

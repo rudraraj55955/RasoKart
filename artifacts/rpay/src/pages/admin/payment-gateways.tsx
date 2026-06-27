@@ -157,7 +157,7 @@ function EkqrCard({ onConfigure }: { onConfigure: () => void }) {
             {!isLoading && data && <EnvBadge env={(data as any).env ?? "test"} />}
           </div>
         </div>
-        <CardTitle className="text-sm font-semibold mt-2">EKQR / UPI Gateway</CardTitle>
+        <CardTitle className="text-sm font-semibold mt-2">UPI Gateway</CardTitle>
         <CardDescription className="text-xs">
           Dynamic QR code generation and auto-credit via UPI Collection
         </CardDescription>
@@ -222,7 +222,7 @@ function EkqrConfigPanel() {
   const { mutate: saveConfig, isPending: saving } = useUpdateEkqrConfig({
     mutation: {
       onSuccess: () => {
-        toast.success("EKQR / UPI Gateway settings saved");
+        toast.success("UPI Gateway settings saved");
         setEkqrApiKey(""); setEkqrWebhookSecret("");
         setEkqrEnabled(null); setEkqrEnv(null);
         qc.invalidateQueries({ queryKey: getGetEkqrConfigQueryKey() });
@@ -235,7 +235,7 @@ function EkqrConfigPanel() {
     mutation: {
       onSuccess: (d: any) => {
         setTestResult(d);
-        if (d.ok) toast.success("EKQR connection successful");
+        if (d.ok) toast.success("Gateway connection successful");
         else toast.error(`Test failed: ${d.msg}`);
       },
       onError: (err: Error) => toast.error(err.message),
@@ -274,7 +274,7 @@ function EkqrConfigPanel() {
           <Zap className="w-4 h-4 text-teal-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">EKQR / UPI Gateway</p>
+          <p className="text-sm font-medium">UPI Gateway</p>
           <p className="text-xs text-muted-foreground">UPI Collection for merchants — dynamic QR code generation</p>
         </div>
         <div className="flex items-center gap-2">
@@ -285,7 +285,7 @@ function EkqrConfigPanel() {
 
       {/* Webhook URL */}
       <div className="space-y-1.5">
-        <Label className="text-xs">Webhook URL (set in EKQR dashboard)</Label>
+        <Label className="text-xs">Webhook URL (set in your gateway dashboard)</Label>
         <div className="flex items-center gap-2">
           <code className="flex-1 text-xs font-mono bg-muted/40 border border-border/40 rounded-md px-3 py-2 text-teal-300 truncate">
             {WEBHOOK_URL}
@@ -302,7 +302,7 @@ function EkqrConfigPanel() {
         <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
           <div>
             <p className="text-sm font-medium">Enable Gateway</p>
-            <p className="text-xs text-muted-foreground">Activate for merchants with EKQR connection</p>
+            <p className="text-xs text-muted-foreground">Activate for merchants with UPI gateway connection</p>
           </div>
           <Switch
             checked={currentEnabled}
@@ -351,7 +351,7 @@ function EkqrConfigPanel() {
         <div className="relative">
           <Input
             type={showKey ? "text" : "password"}
-            placeholder={ekqrConfig?.apiKeySet ? "Enter new API key to replace…" : "Enter EKQR API key"}
+            placeholder={ekqrConfig?.apiKeySet ? "Enter new API key to replace…" : "Enter gateway API key"}
             value={ekqrApiKey}
             onChange={e => setEkqrApiKey(e.target.value)}
             className="h-9 text-xs pr-9 font-mono"
@@ -372,7 +372,7 @@ function EkqrConfigPanel() {
         <p className="text-xs text-muted-foreground">
           {ekqrConfig?.webhookSecretSet
             ? "A secret is configured — incoming webhooks are signature-verified (HMAC-SHA256). Enter a new value to rotate, or clear and save to remove."
-            : "Optional. When set, EKQR webhooks must include a valid HMAC-SHA256 signature or they will be rejected with 401."}
+            : "Optional. When set, incoming webhooks must include a valid HMAC-SHA256 signature or they will be rejected with 401."}
         </p>
         <div className="relative">
           <Input
@@ -613,9 +613,9 @@ function MerchantAccessPanel() {
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {[
-          { icon: Layers, title: "QR Provider Assignments", desc: "Assign EKQR / UPI QR provider to individual merchants, set monthly limits", href: "/admin/qr-providers", color: "text-teal-400", bg: "bg-teal-500/10 border-teal-500/20" },
+          { icon: Layers, title: "QR Provider Assignments", desc: "Assign UPI QR provider to individual merchants, set monthly limits", href: "/admin/qr-providers", color: "text-teal-400", bg: "bg-teal-500/10 border-teal-500/20" },
           { icon: Users, title: "Merchant Access", desc: "Grant or revoke merchant access to product modules and payment methods", href: "/admin/merchant-access", color: "text-violet-400", bg: "bg-violet-500/10 border-violet-500/20" },
-          { icon: Activity, title: "Payment Providers", desc: "Enable/disable each provider per merchant and view EKQR connection settings", href: "/admin/providers", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
+          { icon: Activity, title: "Payment Providers", desc: "Enable/disable each provider per merchant and view UPI gateway connection settings", href: "/admin/providers", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
           { icon: Shield, title: "Visibility Rules", desc: "Fine-grained show/hide control for provider products", href: "/admin/visibility-rules", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
         ].map(({ icon: Icon, title, desc, href, color, bg }) => (
           <Card key={href} className="border-border/40 hover:border-border/70 transition-colors">
@@ -695,7 +695,7 @@ export default function AdminPaymentGateways() {
             <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
                 { href: "/admin/smart-routing", icon: GitMerge, label: "Smart Routing", desc: "Configure failover and provider priority" },
-                { href: "/admin/qr-providers", icon: Layers, label: "QR Provider Assignments", desc: "Assign EKQR to merchants" },
+                { href: "/admin/qr-providers", icon: Layers, label: "QR Provider Assignments", desc: "Assign UPI provider to merchants" },
                 { href: "/admin/webhook-logs", icon: Activity, label: "Webhook Logs", desc: "Incoming webhook history" },
               ].map(({ href, icon: Icon, label, desc }) => (
                 <Link key={href} href={href}>
@@ -723,7 +723,7 @@ export default function AdminPaymentGateways() {
                   <Landmark className="w-3 h-3 mr-1.5" />Payout Gateway
                 </TabsTrigger>
                 <TabsTrigger value="ekqr" className="text-xs px-3">
-                  <Zap className="w-3 h-3 mr-1.5" />EKQR / UPI Gateway
+                  <Zap className="w-3 h-3 mr-1.5" />UPI Gateway
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="cashfree-payin"><CashfreePayinPanel /></TabsContent>

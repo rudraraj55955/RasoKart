@@ -389,7 +389,7 @@ function CallbackRow({ log }: { log: any }) {
                 return isEkqr ? (
                   <div className="md:col-span-2">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <p className="text-xs font-medium text-teal-400 uppercase tracking-wider">EKQR Raw Payload</p>
+                      <p className="text-xs font-medium text-teal-400 uppercase tracking-wider">UPI Raw Payload</p>
                       <span className="inline-flex items-center gap-1 rounded border border-teal-500/30 bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-400">provider: ekqr</span>
                       {!!reqParsed?.event && <span className="text-xs text-muted-foreground font-mono">{String(reqParsed.event)}</span>}
                       {!!reqParsed?.amount && <span className="text-xs font-mono text-emerald-400">₹{String(reqParsed.amount)}</span>}

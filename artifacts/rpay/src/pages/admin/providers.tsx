@@ -84,11 +84,11 @@ export default function AdminProviders() {
   const { mutate: saveEkqrConfig, isPending: savingEkqr } = useUpdateEkqrConfig({
     mutation: {
       onSuccess: () => {
-        toast.success("EKQR settings saved");
+        toast.success("UPI gateway settings saved");
         setEkqrApiKey("");
         qc.invalidateQueries({ queryKey: getGetEkqrConfigQueryKey() });
       },
-      onError: () => toast.error("Failed to save EKQR settings"),
+      onError: () => toast.error("Failed to save UPI gateway settings"),
     },
   });
   const { mutate: testEkqr, isPending: testingEkqr } = useTestEkqrConnection({
@@ -487,7 +487,7 @@ export default function AdminProviders() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-teal-400 hover:text-teal-300"
-                              title="EKQR Gateway Settings"
+                              title="UPI Gateway Settings"
                               onClick={() => setEkqrSheetOpen(true)}
                             >
                               <Settings className="w-3.5 h-3.5" />
@@ -792,10 +792,10 @@ export default function AdminProviders() {
           <SheetHeader className="mb-6">
             <SheetTitle className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-yellow-400" />
-              EKQR / UPI Gateway Settings
+              UPI Gateway Settings
             </SheetTitle>
             <SheetDescription>
-              Configure the global EKQR API key and gateway status.
+              Configure the global UPI gateway API key and status.
             </SheetDescription>
           </SheetHeader>
 
@@ -819,15 +819,15 @@ export default function AdminProviders() {
                   <Copy className="w-3.5 h-3.5" />
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">Configure this URL in your EKQR dashboard to receive payment notifications.</p>
+              <p className="text-xs text-muted-foreground">Configure this URL in your gateway dashboard to receive payment notifications.</p>
             </div>
 
             {/* Enable/disable */}
             <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/10">
               <div>
-                <p className="text-sm font-medium">Enable EKQR Gateway</p>
+                <p className="text-sm font-medium">Enable UPI Gateway</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Merchants with an EKQR connection will use this gateway for QR payments
+                  Merchants with a UPI gateway connection will use this for QR payments
                 </p>
               </div>
               <Switch
@@ -926,9 +926,9 @@ export default function AdminProviders() {
             </div>
 
             <p className="text-xs text-muted-foreground border-t border-border/40 pt-4">
-              Full EKQR configuration also available in{" "}
-              <a href="/admin/settings" className="underline underline-offset-2 text-teal-400 hover:text-teal-300">
-                Settings → EKQR / UPI Gateway
+              Full UPI Gateway configuration also available in{" "}
+              <a href="/admin/payment-gateways" className="underline underline-offset-2 text-teal-400 hover:text-teal-300">
+                Payment Gateways → UPI Gateway
               </a>.
             </p>
           </div>

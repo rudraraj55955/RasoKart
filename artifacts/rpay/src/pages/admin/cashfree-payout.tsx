@@ -127,7 +127,7 @@ function SettingsTab() {
       qc.invalidateQueries({ queryKey: getGetCashfreePayoutConfigQueryKey() });
       setClientId("");
       setClientSecret("");
-      toast.success("Cashfree Payout settings saved");
+      toast.success("Payout gateway settings saved");
     } catch (err: any) {
       toast.error(err.message ?? "Failed to save settings");
     } finally {
@@ -143,7 +143,7 @@ function SettingsTab() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Banknote className="w-4 h-4 text-muted-foreground" />
-              Cashfree Payout Gateway
+              Payout Gateway
             </CardTitle>
             {!isLoading && config && <EnvBadge env={config.env} />}
           </div>
@@ -159,7 +159,7 @@ function SettingsTab() {
               {currentEnabled ? "Gateway enabled" : "Gateway disabled"}
             </Label>
             {currentEnabled
-              ? <span className="text-xs text-emerald-400">Payouts will be submitted to Cashfree</span>
+              ? <span className="text-xs text-emerald-400">Payouts will be submitted to the gateway</span>
               : <span className="text-xs text-muted-foreground">Enable to submit real payouts</span>}
           </div>
 
@@ -175,7 +175,7 @@ function SettingsTab() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Sandbox URL: payout-gamma.cashfree.com · Live URL: payout.cashfree.com
+              Sandbox mode uses the test payout environment; Live mode processes real bank transfers.
             </p>
           </div>
 
@@ -232,9 +232,9 @@ function SettingsTab() {
 
           <div className="rounded-md bg-muted/30 border border-border/40 p-3 text-xs text-muted-foreground space-y-1">
             <p className="font-medium text-foreground/70">How to get credentials</p>
-            <p>1. Log into the Cashfree Merchant Dashboard → Payout → API Keys.</p>
+            <p>1. Log into your payout provider dashboard and go to API Keys.</p>
             <p>2. Generate a Client ID and Client Secret for the Payout product.</p>
-            <p>3. These credentials are separate from the Payment Gateway credentials.</p>
+            <p>3. These credentials are separate from the Payment Collection credentials.</p>
           </div>
 
           <Button onClick={handleSave} disabled={saving}>
@@ -761,9 +761,9 @@ export default function AdminCashfreePayout() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Cashfree Payout</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Payout Gateway</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Initiate bank transfers and UPI payouts to beneficiaries via Cashfree Payout API.
+          Initiate bank transfers and UPI payouts to beneficiaries.
         </p>
       </div>
 

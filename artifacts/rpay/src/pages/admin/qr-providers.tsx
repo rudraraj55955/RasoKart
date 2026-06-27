@@ -20,7 +20,7 @@ const QR_PROVIDERS = [
   { value: "yono_sbi",      label: "YONO SBI",       color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   { value: "hdfc_smarthub", label: "HDFC SmartHub",  color: "bg-rose-500/10 text-rose-400 border-rose-500/20" },
   { value: "upi_id",        label: "UPI ID",         color: "bg-primary/10 text-primary border-primary/20" },
-  { value: "ekqr",          label: "EKQR / UPI",     color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
+  { value: "ekqr",          label: "UPI Gateway",    color: "bg-teal-500/10 text-teal-400 border-teal-500/20" },
 ];
 
 function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
@@ -300,7 +300,7 @@ export default function AdminQrProviders() {
                 <Label className="text-xs text-muted-foreground">API Key Override (optional)</Label>
                 <Input
                   type="password"
-                  placeholder="Leave blank to use the global EKQR API key"
+                  placeholder="Leave blank to use the global UPI gateway API key"
                   value={form.credentials}
                   onChange={e => setForm(f => ({ ...f, credentials: e.target.value }))}
                   className="h-8 text-xs font-mono"
@@ -308,7 +308,7 @@ export default function AdminQrProviders() {
                 <p className="text-xs text-muted-foreground">
                   If empty, the global key from{" "}
                   <a href="/admin/providers" className="underline underline-offset-2 text-teal-400">
-                    Payment Providers → EKQR Settings
+                    Payment Providers → UPI Gateway Settings
                   </a>{" "}
                   is used for this merchant.
                 </p>
