@@ -34,7 +34,6 @@ export function makeRateLimiter(options: RateLimiterOptions): RequestHandler {
   const { keyGenerator: userKeyGen, ...rest } = options;
 
   return rateLimit({
-    validate: { unsharedStore: false },
     standardHeaders: "draft-8",
     legacyHeaders: false,
     ...rest,
