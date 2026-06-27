@@ -90,7 +90,7 @@ export default function AdminCashfreeGateway() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Payin Gateway</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Cashfree Gateway</h1>
           <p className="text-muted-foreground mt-1">Configure Cashfree payment gateway credentials and webhook settings</p>
         </div>
         <div className="flex items-center gap-3">
