@@ -198,7 +198,7 @@ function WebhookRow({ log }: { log: any }) {
             <span className="font-mono text-xs truncate block" title={log.url}>{log.url}</span>
             {isEkqr && (
               <span className="shrink-0 inline-flex items-center gap-1 rounded border border-teal-500/30 bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-400">
-                EKQR
+                UPI
               </span>
             )}
           </div>
@@ -230,7 +230,7 @@ function WebhookRow({ log }: { log: any }) {
               {isEkqr ? (
                 <div className="md:col-span-2">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <p className="text-xs font-medium text-teal-400 uppercase tracking-wider">EKQR Raw Payload</p>
+                    <p className="text-xs font-medium text-teal-400 uppercase tracking-wider">UPI Raw Payload</p>
                     <span className="inline-flex items-center gap-1 rounded border border-teal-500/30 bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-400">
                       provider: ekqr
                     </span>
@@ -466,7 +466,7 @@ function EkqrWebhookLogsTab() {
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
                       <Zap className="w-6 h-6 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">No EKQR webhook logs found</p>
+                      <p className="text-sm">No UPI webhook logs found</p>
                     </TableCell>
                   </TableRow>
                 ) : items.map((log: any) => (
@@ -521,7 +521,7 @@ export default function AdminWebhookLogs() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Webhook Logs</h1>
-          <p className="text-muted-foreground mt-1">Monitor webhook delivery attempts and EKQR incoming events</p>
+          <p className="text-muted-foreground mt-1">Monitor webhook delivery attempts and UPI incoming events</p>
         </div>
         {activeTab === "outgoing" && (
           <Button variant="outline" size="sm" onClick={() => exportCsv(items)}>Export CSV</Button>
@@ -543,7 +543,7 @@ export default function AdminWebhookLogs() {
           onClick={() => setActiveTab("ekqr")}
         >
           <Zap className="w-3.5 h-3.5" />
-          EKQR Incoming
+          UPI Incoming
         </button>
       </div>
 
