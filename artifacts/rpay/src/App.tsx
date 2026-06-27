@@ -6,6 +6,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { PageErrorBoundary } from "@/components/error-boundary";
 import { UserRole } from "@workspace/api-client-react";
 import NotFound from "@/pages/not-found";
 
@@ -105,7 +106,9 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   return (
     <ProtectedRoute allowedRoles={[UserRole.admin]}>
       <DashboardLayout>
-        <Component />
+        <PageErrorBoundary>
+          <Component />
+        </PageErrorBoundary>
       </DashboardLayout>
     </ProtectedRoute>
   );
@@ -115,7 +118,9 @@ function MerchantRoute({ component: Component }: { component: React.ComponentTyp
   return (
     <ProtectedRoute allowedRoles={[UserRole.merchant]}>
       <DashboardLayout>
-        <Component />
+        <PageErrorBoundary>
+          <Component />
+        </PageErrorBoundary>
       </DashboardLayout>
     </ProtectedRoute>
   );
@@ -124,7 +129,9 @@ function MerchantRoute({ component: Component }: { component: React.ComponentTyp
 function PublicPage({ component: Component }: { component: React.ComponentType }) {
   return (
     <DashboardLayout publicMode>
-      <Component />
+      <PageErrorBoundary>
+        <Component />
+      </PageErrorBoundary>
     </DashboardLayout>
   );
 }
@@ -190,11 +197,14 @@ function Router() {
       <Route path="/admin/merchant-verifications"><AdminRoute component={AdminMerchantVerifications} /></Route>
       <Route path="/admin/reports"><AdminRoute component={AdminReports} /></Route>
       <Route path="/admin/support-tickets"><AdminRoute component={AdminSupportTickets} /></Route>
+      <Route path="/admin/support"><AdminRoute component={AdminSupportTickets} /></Route>
+      <Route path="/admin/payouts"><AdminRoute component={AdminWithdrawals} /></Route>
 
       {/* Merchant Routes */}
       <Route path="/merchant/dashboard"><MerchantRoute component={MerchantDashboard} /></Route>
       <Route path="/merchant/transactions"><MerchantRoute component={MerchantTransactions} /></Route>
       <Route path="/merchant/withdrawals"><MerchantRoute component={MerchantWithdrawals} /></Route>
+      <Route path="/merchant/payouts"><MerchantRoute component={MerchantWithdrawals} /></Route>
       <Route path="/merchant/api-keys"><MerchantRoute component={MerchantApiKeys} /></Route>
       <Route path="/merchant/webhook"><MerchantRoute component={MerchantWebhook} /></Route>
       <Route path="/merchant/callbacks"><MerchantRoute component={MerchantCallbacks} /></Route>

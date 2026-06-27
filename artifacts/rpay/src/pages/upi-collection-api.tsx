@@ -876,7 +876,7 @@ function WebhookSimulator() {
                   </Button>
                 </div>
                 <pre className="bg-black/70 border border-border/50 rounded-lg p-3 text-xs font-mono overflow-x-auto text-green-300 whitespace-pre-wrap max-h-48 overflow-y-auto">
-                  {result.responseBody}
+                  {typeof result.responseBody === "string" ? result.responseBody : JSON.stringify(result.responseBody, null, 2)}
                 </pre>
               </div>
             )}
