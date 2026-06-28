@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable, auditLogsTable } from "@workspace/db";
-import { dbRateLimitStore } from "../lib/rateLimitStore";
+import { DbRateLimitStore } from "../lib/rateLimitStore";
 import { eq, and, count, desc } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
 import { logger } from "../lib/logger";
@@ -20,14 +20,14 @@ const MAX_TRUSTED_IPS = 20;
 const loginLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  store: dbRateLimitStore,
+  store: new DbRateLimitStore(),
   message: { error: "Too many login attempts. Please try again later." },
 });
 
 const prefChangeLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  store: dbRateLimitStore,
+  store: new DbRateLimitStore(),
   message: { error: "Too many preference updates. Please try again later." },
   keyGenerator: (req) => {
     const user = (req as any).user;

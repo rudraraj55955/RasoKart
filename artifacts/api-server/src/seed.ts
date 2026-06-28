@@ -132,18 +132,14 @@ export async function seed() {
     .returning();
   console.log("Admin:", admin.email);
 
-  // Always reset passwordHash on conflict so a corrupt or stale hash in prod is fixed on next restart
+  // Demo merchant users — SELECT-only: do not re-create if they were deleted from this environment
   const [merchant1] = await db
-    .insert(usersTable)
-    .values({ email: "merchant@demo.com", passwordHash: merchantHash, name: "Demo Merchant", role: "merchant", isActive: true })
-    .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: merchantHash, name: "Demo Merchant", role: "merchant", isActive: true } })
-    .returning();
+    .select().from(usersTable)
+    .where(eq(usersTable.email, "merchant@demo.com")).limit(1);
 
   const [merchant2] = await db
-    .insert(usersTable)
-    .values({ email: "merchant2@demo.com", passwordHash: merchantHash, name: "Merchant Two", role: "merchant", isActive: true })
-    .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: merchantHash, name: "Merchant Two", role: "merchant", isActive: true } })
-    .returning();
+    .select().from(usersTable)
+    .where(eq(usersTable.email, "merchant2@demo.com")).limit(1);
 
   // Rudraraj merchant account
   const [merchant3] = await db
@@ -152,27 +148,14 @@ export async function seed() {
     .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: merchantHash, name: "Rudraraj", role: "merchant", isActive: true } })
     .returning();
 
-  const [m1] = await db.insert(merchantsTable).values({
-    businessName: "Demo Business Pvt Ltd",
-    contactName: "Demo Merchant",
-    email: "merchant@demo.com",
-    phone: "+91-9876543210",
-    status: "approved",
-    balance: "15000",
-    totalDeposits: "225000",
-    totalWithdrawals: "210000",
-  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Demo Merchant" } }).returning();
+  // Demo merchants — SELECT-only: do not re-create if they were deleted from this environment
+  const [m1] = await db
+    .select().from(merchantsTable)
+    .where(eq(merchantsTable.email, "merchant@demo.com")).limit(1);
 
-  const [m2] = await db.insert(merchantsTable).values({
-    businessName: "TechPay Solutions",
-    contactName: "Merchant Two",
-    email: "merchant2@demo.com",
-    phone: "+91-9876543211",
-    status: "approved",
-    balance: "8500",
-    totalDeposits: "125000",
-    totalWithdrawals: "116500",
-  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Merchant Two" } }).returning();
+  const [m2] = await db
+    .select().from(merchantsTable)
+    .where(eq(merchantsTable.email, "merchant2@demo.com")).limit(1);
 
   const [m3] = await db.insert(merchantsTable).values({
     businessName: "Rudraraj Enterprises",
@@ -210,6 +193,8 @@ export async function seed() {
   }
   console.log("Merchants seeded");
 
+  // ── Demo data — only seeded when demo merchants exist in this environment ──
+  if (m1 && m2) {
   // ── Transactions ────────────────────────────────────────────────────────
   const txCount = await db.select({ c: count() }).from(transactionsTable);
   if (txCount[0].c === 0) {
@@ -497,6 +482,7 @@ export async function seed() {
     }
   }
   console.log("Today's deposits seeded");
+  } // end demo-data guard (m1 && m2)
 
   const adCount = await db.select({ c: count() }).from(accountDetailsTable);
   if (adCount[0].c === 0) {
@@ -514,7 +500,7 @@ export async function seed() {
 
   // ── Ledger Entries ────────────────────────────────────────────────────────
   const ledgerCount = await db.select({ c: count() }).from(ledgerEntriesTable);
-  if (ledgerCount[0].c === 0) {
+  if (ledgerCount[0].c === 0 && m1 && m2) {
     // m1 balance = 15000: sequence must close at exactly 15000
     // 0 → +50000 → 50000 → -20000 → 30000 → +25000 → 55000 → -30000 → 25000 → +2000 → 27000 → -12000 → 15000
     const m1Entries = [
@@ -982,9 +968,11 @@ export async function seed() {
   console.log("Credential events backfill complete.");
 
   // ── Credential Events — demo history for admin view ──────────────────────
-  const [credEvCount] = await db.select({ c: count() }).from(credentialEventsTable)
-    .where(eq(credentialEventsTable.merchantId, m1.id));
-  if (credEvCount.c === 0) {
+  const credEvRows = m1
+    ? await db.select({ c: count() }).from(credentialEventsTable).where(eq(credentialEventsTable.merchantId, m1.id))
+    : [{ c: 1 }];
+  const [credEvCount] = credEvRows;
+  if (credEvCount.c === 0 && m1 && m2) {
     const adminUser = admin;
     const merchantUser = await db.select().from(usersTable)
       .where(eq(usersTable.email, "merchant@demo.com")).limit(1).then(r => r[0]);

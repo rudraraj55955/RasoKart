@@ -5,3 +5,5 @@
 - [Canonical plan tiers](canonical-plan-tiers.md) — 5 tiers: Starter (free, no API/webhooks), Silver, Gold, Platinum (full access), Custom; legacy Startup/Business/Enterprise were deleted from DB.
 - [Wouter Redirect blank screen](wouter-redirect-blank.md) — <Redirect> returns null during navigation frame; use AuthRedirect with spinner+useEffect instead.
 - [React Query stale cache auth bleed](rq-auth-cache-bleed.md) — on login, call queryClient.removeQueries(getGetMeQueryKey()) before setting token or stale merchant user bleeds into admin session.
+- [Rate limiter store reuse](rate-limiter-store-reuse.md) — express-rate-limit v8 throws ERR_ERL_STORE_REUSE if two limiters share one store instance; always `new DbRateLimitStore()` per limiter, never reuse the singleton.
+- [Seed demo merchant guard](seed-demo-guard.md) — seed.ts must SELECT-only for demo merchants (not upsert); wrap all demo-data blocks in `if (m1 && m2)`; db push requires TTY — use ALTER TABLE for non-interactive schema migrations.
