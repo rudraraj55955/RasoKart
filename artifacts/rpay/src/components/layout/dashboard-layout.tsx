@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { Spinner } from "@/components/ui/spinner";
 import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule } from "@workspace/api-client-react";
 
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
@@ -574,7 +575,13 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
   const { user, logout } = useAuth();
   const [location] = useLocation();
 
-  if (!publicMode && !user) return null;
+  if (!publicMode && !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Spinner className="w-8 h-8 text-primary" />
+      </div>
+    );
+  }
 
   const isAdmin = user?.role === UserRole.admin;
   const portalName = location.startsWith("/admin") ? "RasoKart Admin"

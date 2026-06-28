@@ -56,10 +56,11 @@
 <body>
   <div class="card">
     <div class="logo">RasoKart</div>
-    <h1>Clear Browser Cache</h1>
+    <h1>Clear Cache &amp; Sign Out</h1>
     <p>
-      If the app shows a blank page or loads incorrectly after an update,
-      clearing the cache will force your browser to fetch the latest version.
+      Clears all browser caches, service workers, and signs you out.
+      Use this if the app shows a blank page or loads incorrectly after an update.
+      You will need to sign in again.
     </p>
     <button id="btn" onclick="clearAll()">Clear Cache &amp; Reload</button>
     <div class="status" id="status"></div>
@@ -92,17 +93,15 @@
         }
       } catch (e) {}
 
-      status.textContent = 'Clearing local storage…';
+      status.textContent = 'Clearing storage…';
       try {
-        const token = localStorage.getItem('rasokart_token');
         localStorage.clear();
         sessionStorage.clear();
-        if (token) localStorage.setItem('rasokart_token', token);
       } catch (e) {}
 
-      status.textContent = 'Done! Reloading…';
+      status.textContent = 'Done! Redirecting to login…';
       setTimeout(() => {
-        window.location.href = '/admin/login';
+        window.location.href = '/merchant/login';
       }, 800);
     }
   </script>
