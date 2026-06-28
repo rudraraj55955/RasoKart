@@ -121,23 +121,35 @@ export async function seed() {
 
   // ── Users & Merchants ────────────────────────────────────────────────────
   const adminHash = await bcrypt.hash("Admin@123456", 10);
+  // Pre-compute once so the same hash is used in both insert and upsert update
+  const merchantHash = await bcrypt.hash("Merchant@123456", 10);
+
   const [admin] = await db
     .insert(usersTable)
     .values({ email: "admin@rasokart.com", passwordHash: adminHash, name: "Super Admin", role: "admin", isActive: true })
-    .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: adminHash, name: "Super Admin" } })
+    // Always reset password hash + active status so production re-seed always works
+    .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: adminHash, name: "Super Admin", role: "admin", isActive: true } })
     .returning();
   console.log("Admin:", admin.email);
 
+  // Always reset passwordHash on conflict so a corrupt or stale hash in prod is fixed on next restart
   const [merchant1] = await db
     .insert(usersTable)
-    .values({ email: "merchant@demo.com", passwordHash: await bcrypt.hash("Merchant@123456", 10), name: "Demo Merchant", role: "merchant", isActive: true })
-    .onConflictDoUpdate({ target: usersTable.email, set: { name: "Demo Merchant" } })
+    .values({ email: "merchant@demo.com", passwordHash: merchantHash, name: "Demo Merchant", role: "merchant", isActive: true })
+    .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: merchantHash, name: "Demo Merchant", role: "merchant", isActive: true } })
     .returning();
 
   const [merchant2] = await db
     .insert(usersTable)
-    .values({ email: "merchant2@demo.com", passwordHash: await bcrypt.hash("Merchant@123456", 10), name: "Merchant Two", role: "merchant", isActive: true })
-    .onConflictDoUpdate({ target: usersTable.email, set: { name: "Merchant Two" } })
+    .values({ email: "merchant2@demo.com", passwordHash: merchantHash, name: "Merchant Two", role: "merchant", isActive: true })
+    .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: merchantHash, name: "Merchant Two", role: "merchant", isActive: true } })
+    .returning();
+
+  // Rudraraj merchant account
+  const [merchant3] = await db
+    .insert(usersTable)
+    .values({ email: "rudraraj4496@gmail.com", passwordHash: merchantHash, name: "Rudraraj", role: "merchant", isActive: true })
+    .onConflictDoUpdate({ target: usersTable.email, set: { passwordHash: merchantHash, name: "Rudraraj", role: "merchant", isActive: true } })
     .returning();
 
   const [m1] = await db.insert(merchantsTable).values({
@@ -149,7 +161,7 @@ export async function seed() {
     balance: "15000",
     totalDeposits: "225000",
     totalWithdrawals: "210000",
-  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved" } }).returning();
+  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Demo Merchant" } }).returning();
 
   const [m2] = await db.insert(merchantsTable).values({
     businessName: "TechPay Solutions",
@@ -160,11 +172,23 @@ export async function seed() {
     balance: "8500",
     totalDeposits: "125000",
     totalWithdrawals: "116500",
-  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved" } }).returning();
+  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Merchant Two" } }).returning();
+
+  const [m3] = await db.insert(merchantsTable).values({
+    businessName: "Rudraraj Enterprises",
+    contactName: "Rudraraj",
+    email: "rudraraj4496@gmail.com",
+    phone: "+91-9999994496",
+    status: "approved",
+    balance: "0",
+    totalDeposits: "0",
+    totalWithdrawals: "0",
+  }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Rudraraj" } }).returning();
 
   // Link user accounts to their merchant rows so merchant-facing routes work
   if (m1) await db.update(usersTable).set({ merchantId: m1.id }).where(eq(usersTable.email, "merchant@demo.com"));
   if (m2) await db.update(usersTable).set({ merchantId: m2.id }).where(eq(usersTable.email, "merchant2@demo.com"));
+  if (m3) await db.update(usersTable).set({ merchantId: m3.id }).where(eq(usersTable.email, "rudraraj4496@gmail.com"));
   console.log("Merchants seeded");
 
   // assign plans
@@ -179,6 +203,10 @@ export async function seed() {
   if (goldPlan && m2) {
     await db.insert(merchantPlansTable).values({ merchantId: m2.id, planId: goldPlan.id, expiresAt })
       .onConflictDoUpdate({ target: merchantPlansTable.merchantId, set: { planId: goldPlan.id, expiresAt, status: "active" } });
+  }
+  if (starterPlan && m3) {
+    await db.insert(merchantPlansTable).values({ merchantId: m3.id, planId: starterPlan.id, expiresAt })
+      .onConflictDoUpdate({ target: merchantPlansTable.merchantId, set: { planId: starterPlan.id, expiresAt, status: "active" } });
   }
   console.log("Merchants seeded");
 
