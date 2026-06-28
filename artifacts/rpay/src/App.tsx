@@ -1,5 +1,6 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth-context";
@@ -7,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { PageErrorBoundary } from "@/components/error-boundary";
+import { Spinner } from "@/components/ui/spinner";
 import { UserRole } from "@workspace/api-client-react";
 import NotFound from "@/pages/not-found";
 
@@ -102,6 +104,73 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Smart entry for /admin — shows spinner while auth resolves, then either
+ * redirects a logged-in admin to /admin/dashboard or renders the login page.
+ * This means /admin is NEVER blank and NEVER shows login to an already-logged-in admin.
+ */
+function SmartAdminEntry() {
+  const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && user?.role === UserRole.admin) {
+      setLocation("/admin/dashboard", { replace: true } as Parameters<typeof setLocation>[1]);
+    }
+  }, [user, isLoading]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Spinner className="w-8 h-8 text-primary" />
+      </div>
+    );
+  }
+
+  if (user?.role === UserRole.admin) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Spinner className="w-8 h-8 text-primary" />
+      </div>
+    );
+  }
+
+  return <AdminLogin />;
+}
+
+/**
+ * Smart entry for /merchant — shows spinner while auth resolves, then either
+ * redirects a logged-in merchant to /merchant/dashboard or renders the login page.
+ */
+function SmartMerchantEntry() {
+  const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && user?.role === UserRole.merchant) {
+      setLocation("/merchant/dashboard", { replace: true } as Parameters<typeof setLocation>[1]);
+    }
+  }, [user, isLoading]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Spinner className="w-8 h-8 text-primary" />
+      </div>
+    );
+  }
+
+  if (user?.role === UserRole.merchant) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Spinner className="w-8 h-8 text-primary" />
+      </div>
+    );
+  }
+
+  return <MerchantLogin />;
+}
+
 function AdminRoute({ component: Component }: { component: React.ComponentType }) {
   return (
     <ProtectedRoute allowedRoles={[UserRole.admin]}>
@@ -142,9 +211,9 @@ function Router() {
       {/* Public landing page */}
       <Route path="/" component={Landing} />
 
-      {/* Auth routes — canonical short URLs */}
-      <Route path="/admin" component={AdminLogin} />
-      <Route path="/merchant" component={MerchantLogin} />
+      {/* Smart entry routes — show login OR redirect to dashboard based on auth state */}
+      <Route path="/admin" component={SmartAdminEntry} />
+      <Route path="/merchant" component={SmartMerchantEntry} />
       <Route path="/agent" component={AgentLogin} />
 
       {/* Agent dashboard */}

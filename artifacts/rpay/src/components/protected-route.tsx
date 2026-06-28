@@ -40,7 +40,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   if (!user) {
-    const loginPath = location.startsWith("/admin") ? "/admin/login" : "/merchant/login";
+    const loginPath = location.startsWith("/admin") ? "/admin" : "/merchant";
     return <AuthRedirect to={loginPath} />;
   }
 
