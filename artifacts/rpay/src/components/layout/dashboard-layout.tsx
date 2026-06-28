@@ -352,9 +352,15 @@ const ADMIN_NAV = [
   {
     group: "Gateways",
     items: [
-      { title: "Payment Gateways", icon: Zap, href: "/admin/payment-gateways" },
+      { title: "Payment Gateways", icon: Plug, href: "/admin/payment-gateways" },
       { title: "Payin Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
       { title: "Payout Gateway", icon: Landmark, href: "/admin/cashfree-payout" },
+      { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
+      { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
+      { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
+      { title: "Provider Integrations", icon: Layers, href: "/admin/provider-integrations" },
+      { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
+      { title: "Merchant Access", icon: LayoutGrid, href: "/admin/merchant-access" },
     ],
   },
   {
@@ -371,12 +377,6 @@ const ADMIN_NAV = [
       { title: "Module Control", icon: ToggleLeft, href: "/admin/module-control" },
       { title: "Feature Control", icon: Sliders, href: "/admin/feature-control" },
       { title: "Account Details", icon: CreditCard, href: "/admin/account-details" },
-      { title: "Provider Integrations", icon: Layers, href: "/admin/provider-integrations" },
-      { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
-      { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
-      { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
-      { title: "Visibility Rules", icon: Eye, href: "/admin/visibility-rules" },
-      { title: "Merchant Access", icon: LayoutGrid, href: "/admin/merchant-access" },
     ],
   },
   {
