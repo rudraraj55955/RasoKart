@@ -412,7 +412,7 @@ function EkqrConfigPanel() {
         }`}>
           {webhookTestResult.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
           {webhookTestResult.ok
-            ? <>Simulated webhook processed — visible in <a href="/admin/webhook-logs" className="underline">Webhook Logs → EKQR Incoming</a></>
+            ? <>Simulated webhook processed — visible in <a href="/admin/webhook-logs" className="underline">Webhook Logs → UPI Incoming</a></>
             : webhookTestResult.msg}
         </div>
       )}

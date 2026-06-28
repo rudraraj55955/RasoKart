@@ -523,7 +523,7 @@ export default function AdminProviders() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Name</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: dialog === "create" ? slugify(e.target.value) : f.slug }))} placeholder="PhonePe Business" />
+                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: dialog === "create" ? slugify(e.target.value) : f.slug }))} placeholder="Provider name" />
               </div>
               <div className="space-y-1.5">
                 <Label>Slug</Label>
@@ -849,7 +849,7 @@ export default function AdminProviders() {
               <div className="relative">
                 <Input
                   type={showEkqrKey ? "text" : "password"}
-                  placeholder={ekqrConfig?.apiKeySet ? "Enter new API key to replace…" : "Enter EKQR API key"}
+                  placeholder={ekqrConfig?.apiKeySet ? "Enter new API key to replace…" : "Enter UPI gateway API key"}
                   value={ekqrApiKey}
                   onChange={e => setEkqrApiKey(e.target.value)}
                   className="h-8 text-xs pr-9 font-mono"

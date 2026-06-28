@@ -500,11 +500,11 @@ function TransactionDetailPanel({ id, open, onClose }: { id: number | null; open
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  phonepe: "PhonePe",
-  paytm: "Paytm",
-  bharatpe: "BharatPe",
-  yono_sbi: "YONO SBI",
-  hdfc_smarthub: "HDFC SmartHub",
+  phonepe: "upi-app",
+  paytm: "wallet-upi",
+  bharatpe: "qr-platform",
+  yono_sbi: "bank-upi",
+  hdfc_smarthub: "bank-smart",
   upi_id: "UPI",
 };
 
@@ -817,13 +817,13 @@ function RecordPaymentDialog({ open, onClose, onSuccess }: { open: boolean; onCl
 }
 
 const PROVIDERS = [
-  { value: "google_pay", label: "Google Pay" },
-  { value: "phonepe", label: "PhonePe" },
-  { value: "paytm", label: "Paytm" },
-  { value: "bharat_pe", label: "BharatPe" },
-  { value: "bharatpe", label: "BharatPe (legacy)" },
-  { value: "yono_sbi", label: "YONO SBI" },
-  { value: "hdfc_smarthub", label: "HDFC SmartHub" },
+  { value: "google_pay", label: "google_pay" },
+  { value: "phonepe", label: "phonepe" },
+  { value: "paytm", label: "paytm" },
+  { value: "bharat_pe", label: "bharatpe" },
+  { value: "bharatpe", label: "bharatpe (v1)" },
+  { value: "yono_sbi", label: "yono_sbi" },
+  { value: "hdfc_smarthub", label: "hdfc_smarthub" },
   { value: "upi_id", label: "UPI" },
 ] as const;
 
