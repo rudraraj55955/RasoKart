@@ -153,9 +153,9 @@ function Router() {
       <Route path="/merchant/pending" component={MerchantPending} />
       <Route path="/merchant/suspended" component={MerchantSuspended} />
 
-      {/* Legacy login aliases — redirect to canonical short URLs */}
-      <Route path="/admin/login"><Redirect to="/admin" /></Route>
-      <Route path="/merchant/login"><Redirect to="/merchant" /></Route>
+      {/* Login aliases — render directly so /admin/login always shows login UI */}
+      <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/merchant/login" component={MerchantLogin} />
       <Route path="/merchant/register"><Redirect to="/merchant/apply" /></Route>
 
       {/* Admin Routes */}

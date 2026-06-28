@@ -1,4 +1,4 @@
-import { Component, ReactNode } from "react";
+import { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -20,6 +20,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[RasoKart] Uncaught error:", error);
+    console.error("[RasoKart] Component stack:", info.componentStack);
   }
 
   handleReset = () => {
@@ -57,6 +62,13 @@ export class ErrorBoundary extends Component<Props, State> {
                 Refresh Page
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              If this keeps happening,{" "}
+              <a href="/clear-cache.html" className="underline hover:text-foreground">
+                clear your browser cache
+              </a>
+              {" "}and reload.
+            </p>
           </div>
         </div>
       );
