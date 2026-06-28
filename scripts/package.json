@@ -7,13 +7,16 @@
     "hello": "tsx ./src/hello.ts",
     "db-migrate": "tsx ./src/db-migrate.ts",
     "github-sync": "tsx ./src/github-sync.ts",
+    "fix-credentials": "tsx ./src/fix-credentials.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
-    "@workspace/mailer": "workspace:*"
+    "@workspace/mailer": "workspace:*",
+    "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "catalog:",
     "drizzle-orm": "catalog:",
     "tsx": "catalog:"

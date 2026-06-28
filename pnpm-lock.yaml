@@ -760,7 +760,13 @@ importers:
       '@workspace/mailer':
         specifier: workspace:*
         version: link:../lib/mailer
+      bcryptjs:
+        specifier: ^3.0.3
+        version: 3.0.3
     devDependencies:
+      '@types/bcryptjs':
+        specifier: ^3.0.0
+        version: 3.0.0
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
