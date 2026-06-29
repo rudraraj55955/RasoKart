@@ -264,7 +264,7 @@ function EkqrConfigPanel() {
     saveConfig({ data: body as any });
   }
 
-  const WEBHOOK_URL = "https://rasokart.com/api/payment";
+  const WEBHOOK_URL = "https://rasokart.com/api/payment/webhook";
 
   return (
     <div className="space-y-5 max-w-2xl">
