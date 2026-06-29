@@ -35,12 +35,26 @@ const sheetVariants = cva(
   {
     variants: {
       side: {
-        top: "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top overflow-y-auto",
-        bottom:
-          "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom overflow-y-auto max-h-[calc(100dvh-2rem)]",
-        left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm overflow-y-auto",
-        right:
-          "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm overflow-y-auto",
+        top: [
+          "inset-x-0 top-0 border-b",
+          "max-h-[85dvh] overflow-y-auto overscroll-contain",
+          "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+        ].join(" "),
+        bottom: [
+          "inset-x-0 bottom-0 border-t",
+          "max-h-[85dvh] overflow-y-auto overscroll-contain",
+          "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+        ].join(" "),
+        left: [
+          "inset-y-0 left-0 h-[100dvh] w-3/4 border-r sm:max-w-sm",
+          "overflow-y-auto overscroll-contain",
+          "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
+        ].join(" "),
+        right: [
+          "inset-y-0 right-0 h-[100dvh] w-3/4 border-l sm:max-w-sm",
+          "overflow-y-auto overscroll-contain",
+          "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+        ].join(" "),
       },
     },
     defaultVariants: {

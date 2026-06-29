@@ -26,8 +26,9 @@ const AlertDialogOverlay = React.forwardRef<
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName
 
 /**
- * AlertDialogContent — same scrollable-positioner pattern as DialogContent.
- * Allows confirmation dialogs with long text to scroll on small screens.
+ * AlertDialogContent — same scroll fix as DialogContent.
+ * overflow-y-auto on the Content element so Radix focus-trap doesn't
+ * block touch scroll events on mobile.
  */
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
@@ -35,14 +36,15 @@ const AlertDialogContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPortal>
     <AlertDialogOverlay />
-    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-none">
-      <div className="flex min-h-full items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain">
+      <div className="flex min-h-[100dvh] items-start justify-center p-4 sm:items-center">
         <AlertDialogPrimitive.Content
           ref={ref}
           className={cn(
-            "relative grid w-full gap-4 border bg-background p-6 shadow-lg",
-            "max-w-[min(520px,95vw)] sm:max-w-lg",
-            "rounded-lg sm:rounded-lg",
+            "relative flex flex-col",
+            "w-[calc(100vw-32px)] sm:w-full sm:max-w-lg",
+            "max-h-[calc(100dvh-32px)] overflow-y-auto overscroll-contain",
+            "gap-4 border bg-background p-6 shadow-lg rounded-lg",
             "duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
             "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
