@@ -1528,7 +1528,7 @@ export default function AdminReconciliation() {
           }
         }}
       >
-        <DialogContent className="max-w-6xl max-h-[88vh] flex flex-col gap-4">
+        <DialogContent className="max-w-6xl max-h-[calc(100dvh-4rem)] flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <GitMerge className="w-4 h-4 text-primary" />

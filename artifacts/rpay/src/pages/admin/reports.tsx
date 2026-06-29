@@ -472,7 +472,7 @@ function ScheduleHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[calc(100dvh-4rem)] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
             <History className="w-4 h-4 text-primary" />
@@ -1661,7 +1661,7 @@ function ScheduledReportsPanel() {
       </Dialog>
 
       <Dialog open={sendFailures != null} onOpenChange={(open) => { if (!open) { if (clearFlashTimer.current != null) { clearTimeout(clearFlashTimer.current); clearFlashTimer.current = null; } setSendFailures(null); setClearedMerchantIds(new Set()); } }}>
-        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+        <DialogContent className="max-w-lg max-h-[calc(100dvh-4rem)] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm">
               <XCircle className="w-4 h-4 text-red-400" />
@@ -1929,7 +1929,7 @@ function ScheduledReportsPanel() {
       </Dialog>
 
       <Dialog open={!!overrideTarget} onOpenChange={(open) => { if (!open) { setOverrideTarget(null); setEmailPreview(null); } }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[calc(100dvh-4rem)] flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold">Schedule Settings</DialogTitle>
           </DialogHeader>

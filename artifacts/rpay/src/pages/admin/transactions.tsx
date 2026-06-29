@@ -625,7 +625,7 @@ function RecordPaymentDialog({ open, onClose, onSuccess }: { open: boolean; onCl
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[calc(100dvh-4rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="w-4 h-4 text-primary" />

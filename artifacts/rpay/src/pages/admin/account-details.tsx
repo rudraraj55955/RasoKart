@@ -289,7 +289,7 @@ export default function AdminAccountDetails() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={dialog === "create" || dialog === "edit"} onOpenChange={open => !open && setDialog(null)}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[calc(100dvh-4rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{dialog === "create" ? "Add Account Detail" : "Edit Account Detail"}</DialogTitle>
           </DialogHeader>

@@ -588,7 +588,7 @@ function DeliveryDetailModal({ log, onClose, onRetry, isRetrying, effectiveDelay
 
   return (
     <Dialog open={!!log} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Activity className="w-5 h-5 text-primary" />

@@ -2549,7 +2549,7 @@ function ScheduledReportsPanel() {
       </Dialog>
 
       <Dialog open={previewHtml !== null} onOpenChange={open => { if (!open) setPreviewHtml(null); }}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-2xl max-h-[calc(100dvh-4rem)] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MonitorPlay className="w-4 h-4 text-violet-400" />

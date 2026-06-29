@@ -2045,7 +2045,7 @@ export default function AdminMerchants() {
 
       {/* Webhook Logs Dialog */}
       <Dialog open={!!webhookLogsMerchant} onOpenChange={open => { if (!open) setWebhookLogsMerchant(null); }}>
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-4xl max-h-[calc(100dvh-4rem)] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-sky-400" />
@@ -2328,7 +2328,7 @@ export default function AdminMerchants() {
 
       {/* Assign Plan Dialog */}
       <Dialog open={!!assignPlanMerchant} onOpenChange={closeAssignPlan}>
-        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-xl max-h-[calc(100dvh-4rem)] overflow-y-auto">
           <DialogHeader><DialogTitle>Assign Plan — {assignPlanMerchant?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             {/* Current Plan */}
@@ -3710,7 +3710,7 @@ export default function AdminMerchants() {
 
       {/* Plan Email Preview Modal */}
       <Dialog open={!!planEmailPreview} onOpenChange={(open) => { if (!open) setPlanEmailPreview(null); }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[calc(100dvh-4rem)] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
               <Mail className="w-4 h-4 text-violet-400" />
@@ -3772,7 +3772,7 @@ export default function AdminMerchants() {
 
       {/* Bulk Action Result Summary Dialog */}
       <Dialog open={bulkResultOpen} onOpenChange={handleBulkResultClose}>
-        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+        <DialogContent className="max-w-lg max-h-[calc(100dvh-4rem)] flex flex-col">
           <DialogHeader>
             <DialogTitle>{bulkResultTitle} — Results</DialogTitle>
             <DialogDescription>

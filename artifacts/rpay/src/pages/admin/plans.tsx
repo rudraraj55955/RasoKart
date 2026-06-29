@@ -254,7 +254,7 @@ export default function AdminPlans() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[calc(100dvh-4rem)] overflow-y-auto">
           <DialogHeader><DialogTitle>{editPlan ? "Edit Plan" : "Create Plan"}</DialogTitle></DialogHeader>
           <div className="space-y-5 py-2">
 
