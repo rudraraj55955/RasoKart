@@ -50,3 +50,6 @@ Thumbs.db
 .github-sync-status.json
 .github-sync-status.json
 .github-sync-status.json
+
+# GitHub Actions (Replit OAuth lacks workflow scope)
+.github/workflows/
