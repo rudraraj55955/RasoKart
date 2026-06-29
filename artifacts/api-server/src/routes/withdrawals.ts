@@ -690,6 +690,26 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     return;
   }
 
+  // ── Atomic claim: only one retry can proceed per withdrawal ────────────────
+  // Conditional UPDATE — transitions to INITIATED only if status is still in
+  // the retryable set. If a concurrent request already claimed it, 0 rows are
+  // returned and we return 409 so the second request is rejected.
+  const claimed = await db
+    .update(withdrawalsTable)
+    .set({ transferStatus: "INITIATED" })
+    .where(
+      and(
+        eq(withdrawalsTable.id, id),
+        inArray(withdrawalsTable.transferStatus, ["FAILED", "REVERSED", "INITIATED"]),
+      )
+    )
+    .returning({ id: withdrawalsTable.id });
+
+  if (claimed.length === 0) {
+    res.status(409).json({ error: "A retry is already in progress for this payout. Please wait." });
+    return;
+  }
+
   const amt = Number(w.amount);
   // For FAILED/REVERSED, funds were released back to available — re-lock before retrying.
   const wasReleased = ["FAILED", "REVERSED"].includes(w.transferStatus);
@@ -735,12 +755,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     }
   }
 
-  // Mark as INITIATED before calling provider so status is durable if provider call hangs
-  await db
-    .update(withdrawalsTable)
-    .set({ transferStatus: "INITIATED" })
-    .where(eq(withdrawalsTable.id, id));
-
+  // Status is already INITIATED via the atomic claim above — proceed to provider call.
   const newTransferId = `RKPAY_${id}_RETRY_${Date.now()}`;
   let transferStatus = "INITIATED";
   let utr: string | null = null;
