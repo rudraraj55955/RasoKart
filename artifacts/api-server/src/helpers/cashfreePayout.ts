@@ -23,11 +23,26 @@ export function normalizeCashfreePayoutStatus(status?: string | null): "PENDING"
   return "FAILED";
 }
 
+export function isPayoutCredentialError(parsed: any, httpStatus?: number): boolean {
+  if (httpStatus === 401 || httpStatus === 403) return true;
+  const msg = String(parsed?.message ?? parsed?.error ?? "").toLowerCase();
+  const code = String(parsed?.code ?? parsed?.status ?? "").toLowerCase();
+  return (
+    code.includes("authentication_failed") ||
+    code.includes("unauthorized") ||
+    msg.includes("invalid clientid") ||
+    msg.includes("invalid client id") ||
+    msg.includes("client secret") ||
+    msg.includes("invalid credentials") ||
+    msg.includes("invalid client")
+  );
+}
+
 async function readJson(res: any) {
   const raw = await res.text();
   let parsed: any = {};
   try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = { status: "ERROR", message: raw }; }
-  return { raw, parsed, httpStatus: res.status };
+  return { raw, parsed, httpStatus: res.status as number };
 }
 
 function cleanId(v: string, max = 40) {
@@ -91,7 +106,7 @@ async function createBeneficiaryIfNeeded(
   const out = await readJson(res);
 
   if (out.httpStatus === 201 || out.httpStatus === 200 || out.httpStatus === 409) {
-    return { ok: true, raw: out.raw, parsed: out.parsed };
+    return { ok: true, raw: out.raw, parsed: out.parsed, httpStatus: out.httpStatus };
   }
 
   return {
@@ -102,6 +117,7 @@ async function createBeneficiaryIfNeeded(
       status: "ERROR",
       message: out.parsed?.message ?? "Cashfree beneficiary create failed",
     },
+    httpStatus: out.httpStatus,
   };
 }
 
@@ -110,7 +126,7 @@ export async function cashfreePayoutCreateTransfer(
   clientSecret: string,
   env: CashfreePayoutEnv,
   input: PayoutCreateInput
-) {
+): Promise<{ raw: string; parsed: any; httpStatus: number }> {
   const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
 
   const isUpi = Boolean(input.upiId?.trim());
@@ -122,7 +138,7 @@ export async function cashfreePayoutCreateTransfer(
 
   const bene = await createBeneficiaryIfNeeded(clientId, clientSecret, env, beneficiaryId, input);
   if (!bene.ok) {
-    return { raw: bene.raw, parsed: flattenV2Response(bene.parsed) };
+    return { raw: bene.raw, parsed: flattenV2Response(bene.parsed), httpStatus: bene.httpStatus };
   }
 
   const transferId = cleanId(
@@ -151,8 +167,8 @@ export async function cashfreePayoutCreateTransfer(
     body: JSON.stringify(body),
   });
 
-  const { raw, parsed } = await readJson(res);
-  return { raw, parsed: flattenV2Response(parsed) };
+  const { raw, parsed, httpStatus } = await readJson(res);
+  return { raw, parsed: flattenV2Response(parsed), httpStatus };
 }
 
 export async function cashfreePayoutGetTransferStatus(
@@ -175,6 +191,29 @@ export async function cashfreePayoutGetTransferStatus(
     },
   });
 
-  const { raw, parsed } = await readJson(res);
-  return { raw, parsed: flattenV2Response(parsed) };
+  const { raw, parsed, httpStatus } = await readJson(res);
+  return { raw, parsed: flattenV2Response(parsed), httpStatus };
+}
+
+export async function testPayoutConnection(
+  clientId: string,
+  clientSecret: string,
+  env: CashfreePayoutEnv
+): Promise<{ ok: boolean; message: string }> {
+  const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
+  try {
+    const res = await fetch(`${baseUrl}/transfers?limit=1`, {
+      headers: {
+        "x-api-version": "2024-01-01",
+        "x-client-id": clientId,
+        "x-client-secret": clientSecret,
+      },
+    });
+    const { parsed, httpStatus } = await readJson(res);
+    if (httpStatus >= 200 && httpStatus < 300) return { ok: true, message: "Connection successful — credentials are valid" };
+    if (httpStatus === 401 || httpStatus === 403) return { ok: false, message: "Invalid Payout Client ID or Secret — authentication failed" };
+    return { ok: false, message: parsed?.message ?? `Provider returned HTTP ${httpStatus}` };
+  } catch (err: any) {
+    return { ok: false, message: err?.message ?? "Could not reach payout provider" };
+  }
 }

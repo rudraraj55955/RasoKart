@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable } from "@workspace/db";
 import { ekqrCreateOrder, ekqrClientTxnId } from "../helpers/ekqr";
+import { testPayoutConnection, type CashfreePayoutEnv } from "../helpers/cashfreePayout";
 import { inArray, desc, count, sql, eq, and } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
@@ -1218,15 +1219,19 @@ async function getCashfreePayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const map = new Map(rows.map((r) => [r.key, r.value]));
   const rawId = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID) ?? "";
   const rawSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "";
+  const rawFundsource = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID) ?? "";
   return {
     clientIdSet: rawId.length > 0,
     clientIdMasked: rawId.length > 4 ? `${rawId.slice(0, 4)}${"*".repeat(Math.max(0, rawId.length - 8))}${rawId.slice(-4)}` : rawId.length > 0 ? "****" : "",
     clientSecretSet: rawSecret.length > 0,
+    fundsourceIdSet: rawFundsource.length > 0,
+    fundsourceIdMasked: rawFundsource.length > 4 ? `${rawFundsource.slice(0, 4)}${"*".repeat(Math.max(0, rawFundsource.length - 8))}${rawFundsource.slice(-4)}` : rawFundsource.length > 0 ? "****" : "",
     enabled: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED]) === "true",
     env: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV]) as "test" | "live",
   };
@@ -1243,9 +1248,10 @@ router.get("/cashfree-payout", async (req, res, next) => {
 router.put("/cashfree-payout", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { clientId, clientSecret, enabled, env } = req.body as {
+    const { clientId, clientSecret, fundsourceId, enabled, env } = req.body as {
       clientId?: string;
       clientSecret?: string;
+      fundsourceId?: string;
       enabled?: boolean;
       env?: "test" | "live";
     };
@@ -1264,6 +1270,15 @@ router.put("/cashfree-payout", async (req, res, next) => {
           .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: clientSecret, updatedByEmail: user.email } });
       }
     }
+    if (fundsourceId !== undefined) {
+      if (fundsourceId === "") {
+        await db.delete(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID));
+      } else {
+        await db.insert(systemConfigTable)
+          .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID, value: fundsourceId, updatedByEmail: user.email })
+          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: fundsourceId, updatedByEmail: user.email } });
+      }
+    }
     if (enabled !== undefined) {
       const val = enabled ? "true" : "false";
       await db.insert(systemConfigTable)
@@ -1279,12 +1294,36 @@ router.put("/cashfree-payout", async (req, res, next) => {
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
       action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify({ section: "cashfree_payout", clientIdUpdated: clientId !== undefined, clientSecretUpdated: clientSecret !== undefined, enabled, env }),
+      details: JSON.stringify({ section: "cashfree_payout", clientIdUpdated: clientId !== undefined, clientSecretUpdated: clientSecret !== undefined, fundsourceIdUpdated: fundsourceId !== undefined, enabled, env }),
       ipAddress: (req as any).ip ?? null,
     });
 
-    req.log.info({ enabled, env, clientIdUpdated: clientId !== undefined }, "Cashfree Payout config updated");
+    req.log.info({ enabled, env, clientIdUpdated: clientId !== undefined, fundsourceIdUpdated: fundsourceId !== undefined }, "Cashfree Payout config updated");
     res.json(await getCashfreePayoutConfig());
+  } catch (err) { next(err); }
+});
+
+// POST /api/system-config/cashfree-payout/test-connection
+router.post("/cashfree-payout/test-connection", async (req, res, next) => {
+  try {
+    const cfg = await getCashfreePayoutConfig();
+    if (!cfg.clientIdSet || !cfg.clientSecretSet) {
+      res.status(400).json({ ok: false, message: "Payout Client ID and Secret must be saved before testing the connection" });
+      return;
+    }
+    const keys = [
+      SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID,
+      SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET,
+      SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
+    ];
+    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+    const clientId = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID) ?? "";
+    const clientSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "";
+    const env = (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv;
+    const result = await testPayoutConnection(clientId, clientSecret, env);
+    req.log.info({ ok: result.ok, env }, "cashfree_payout_connection_tested");
+    res.json(result);
   } catch (err) { next(err); }
 });
 

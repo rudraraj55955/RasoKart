@@ -78,13 +78,16 @@ export default function AdminPayouts() {
       {
         onSuccess: (result) => {
           const ts = (result as any)?.transferStatus;
+          const fr = (result as any)?.failureReason as string | null | undefined;
           if (ts === "SUCCESS") toast.success("Payout approved and sent successfully");
+          else if (fr?.startsWith("PAYOUT_CREDENTIAL_ERROR"))
+            toast.error("Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings.");
           else if (ts === "FAILED" || ts === "REVERSED") toast.warning("Payout approved but transfer failed — check status");
           else toast.success("Payout approved — processing with provider");
           setConfirmApproveId(null);
           invalidate();
         },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to approve payout"),
+        onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to approve payout"),
       }
     );
   };
@@ -100,7 +103,7 @@ export default function AdminPayouts() {
           setRejectReason("");
           invalidate();
         },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to reject payout"),
+        onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to reject payout"),
       }
     );
   };
@@ -114,7 +117,7 @@ export default function AdminPayouts() {
           toast.success(`Status updated: ${ts}`);
           invalidate();
         },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to refresh status"),
+        onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to refresh status"),
       }
     );
   };
@@ -129,7 +132,7 @@ export default function AdminPayouts() {
           else toast.info(`Retry initiated — status: ${ts}`);
           invalidate();
         },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to retry payout"),
+        onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to retry payout"),
       }
     );
   };
@@ -350,8 +353,17 @@ export default function AdminPayouts() {
                                 </p>
                               )}
                               {w.failureReason && (
-                                <p className="text-xs text-rose-400 mt-0.5 max-w-[140px] truncate" title={w.failureReason}>
-                                  {w.failureReason}
+                                <p
+                                  className="text-xs text-rose-400 mt-0.5 max-w-[160px] truncate"
+                                  title={
+                                    w.failureReason.startsWith("PAYOUT_CREDENTIAL_ERROR")
+                                      ? "Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings."
+                                      : w.failureReason
+                                  }
+                                >
+                                  {w.failureReason.startsWith("PAYOUT_CREDENTIAL_ERROR")
+                                    ? "⚠ Payout provider credentials invalid — fix in Gateway Settings"
+                                    : w.failureReason}
                                 </p>
                               )}
                             </TableCell>
@@ -405,16 +417,30 @@ export default function AdminPayouts() {
                                   </Button>
                                 )}
                                 {isFailed && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
-                                    onClick={() => handleRetry(w.id)}
-                                    disabled={retryMutation.isPending}
-                                  >
-                                    <RotateCcw className="w-4 h-4 mr-1" />
-                                    Retry
-                                  </Button>
+                                  w.failureReason?.startsWith("PAYOUT_CREDENTIAL_ERROR") ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                                      onClick={() => handleRetry(w.id)}
+                                      disabled={retryMutation.isPending}
+                                      title="Payout provider credentials invalid. Fix in Gateway Settings → Payout Gateway before retrying."
+                                    >
+                                      <AlertTriangle className="w-4 h-4 mr-1" />
+                                      Retry (fix creds first)
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+                                      onClick={() => handleRetry(w.id)}
+                                      disabled={retryMutation.isPending}
+                                    >
+                                      <RotateCcw className="w-4 h-4 mr-1" />
+                                      Retry
+                                    </Button>
+                                  )
                                 )}
                                 {w.status !== "pending" && !isProcessing && !isFailed && (
                                   <span className="text-muted-foreground text-xs">—</span>

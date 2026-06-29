@@ -11,6 +11,8 @@ export interface CashfreePayoutConfig {
   clientIdSet: boolean;
   clientIdMasked: string;
   clientSecretSet: boolean;
+  fundsourceIdSet: boolean;
+  fundsourceIdMasked: string;
   enabled: boolean;
   env: CashfreePayoutConfigEnv;
 }

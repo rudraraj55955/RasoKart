@@ -13861,7 +13861,7 @@ components:
 
     CashfreePayoutConfig:
       type: object
-      required: [clientIdSet, clientIdMasked, clientSecretSet, enabled, env]
+      required: [clientIdSet, clientIdMasked, clientSecretSet, fundsourceIdSet, fundsourceIdMasked, enabled, env]
       properties:
         clientIdSet:
           type: boolean
@@ -13869,6 +13869,10 @@ components:
           type: string
         clientSecretSet:
           type: boolean
+        fundsourceIdSet:
+          type: boolean
+        fundsourceIdMasked:
+          type: string
         enabled:
           type: boolean
         env:
@@ -13881,6 +13885,9 @@ components:
         clientId:
           type: string
         clientSecret:
+          type: string
+          description: Pass empty string to remove
+        fundsourceId:
           type: string
           description: Pass empty string to remove
         enabled:

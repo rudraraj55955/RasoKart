@@ -11,6 +11,8 @@ export interface CashfreePayoutConfigInput {
   clientId?: string;
   /** Pass empty string to remove */
   clientSecret?: string;
+  /** Pass empty string to remove */
+  fundsourceId?: string;
   enabled?: boolean;
   env?: CashfreePayoutConfigInputEnv;
 }

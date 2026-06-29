@@ -330,9 +330,9 @@ export default function MerchantPayouts() {
                                   {w.rejectionReason}
                                 </p>
                               )}
-                              {(w.transferStatus === "FAILED" || w.transferStatus === "REVERSED") && w.failureReason && (
-                                <p className="text-xs text-rose-400 mt-0.5 max-w-[160px] truncate" title={w.failureReason}>
-                                  {w.failureReason}
+                              {(w.transferStatus === "FAILED" || w.transferStatus === "REVERSED") && (
+                                <p className="text-xs text-rose-400 mt-0.5">
+                                  Payout failed. Please contact support.
                                 </p>
                               )}
                             </TableCell>

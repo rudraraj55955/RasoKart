@@ -101,11 +101,15 @@ function SettingsTab() {
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [fundsourceId, setFundsourceId] = useState("");
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [env, setEnv] = useState<"test" | "live" | null>(null);
   const [showId, setShowId] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
+  const [showFundsource, setShowFundsource] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const { mutateAsync: updateConfig } = useUpdateCashfreePayoutConfig({
     request: { headers: AUTH_HEADERS },
@@ -115,40 +119,79 @@ function SettingsTab() {
   const currentEnabled = enabled !== null ? enabled : (config?.enabled ?? false);
   const currentEnv: "test" | "live" = env !== null ? env : (config?.env ?? "test");
 
+  const missingCredentials = !isLoading && config && (!config.clientIdSet || !config.clientSecretSet);
+
   async function handleSave() {
+    if (!currentEnabled && !clientId.trim() && !clientSecret.trim()) {
+      toast.error("Enter Payout Client ID and Secret before saving");
+      return;
+    }
     setSaving(true);
+    setTestResult(null);
     try {
       const body: Record<string, unknown> = { enabled: currentEnabled, env: currentEnv };
       if (clientId.trim()) body.clientId = clientId.trim();
-      // Only send clientSecret if user explicitly typed a new value.
-      // An empty field means "keep existing" — never send empty string.
       if (clientSecret.trim()) body.clientSecret = clientSecret.trim();
+      if (fundsourceId !== "") body.fundsourceId = fundsourceId.trim();
       await updateConfig({ data: body as any });
       qc.invalidateQueries({ queryKey: getGetCashfreePayoutConfigQueryKey() });
       setClientId("");
       setClientSecret("");
+      setFundsourceId("");
       toast.success("Payout gateway settings saved");
     } catch (err: any) {
-      toast.error(err.message ?? "Failed to save settings");
+      toast.error((err?.data as any)?.error ?? err?.message ?? "Failed to save settings");
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleTestConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/system-config/cashfree-payout/test-connection", {
+        method: "POST",
+        headers: { Authorization: AUTH_HEADERS.Authorization },
+      });
+      const data = await res.json();
+      setTestResult(data);
+      if (data.ok) toast.success(data.message);
+      else toast.error(data.message);
+    } catch (err: any) {
+      const msg = err?.message ?? "Connection test failed";
+      setTestResult({ ok: false, message: msg });
+      toast.error(msg);
+    } finally {
+      setTesting(false);
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* Status card */}
+      {/* Payin vs Payout credential warning */}
+      <div className="rounded-md bg-amber-500/10 border border-amber-500/30 p-3 flex gap-2.5">
+        <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+        <div className="text-xs text-amber-300 space-y-0.5">
+          <p className="font-semibold text-amber-200">Payout credentials are separate from Payment Gateway (Payin) credentials</p>
+          <p>Cashfree issues <strong>different</strong> API keys for the Payout product vs the Payment Collection product. Using Payin keys here will result in authentication failures.</p>
+          <p>Go to Cashfree Dashboard → Payout → Settings → API Keys to get the correct Payout Client ID and Secret.</p>
+        </div>
+      </div>
+
+      {/* Main settings card */}
       <Card className="border-border/50">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Banknote className="w-4 h-4 text-muted-foreground" />
-              Payout Gateway
+              Payout Gateway — Cashfree Payout API
             </CardTitle>
             {!isLoading && config && <EnvBadge env={config.env} />}
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
+          {/* Enable / disable */}
           <div className="flex items-center gap-3">
             <Switch
               checked={currentEnabled}
@@ -159,12 +202,21 @@ function SettingsTab() {
               {currentEnabled ? "Gateway enabled" : "Gateway disabled"}
             </Label>
             {currentEnabled
-              ? <span className="text-xs text-emerald-400">Payouts will be submitted to the gateway</span>
-              : <span className="text-xs text-muted-foreground">Enable to submit real payouts</span>}
+              ? <span className="text-xs text-emerald-400">Payouts will be dispatched to Cashfree Payout</span>
+              : <span className="text-xs text-muted-foreground">Enable to dispatch real payouts</span>}
           </div>
 
+          {/* Missing credentials warning */}
+          {missingCredentials && (
+            <div className="rounded-md bg-rose-500/10 border border-rose-500/30 p-2.5 flex gap-2 text-xs text-rose-300">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>Payout Client ID and/or Secret not yet configured — payouts will fail until credentials are set.</span>
+            </div>
+          )}
+
+          {/* Environment */}
           <div className="space-y-2">
-            <Label>Environment</Label>
+            <Label>Mode</Label>
             <Select value={currentEnv} onValueChange={v => setEnv(v as "test" | "live")}>
               <SelectTrigger className="w-48">
                 <SelectValue />
@@ -174,41 +226,62 @@ function SettingsTab() {
                 <SelectItem value="live">Live / Production</SelectItem>
               </SelectContent>
             </Select>
+            {currentEnv === "live" && (
+              <p className="text-xs text-amber-400">Live mode — real bank transfers will be initiated.</p>
+            )}
+            {currentEnv === "test" && (
+              <p className="text-xs text-muted-foreground">Sandbox mode — no real money moves.</p>
+            )}
+          </div>
+
+          {/* ── Payout Credentials (NOT Payin keys) ── */}
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground/80">Payout API Credentials</p>
             <p className="text-xs text-muted-foreground">
-              Sandbox mode uses the test payout environment; Live mode processes real bank transfers.
+              From Cashfree Dashboard → <strong>Payout</strong> → Settings → API Keys.{" "}
+              <span className="text-rose-400">Do not use Payment Gateway / Payin keys here.</span>
             </p>
           </div>
 
           <div className="grid gap-4">
+            {/* Payout Client ID */}
             <div className="space-y-2">
-              <Label>Payout Client ID</Label>
+              <Label>Payout Client ID <span className="text-rose-400">*</span></Label>
               {!isLoading && config?.clientIdSet && (
-                <p className="text-xs text-muted-foreground">
-                  Current: <code className="font-mono">{config.clientIdMasked}</code>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  Saved: <code className="font-mono">{config.clientIdMasked}</code>
                 </p>
+              )}
+              {!isLoading && !config?.clientIdSet && (
+                <p className="text-xs text-rose-400">Not configured</p>
               )}
               <div className="relative">
                 <Input
                   type={showId ? "text" : "password"}
-                  placeholder={config?.clientIdSet ? "Enter new Client ID to replace" : "Enter Payout Client ID"}
+                  placeholder={config?.clientIdSet ? "Enter new Payout Client ID to replace" : "Enter Payout Client ID"}
                   value={clientId}
                   onChange={e => setClientId(e.target.value)}
                   className="pr-10"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowId(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
+                <button type="button" onClick={() => setShowId(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showId ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
+            {/* Payout Client Secret */}
             <div className="space-y-2">
-              <Label>Payout Client Secret</Label>
+              <Label>Payout Client Secret <span className="text-rose-400">*</span></Label>
               {!isLoading && config?.clientSecretSet && (
-                <p className="text-xs text-muted-foreground">A secret is currently configured.</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  A secret is currently saved.
+                </p>
+              )}
+              {!isLoading && !config?.clientSecretSet && (
+                <p className="text-xs text-rose-400">Not configured</p>
               )}
               <div className="relative">
                 <Input
@@ -218,28 +291,75 @@ function SettingsTab() {
                   onChange={e => setClientSecret(e.target.value)}
                   className="pr-10"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowSecret(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
+                <button type="button" onClick={() => setShowSecret(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground">Leave blank to keep existing secret.</p>
+              <p className="text-xs text-muted-foreground">Leave blank to keep the existing secret.</p>
+            </div>
+
+            {/* Fundsource ID */}
+            <div className="space-y-2">
+              <Label>Fundsource ID <span className="text-muted-foreground text-xs font-normal">(if required by provider)</span></Label>
+              {!isLoading && config?.fundsourceIdSet && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  Saved: <code className="font-mono">{config.fundsourceIdMasked}</code>
+                </p>
+              )}
+              <div className="relative">
+                <Input
+                  type={showFundsource ? "text" : "password"}
+                  placeholder={config?.fundsourceIdSet ? "Enter new Fundsource ID to replace" : "Enter Fundsource ID (optional)"}
+                  value={fundsourceId}
+                  onChange={e => setFundsourceId(e.target.value)}
+                  className="pr-10"
+                />
+                <button type="button" onClick={() => setShowFundsource(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showFundsource ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">The wallet/source account ID for Cashfree Payout. Required if your Cashfree Payout account uses multiple fund sources. Leave blank if not applicable.</p>
             </div>
           </div>
 
-          <div className="rounded-md bg-muted/30 border border-border/40 p-3 text-xs text-muted-foreground space-y-1">
-            <p className="font-medium text-foreground/70">How to get credentials</p>
-            <p>1. Log into your payout provider dashboard and go to API Keys.</p>
-            <p>2. Generate a Client ID and Client Secret for the Payout product.</p>
-            <p>3. These credentials are separate from the Payment Collection credentials.</p>
-          </div>
+          {/* Test connection result */}
+          {testResult && (
+            <div className={`rounded-md border p-2.5 flex items-start gap-2 text-xs ${
+              testResult.ok
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+            }`}>
+              {testResult.ok
+                ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                : <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+              <span>{testResult.message}</span>
+            </div>
+          )}
 
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</> : <><Save className="w-4 h-4 mr-2" />Save Settings</>}
-          </Button>
+          {/* Actions */}
+          <div className="flex gap-2 flex-wrap">
+            <Button onClick={handleSave} disabled={saving}>
+              {saving
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</>
+                : <><Save className="w-4 h-4 mr-2" />Save Settings</>}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={testing || (!config?.clientIdSet && !clientId.trim())}
+              title={!config?.clientIdSet && !clientId.trim() ? "Save credentials first before testing" : "Test connection to Cashfree Payout API"}
+            >
+              {testing
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Testing…</>
+                : <><RefreshCw className="w-4 h-4 mr-2" />Test Payout Connection</>}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Use <strong>Test Payout Connection</strong> after saving credentials to verify they work before approving payouts.
+          </p>
         </CardContent>
       </Card>
     </div>

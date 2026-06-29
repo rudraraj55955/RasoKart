@@ -17,6 +17,7 @@ import {
   cashfreePayoutCreateTransfer,
   cashfreePayoutGetTransferStatus,
   normalizeCashfreePayoutStatus,
+  isPayoutCredentialError,
   type CashfreePayoutEnv,
 } from "../helpers/cashfreePayout";
 import { mutateWallet, ensureWallet } from "./wallets";
@@ -38,6 +39,7 @@ async function getPayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const cfg = new Map(rows.map(r => [r.key, r.value]));
@@ -46,6 +48,7 @@ async function getPayoutConfig() {
     clientSecret: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "",
     env: (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv,
     enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) === "true",
+    fundsourceId: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID) ?? "",
   };
 }
 
@@ -67,7 +70,9 @@ function mapWithdrawal(
       isAdmin
         ? w.failureReason
         : ["FAILED", "REVERSED"].includes(w.transferStatus)
-          ? w.failureReason
+          ? (w.failureReason?.startsWith("PAYOUT_CREDENTIAL_ERROR")
+              ? "Payout failed. Please contact support."
+              : w.failureReason)
           : null,
     payoutMode: w.payoutMode,
     upiId: w.upiId,
@@ -368,7 +373,12 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
       );
       providerReferenceId = transferId;
       const normalized = normalizeCashfreePayoutStatus(result.parsed?.status);
-      if (normalized === "SUCCESS") {
+      if (isPayoutCredentialError(result.parsed, result.httpStatus)) {
+        // Credential error from provider — mark FAILED so hold is released and admin sees clear message
+        transferStatus = "FAILED";
+        failureReason = `PAYOUT_CREDENTIAL_ERROR: ${result.parsed?.message ?? "Invalid payout Client ID or Secret"}`;
+        req.log.warn({ withdrawalId: id, httpStatus: result.httpStatus }, "cashfree_payout_credential_error");
+      } else if (normalized === "SUCCESS") {
         transferStatus = "SUCCESS";
         utr = result.parsed?.utr ?? null;
       } else if (normalized === "FAILED") {
@@ -379,8 +389,9 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
       }
     } catch (err: any) {
       req.log.warn({ err, withdrawalId: id }, "cashfree_payout_create_error");
-      // Keep INITIATED; admin can refresh-status later
-      providerReferenceId = `RKPAY_${id}_${Date.now()}`;
+      // Network/connection error — release hold by marking FAILED
+      transferStatus = "FAILED";
+      failureReason = `PAYOUT_CREDENTIAL_ERROR: ${err?.message ?? "Could not reach payout provider"}`;
     }
   }
 
@@ -672,8 +683,10 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   }
 
   const cfg = await getPayoutConfig();
-  if (!cfg.enabled || !cfg.clientId) {
-    res.status(400).json({ error: "Cashfree payout not configured" });
+  if (!cfg.enabled || !cfg.clientId || !cfg.clientSecret) {
+    res.status(400).json({
+      error: "Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings.",
+    });
     return;
   }
 
@@ -750,7 +763,11 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
       }
     );
     const normalized = normalizeCashfreePayoutStatus(result.parsed?.status);
-    if (normalized === "SUCCESS") {
+    if (isPayoutCredentialError(result.parsed, result.httpStatus)) {
+      transferStatus = "FAILED";
+      failureReason = `PAYOUT_CREDENTIAL_ERROR: ${result.parsed?.message ?? "Invalid payout Client ID or Secret"}`;
+      req.log.warn({ withdrawalId: id, httpStatus: result.httpStatus }, "cashfree_payout_credential_error_on_retry");
+    } else if (normalized === "SUCCESS") {
       transferStatus = "SUCCESS";
       utr = result.parsed?.utr ?? null;
     } else if (normalized === "FAILED") {
@@ -761,7 +778,9 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     }
   } catch (err: any) {
     req.log.warn({ err, withdrawalId: id }, "cashfree_payout_retry_error");
-    transferStatus = "INITIATED";
+    // Network/connection error — release any re-locked hold by marking FAILED
+    transferStatus = "FAILED";
+    failureReason = `PAYOUT_CREDENTIAL_ERROR: ${err?.message ?? "Could not reach payout provider"}`;
   }
 
   const now = new Date();

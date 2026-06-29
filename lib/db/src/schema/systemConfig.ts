@@ -53,6 +53,7 @@ export const SYSTEM_CONFIG_KEYS = {
   CASHFREE_PAYOUT_CLIENT_SECRET: "cashfree_payout_client_secret",
   CASHFREE_PAYOUT_ENV: "cashfree_payout_env",
   CASHFREE_PAYOUT_ENABLED: "cashfree_payout_enabled",
+  CASHFREE_PAYOUT_FUNDSOURCE_ID: "cashfree_payout_fundsource_id",
   QUIET_HOURS_FLUSH_INTERVAL_SECONDS: "quiet_hours_flush_interval_seconds",
 } as const;
 
