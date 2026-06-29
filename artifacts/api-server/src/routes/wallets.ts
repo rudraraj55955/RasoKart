@@ -494,12 +494,14 @@ router.post("/:merchantId/load", requireAdmin, async (req, res, next) => {
   try {
     const user = (req as any).user;
     const merchantId = parseId(req.params["merchantId"] as string);
-    const { amount, note } = req.body as { amount?: number; note?: string };
+    const body = req.body as { amount?: number; note?: string; remarks?: string };
+    const { amount } = body;
+    const note = body.note?.trim() || body.remarks?.trim();
 
     if (!amount || typeof amount !== "number" || amount <= 0) {
       res.status(400).json({ error: "amount must be a positive number" }); return;
     }
-    if (!note?.trim()) { res.status(400).json({ error: "note is required" }); return; }
+    if (!note) { res.status(400).json({ error: "Note / reason is required" }); return; }
 
     const [merchant] = await db.select({ businessName: merchantsTable.businessName })
       .from(merchantsTable).where(eq(merchantsTable.id, merchantId)).limit(1);

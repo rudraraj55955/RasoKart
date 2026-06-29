@@ -86,7 +86,7 @@ export default function AdminWalletDetail() {
   const [adjustForm, setAdjustForm] = useState({ bucket: "available", amount: "", description: "" });
   const [holdForm, setHoldForm] = useState({ amount: "", reason: "", expiresAt: "" });
   const [chargeForm, setChargeForm] = useState({ amount: "", chargeType: "fee", description: "" });
-  const [loadForm, setLoadForm] = useState({ amount: "", remarks: "" });
+  const [loadForm, setLoadForm] = useState({ amount: "", note: "" });
 
   const { data, isLoading } = useQuery<WalletDetail>({
     queryKey: ["admin-wallet-detail", merchantId],
@@ -144,12 +144,12 @@ export default function AdminWalletDetail() {
   const loadMutation = useMutation({
     mutationFn: () => apiPost(`/wallets/${merchantId}/load`, {
       amount: Number(loadForm.amount),
-      remarks: loadForm.remarks || undefined,
+      note: loadForm.note.trim(),
     }),
     onSuccess: () => {
       invalidate();
       setLoadOpen(false);
-      setLoadForm({ amount: "", remarks: "" });
+      setLoadForm({ amount: "", note: "" });
       toast.success("Wallet loaded successfully");
     },
     onError: (e: any) => toast.error(e.message),
@@ -455,7 +455,7 @@ export default function AdminWalletDetail() {
       </Dialog>
 
       {/* Load Wallet Dialog */}
-      <Dialog open={loadOpen} onOpenChange={v => { setLoadOpen(v); if (!v) setLoadForm({ amount: "", remarks: "" }); }}>
+      <Dialog open={loadOpen} onOpenChange={v => { setLoadOpen(v); if (!v) setLoadForm({ amount: "", note: "" }); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Load Wallet</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
@@ -475,12 +475,12 @@ export default function AdminWalletDetail() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm">Remarks (optional)</Label>
+              <Label className="text-sm">Note / Reason <span className="text-rose-400">*</span></Label>
               <Textarea
                 placeholder="Reason for wallet load…"
                 rows={2}
-                value={loadForm.remarks}
-                onChange={e => setLoadForm(f => ({ ...f, remarks: e.target.value }))}
+                value={loadForm.note}
+                onChange={e => setLoadForm(f => ({ ...f, note: e.target.value }))}
                 className="border-border/60 bg-background text-sm resize-none"
               />
             </div>
@@ -488,7 +488,7 @@ export default function AdminWalletDetail() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setLoadOpen(false)}>Cancel</Button>
             <Button
-              disabled={loadMutation.isPending || !loadForm.amount || Number(loadForm.amount) <= 0}
+              disabled={loadMutation.isPending || !loadForm.amount || Number(loadForm.amount) <= 0 || !loadForm.note.trim()}
               className="bg-emerald-600 hover:bg-emerald-700"
               onClick={() => loadMutation.mutate()}
             >
