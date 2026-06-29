@@ -1175,11 +1175,16 @@ export const WithdrawalInputPayoutMode = {
 
 export interface WithdrawalInput {
   amount: number;
+  /** Payout mode (alias: mode) */
   payoutMode?: WithdrawalInputPayoutMode;
-  bankAccount?: string;
+  /** Alias for payoutMode */
+  mode?: WithdrawalInputPayoutMode;
+  /** Bank account number (alias: bankAccount, account_number) */
+  accountNumber?: string;
   bankName?: string;
   ifscCode?: string;
-  accountHolder?: string;
+  /** Account holder name (alias: accountHolder, account_holder_name) */
+  accountHolderName?: string;
   upiId?: string;
   remarks?: string;
 }

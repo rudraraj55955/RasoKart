@@ -55,10 +55,10 @@ export default function MerchantPayouts() {
   const [form, setForm] = useState({
     amount: "",
     payoutMode: "IMPS",
-    bankAccount: "",
+    accountNumber: "",
     bankName: "",
     ifscCode: "",
-    accountHolder: "",
+    accountHolderName: "",
     upiId: "",
     remarks: "",
   });
@@ -81,7 +81,7 @@ export default function MerchantPayouts() {
   const totalPayout: number = wallet?.totalPayout ?? 0;
 
   const resetForm = () =>
-    setForm({ amount: "", payoutMode: "IMPS", bankAccount: "", bankName: "", ifscCode: "", accountHolder: "", upiId: "", remarks: "" });
+    setForm({ amount: "", payoutMode: "IMPS", accountNumber: "", bankName: "", ifscCode: "", accountHolderName: "", upiId: "", remarks: "" });
 
   const handleSubmit = () => {
     const amt = parseFloat(form.amount);
@@ -96,7 +96,7 @@ export default function MerchantPayouts() {
     if (form.payoutMode === "UPI") {
       if (!form.upiId.trim()) { toast.error("UPI ID is required"); return; }
     } else {
-      if (!form.bankAccount || !form.bankName || !form.ifscCode || !form.accountHolder) {
+      if (!form.accountNumber || !form.bankName || !form.ifscCode || !form.accountHolderName) {
         toast.error("All bank details are required");
         return;
       }
@@ -106,10 +106,10 @@ export default function MerchantPayouts() {
         data: {
           amount: amt,
           payoutMode: form.payoutMode as any,
-          bankAccount: form.payoutMode !== "UPI" ? form.bankAccount : "",
-          bankName: form.payoutMode !== "UPI" ? form.bankName : "",
-          ifscCode: form.payoutMode !== "UPI" ? form.ifscCode : "",
-          accountHolder: form.payoutMode !== "UPI" ? form.accountHolder : "",
+          accountNumber: form.payoutMode !== "UPI" ? form.accountNumber : undefined,
+          bankName: form.payoutMode !== "UPI" ? form.bankName : undefined,
+          ifscCode: form.payoutMode !== "UPI" ? form.ifscCode : undefined,
+          accountHolderName: form.payoutMode !== "UPI" ? form.accountHolderName : undefined,
           upiId: form.payoutMode === "UPI" ? form.upiId : undefined,
           remarks: form.remarks.trim() || undefined,
         },
@@ -122,7 +122,14 @@ export default function MerchantPayouts() {
           qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() });
           qc.invalidateQueries({ queryKey: ["merchant-wallet"] });
         },
-        onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to submit payout request"),
+        onError: (e: any) => {
+          // ApiError (custom-fetch.ts) stores parsed JSON at e.data, not e.response.data
+          const msg =
+            (e?.data as any)?.error ??
+            e?.message ??
+            "Failed to submit payout request";
+          toast.error(msg);
+        },
       }
     );
   };
@@ -431,8 +438,8 @@ export default function MerchantPayouts() {
                   <Input
                     className="mt-1.5 font-mono"
                     placeholder="Bank account number"
-                    value={form.bankAccount}
-                    onChange={e => setForm(f => ({ ...f, bankAccount: e.target.value }))}
+                    value={form.accountNumber}
+                    onChange={e => setForm(f => ({ ...f, accountNumber: e.target.value }))}
                   />
                 </div>
                 <div>
@@ -449,8 +456,8 @@ export default function MerchantPayouts() {
                   <Input
                     className="mt-1.5"
                     placeholder="As per bank records"
-                    value={form.accountHolder}
-                    onChange={e => setForm(f => ({ ...f, accountHolder: e.target.value }))}
+                    value={form.accountHolderName}
+                    onChange={e => setForm(f => ({ ...f, accountHolderName: e.target.value }))}
                   />
                 </div>
               </>

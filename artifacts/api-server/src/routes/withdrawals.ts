@@ -170,8 +170,30 @@ router.post("/", requireModule("merchant_withdrawals"), async (req, res) => {
     return;
   }
 
-  const { amount, bankAccount, bankName, ifscCode, accountHolder, payoutMode = "IMPS", upiId, remarks } =
-    req.body;
+  // Accept camelCase and snake_case field name aliases
+  const {
+    amount,
+    // payoutMode aliases: payoutMode | mode | payout_mode
+    payoutMode: _pm, mode, payout_mode,
+    // accountNumber aliases: accountNumber | bankAccount | account_number
+    accountNumber, bankAccount: _bankAccount, account_number,
+    // bankName aliases: bankName | bank_name
+    bankName: _bankName, bank_name,
+    // ifscCode aliases: ifscCode | ifsc_code
+    ifscCode: _ifscCode, ifsc_code,
+    // accountHolderName aliases: accountHolderName | accountHolder | account_holder_name
+    accountHolderName, accountHolder: _accountHolder, account_holder_name,
+    // upiId aliases: upiId | upi_id
+    upiId: _upiId, upi_id,
+    remarks,
+  } = req.body;
+
+  const payoutMode = _pm ?? mode ?? payout_mode ?? "IMPS";
+  const bankAccount = accountNumber ?? account_number ?? _bankAccount;
+  const bankName = _bankName ?? bank_name;
+  const ifscCode = _ifscCode ?? ifsc_code;
+  const accountHolder = accountHolderName ?? account_holder_name ?? _accountHolder;
+  const upiId = _upiId ?? upi_id;
 
   if (!amount || Number(amount) <= 0) {
     res.status(400).json({ error: "amount must be a positive number" });
@@ -186,7 +208,7 @@ router.post("/", requireModule("merchant_withdrawals"), async (req, res) => {
   } else {
     if (!bankAccount || !bankName || !ifscCode || !accountHolder) {
       res.status(400).json({
-        error: "bankAccount, bankName, ifscCode, accountHolder required for bank transfer",
+        error: "accountNumber, bankName, ifscCode and accountHolderName are required for bank transfer",
       });
       return;
     }

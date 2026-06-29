@@ -10305,14 +10305,21 @@ components:
         payoutMode:
           type: string
           enum: [IMPS, NEFT, RTGS, UPI]
-        bankAccount:
+          description: Payout mode (alias: mode)
+        mode:
           type: string
+          enum: [IMPS, NEFT, RTGS, UPI]
+          description: Alias for payoutMode
+        accountNumber:
+          type: string
+          description: Bank account number (alias: bankAccount, account_number)
         bankName:
           type: string
         ifscCode:
           type: string
-        accountHolder:
+        accountHolderName:
           type: string
+          description: Account holder name (alias: accountHolder, account_holder_name)
         upiId:
           type: string
         remarks:
