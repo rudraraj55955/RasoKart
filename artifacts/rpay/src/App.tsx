@@ -56,6 +56,7 @@ import AdminPaymentLinks from "@/pages/admin/payment-links";
 import AdminSettings from "@/pages/admin/settings";
 import AdminCashfreeGateway from "@/pages/admin/cashfree-gateway";
 import AdminCashfreePayout from "@/pages/admin/cashfree-payout";
+import AdminPayoutGateway from "@/pages/admin/payout-gateway";
 import AdminPaymentGateways from "@/pages/admin/payment-gateways";
 import AdminProviderIntegrations from "@/pages/admin/provider-integrations";
 import AdminSmartRouting from "@/pages/admin/smart-routing";
@@ -271,6 +272,7 @@ function Router() {
       <Route path="/admin/payment-gateways"><AdminRoute component={AdminPaymentGateways} /></Route>
       <Route path="/admin/cashfree-gateway"><AdminRoute component={AdminCashfreeGateway} /></Route>
       <Route path="/admin/cashfree-payout"><AdminRoute component={AdminCashfreePayout} /></Route>
+      <Route path="/admin/payout-gateway"><AdminRoute component={AdminPayoutGateway} /></Route>
       <Route path="/admin/provider-integrations"><AdminRoute component={AdminProviderIntegrations} /></Route>
       <Route path="/admin/smart-routing"><AdminRoute component={AdminSmartRouting} /></Route>
       <Route path="/admin/module-control"><AdminRoute component={AdminModuleControl} /></Route>

@@ -4003,8 +4003,16 @@ export interface CashfreePayoutConfig {
   clientSecretSet: boolean;
   fundsourceIdSet: boolean;
   fundsourceIdMasked: string;
+  webhookSecretSet: boolean;
   enabled: boolean;
   env: CashfreePayoutConfigEnv;
+  baseUrl: string;
+  apiVersion: string;
+  merchantEnabled: boolean;
+  adminApprovalRequired: boolean;
+  minLimit: number;
+  maxLimit: number;
+  dailyLimit: number;
 }
 
 export type CashfreePayoutConfigInputEnv = typeof CashfreePayoutConfigInputEnv[keyof typeof CashfreePayoutConfigInputEnv];
@@ -4021,8 +4029,17 @@ export interface CashfreePayoutConfigInput {
   clientSecret?: string;
   /** Pass empty string to remove */
   fundsourceId?: string;
+  /** Pass empty string to remove */
+  webhookSecret?: string;
   enabled?: boolean;
   env?: CashfreePayoutConfigInputEnv;
+  baseUrl?: string;
+  apiVersion?: string;
+  merchantEnabled?: boolean;
+  adminApprovalRequired?: boolean;
+  minLimit?: number;
+  maxLimit?: number;
+  dailyLimit?: number;
 }
 
 export type CashfreePayoutRowStatus = typeof CashfreePayoutRowStatus[keyof typeof CashfreePayoutRowStatus];

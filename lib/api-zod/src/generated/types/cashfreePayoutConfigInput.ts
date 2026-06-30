@@ -13,6 +13,15 @@ export interface CashfreePayoutConfigInput {
   clientSecret?: string;
   /** Pass empty string to remove */
   fundsourceId?: string;
+  /** Pass empty string to remove */
+  webhookSecret?: string;
   enabled?: boolean;
   env?: CashfreePayoutConfigInputEnv;
+  baseUrl?: string;
+  apiVersion?: string;
+  merchantEnabled?: boolean;
+  adminApprovalRequired?: boolean;
+  minLimit?: number;
+  maxLimit?: number;
+  dailyLimit?: number;
 }

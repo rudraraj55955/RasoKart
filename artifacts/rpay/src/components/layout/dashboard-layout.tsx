@@ -354,7 +354,7 @@ const ADMIN_NAV = [
     items: [
       { title: "Payment Gateways", icon: Plug, href: "/admin/payment-gateways" },
       { title: "Payin Gateway", icon: CreditCard, href: "/admin/cashfree-gateway" },
-      { title: "Payout Gateway", icon: Landmark, href: "/admin/cashfree-payout" },
+      { title: "Payout Gateway", icon: Landmark, href: "/admin/payout-gateway" },
       { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
       { title: "Payment Providers", icon: Zap, href: "/admin/providers" },
       { title: "QR Providers", icon: QrCode, href: "/admin/qr-providers" },
@@ -599,7 +599,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
   return (
     <SidebarProvider>
       <div className="flex min-h-screen bg-background w-full">
-        <Sidebar variant="sidebar" className="border-r border-border/50">
+        <Sidebar collapsible="offcanvas" variant="sidebar" className="border-r border-border/50">
           <SidebarHeader className="p-4 flex flex-row items-center gap-2">
             <RasoKartLogo size={32} className="shrink-0" />
             <div className="flex flex-col flex-1 min-w-0">

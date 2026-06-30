@@ -13,6 +13,14 @@ export interface CashfreePayoutConfig {
   clientSecretSet: boolean;
   fundsourceIdSet: boolean;
   fundsourceIdMasked: string;
+  webhookSecretSet: boolean;
   enabled: boolean;
   env: CashfreePayoutConfigEnv;
+  baseUrl: string;
+  apiVersion: string;
+  merchantEnabled: boolean;
+  adminApprovalRequired: boolean;
+  minLimit: number;
+  maxLimit: number;
+  dailyLimit: number;
 }

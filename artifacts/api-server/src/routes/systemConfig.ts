@@ -1220,20 +1220,42 @@ async function getCashfreePayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_WEBHOOK_SECRET,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MERCHANT_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ADMIN_APPROVAL_REQUIRED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MIN_LIMIT,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const map = new Map(rows.map((r) => [r.key, r.value]));
   const rawId = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID) ?? "";
   const rawSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "";
   const rawFundsource = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID) ?? "";
+  const rawWebhookSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_WEBHOOK_SECRET) ?? "";
+  function mask(s: string) {
+    if (!s) return "";
+    if (s.length <= 4) return "****";
+    return `${s.slice(0, 4)}${"*".repeat(Math.max(0, s.length - 8))}${s.slice(-4)}`;
+  }
   return {
     clientIdSet: rawId.length > 0,
-    clientIdMasked: rawId.length > 4 ? `${rawId.slice(0, 4)}${"*".repeat(Math.max(0, rawId.length - 8))}${rawId.slice(-4)}` : rawId.length > 0 ? "****" : "",
+    clientIdMasked: mask(rawId),
     clientSecretSet: rawSecret.length > 0,
     fundsourceIdSet: rawFundsource.length > 0,
-    fundsourceIdMasked: rawFundsource.length > 4 ? `${rawFundsource.slice(0, 4)}${"*".repeat(Math.max(0, rawFundsource.length - 8))}${rawFundsource.slice(-4)}` : rawFundsource.length > 0 ? "****" : "",
+    fundsourceIdMasked: mask(rawFundsource),
+    webhookSecretSet: rawWebhookSecret.length > 0,
     enabled: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED]) === "true",
     env: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV]) as "test" | "live",
+    baseUrl: map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL) ?? "",
+    apiVersion: map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION],
+    merchantEnabled: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MERCHANT_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MERCHANT_ENABLED]) !== "false",
+    adminApprovalRequired: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ADMIN_APPROVAL_REQUIRED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ADMIN_APPROVAL_REQUIRED]) !== "false",
+    minLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MIN_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MIN_LIMIT]),
+    maxLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT]),
+    dailyLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT]),
   };
 }
 
@@ -1248,57 +1270,55 @@ router.get("/cashfree-payout", async (req, res, next) => {
 router.put("/cashfree-payout", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { clientId, clientSecret, fundsourceId, enabled, env } = req.body as {
-      clientId?: string;
-      clientSecret?: string;
-      fundsourceId?: string;
-      enabled?: boolean;
-      env?: "test" | "live";
+    const {
+      clientId, clientSecret, fundsourceId, webhookSecret,
+      enabled, env, baseUrl, apiVersion,
+      merchantEnabled, adminApprovalRequired,
+      minLimit, maxLimit, dailyLimit,
+    } = req.body as {
+      clientId?: string; clientSecret?: string; fundsourceId?: string; webhookSecret?: string;
+      enabled?: boolean; env?: "test" | "live";
+      baseUrl?: string; apiVersion?: string;
+      merchantEnabled?: boolean; adminApprovalRequired?: boolean;
+      minLimit?: number; maxLimit?: number; dailyLimit?: number;
     };
 
-    if (clientId !== undefined) {
+    async function upsert(key: string, value: string) {
       await db.insert(systemConfigTable)
-        .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID, value: clientId, updatedByEmail: user.email })
-        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: clientId, updatedByEmail: user.email } });
+        .values({ key, value, updatedByEmail: user.email })
+        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value, updatedByEmail: user.email } });
     }
-    if (clientSecret !== undefined) {
-      if (clientSecret === "") {
-        await db.delete(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET));
+    async function upsertOrDelete(key: string, value: string | undefined) {
+      if (value === undefined) return;
+      if (value === "") {
+        await db.delete(systemConfigTable).where(eq(systemConfigTable.key, key));
       } else {
-        await db.insert(systemConfigTable)
-          .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET, value: clientSecret, updatedByEmail: user.email })
-          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: clientSecret, updatedByEmail: user.email } });
+        await upsert(key, value);
       }
     }
-    if (fundsourceId !== undefined) {
-      if (fundsourceId === "") {
-        await db.delete(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID));
-      } else {
-        await db.insert(systemConfigTable)
-          .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID, value: fundsourceId, updatedByEmail: user.email })
-          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: fundsourceId, updatedByEmail: user.email } });
-      }
-    }
-    if (enabled !== undefined) {
-      const val = enabled ? "true" : "false";
-      await db.insert(systemConfigTable)
-        .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED, value: val, updatedByEmail: user.email })
-        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: val, updatedByEmail: user.email } });
-    }
-    if (env !== undefined) {
-      await db.insert(systemConfigTable)
-        .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV, value: env, updatedByEmail: user.email })
-        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: env, updatedByEmail: user.email } });
-    }
+
+    if (clientId !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID, clientId);
+    await upsertOrDelete(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET, clientSecret);
+    await upsertOrDelete(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID, fundsourceId);
+    await upsertOrDelete(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_WEBHOOK_SECRET, webhookSecret);
+    if (enabled !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED, enabled ? "true" : "false");
+    if (env !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV, env);
+    if (baseUrl !== undefined) await upsertOrDelete(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL, baseUrl);
+    if (apiVersion !== undefined && apiVersion !== "") await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION, apiVersion);
+    if (merchantEnabled !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MERCHANT_ENABLED, merchantEnabled ? "true" : "false");
+    if (adminApprovalRequired !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ADMIN_APPROVAL_REQUIRED, adminApprovalRequired ? "true" : "false");
+    if (minLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MIN_LIMIT, String(minLimit));
+    if (maxLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT, String(maxLimit));
+    if (dailyLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT, String(dailyLimit));
 
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
       action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify({ section: "cashfree_payout", clientIdUpdated: clientId !== undefined, clientSecretUpdated: clientSecret !== undefined, fundsourceIdUpdated: fundsourceId !== undefined, enabled, env }),
+      details: JSON.stringify({ section: "cashfree_payout", clientIdUpdated: clientId !== undefined, clientSecretUpdated: clientSecret !== undefined, fundsourceIdUpdated: fundsourceId !== undefined, enabled, env, merchantEnabled, adminApprovalRequired }),
       ipAddress: (req as any).ip ?? null,
     });
 
-    req.log.info({ enabled, env, clientIdUpdated: clientId !== undefined, fundsourceIdUpdated: fundsourceId !== undefined }, "Cashfree Payout config updated");
+    req.log.info({ enabled, env, clientIdUpdated: clientId !== undefined }, "Cashfree Payout config updated");
     res.json(await getCashfreePayoutConfig());
   } catch (err) { next(err); }
 });
