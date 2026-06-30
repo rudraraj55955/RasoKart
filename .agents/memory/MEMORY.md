@@ -7,3 +7,5 @@
 - [React Query stale cache auth bleed](rq-auth-cache-bleed.md) — on login, call queryClient.removeQueries(getGetMeQueryKey()) before setting token or stale merchant user bleeds into admin session.
 - [Rate limiter store reuse](rate-limiter-store-reuse.md) — express-rate-limit v8 throws ERR_ERL_STORE_REUSE if two limiters share one store instance; always `new DbRateLimitStore()` per limiter, never reuse the singleton.
 - [Seed demo merchant guard](seed-demo-guard.md) — seed.ts must SELECT-only for demo merchants (not upsert); wrap all demo-data blocks in `if (m1 && m2)`; db push requires TTY — use ALTER TABLE for non-interactive schema migrations.
+- [Payout retry claim predicate](payout-retry-claim.md) — atomic retry claim must exclude INITIATED from the predicate; INITIATED→INITIATED allows duplicate concurrent claims. Always claim only from FAILED|REVERSED.
+- [Approve-flow stranded INITIATED](approve-flow-stranded.md) — if payout provider is disabled or creds missing at approve time, set transferStatus=FAILED immediately; never leave approved/INITIATED with no dispatch path.

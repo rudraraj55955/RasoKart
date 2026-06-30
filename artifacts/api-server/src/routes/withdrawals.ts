@@ -353,7 +353,13 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
   let utr: string | null = null;
   let failureReason: string | null = null;
 
-  if (cfg.enabled && cfg.clientId && cfg.clientSecret) {
+  // If provider is disabled or credentials are missing, mark FAILED immediately
+  // so the payout does not remain stranded as approved/INITIATED with no dispatch path.
+  if (!cfg.enabled || !cfg.clientId || !cfg.clientSecret) {
+    transferStatus = "FAILED";
+    failureReason = "PAYOUT_CREDENTIAL_ERROR: Payout gateway disabled or credentials not configured";
+    req.log.warn({ withdrawalId: id }, "cashfree_payout_skipped_no_config");
+  } else {
     const transferId = `RKPAY_${id}_${Date.now()}`;
     try {
       const result = await cashfreePayoutCreateTransfer(
