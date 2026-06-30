@@ -713,6 +713,8 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   const amt = Number(w.amount);
   // For FAILED/REVERSED, funds were released back to available — re-lock before retrying.
   const wasReleased = ["FAILED", "REVERSED"].includes(w.transferStatus);
+  // Keep the original status so we can restore it if re-lock fails.
+  const originalTransferStatus = w.transferStatus;
 
   if (wasReleased) {
     // Check balance then re-lock inside a transaction to prevent concurrent overdraft
@@ -747,6 +749,11 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
         });
       });
     } catch (e: any) {
+      // Re-lock failed — restore the row to its original status so it remains retryable.
+      await db
+        .update(withdrawalsTable)
+        .set({ transferStatus: originalTransferStatus })
+        .where(eq(withdrawalsTable.id, id));
       if (e.statusCode === 400) {
         res.status(400).json({ error: e.message });
         return;
