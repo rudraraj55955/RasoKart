@@ -675,9 +675,9 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     res.status(400).json({ error: "Can only retry approved payouts" });
     return;
   }
-  if (!["FAILED", "REVERSED", "INITIATED"].includes(w.transferStatus)) {
+  if (!["FAILED", "REVERSED"].includes(w.transferStatus)) {
     res.status(400).json({
-      error: `Payout transfer status is ${w.transferStatus} — only FAILED/REVERSED/INITIATED can be retried`,
+      error: `Payout transfer status is ${w.transferStatus} — only FAILED or REVERSED payouts can be retried`,
     });
     return;
   }
@@ -691,32 +691,33 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   }
 
   // ── Atomic claim: only one retry can proceed per withdrawal ────────────────
-  // Conditional UPDATE — transitions to INITIATED only if status is still in
-  // the retryable set. If a concurrent request already claimed it, 0 rows are
-  // returned and we return 409 so the second request is rejected.
+  // Claim only from FAILED or REVERSED — these are the states where funds were
+  // released back. Once claimed, the row becomes INITIATED, so any subsequent
+  // concurrent request will see INITIATED in the predicate and return 0 rows.
+  // INITIATED payouts are rejected here (409) because they are either already
+  // in-flight or have already been claimed by a concurrent retry request.
   const claimed = await db
     .update(withdrawalsTable)
     .set({ transferStatus: "INITIATED" })
     .where(
       and(
         eq(withdrawalsTable.id, id),
-        inArray(withdrawalsTable.transferStatus, ["FAILED", "REVERSED", "INITIATED"]),
+        inArray(withdrawalsTable.transferStatus, ["FAILED", "REVERSED"]),
       )
     )
     .returning({ id: withdrawalsTable.id });
 
   if (claimed.length === 0) {
-    res.status(409).json({ error: "A retry is already in progress for this payout. Please wait." });
+    res.status(409).json({ error: "A retry is already in progress for this payout, or the payout is not in a retryable state. Please refresh and try again." });
     return;
   }
 
   const amt = Number(w.amount);
-  // For FAILED/REVERSED, funds were released back to available — re-lock before retrying.
-  const wasReleased = ["FAILED", "REVERSED"].includes(w.transferStatus);
+  // Claim only succeeds from FAILED/REVERSED — funds were already released back.
   // Keep the original status so we can restore it if re-lock fails.
   const originalTransferStatus = w.transferStatus;
 
-  if (wasReleased) {
+  {
     // Check balance then re-lock inside a transaction to prevent concurrent overdraft
     try {
       await db.transaction(async (tx) => {
