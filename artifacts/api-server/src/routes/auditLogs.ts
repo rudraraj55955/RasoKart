@@ -20,19 +20,21 @@ function ensureAdmin(req: any, res: any): boolean {
 
 const INACTIVE_DAYS = 90;
 
+interface SecurityComplianceRow {
+  merchant_id: number;
+  business_name: string;
+  email: string;
+  last_exported_at: string | null;
+  last_login_at: string | null;
+  last_dormant_alert_at: string | null;
+}
+
 router.get("/security-compliance", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
   const { status } = req.query as Record<string, string>;
 
-  const rows = await db.execute<{
-    merchant_id: number;
-    business_name: string;
-    email: string;
-    last_exported_at: string | null;
-    last_login_at: string | null;
-    last_dormant_alert_at: string | null;
-  }>(sql`
+  const scResult = await db.execute(sql`
     SELECT
       m.id AS merchant_id,
       m.business_name,
@@ -57,7 +59,8 @@ router.get("/security-compliance", async (req, res) => {
       ) AS last_dormant_alert_at
     FROM merchants m
     ORDER BY m.business_name
-  `).then(r => r.rows);
+  `);
+  const rows = scResult.rows as unknown as SecurityComplianceRow[];
 
   const inactiveCutoff = new Date();
   inactiveCutoff.setDate(inactiveCutoff.getDate() - INACTIVE_DAYS);

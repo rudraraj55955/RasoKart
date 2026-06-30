@@ -41,6 +41,13 @@ interface DormantMerchant {
   earliestCreatedAt: Date;
 }
 
+interface DormantMerchantRawRow {
+  merchant_id: number;
+  business_name: string;
+  last_login_at: string | null;
+  earliest_created_at: string;
+}
+
 /** Returns all active admin user IDs. */
 async function getAdminUserIds(): Promise<number[]> {
   const rows = await db
@@ -59,12 +66,7 @@ async function loadDormantMerchants(): Promise<DormantMerchant[]> {
   const cutoffMs = Date.now() - INACTIVE_DAYS * 24 * 60 * 60 * 1000;
   const cutoff = new Date(cutoffMs).toISOString();
 
-  const rows = await db.execute<{
-    merchant_id: number;
-    business_name: string;
-    last_login_at: string | null;
-    earliest_created_at: string;
-  }>(sql`
+  const qResult = await db.execute(sql`
     SELECT
       m.id            AS merchant_id,
       m.business_name,
@@ -80,7 +82,8 @@ async function loadDormantMerchants(): Promise<DormantMerchant[]> {
       (MAX(u.last_login_at) IS NOT NULL AND MAX(u.last_login_at) < ${cutoff}::timestamptz)
       OR
       (MAX(u.last_login_at) IS NULL     AND MIN(u.created_at) < ${cutoff}::timestamptz)
-  `).then(r => r.rows);
+  `);
+  const rows = qResult.rows as unknown as DormantMerchantRawRow[];
 
   return rows.map(r => ({
     merchantId: r.merchant_id,
