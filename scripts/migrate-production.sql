@@ -67,6 +67,25 @@ ALTER TABLE withdrawals
 -- New keys (cashfree_payout_bulk_enabled, etc.) are inserted by the API server
 -- seed on startup.
 
+-- ── cashfree_payout_webhook_logs ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cashfree_payout_webhook_logs (
+  id                 SERIAL PRIMARY KEY,
+  received_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  event_type         TEXT,
+  status             TEXT,
+  signature_verified BOOLEAN,
+  payout_id          INTEGER,
+  transfer_id        TEXT,
+  cf_transfer_id     TEXT,
+  utr                TEXT,
+  safe_error         TEXT,
+  processing_result  TEXT NOT NULL DEFAULT 'received',
+  raw_payload        TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_cpwl_received_at ON cashfree_payout_webhook_logs (received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cpwl_transfer_id ON cashfree_payout_webhook_logs (transfer_id);
+
 COMMIT;
 
 SELECT 'Migration complete ✓' AS status;

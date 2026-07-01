@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, cashfreePayoutsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, merchantsTable } from "@workspace/db";
-import { eq, inArray, desc, and, gte, lte, sql } from "drizzle-orm";
+import { db, cashfreePayoutsTable, cashfreePayoutWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, merchantsTable } from "@workspace/db";
+import { eq, inArray, desc, and, gte, lte, sql, count } from "drizzle-orm";
 import {
   cashfreePayoutCreateTransfer,
   cashfreePayoutGetTransferStatus,
@@ -382,6 +382,45 @@ router.post("/sync-status", requireAuth, requireAdmin, async (req, res, next) =>
 
     req.log.info({ checked: pendingRows.length, updatedCount }, "Cashfree payout sync-status completed");
     res.json({ checked: pendingRows.length, updatedCount });
+  } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/cashfree-payout/webhook-logs
+ * List payout webhook log entries. Admin only.
+ */
+router.get("/webhook-logs", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query["page"] as string) || 1);
+    const limit = Math.min(100, parseInt(req.query["limit"] as string) || 25);
+    const offset = (page - 1) * limit;
+
+    const [rows, [{ total }]] = await Promise.all([
+      db.select({
+        id: cashfreePayoutWebhookLogsTable.id,
+        receivedAt: cashfreePayoutWebhookLogsTable.receivedAt,
+        eventType: cashfreePayoutWebhookLogsTable.eventType,
+        status: cashfreePayoutWebhookLogsTable.status,
+        signatureVerified: cashfreePayoutWebhookLogsTable.signatureVerified,
+        payoutId: cashfreePayoutWebhookLogsTable.payoutId,
+        transferId: cashfreePayoutWebhookLogsTable.transferId,
+        cfTransferId: cashfreePayoutWebhookLogsTable.cfTransferId,
+        utr: cashfreePayoutWebhookLogsTable.utr,
+        safeError: cashfreePayoutWebhookLogsTable.safeError,
+        processingResult: cashfreePayoutWebhookLogsTable.processingResult,
+      })
+        .from(cashfreePayoutWebhookLogsTable)
+        .orderBy(desc(cashfreePayoutWebhookLogsTable.receivedAt))
+        .limit(limit).offset(offset),
+      db.select({ total: sql<number>`count(*)::int` }).from(cashfreePayoutWebhookLogsTable),
+    ]);
+
+    res.json({
+      data: rows.map(r => ({ ...r, receivedAt: r.receivedAt.toISOString() })),
+      total: total ?? 0,
+      page,
+      limit,
+    });
   } catch (err) { next(err); }
 });
 

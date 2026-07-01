@@ -37,6 +37,7 @@ import ekqrRouter from "./ekqr";
 import cashfreeWebhookRouter from "./cashfreeWebhook";
 import cashfreeOrdersRouter from "./cashfreeOrders";
 import cashfreePayoutRouter from "./cashfreePayout";
+import cashfreePayoutWebhookRouter from "./cashfreePayoutWebhook";
 import providerIntegrationsRouter from "./providerIntegrations";
 import rasokartServicesRouter from "./rasokartServices";
 import smartRoutingRouter from "./smartRouting";
@@ -57,6 +58,8 @@ router.use("/merchants", merchantsRouter);
 router.use("/transactions", transactionsRouter);
 router.use("/withdrawals", withdrawalsRouter);
 router.use("/api-keys", apiKeysRouter);
+// Public payout webhook alias — must come BEFORE /webhooks (which has global requireAuth)
+router.use("/webhooks/payouts/cashfree", cashfreePayoutWebhookRouter);
 router.use("/webhooks", webhooksRouter);
 router.use("/callbacks", callbacksRouter);
 router.use("/settlements", settlementsRouter);
@@ -87,6 +90,8 @@ router.use("/payment", paymentWebhookRouter);
 router.use("/payment", cashfreeWebhookRouter);
 router.use("/ekqr", ekqrRouter);
 router.use("/merchant", cashfreeOrdersRouter);
+// Payout webhook — public, no auth — must be mounted BEFORE the auth-guarded cashfree-payout router
+router.use("/cashfree-payout/webhook", cashfreePayoutWebhookRouter);
 router.use("/cashfree-payout", cashfreePayoutRouter);
 router.use("/provider-integrations", providerIntegrationsRouter);
 router.use("/merchant", rasokartServicesRouter);

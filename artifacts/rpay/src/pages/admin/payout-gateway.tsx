@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import {
   Save, Eye, EyeOff, RefreshCw, Upload, Plus, RotateCcw, ChevronLeft, ChevronRight,
   Loader2, AlertCircle, CheckCircle2, Clock, XCircle, Banknote, Settings2, List, Copy,
+  Shield, ShieldOff, ShieldAlert, Activity,
 } from "lucide-react";
 
 const AUTH_HEADERS = { Authorization: `Bearer ${getToken()}` };
@@ -1125,6 +1126,160 @@ function PayoutsTab() {
   );
 }
 
+// ── Webhook Logs Tab ───────────────────────────────────────────────────────────
+type WebhookLogRow = {
+  id: number;
+  receivedAt: string;
+  eventType: string | null;
+  status: string | null;
+  signatureVerified: boolean | null;
+  payoutId: number | null;
+  transferId: string | null;
+  cfTransferId: string | null;
+  utr: string | null;
+  safeError: string | null;
+  processingResult: string;
+};
+
+function SigBadge({ verified }: { verified: boolean | null }) {
+  if (verified === null) return <span className="text-xs text-muted-foreground flex items-center gap-1"><ShieldAlert className="w-3 h-3" />Not configured</span>;
+  if (verified) return <span className="text-xs text-emerald-400 flex items-center gap-1"><Shield className="w-3 h-3" />Verified</span>;
+  return <span className="text-xs text-rose-400 flex items-center gap-1"><ShieldOff className="w-3 h-3" />Invalid</span>;
+}
+
+function ResultBadge({ result }: { result: string }) {
+  const map: Record<string, string> = {
+    processed: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    received: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+    ignored: "bg-zinc-500/15 text-zinc-400 border-zinc-500/20",
+    unmatched: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+    rejected: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+    error: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  };
+  const cls = map[result] ?? "bg-zinc-500/15 text-zinc-400 border-zinc-500/20";
+  return <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${cls}`}>{result}</span>;
+}
+
+function WebhookLogsTab() {
+  const [page, setPage] = useState(1);
+  const [logs, setLogs] = useState<WebhookLogRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const LIMIT = 25;
+
+  async function fetchLogs(p = page, silent = false) {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    try {
+      const res = await fetch(`/api/cashfree-payout/webhook-logs?page=${p}&limit=${LIMIT}`, {
+        headers: AUTH_HEADERS,
+      });
+      const data = await res.json();
+      setLogs(data.data ?? []);
+      setTotal(data.total ?? 0);
+    } catch {
+      toast.error("Failed to load webhook logs");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  useState(() => { fetchLogs(1); });
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handlePage = (p: number) => { setPage(p); fetchLogs(p); };
+
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+  const fmt = (d: string) => new Date(d).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "medium" });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold">Webhook Logs</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Inbound Cashfree Payout webhook events — newest first.</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => fetchLogs(page, true)} disabled={refreshing}>
+          {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+        </Button>
+      </div>
+
+      <Card className="border-border/50">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border/40">
+                  <TableHead className="text-xs">Received At</TableHead>
+                  <TableHead className="text-xs">Event Type</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs">Signature</TableHead>
+                  <TableHead className="text-xs">Transfer ID</TableHead>
+                  <TableHead className="text-xs">UTR</TableHead>
+                  <TableHead className="text-xs">Result</TableHead>
+                  <TableHead className="text-xs">Error</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 8 }).map((_, j) => (
+                        <TableCell key={j}><div className="h-4 bg-muted/40 rounded animate-pulse" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : logs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                      No webhook events received yet.
+                      <p className="text-xs mt-1">Configure the webhook URL in Cashfree dashboard and send a test ping.</p>
+                    </TableCell>
+                  </TableRow>
+                ) : logs.map(log => (
+                  <TableRow key={log.id} className="border-border/30">
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(log.receivedAt)}</TableCell>
+                    <TableCell className="text-xs font-mono">{log.eventType ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-xs">{log.status ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell><SigBadge verified={log.signatureVerified} /></TableCell>
+                    <TableCell className="text-xs font-mono max-w-[160px] truncate" title={log.transferId ?? ""}>
+                      {log.transferId ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono max-w-[120px] truncate" title={log.utr ?? ""}>
+                      {log.utr ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell><ResultBadge result={log.processingResult} /></TableCell>
+                    <TableCell className="text-xs text-rose-400 max-w-[180px] truncate" title={log.safeError ?? ""}>
+                      {log.safeError ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>{total} total events</span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => handlePage(Math.max(1, page - 1))} disabled={page === 1}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span>Page {page} of {totalPages}</span>
+            <Button size="sm" variant="outline" onClick={() => handlePage(Math.min(totalPages, page + 1))} disabled={page >= totalPages}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function AdminPayoutGateway() {
   return (
@@ -1146,6 +1301,10 @@ export default function AdminPayoutGateway() {
             <Settings2 className="w-3.5 h-3.5" />
             Settings
           </TabsTrigger>
+          <TabsTrigger value="webhook-logs" className="flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5" />
+            Webhook Logs
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="payouts" className="mt-6">
@@ -1154,6 +1313,10 @@ export default function AdminPayoutGateway() {
 
         <TabsContent value="settings" className="mt-6">
           <SettingsTab />
+        </TabsContent>
+
+        <TabsContent value="webhook-logs" className="mt-6">
+          <WebhookLogsTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -66,3 +66,4 @@ export * from "./reportDeliveryLogs";
 export * from "./merchantVerifications";
 export * from "./merchantDocuments";
 export * from "./quietHoursQueue";
+export * from "./cashfreePayoutWebhookLogs";
