@@ -202,7 +202,8 @@ export async function testPayoutConnection(
 ): Promise<{ ok: boolean; message: string }> {
   const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
   try {
-    const res = await fetch(`${baseUrl}/transfers?limit=1`, {
+    // Use beneficiary list — works with credentials only, no transfer_id required
+    const res = await fetch(`${baseUrl}/beneficiary?limit=1`, {
       headers: {
         "x-api-version": "2024-01-01",
         "x-client-id": clientId,
@@ -210,10 +211,12 @@ export async function testPayoutConnection(
       },
     });
     const { parsed, httpStatus } = await readJson(res);
-    if (httpStatus >= 200 && httpStatus < 300) return { ok: true, message: "Connection successful — credentials are valid" };
-    if (httpStatus === 401 || httpStatus === 403) return { ok: false, message: "Invalid Payout Client ID or Secret — authentication failed" };
-    return { ok: false, message: parsed?.message ?? `Provider returned HTTP ${httpStatus}` };
+    if (httpStatus >= 200 && httpStatus < 300) return { ok: true, message: "Credentials verified — payout gateway is reachable and authenticated" };
+    if (httpStatus === 401 || httpStatus === 403) return { ok: false, message: "Invalid credentials — Client ID or Secret is incorrect" };
+    if (httpStatus === 422) return { ok: false, message: "Missing or invalid configuration — check fundsource settings" };
+    if (httpStatus >= 500) return { ok: false, message: "Payout provider is currently unavailable — try again later" };
+    return { ok: false, message: "Credential check failed — review Client ID and Secret" };
   } catch (err: any) {
-    return { ok: false, message: err?.message ?? "Could not reach payout provider" };
+    return { ok: false, message: "Could not reach payout provider — check network or provider status" };
   }
 }

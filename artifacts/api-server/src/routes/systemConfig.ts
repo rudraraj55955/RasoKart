@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable } from "@workspace/db";
 import { ekqrCreateOrder, ekqrClientTxnId } from "../helpers/ekqr";
-import { testPayoutConnection, type CashfreePayoutEnv } from "../helpers/cashfreePayout";
+import { testPayoutConnection, cashfreePayoutGetTransferStatus, normalizeCashfreePayoutStatus, type CashfreePayoutEnv } from "../helpers/cashfreePayout";
 import { inArray, desc, count, sql, eq, and } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
@@ -1331,7 +1331,7 @@ router.post("/cashfree-payout/test-connection", async (req, res, next) => {
   try {
     const cfg = await getCashfreePayoutConfig();
     if (!cfg.clientIdSet || !cfg.clientSecretSet) {
-      res.status(400).json({ ok: false, message: "Payout Client ID and Secret must be saved before testing the connection" });
+      res.status(400).json({ ok: false, message: "Payout Client ID and Secret must be saved before testing credentials" });
       return;
     }
     const keys = [
@@ -1345,8 +1345,58 @@ router.post("/cashfree-payout/test-connection", async (req, res, next) => {
     const clientSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "";
     const env = (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv;
     const result = await testPayoutConnection(clientId, clientSecret, env);
-    req.log.info({ ok: result.ok, env }, "cashfree_payout_connection_tested");
+    req.log.info({ ok: result.ok, env }, "cashfree_payout_credentials_tested");
     res.json(result);
+  } catch (err) { next(err); }
+});
+
+// POST /api/system-config/cashfree-payout/check-transfer-status
+router.post("/cashfree-payout/check-transfer-status", async (req, res, next) => {
+  try {
+    const { transferId } = req.body as { transferId?: string };
+    if (!transferId || !transferId.trim()) {
+      res.status(400).json({ ok: false, message: "Transfer ID is required to check payout status." });
+      return;
+    }
+    const cfg = await getCashfreePayoutConfig();
+    if (!cfg.clientIdSet || !cfg.clientSecretSet) {
+      res.status(400).json({ ok: false, message: "Payout credentials are not configured." });
+      return;
+    }
+    const keys = [
+      SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID,
+      SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET,
+      SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
+    ];
+    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+    const clientId = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID) ?? "";
+    const clientSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "";
+    const env = (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv;
+    const { parsed, httpStatus } = await cashfreePayoutGetTransferStatus(clientId, clientSecret, env, transferId.trim());
+    req.log.info({ httpStatus, transferId: transferId.trim(), env }, "cashfree_payout_transfer_status_checked");
+    if (httpStatus === 401 || httpStatus === 403) {
+      res.json({ ok: false, message: "Authentication failed — check payout credentials." });
+      return;
+    }
+    if (httpStatus === 404 || (parsed?.status && String(parsed.status).toUpperCase() === "ERROR" && String(parsed.message ?? "").toLowerCase().includes("not found"))) {
+      res.json({ ok: false, message: `Transfer ID "${transferId.trim()}" was not found. Verify the ID and try again.` });
+      return;
+    }
+    if (httpStatus >= 500) {
+      res.json({ ok: false, message: "Payout provider is currently unavailable." });
+      return;
+    }
+    const normalizedStatus = normalizeCashfreePayoutStatus(parsed?.status);
+    const utr: string | undefined = parsed?.utr ?? parsed?.transfer_utr ?? undefined;
+    const statusLabel = normalizedStatus === "SUCCESS" ? "Successful" : normalizedStatus === "PENDING" ? "Pending / In Progress" : "Failed";
+    const utrPart = normalizedStatus === "SUCCESS" && utr ? ` — UTR: ${utr}` : "";
+    res.json({
+      ok: httpStatus >= 200 && httpStatus < 300,
+      message: `Transfer status: ${statusLabel}${utrPart}`,
+      status: normalizedStatus,
+      utr: normalizedStatus === "SUCCESS" ? utr : undefined,
+    });
   } catch (err) { next(err); }
 });
 

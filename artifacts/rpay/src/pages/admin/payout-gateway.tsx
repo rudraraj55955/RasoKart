@@ -128,6 +128,11 @@ function SettingsTab() {
   const [successOpen, setSuccessOpen] = useState(false);
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  // Check Transfer Status dialog
+  const [transferStatusOpen, setTransferStatusOpen] = useState(false);
+  const [transferIdInput, setTransferIdInput] = useState("");
+  const [checkingTransfer, setCheckingTransfer] = useState(false);
+  const [transferStatusResult, setTransferStatusResult] = useState<{ ok: boolean; message: string; status?: string; utr?: string } | null>(null);
 
   const { mutateAsync: updateConfig } = useUpdatePayoutGatewayConfig({
     request: { headers: AUTH_HEADERS },
@@ -202,7 +207,7 @@ function SettingsTab() {
     }
   }
 
-  async function handleTestConnection() {
+  async function handleTestCredentials() {
     setTesting(true);
     setTestResult(null);
     try {
@@ -213,13 +218,35 @@ function SettingsTab() {
       const data = await res.json();
       setTestResult(data);
       if (data.ok) toast.success(data.message);
-      else toast.error("Connection test failed");
+      else toast.error("Credential test failed");
     } catch {
-      const msg = "Connection test failed";
+      const msg = "Credential test failed — could not reach server";
       setTestResult({ ok: false, message: msg });
       toast.error(msg);
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleCheckTransferStatus() {
+    if (!transferIdInput.trim()) {
+      setTransferStatusResult({ ok: false, message: "Transfer ID is required to check payout status." });
+      return;
+    }
+    setCheckingTransfer(true);
+    setTransferStatusResult(null);
+    try {
+      const res = await fetch("/api/system-config/cashfree-payout/check-transfer-status", {
+        method: "POST",
+        headers: { Authorization: AUTH_HEADERS.Authorization, "Content-Type": "application/json" },
+        body: JSON.stringify({ transferId: transferIdInput.trim() }),
+      });
+      const data = await res.json();
+      setTransferStatusResult(data);
+    } catch {
+      setTransferStatusResult({ ok: false, message: "Could not reach server — try again." });
+    } finally {
+      setCheckingTransfer(false);
     }
   }
 
@@ -490,7 +517,7 @@ function SettingsTab() {
         </CardContent>
       </Card>
 
-      {/* ── Test connection result banner ── */}
+      {/* ── Credential test result banner ── */}
       {testResult && (
         <div className={`rounded-md border p-3 flex items-start gap-2 text-xs ${
           testResult.ok
@@ -511,17 +538,79 @@ function SettingsTab() {
             ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</>
             : <><Save className="w-4 h-4 mr-2" />Save Changes</>}
         </Button>
-        <Button variant="outline" onClick={handleTestConnection}
+        <Button variant="outline" onClick={handleTestCredentials}
           disabled={testing || (!config?.clientIdSet && !clientId.trim())}
           title={!config?.clientIdSet && !clientId.trim() ? "Save credentials first before testing" : ""}>
           {testing
             ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Testing…</>
-            : <><RefreshCw className="w-4 h-4 mr-2" />Test Connection</>}
+            : <><CheckCircle2 className="w-4 h-4 mr-2" />Test Credentials</>}
+        </Button>
+        <Button variant="outline" onClick={() => { setTransferStatusOpen(true); setTransferStatusResult(null); setTransferIdInput(""); }}
+          disabled={!config?.clientIdSet}>
+          <RefreshCw className="w-4 h-4 mr-2" />Check Transfer Status
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Use <strong>Test Connection</strong> after saving credentials to verify they work before approving payouts.
+        Use <strong>Test Credentials</strong> to verify your Client ID and Secret are valid. Use <strong>Check Transfer Status</strong> to look up a specific transfer by its ID.
       </p>
+
+      {/* ── Check Transfer Status dialog ── */}
+      <Dialog open={transferStatusOpen} onOpenChange={open => { setTransferStatusOpen(open); if (!open) { setTransferStatusResult(null); setTransferIdInput(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4" />
+              Check Transfer Status
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <p className="text-xs text-muted-foreground">
+              Enter the internal Transfer ID (e.g. <span className="font-mono">RKPAY_1234567890_ab1cd2</span>) to look up its current status.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="transfer-id-input">Transfer ID</Label>
+              <Input
+                id="transfer-id-input"
+                placeholder="e.g. RKPAY_1234567890_ab1cd2"
+                value={transferIdInput}
+                onChange={e => { setTransferIdInput(e.target.value); setTransferStatusResult(null); }}
+                onKeyDown={e => e.key === "Enter" && !checkingTransfer && handleCheckTransferStatus()}
+              />
+            </div>
+            {!transferIdInput.trim() && (
+              <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                Transfer ID is required to check payout status.
+              </p>
+            )}
+            {transferStatusResult && (
+              <div className={`rounded-md border p-3 flex items-start gap-2 text-xs ${
+                transferStatusResult.ok
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+              }`}>
+                {transferStatusResult.ok
+                  ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  : <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+                <div className="space-y-0.5">
+                  <p>{transferStatusResult.message}</p>
+                  {transferStatusResult.utr && (
+                    <p className="text-emerald-400/80">UTR: <span className="font-mono">{transferStatusResult.utr}</span></p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setTransferStatusOpen(false)}>Close</Button>
+            <Button onClick={handleCheckTransferStatus} disabled={checkingTransfer || !transferIdInput.trim()}>
+              {checkingTransfer
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Checking…</>
+                : <><RefreshCw className="w-4 h-4 mr-2" />Check Status</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
