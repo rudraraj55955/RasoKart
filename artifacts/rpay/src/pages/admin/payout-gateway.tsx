@@ -1130,6 +1130,7 @@ function PayoutsTab() {
 type WebhookLogRow = {
   id: number;
   receivedAt: string;
+  endpoint: string | null;
   eventType: string | null;
   status: string | null;
   signatureVerified: boolean | null;
@@ -1213,6 +1214,7 @@ function WebhookLogsTab() {
               <TableHeader>
                 <TableRow className="border-border/40">
                   <TableHead className="text-xs">Received At</TableHead>
+                  <TableHead className="text-xs">Endpoint</TableHead>
                   <TableHead className="text-xs">Event Type</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
                   <TableHead className="text-xs">Signature</TableHead>
@@ -1226,14 +1228,14 @@ function WebhookLogsTab() {
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 8 }).map((_, j) => (
+                      {Array.from({ length: 9 }).map((_, j) => (
                         <TableCell key={j}><div className="h-4 bg-muted/40 rounded animate-pulse" /></TableCell>
                       ))}
                     </TableRow>
                   ))
                 ) : logs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground text-sm">
                       No webhook events received yet.
                       <p className="text-xs mt-1">Configure the webhook URL in Cashfree dashboard and send a test ping.</p>
                     </TableCell>
@@ -1241,6 +1243,9 @@ function WebhookLogsTab() {
                 ) : logs.map(log => (
                   <TableRow key={log.id} className="border-border/30">
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(log.receivedAt)}</TableCell>
+                    <TableCell className="text-xs font-mono max-w-[200px] truncate" title={log.endpoint ?? ""}>
+                      {log.endpoint ? log.endpoint.replace("/api", "") : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell className="text-xs font-mono">{log.eventType ?? <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="text-xs">{log.status ?? <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell><SigBadge verified={log.signatureVerified} /></TableCell>

@@ -399,6 +399,7 @@ router.get("/webhook-logs", requireAuth, requireAdmin, async (req, res, next) =>
       db.select({
         id: cashfreePayoutWebhookLogsTable.id,
         receivedAt: cashfreePayoutWebhookLogsTable.receivedAt,
+        endpoint: cashfreePayoutWebhookLogsTable.endpoint,
         eventType: cashfreePayoutWebhookLogsTable.eventType,
         status: cashfreePayoutWebhookLogsTable.status,
         signatureVerified: cashfreePayoutWebhookLogsTable.signatureVerified,

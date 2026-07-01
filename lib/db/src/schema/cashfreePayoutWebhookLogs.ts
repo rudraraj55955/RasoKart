@@ -3,6 +3,7 @@ import { pgTable, serial, text, integer, timestamp, boolean } from "drizzle-orm/
 export const cashfreePayoutWebhookLogsTable = pgTable("cashfree_payout_webhook_logs", {
   id: serial("id").primaryKey(),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  endpoint: text("endpoint"),
   eventType: text("event_type"),
   status: text("status"),
   signatureVerified: boolean("signature_verified"),

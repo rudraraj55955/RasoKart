@@ -16,6 +16,7 @@ export const cashfreePayoutsTable = pgTable("cashfree_payouts", {
   errorMessage: text("error_message"),
   merchantId: integer("merchant_id"),
   initiatedByEmail: varchar("initiated_by_email", { length: 255 }).notNull(),
+  utr: text("utr"),
   rawResponse: text("raw_response"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

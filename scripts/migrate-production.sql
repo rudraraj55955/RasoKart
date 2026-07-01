@@ -71,6 +71,7 @@ ALTER TABLE withdrawals
 CREATE TABLE IF NOT EXISTS cashfree_payout_webhook_logs (
   id                 SERIAL PRIMARY KEY,
   received_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  endpoint           TEXT,
   event_type         TEXT,
   status             TEXT,
   signature_verified BOOLEAN,
@@ -85,6 +86,12 @@ CREATE TABLE IF NOT EXISTS cashfree_payout_webhook_logs (
 
 CREATE INDEX IF NOT EXISTS idx_cpwl_received_at ON cashfree_payout_webhook_logs (received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cpwl_transfer_id ON cashfree_payout_webhook_logs (transfer_id);
+
+-- ── cashfree_payout_webhook_logs: add endpoint column if table already exists ──
+ALTER TABLE cashfree_payout_webhook_logs ADD COLUMN IF NOT EXISTS endpoint TEXT;
+
+-- ── cashfree_payouts: add utr column ──────────────────────────────────────────
+ALTER TABLE cashfree_payouts ADD COLUMN IF NOT EXISTS utr TEXT;
 
 COMMIT;
 
