@@ -1362,10 +1362,25 @@ router.post("/cashfree-payout/test-connection", async (req, res, next) => {
       return;
     }
 
-    const result = await testPayoutConnection(clientId, decrypted.value, env);
-    req.log.info({ ok: result.ok, safeReason: result.safeReason, env, httpStatus: result._httpStatus }, "cashfree_payout_credentials_tested");
-    // Strip internal _httpStatus before sending to client
-    const { _httpStatus: _omit, ...clientResult } = result;
+    const clientIdTrimmed = clientId.trim();
+    const result = await testPayoutConnection(clientIdTrimmed, decrypted.value, env);
+
+    // Admin-only safe debug log — never logs full clientId, secret, token, or raw response
+    req.log.info({
+      ok: result.ok,
+      safeReason: result.safeReason,
+      env,
+      providerHttpStatus: result._httpStatus,
+      providerStatus: result._providerStatus,
+      hasToken: result._hasToken,
+      fetchError: result._fetchError,
+      clientIdLast4: clientIdTrimmed.length >= 4 ? clientIdTrimmed.slice(-4) : "****",
+      secretPresent: decrypted.value.length > 0,
+      decryptOk: true,
+    }, "cashfree_payout_credentials_tested");
+
+    // Strip all internal fields before sending to client
+    const { _httpStatus: _h, _fetchError: _f, _providerStatus: _p, _hasToken: _t, ...clientResult } = result;
     res.json(clientResult);
   } catch (err) { next(err); }
 });
