@@ -18,10 +18,12 @@ const router = Router();
  *   Headers: x-webhook-signature, x-webhook-timestamp
  *
  * If webhook secret is NOT configured:
- *   Accept webhook + log warning that verification was skipped.
+ *   Accept webhook + log warning; return 200 but skip ALL state mutations
+ *   (fail-closed: no payout status updates without verified origin).
  * If webhook secret IS configured and signature is INVALID:
  *   Return 401 and insert a log entry — do not process payload.
- * In all other cases return 200 immediately so Cashfree does not retry.
+ * If webhook secret IS configured and signature is VALID:
+ *   Process payload and return 200.
  *
  * Cashfree Payout V2 webhook event types:
  *   TRANSFER_SUCCESS, TRANSFER_FAILED, TRANSFER_REVERSED, TEST (ping)
@@ -55,8 +57,22 @@ router.post("/", async (req, res) => {
     const webhookSecret = secretRow?.value ?? "";
 
     if (!webhookSecret) {
-      logger.warn("Cashfree payout webhook received without signature verification because secret is not configured");
+      // Fail-closed: log the event but perform NO state mutations without a verified origin.
+      // Return 200 so Cashfree does not retry — configure the secret to enable full processing.
+      logger.warn("Cashfree payout webhook received but CASHFREE_PAYOUT_WEBHOOK_SECRET is not configured — skipping all state mutations");
       signatureVerified = null;
+      const body = req.body as Record<string, unknown>;
+      eventType = ((body["type"] ?? body["event"]) as string | undefined) ?? null;
+      const data = body["data"] as Record<string, unknown> | undefined;
+      const transfer = (data?.["transfer"] ?? data) as Record<string, unknown> | undefined;
+      transferId = (transfer?.["transfer_id"] as string | undefined) ?? null;
+      cfTransferId = String(transfer?.["cf_transfer_id"] ?? "").trim() || null;
+      statusRaw = (transfer?.["transfer_status"] as string | undefined) ?? null;
+      utr = (transfer?.["transfer_utr"] as string | undefined) ?? null;
+      processingResult = "received";
+      res.status(200).json({ success: true });
+      await insertLog({ eventType, status: statusRaw, signatureVerified: null, payoutId: null, transferId, cfTransferId, utr, safeError: "Webhook secret not configured — mutations skipped", processingResult, rawPayload: rawBody });
+      return;
     } else {
       const valid = verifyCashfreeWebhookSignature(rawBody, timestamp ?? "", signature ?? "", webhookSecret);
       signatureVerified = valid;
