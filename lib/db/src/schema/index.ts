@@ -48,6 +48,7 @@ export * from "./providerIntegrations";
 export * from "./providerProducts";
 export * from "./providerProductVisibility";
 export * from "./activationRequests";
+export * from "./payoutBeneficiaries";
 export * from "./merchantKyc";
 export * from "./routingConfigs";
 export * from "./routingRules";

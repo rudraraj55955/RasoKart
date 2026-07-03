@@ -10,3 +10,4 @@
 - [Payout retry claim predicate](payout-retry-claim.md) — atomic retry claim must exclude INITIATED from the predicate; INITIATED→INITIATED allows duplicate concurrent claims. Always claim only from FAILED|REVERSED.
 - [Approve-flow stranded INITIATED](approve-flow-stranded.md) — if payout provider is disabled or creds missing at approve time, set transferStatus=FAILED immediately; never leave approved/INITIATED with no dispatch path.
 - [Cashfree Payouts V2 base URL](cashfree-payout-v2-url.md) — no `/v2` in URL path; v2 selected via `x-api-version` header only, or transfers fail with misleading "Token is not valid".
+- [Cashfree Payouts V2 beneficiary lifecycle](cashfree-payout-beneficiary-flow.md) — beneficiary must be created/reused at approve/retry time (no separate bank-details step); never throw, log safe fields only.

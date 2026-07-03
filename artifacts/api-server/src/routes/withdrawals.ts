@@ -7,6 +7,7 @@ import {
   walletLedgerTable,
   auditLogsTable,
   systemConfigTable,
+  payoutBeneficiariesTable,
   SYSTEM_CONFIG_KEYS,
 } from "@workspace/db";
 import { eq, and, count, sum, sql, inArray } from "drizzle-orm";
@@ -16,12 +17,151 @@ import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 import {
   cashfreePayoutCreateTransfer,
   cashfreePayoutGetTransferStatus,
+  cashfreePayoutEnsureBeneficiary,
   normalizeCashfreePayoutStatus,
   isPayoutCredentialError,
+  isBeneficiaryNotFound,
   type CashfreePayoutEnv,
 } from "../helpers/cashfreePayout";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { mutateWallet, ensureWallet } from "./wallets";
+
+type BeneficiaryInput = {
+  payoutMode: string;
+  bankAccount?: string | null;
+  ifscCode?: string | null;
+  upiId?: string | null;
+  accountHolder?: string | null;
+};
+
+function beneficiaryKeyFor(input: BeneficiaryInput): string {
+  const isUpi = input.payoutMode === "UPI" && !!input.upiId?.trim();
+  return isUpi
+    ? `upi:${input.upiId!.trim().toLowerCase()}`
+    : `bank:${(input.bankAccount ?? "").trim()}:${(input.ifscCode ?? "").trim().toUpperCase()}`;
+}
+
+function cleanBeneficiaryId(v: string, max = 50) {
+  return v.replace(/[^A-Za-z0-9_]/g, "_").slice(0, max);
+}
+
+/**
+ * Resolve (and persist) the Cashfree Payouts V2 beneficiary_id for a
+ * withdrawal's payout destination.
+ *
+ * Order of operations (per required beneficiary flow):
+ *   1. If we already have a confirmed provider_beneficiary_id in the
+ *      `payout_beneficiaries` table for this merchant + destination, use it.
+ *   2. Otherwise call Create Beneficiary; if Cashfree says it already
+ *      exists, fetch/confirm it instead of assuming success.
+ *   3. Persist the outcome so future approve/retry calls skip the network
+ *      round trip and never invent an ID that isn't actually registered.
+ */
+async function ensurePayoutBeneficiary(
+  req: any,
+  withdrawalId: number,
+  merchantId: number,
+  env: CashfreePayoutEnv,
+  clientId: string,
+  clientSecret: string,
+  input: BeneficiaryInput
+): Promise<{ ok: boolean; beneficiaryId: string; message?: string }> {
+  const beneficiaryKey = beneficiaryKeyFor(input);
+
+  const [existing] = await db
+    .select()
+    .from(payoutBeneficiariesTable)
+    .where(
+      and(
+        eq(payoutBeneficiariesTable.merchantId, merchantId),
+        eq(payoutBeneficiariesTable.env, env),
+        eq(payoutBeneficiariesTable.beneficiaryKey, beneficiaryKey)
+      )
+    )
+    .limit(1);
+
+  if (existing && existing.status === "active") {
+    return { ok: true, beneficiaryId: existing.providerBeneficiaryId };
+  }
+
+  const localBeneficiaryId = cleanBeneficiaryId(`BENE_M${merchantId}_${beneficiaryKey}`);
+
+  const ensured = await cashfreePayoutEnsureBeneficiary(clientId, clientSecret, env, localBeneficiaryId, {
+    beneficiaryName: input.accountHolder ?? undefined,
+    accountNumber: input.bankAccount ?? undefined,
+    ifsc: input.ifscCode ?? undefined,
+    upiId: input.payoutMode === "UPI" ? (input.upiId ?? undefined) : undefined,
+    amount: 0,
+  });
+
+  // Safe log only — never full bank account, secrets, token, or raw response.
+  req.log.info(
+    {
+      withdrawalId,
+      localBeneficiaryId,
+      providerBeneficiaryId: ensured.ok ? ensured.beneficiaryId : null,
+      httpStatus: ensured.httpStatus,
+      subCode: ensured.subCode,
+      providerMessage: ensured.message,
+    },
+    "payout_beneficiary_create_attempted"
+  );
+
+  if (ensured.ok) {
+    await db
+      .insert(payoutBeneficiariesTable)
+      .values({
+        merchantId,
+        env,
+        payoutMode: input.payoutMode,
+        beneficiaryKey,
+        providerBeneficiaryId: ensured.beneficiaryId,
+        status: "active",
+        lastError: null,
+      })
+      .onConflictDoUpdate({
+        target: [payoutBeneficiariesTable.merchantId, payoutBeneficiariesTable.env, payoutBeneficiariesTable.beneficiaryKey],
+        set: { providerBeneficiaryId: ensured.beneficiaryId, status: "active", lastError: null, payoutMode: input.payoutMode },
+      });
+    return { ok: true, beneficiaryId: ensured.beneficiaryId };
+  }
+
+  await db
+    .insert(payoutBeneficiariesTable)
+    .values({
+      merchantId,
+      env,
+      payoutMode: input.payoutMode,
+      beneficiaryKey,
+      providerBeneficiaryId: localBeneficiaryId,
+      status: "failed",
+      lastError: ensured.message ?? "Beneficiary create failed",
+    })
+    .onConflictDoUpdate({
+      target: [payoutBeneficiariesTable.merchantId, payoutBeneficiariesTable.env, payoutBeneficiariesTable.beneficiaryKey],
+      set: { status: "failed", lastError: ensured.message ?? "Beneficiary create failed", payoutMode: input.payoutMode },
+    });
+
+  return { ok: false, beneficiaryId: localBeneficiaryId, message: ensured.message };
+}
+
+/**
+ * Invalidate a cached beneficiary record so the next attempt re-creates it
+ * instead of retrying a transfer against an ID Cashfree says doesn't exist.
+ */
+async function invalidatePayoutBeneficiary(merchantId: number, env: CashfreePayoutEnv, input: BeneficiaryInput) {
+  const beneficiaryKey = beneficiaryKeyFor(input);
+  await db
+    .update(payoutBeneficiariesTable)
+    .set({ status: "failed", lastError: "Provider reported beneficiary_not_found on transfer" })
+    .where(
+      and(
+        eq(payoutBeneficiariesTable.merchantId, merchantId),
+        eq(payoutBeneficiariesTable.env, env),
+        eq(payoutBeneficiariesTable.beneficiaryKey, beneficiaryKey)
+      )
+    );
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -366,6 +506,19 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
   } else {
     const transferId = `RKPAY_${id}_${Date.now()}`;
     const mode = claimed.payoutMode === "UPI" ? "upi" : "banktransfer";
+    const beneficiaryInput: BeneficiaryInput = {
+      payoutMode: claimed.payoutMode,
+      bankAccount: claimed.bankAccount,
+      ifscCode: claimed.ifscCode,
+      upiId: claimed.upiId,
+      accountHolder: claimed.accountHolder || merchantName,
+    };
+    const bene = await ensurePayoutBeneficiary(req, id, claimed.merchantId, cfg.env, cfg.clientId, cfg.clientSecret, beneficiaryInput);
+    if (!bene.ok) {
+      transferStatus = "FAILED";
+      failureReason = "PAYOUT_BENEFICIARY_ERROR: Beneficiary setup failed. Check bank account/IFSC/name.";
+      req.log.warn({ withdrawalId: id, providerMessage: bene.message }, "cashfree_payout_beneficiary_failed");
+    } else {
     try {
       const result = await cashfreePayoutCreateTransfer(
         cfg.clientId,
@@ -374,6 +527,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
         {
           transferId,
           referenceId: transferId,
+          beneficiaryId: bene.beneficiaryId,
           beneficiaryName: claimed.accountHolder || merchantName || "Merchant",
           accountNumber: claimed.bankAccount || undefined,
           ifsc: claimed.ifscCode || undefined,
@@ -382,6 +536,9 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
           remark: `Payout #${id}`,
         }
       );
+      if (isBeneficiaryNotFound(result.parsed, result.httpStatus)) {
+        await invalidatePayoutBeneficiary(claimed.merchantId, cfg.env, beneficiaryInput);
+      }
       // Prefer the provider's own reference (cf_transfer_id) when returned;
       // fall back to our own transfer_id if the provider didn't echo one.
       providerReferenceId = result.parsed?.referenceId ?? transferId;
@@ -419,6 +576,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
       // Network/connection error — release hold by marking FAILED
       transferStatus = "FAILED";
       failureReason = `PAYOUT_CREDENTIAL_ERROR: ${err?.message ?? "Could not reach payout provider"}`;
+    }
     }
   }
 
@@ -799,6 +957,20 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   const retryMode = w.payoutMode === "UPI" ? "upi" : "banktransfer";
   let providerReferenceId: string = newTransferId;
 
+  const retryBeneficiaryInput: BeneficiaryInput = {
+    payoutMode: w.payoutMode,
+    bankAccount: w.bankAccount,
+    ifscCode: w.ifscCode,
+    upiId: w.upiId,
+    accountHolder: w.accountHolder || merchantName,
+  };
+  const retryBene = await ensurePayoutBeneficiary(req, id, w.merchantId, cfg.env, cfg.clientId, cfg.clientSecret, retryBeneficiaryInput);
+
+  if (!retryBene.ok) {
+    transferStatus = "FAILED";
+    failureReason = "PAYOUT_BENEFICIARY_ERROR: Beneficiary setup failed. Check bank account/IFSC/name.";
+    req.log.warn({ withdrawalId: id, providerMessage: retryBene.message }, "cashfree_payout_beneficiary_failed_on_retry");
+  } else {
   try {
     const result = await cashfreePayoutCreateTransfer(
       cfg.clientId,
@@ -807,6 +979,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
       {
         transferId: newTransferId,
         referenceId: newTransferId,
+        beneficiaryId: retryBene.beneficiaryId,
         beneficiaryName: w.accountHolder || merchantName || "Merchant",
         accountNumber: w.bankAccount || undefined,
         ifsc: w.ifscCode || undefined,
@@ -815,6 +988,9 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
         remark: `Payout #${id} retry`,
       }
     );
+    if (isBeneficiaryNotFound(result.parsed, result.httpStatus)) {
+      await invalidatePayoutBeneficiary(w.merchantId, cfg.env, retryBeneficiaryInput);
+    }
     // Prefer the provider's own reference (cf_transfer_id) when returned;
     // fall back to our own transfer_id if the provider didn't echo one.
     providerReferenceId = result.parsed?.referenceId ?? newTransferId;
@@ -851,6 +1027,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     // Network/connection error — release any re-locked hold by marking FAILED
     transferStatus = "FAILED";
     failureReason = `PAYOUT_CREDENTIAL_ERROR: ${err?.message ?? "Could not reach payout provider"}`;
+  }
   }
 
   const now = new Date();

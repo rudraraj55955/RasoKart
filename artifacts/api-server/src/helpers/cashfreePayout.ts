@@ -38,6 +38,13 @@ type PayoutCreateInput = {
   upiId?: string;
   amount: number;
   remark?: string;
+  /**
+   * A beneficiary_id already confirmed to exist on Cashfree's side (e.g.
+   * resolved via `cashfreePayoutEnsureBeneficiary` and persisted in
+   * `payout_beneficiaries`). When provided, the transfer call uses it
+   * directly instead of trying to create/verify a beneficiary inline.
+   */
+  beneficiaryId?: string;
 };
 
 /**
@@ -100,7 +107,24 @@ function flattenV2Response(parsed: any) {
   };
 }
 
-async function createBeneficiaryIfNeeded(
+function isBeneficiaryAlreadyExists(parsed: any, httpStatus: number): boolean {
+  const code = String(parsed?.code ?? parsed?.subCode ?? parsed?.status_code ?? "").toUpperCase();
+  const msg = String(parsed?.message ?? parsed?.status_description ?? "").toLowerCase();
+  return (
+    httpStatus === 409 ||
+    code.includes("BENEFICIARY_ALREADY_EXISTS") ||
+    code.includes("BENEFICIARY_CREATION_FAILED_ALREADY_EXISTS") ||
+    msg.includes("already exist")
+  );
+}
+
+export function isBeneficiaryNotFound(parsed: any, httpStatus: number): boolean {
+  const code = String(parsed?.code ?? parsed?.subCode ?? parsed?.status_code ?? "").toLowerCase();
+  const msg = String(parsed?.message ?? parsed?.status_description ?? "").toLowerCase();
+  return httpStatus === 404 || code.includes("beneficiary_not_found") || msg.includes("does not exist");
+}
+
+async function cashfreePayoutCreateBeneficiary(
   clientId: string,
   clientSecret: string,
   env: CashfreePayoutEnv,
@@ -138,22 +162,97 @@ async function createBeneficiaryIfNeeded(
     body: JSON.stringify(body),
   });
 
-  const out = await readJson(res);
+  return await readJson(res);
+}
 
-  if (out.httpStatus === 201 || out.httpStatus === 200 || out.httpStatus === 409) {
-    return { ok: true, raw: out.raw, parsed: out.parsed, httpStatus: out.httpStatus };
-  }
-
-  return {
-    ok: false,
-    raw: out.raw,
-    parsed: {
-      ...out.parsed,
-      status: "ERROR",
-      message: out.parsed?.message ?? "Cashfree beneficiary create failed",
+async function cashfreePayoutGetBeneficiary(
+  clientId: string,
+  clientSecret: string,
+  env: CashfreePayoutEnv,
+  beneficiaryId: string
+) {
+  const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
+  const res = await fetch(`${baseUrl}/beneficiary/${encodeURIComponent(beneficiaryId)}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-version": "2024-01-01",
+      "x-client-id": clientId,
+      "x-client-secret": clientSecret,
     },
-    httpStatus: out.httpStatus,
-  };
+  });
+
+  return await readJson(res);
+}
+
+export type EnsureBeneficiaryResult = {
+  ok: boolean;
+  beneficiaryId: string;
+  httpStatus: number;
+  subCode?: string;
+  message?: string;
+};
+
+/**
+ * Ensure a Cashfree Payouts V2 beneficiary exists for the given deterministic
+ * `beneficiaryId`, following the required flow:
+ *   1. Try to create it.
+ *   2. If the provider says it already exists (409 / already-exists code),
+ *      fetch it via GET to confirm it's really registered before proceeding.
+ *   3. Only a confirmed create-or-fetch success is treated as `ok: true`.
+ *
+ * This never assumes a beneficiary exists just because we previously computed
+ * the same deterministic ID — that assumption is what caused
+ * "beneficiary_not_found" on transfer/retry when the create step had silently
+ * failed (e.g. during the earlier /v2-URL "Token is not valid" outage).
+ */
+export async function cashfreePayoutEnsureBeneficiary(
+  clientId: string,
+  clientSecret: string,
+  env: CashfreePayoutEnv,
+  beneficiaryId: string,
+  input: PayoutCreateInput
+): Promise<EnsureBeneficiaryResult> {
+  try {
+    const created = await cashfreePayoutCreateBeneficiary(clientId, clientSecret, env, beneficiaryId, input);
+
+    if (created.httpStatus === 200 || created.httpStatus === 201) {
+      return { ok: true, beneficiaryId, httpStatus: created.httpStatus };
+    }
+
+    if (isBeneficiaryAlreadyExists(created.parsed, created.httpStatus)) {
+      // Already registered on Cashfree's side — fetch it to confirm before
+      // trusting it for a transfer, rather than assuming success.
+      const fetched = await cashfreePayoutGetBeneficiary(clientId, clientSecret, env, beneficiaryId);
+      if (fetched.httpStatus === 200) {
+        return { ok: true, beneficiaryId, httpStatus: fetched.httpStatus };
+      }
+      return {
+        ok: false,
+        beneficiaryId,
+        httpStatus: fetched.httpStatus,
+        subCode: String(fetched.parsed?.code ?? fetched.parsed?.subCode ?? fetched.parsed?.status_code ?? ""),
+        message: fetched.parsed?.message ?? fetched.parsed?.status_description ?? "Could not verify existing beneficiary",
+      };
+    }
+
+    return {
+      ok: false,
+      beneficiaryId,
+      httpStatus: created.httpStatus,
+      subCode: String(created.parsed?.code ?? created.parsed?.subCode ?? created.parsed?.status_code ?? ""),
+      message: created.parsed?.message ?? created.parsed?.status_description ?? "Cashfree beneficiary create failed",
+    };
+  } catch (err: any) {
+    // Network/connection error reaching Cashfree — never let this bubble up
+    // as an unhandled exception in the route handler.
+    return {
+      ok: false,
+      beneficiaryId,
+      httpStatus: 0,
+      message: err?.message ?? "Could not reach payout provider",
+    };
+  }
 }
 
 export async function cashfreePayoutCreateTransfer(
@@ -168,15 +267,27 @@ export async function cashfreePayoutCreateTransfer(
   const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
 
   const isUpi = Boolean(input.upiId?.trim());
-  const beneficiarySeed = isUpi
-    ? input.upiId!.trim()
-    : `${input.accountNumber ?? ""}_${input.ifsc ?? ""}`;
 
-  const beneficiaryId = cleanId(`BENE_${beneficiarySeed}`, 50);
-
-  const bene = await createBeneficiaryIfNeeded(clientId, clientSecret, env, beneficiaryId, input);
-  if (!bene.ok) {
-    return { raw: bene.raw, parsed: flattenV2Response(bene.parsed), httpStatus: bene.httpStatus };
+  let beneficiaryId = input.beneficiaryId?.trim();
+  if (!beneficiaryId) {
+    // Backward-compatible path (no pre-resolved beneficiary_id supplied):
+    // derive a deterministic ID and ensure it exists inline.
+    const beneficiarySeed = isUpi
+      ? input.upiId!.trim()
+      : `${input.accountNumber ?? ""}_${input.ifsc ?? ""}`;
+    beneficiaryId = cleanId(`BENE_${beneficiarySeed}`, 50);
+    const ensured = await cashfreePayoutEnsureBeneficiary(clientId, clientSecret, env, beneficiaryId, input);
+    if (!ensured.ok) {
+      return {
+        raw: "",
+        parsed: flattenV2Response({
+          status: "ERROR",
+          status_code: ensured.subCode,
+          message: ensured.message,
+        }),
+        httpStatus: ensured.httpStatus,
+      };
+    }
   }
 
   const transferId = cleanId(
@@ -189,9 +300,13 @@ export async function cashfreePayoutCreateTransfer(
     transfer_currency: "INR",
     transfer_mode: isUpi ? "upi" : "banktransfer",
     transfer_remarks: (input.remark ?? "RasoKart payout").replace(/[^A-Za-z0-9 ]/g, " ").slice(0, 70),
-    beneficiary_details: {
-      beneficiary_id: beneficiaryId,
-    },
+    beneficiary_details: isUpi
+      ? { beneficiary_id: beneficiaryId }
+      : {
+          beneficiary_id: beneficiaryId,
+          bank_account_number: input.accountNumber?.trim(),
+          bank_ifsc: input.ifsc?.trim(),
+        },
   };
 
   const res = await fetch(`${baseUrl}/transfers`, {

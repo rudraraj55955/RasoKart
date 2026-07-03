@@ -82,6 +82,8 @@ export default function AdminPayouts() {
           if (ts === "SUCCESS") toast.success("Payout approved and sent successfully");
           else if (fr?.startsWith("PAYOUT_CREDENTIAL_ERROR"))
             toast.error("Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings.");
+          else if (fr?.startsWith("PAYOUT_BENEFICIARY_ERROR"))
+            toast.error("Beneficiary setup failed. Check bank account/IFSC/name.");
           else if (ts === "FAILED" || ts === "REVERSED") toast.warning("Payout approved but transfer failed — check status");
           else toast.success("Payout approved — processing with provider");
           setConfirmApproveId(null);
@@ -128,7 +130,12 @@ export default function AdminPayouts() {
       {
         onSuccess: (result) => {
           const ts = (result as any)?.transferStatus;
+          const fr = (result as any)?.failureReason as string | null | undefined;
           if (ts === "SUCCESS") toast.success("Retry successful — payout sent");
+          else if (fr?.startsWith("PAYOUT_CREDENTIAL_ERROR"))
+            toast.error("Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings.");
+          else if (fr?.startsWith("PAYOUT_BENEFICIARY_ERROR"))
+            toast.error("Beneficiary setup failed. Check bank account/IFSC/name.");
           else toast.info(`Retry initiated — status: ${ts}`);
           invalidate();
         },
@@ -358,11 +365,15 @@ export default function AdminPayouts() {
                                   title={
                                     w.failureReason.startsWith("PAYOUT_CREDENTIAL_ERROR")
                                       ? "Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings."
+                                      : w.failureReason.startsWith("PAYOUT_BENEFICIARY_ERROR")
+                                      ? "Beneficiary setup failed. Check bank account/IFSC/name."
                                       : "Payout failed. Please retry or contact support."
                                   }
                                 >
                                   {w.failureReason.startsWith("PAYOUT_CREDENTIAL_ERROR")
                                     ? "⚠ Payout provider credentials invalid — fix in Gateway Settings"
+                                    : w.failureReason.startsWith("PAYOUT_BENEFICIARY_ERROR")
+                                    ? "⚠ Beneficiary setup failed. Check bank account/IFSC/name."
                                     : "Payout failed. Please retry or contact support."}
                                 </p>
                               )}
@@ -428,6 +439,18 @@ export default function AdminPayouts() {
                                     >
                                       <AlertTriangle className="w-4 h-4 mr-1" />
                                       Retry (fix creds first)
+                                    </Button>
+                                  ) : w.failureReason?.startsWith("PAYOUT_BENEFICIARY_ERROR") ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                                      onClick={() => handleRetry(w.id)}
+                                      disabled={retryMutation.isPending}
+                                      title="Beneficiary setup failed. Check bank account/IFSC/name, then retry."
+                                    >
+                                      <AlertTriangle className="w-4 h-4 mr-1" />
+                                      Retry (fix bank details first)
                                     </Button>
                                   ) : (
                                     <Button
