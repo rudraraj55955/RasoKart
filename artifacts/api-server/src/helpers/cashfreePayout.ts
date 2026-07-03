@@ -226,18 +226,24 @@ export type TestPayoutConnectionResult = {
   ok: boolean;
   message: string;
   safeReason?: PayoutSafeReason;
-  /** HTTP status from the provider — logged server-side only, never sent raw to client */
-  _httpStatus?: number;
+  /** Authorize URL that was called — safe to log server-side, never sent raw to client */
+  url?: string;
+  /** HTTP status from the provider — safe to log server-side, never sent raw to client */
+  httpStatus?: number;
   /** Low-level fetch error code — logged server-side only */
-  _fetchError?: string;
-  /** Provider status string — logged server-side only */
-  _providerStatus?: string;
-  /** Whether a token was present in the response — logged server-side only */
-  _hasToken?: boolean;
-  /** Provider subCode (e.g. "200", "401") — logged server-side only */
-  _providerSubCode?: string;
-  /** Authorize URL that was called — logged server-side only */
-  _url?: string;
+  fetchError?: string;
+  /** Provider status string (e.g. "SUCCESS", "ERROR") — safe to log server-side */
+  providerStatus?: string;
+  /** Whether a token was present in the response — logged server-side only, token itself is NEVER stored here */
+  hasToken?: boolean;
+  /** Provider subCode (e.g. "200", "401") — safe to log server-side */
+  subCode?: string;
+  /** Raw provider message (e.g. "Invalid ClientSecret") — safe to log server-side, never contains secrets */
+  providerMessage?: string;
+  /** Last 4 characters of the Client ID — safe to log for identification without exposing the full ID */
+  clientIdLast4?: string;
+  /** Length of the (trimmed) Client Secret — safe to log to confirm a non-empty/non-truncated value without exposing it */
+  secretLength?: number;
 };
 
 /**
@@ -272,13 +278,17 @@ export async function testPayoutConnection(
   // Trim whitespace — a stray space silently breaks auth
   const clientId = (rawClientId ?? "").trim();
   const clientSecret = (rawClientSecret ?? "").trim();
+  const clientIdLast4 = clientId.length >= 4 ? clientId.slice(-4) : clientId;
+  const secretLength = clientSecret.length;
 
   if (!clientId || !clientSecret) {
     return {
       ok: false,
       message: "Client ID and Secret must both be set before testing",
       safeReason: "invalid_client_id",
-      _httpStatus: 0,
+      httpStatus: 0,
+      clientIdLast4,
+      secretLength,
     };
   }
 
@@ -316,9 +326,11 @@ export async function testPayoutConnection(
         ? "Could not reach Cashfree Payout servers — check server network or firewall"
         : "Unexpected error contacting payout provider",
       safeReason: "provider_unreachable",
-      _httpStatus: 0,
-      _fetchError: fetchError,
-      _url: authorizeUrl,
+      httpStatus: 0,
+      fetchError,
+      url: authorizeUrl,
+      clientIdLast4,
+      secretLength,
     };
   }
 
@@ -326,10 +338,11 @@ export async function testPayoutConnection(
 
   const providerStatus = String(parsed?.status ?? "").toUpperCase();
   const hasToken = !!(parsed?.data?.token || parsed?.token);
-  // Normalise the provider message for keyword matching
-  const msgLower = String(
+  // Raw provider message — safe to log, never contains the secret/token itself
+  const providerMessage = String(
     parsed?.message ?? parsed?.error ?? parsed?.msg ?? parsed?.status_description ?? ""
-  ).toLowerCase();
+  ).trim();
+  const msgLower = providerMessage.toLowerCase();
   const subCode = String(
     parsed?.subCode ?? parsed?.sub_code ?? parsed?.status_code ?? parsed?.statusCode ?? ""
   ).trim();
@@ -349,11 +362,14 @@ export async function testPayoutConnection(
     return {
       ok: true,
       message: "Credentials verified",
-      _httpStatus: httpStatus,
-      _providerStatus: providerStatus,
-      _hasToken: hasToken,
-      _providerSubCode: subCode,
-      _url: authorizeUrl,
+      httpStatus,
+      providerStatus,
+      hasToken,
+      subCode,
+      providerMessage,
+      url: authorizeUrl,
+      clientIdLast4,
+      secretLength,
     };
   }
 
@@ -374,10 +390,13 @@ export async function testPayoutConnection(
         ? "IP address is not whitelisted — add the server IP in Cashfree Payout dashboard → Settings → Whitelisted IPs"
         : "Access forbidden — check IP whitelist in Cashfree Payout dashboard",
       safeReason: "ip_not_whitelisted",
-      _httpStatus: httpStatus,
-      _providerStatus: providerStatus,
-      _providerSubCode: subCode,
-      _url: authorizeUrl,
+      httpStatus,
+      providerStatus,
+      subCode,
+      providerMessage,
+      url: authorizeUrl,
+      clientIdLast4,
+      secretLength,
     };
   }
 
@@ -396,10 +415,13 @@ export async function testPayoutConnection(
         ok: false,
         message: "Payout service is not enabled on this account — contact Cashfree to activate payouts",
         safeReason: "wrong_environment",
-        _httpStatus: httpStatus,
-        _providerStatus: providerStatus,
-        _providerSubCode: subCode,
-        _url: authorizeUrl,
+        httpStatus,
+        providerStatus,
+        subCode,
+        providerMessage,
+        url: authorizeUrl,
+        clientIdLast4,
+        secretLength,
       };
     }
     return {
@@ -408,10 +430,13 @@ export async function testPayoutConnection(
         ? "Wrong environment — ensure the Environment toggle (Test/Live) matches your credentials"
         : "Bad request — verify credentials and environment setting",
       safeReason: isWrongEnv ? "wrong_environment" : "unknown",
-      _httpStatus: httpStatus,
-      _providerStatus: providerStatus,
-      _providerSubCode: subCode,
-      _url: authorizeUrl,
+      httpStatus,
+      providerStatus,
+      subCode,
+      providerMessage,
+      url: authorizeUrl,
+      clientIdLast4,
+      secretLength,
     };
   }
 
@@ -432,10 +457,13 @@ export async function testPayoutConnection(
         ok: false,
         message: "Client Secret is invalid — re-enter the Cashfree Payout Client Secret",
         safeReason: "invalid_client_secret",
-        _httpStatus: httpStatus,
-        _providerStatus: providerStatus,
-        _providerSubCode: subCode,
-        _url: authorizeUrl,
+        httpStatus,
+        providerStatus,
+        subCode,
+        providerMessage,
+        url: authorizeUrl,
+        clientIdLast4,
+        secretLength,
       };
     }
     if (
@@ -448,10 +476,13 @@ export async function testPayoutConnection(
         ok: false,
         message: "Client ID is invalid — re-enter the Cashfree Payout Client ID",
         safeReason: "invalid_client_id",
-        _httpStatus: httpStatus,
-        _providerStatus: providerStatus,
-        _providerSubCode: subCode,
-        _url: authorizeUrl,
+        httpStatus,
+        providerStatus,
+        subCode,
+        providerMessage,
+        url: authorizeUrl,
+        clientIdLast4,
+        secretLength,
       };
     }
     // Generic 401 / ERROR — most likely bad credentials
@@ -459,10 +490,13 @@ export async function testPayoutConnection(
       ok: false,
       message: "Invalid credentials — verify the Cashfree Payout Client ID and Secret",
       safeReason: "invalid_client_id",
-      _httpStatus: httpStatus,
-      _providerStatus: providerStatus,
-      _providerSubCode: subCode,
-      _url: authorizeUrl,
+      httpStatus,
+      providerStatus,
+      subCode,
+      providerMessage,
+      url: authorizeUrl,
+      clientIdLast4,
+      secretLength,
     };
   }
 
@@ -472,10 +506,13 @@ export async function testPayoutConnection(
       ok: false,
       message: "Cashfree Payout service is currently unavailable — try again in a few minutes",
       safeReason: "provider_unreachable",
-      _httpStatus: httpStatus,
-      _providerStatus: providerStatus,
-      _providerSubCode: subCode,
-      _url: authorizeUrl,
+      httpStatus,
+      providerStatus,
+      subCode,
+      providerMessage,
+      url: authorizeUrl,
+      clientIdLast4,
+      secretLength,
     };
   }
 
@@ -484,8 +521,12 @@ export async function testPayoutConnection(
     ok: false,
     message: "Credential check failed — verify Client ID, Secret, and environment",
     safeReason: "unknown",
-    _httpStatus: httpStatus,
-    _providerStatus: providerStatus,
-    _providerSubCode: subCode,
+    httpStatus,
+    providerStatus,
+    subCode,
+    providerMessage,
+    url: authorizeUrl,
+    clientIdLast4,
+    secretLength,
   };
 }

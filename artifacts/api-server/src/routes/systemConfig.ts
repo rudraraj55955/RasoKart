@@ -1366,29 +1366,28 @@ router.post("/cashfree-payout/test-connection", async (req, res, next) => {
     const clientIdTrimmed = clientId.trim();
     const result = await testPayoutConnection(clientIdTrimmed, decrypted.value, env);
 
-    // Safe log only — ok, env, url, statusCode, providerStatus, subCode, message.
-    // NEVER log clientSecret, token, raw response, or full headers.
+    // Safe log only — ok, env, url, httpStatus, providerStatus, subCode, providerMessage,
+    // clientIdLast4, secretLength. NEVER log clientSecret, token, or raw response body.
     req.log.info({
       ok: result.ok,
       env,
-      url: result._url,
-      statusCode: result._httpStatus,
-      providerStatus: result._providerStatus,
-      subCode: result._providerSubCode,
-      message: result.message,
+      url: result.url,
+      httpStatus: result.httpStatus,
+      providerStatus: result.providerStatus,
+      subCode: result.subCode,
+      providerMessage: result.providerMessage,
+      clientIdLast4: result.clientIdLast4,
+      secretLength: result.secretLength,
     }, "cashfree_payout_credentials_tested");
 
-    // Strip all internal/provider-prefixed fields before sending to client — never
-    // expose token, raw provider response, secret, or the authorize URL.
-    // On failure, surface statusCode/subCode/providerMessage for admin diagnosis only.
-    const { _httpStatus, _fetchError: _f, _providerStatus, _hasToken: _t, _providerSubCode, _url: _u, ...clientResult } = result;
+    // Strip internal-only fields before sending to client — never expose token,
+    // raw provider response, secret, the authorize URL, or fetchError detail.
+    // On failure, surface httpStatus/subCode/providerMessage for admin diagnosis only.
+    const { url: _u, fetchError: _f, hasToken: _t, ...clientResult } = result;
     if (!result.ok) {
       res.json({
         ...clientResult,
         message: "Credential check failed",
-        statusCode: _httpStatus,
-        subCode: _providerSubCode,
-        providerMessage: result.message,
       });
       return;
     }
