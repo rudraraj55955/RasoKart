@@ -1,15 +1,21 @@
 export type CashfreePayoutEnv = "test" | "live";
 
 /**
- * Cashfree Payout V2 base URLs (environment-specific).
- * - test/sandbox: https://sandbox.cashfree.com/payout/v2
- * - live:         https://api.cashfree.com/payout/v2
+ * Cashfree Payouts V2 Standard Transfer base URLs (environment-specific).
+ * - test/sandbox: https://sandbox.cashfree.com/payout
+ * - live:         https://api.cashfree.com/payout
  *
- * Used for all V2 operations: beneficiary creation, transfer creation, transfer status.
+ * IMPORTANT: do NOT append "/v2" to the path — the "v2" contract is selected
+ * via the `x-api-version: 2024-01-01` header, not a URL segment. Calling
+ * ".../payout/v2/..." hits a legacy route that expects a Bearer token and
+ * returns "Token is not valid" even with correct x-client-id/x-client-secret.
+ *
+ * Used for all Standard Transfer operations: beneficiary creation, transfer
+ * creation, transfer status. No Bearer token, no /payout/v1/authorize call.
  */
 const PAYOUT_BASE_URLS: Record<CashfreePayoutEnv, string> = {
-  test: "https://sandbox.cashfree.com/payout/v2",
-  live: "https://api.cashfree.com/payout/v2",
+  test: "https://sandbox.cashfree.com/payout",
+  live: "https://api.cashfree.com/payout",
 };
 
 /**
@@ -34,10 +40,21 @@ type PayoutCreateInput = {
   remark?: string;
 };
 
+/**
+ * Map a Cashfree Standard Transfer `status` to our internal transfer status.
+ *
+ * IMPORTANT: "RECEIVED" / "ACKNOWLEDGED" mean Cashfree has accepted the
+ * transfer request for processing — NOT that funds were disbursed. These
+ * must map to PENDING, never SUCCESS, or a payout could be marked settled
+ * before money actually moves.
+ *   SUCCESS            -> SUCCESS
+ *   PENDING/RECEIVED/PROCESSING/ACKNOWLEDGED -> PENDING
+ *   FAILED/REJECTED/anything else            -> FAILED
+ */
 export function normalizeCashfreePayoutStatus(status?: string | null): "PENDING" | "SUCCESS" | "FAILED" {
   const s = String(status ?? "").trim().toUpperCase();
-  if (["SUCCESS", "COMPLETED", "PROCESSED", "TRANSFER_SUCCESS", "ACKNOWLEDGED", "RECEIVED"].includes(s)) return "SUCCESS";
-  if (["PENDING", "PROCESSING", "IN_PROGRESS", "QUEUED", "APPROVAL_PENDING", "VALIDATION_PENDING"].includes(s)) return "PENDING";
+  if (["SUCCESS", "COMPLETED", "PROCESSED", "TRANSFER_SUCCESS"].includes(s)) return "SUCCESS";
+  if (["PENDING", "PROCESSING", "IN_PROGRESS", "QUEUED", "APPROVAL_PENDING", "VALIDATION_PENDING", "RECEIVED", "ACKNOWLEDGED"].includes(s)) return "PENDING";
   return "FAILED";
 }
 
@@ -140,11 +157,14 @@ async function createBeneficiaryIfNeeded(
 }
 
 export async function cashfreePayoutCreateTransfer(
-  clientId: string,
-  clientSecret: string,
+  rawClientId: string,
+  rawClientSecret: string,
   env: CashfreePayoutEnv,
   input: PayoutCreateInput
 ): Promise<{ raw: string; parsed: any; httpStatus: number }> {
+  // Trim whitespace — a stray space silently breaks auth on the transfer call too
+  const clientId = (rawClientId ?? "").trim();
+  const clientSecret = (rawClientSecret ?? "").trim();
   const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
 
   const isUpi = Boolean(input.upiId?.trim());
@@ -190,11 +210,14 @@ export async function cashfreePayoutCreateTransfer(
 }
 
 export async function cashfreePayoutGetTransferStatus(
-  clientId: string,
-  clientSecret: string,
+  rawClientId: string,
+  rawClientSecret: string,
   env: CashfreePayoutEnv,
   referenceId: string
 ) {
+  // Trim whitespace — a stray space silently breaks auth on the status call too
+  const clientId = (rawClientId ?? "").trim();
+  const clientSecret = (rawClientSecret ?? "").trim();
   const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
   const url = new URL(`${baseUrl}/transfers`);
   url.searchParams.set("transfer_id", referenceId);

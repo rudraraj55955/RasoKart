@@ -358,12 +358,12 @@ export default function AdminPayouts() {
                                   title={
                                     w.failureReason.startsWith("PAYOUT_CREDENTIAL_ERROR")
                                       ? "Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings."
-                                      : w.failureReason
+                                      : "Payout failed. Please retry or contact support."
                                   }
                                 >
                                   {w.failureReason.startsWith("PAYOUT_CREDENTIAL_ERROR")
                                     ? "⚠ Payout provider credentials invalid — fix in Gateway Settings"
-                                    : w.failureReason}
+                                    : "Payout failed. Please retry or contact support."}
                                 </p>
                               )}
                             </TableCell>

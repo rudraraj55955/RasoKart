@@ -47,8 +47,8 @@ async function getPayoutConfig() {
   const rawSecret = cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "";
   const decrypted = decryptSecret(rawSecret);
   return {
-    clientId: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID) ?? "",
-    clientSecret: decrypted.ok ? decrypted.value : "",
+    clientId: (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID) ?? "").trim(),
+    clientSecret: decrypted.ok ? decrypted.value.trim() : "",
     clientSecretDecryptOk: decrypted.ok,
     env: (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv,
     enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) === "true",
@@ -365,6 +365,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     req.log.warn({ withdrawalId: id }, "cashfree_payout_skipped_no_config");
   } else {
     const transferId = `RKPAY_${id}_${Date.now()}`;
+    const mode = claimed.payoutMode === "UPI" ? "upi" : "banktransfer";
     try {
       const result = await cashfreePayoutCreateTransfer(
         cfg.clientId,
@@ -381,8 +382,24 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
           remark: `Payout #${id}`,
         }
       );
-      providerReferenceId = transferId;
+      // Prefer the provider's own reference (cf_transfer_id) when returned;
+      // fall back to our own transfer_id if the provider didn't echo one.
+      providerReferenceId = result.parsed?.referenceId ?? transferId;
       const normalized = normalizeCashfreePayoutStatus(result.parsed?.status);
+
+      // Safe log only — transferId, mode, amount, httpStatus, providerStatus,
+      // subCode, providerMessage. NEVER clientSecret, token, or raw response.
+      req.log.info({
+        withdrawalId: id,
+        transferId,
+        mode,
+        amount: amt,
+        httpStatus: result.httpStatus,
+        providerStatus: result.parsed?.status,
+        subCode: result.parsed?.subCode,
+        providerMessage: result.parsed?.message,
+      }, "payout_transfer_attempted");
+
       if (isPayoutCredentialError(result.parsed, result.httpStatus)) {
         // Credential error from provider — mark FAILED so hold is released and admin sees clear message
         transferStatus = "FAILED";
@@ -779,6 +796,9 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   let utr: string | null = null;
   let failureReason: string | null = null;
 
+  const retryMode = w.payoutMode === "UPI" ? "upi" : "banktransfer";
+  let providerReferenceId: string = newTransferId;
+
   try {
     const result = await cashfreePayoutCreateTransfer(
       cfg.clientId,
@@ -795,7 +815,24 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
         remark: `Payout #${id} retry`,
       }
     );
+    // Prefer the provider's own reference (cf_transfer_id) when returned;
+    // fall back to our own transfer_id if the provider didn't echo one.
+    providerReferenceId = result.parsed?.referenceId ?? newTransferId;
     const normalized = normalizeCashfreePayoutStatus(result.parsed?.status);
+
+    // Safe log only — transferId, mode, amount, httpStatus, providerStatus,
+    // subCode, providerMessage. NEVER clientSecret, token, or raw response.
+    req.log.info({
+      withdrawalId: id,
+      transferId: newTransferId,
+      mode: retryMode,
+      amount: amt,
+      httpStatus: result.httpStatus,
+      providerStatus: result.parsed?.status,
+      subCode: result.parsed?.subCode,
+      providerMessage: result.parsed?.message,
+    }, "payout_transfer_attempted");
+
     if (isPayoutCredentialError(result.parsed, result.httpStatus)) {
       transferStatus = "FAILED";
       failureReason = `PAYOUT_CREDENTIAL_ERROR: ${result.parsed?.message ?? "Invalid payout Client ID or Secret"}`;
@@ -823,7 +860,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     .update(withdrawalsTable)
     .set({
       transferStatus,
-      providerReferenceId: newTransferId,
+      providerReferenceId,
       utr,
       failureReason,
       completedAt: isTerminal ? now : null,
