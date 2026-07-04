@@ -160,7 +160,7 @@ export async function ensureBeneficiaryProviderRegistered(
     mode: beneficiaryRow.payoutMode,
   };
 
-  req.log.info(logCtx, "payout_beneficiary_create_started");
+  req.log.info(logCtx, "payout_beneficiary_create_request_started");
 
   const ensured = await cashfreePayoutEnsureBeneficiary(clientId, clientSecret, env, localBeneficiaryId, {
     beneficiaryName: beneficiaryRow.accountHolder ?? undefined,
@@ -169,6 +169,14 @@ export async function ensureBeneficiaryProviderRegistered(
     upiId: beneficiaryRow.payoutMode === "UPI" ? (beneficiaryRow.upiId ?? undefined) : undefined,
     amount: 0,
   });
+
+  // Logged unconditionally right after the create call returns, before any
+  // pass/fail decision is made — records only the safe httpStatus/subCode,
+  // never the raw provider response body.
+  req.log.info(
+    { ...logCtx, httpStatus: ensured.httpStatus, subCode: ensured.subCode },
+    "payout_beneficiary_create_response_received"
+  );
 
   if (!ensured.ok && ensured.stage === "create") {
     req.log.warn(
@@ -188,7 +196,6 @@ export async function ensureBeneficiaryProviderRegistered(
     return { ok: false, message: safeMessage };
   }
 
-  req.log.info({ ...logCtx, httpStatus: ensured.httpStatus }, "payout_beneficiary_create_success");
   req.log.info(logCtx, "payout_beneficiary_verify_started");
 
   if (!ensured.ok && ensured.stage === "verify") {

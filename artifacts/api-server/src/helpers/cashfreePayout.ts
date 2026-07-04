@@ -286,11 +286,23 @@ export async function cashfreePayoutVerifyBeneficiaryWithRetry(
 
   for (let i = 0; i < attempts; i++) {
     const fetched = await cashfreePayoutGetBeneficiary(clientId, clientSecret, env, beneficiaryId);
-    if (fetched.httpStatus === 200) {
+
+    // A 200 status alone is not sufficient proof. Cashfree's GET beneficiary
+    // response must actually echo back the same beneficiary_id (and must not
+    // itself be an error payload with an empty/mismatched body) — otherwise a
+    // malformed or unexpectedly-shaped 200 could be trusted as "verified"
+    // when the beneficiary was never really created on the provider side.
+    const echoedId = String(fetched.parsed?.beneficiary_id ?? "").trim();
+    const bodyLooksValid = echoedId.length > 0 && echoedId === beneficiaryId;
+
+    if (fetched.httpStatus === 200 && bodyLooksValid) {
       return { ok: true, httpStatus: fetched.httpStatus, attempts: i + 1 };
     }
+
     lastHttpStatus = fetched.httpStatus;
-    lastSubCode = String(fetched.parsed?.code ?? fetched.parsed?.subCode ?? fetched.parsed?.status_code ?? "");
+    lastSubCode = fetched.httpStatus === 200 && !bodyLooksValid
+      ? "verify_response_id_mismatch"
+      : String(fetched.parsed?.code ?? fetched.parsed?.subCode ?? fetched.parsed?.status_code ?? "");
     if (i < attempts - 1) {
       await new Promise((resolve) => setTimeout(resolve, delayMs * (i + 1)));
     }

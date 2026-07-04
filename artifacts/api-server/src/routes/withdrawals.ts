@@ -473,7 +473,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
       failureReason = bene.message ?? "Beneficiary setup failed. Please re-register beneficiary.";
       req.log.warn(
         { withdrawalId: id, merchantId: claimed.merchantId, accountMasked },
-        "payout_transfer_create_skipped_beneficiary_invalid"
+        "payout_transfer_create_skipped_beneficiary_not_verified"
       );
     } else {
     try {
@@ -956,7 +956,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     failureReason = retryBene.message ?? "Beneficiary setup failed. Please re-register beneficiary.";
     req.log.warn(
       { withdrawalId: id, merchantId: w.merchantId, accountMasked: retryAccountMasked },
-      "payout_transfer_create_skipped_beneficiary_invalid"
+      "payout_transfer_create_skipped_beneficiary_not_verified"
     );
   } else {
   try {
