@@ -7,6 +7,9 @@
  * extra environment variable is needed. If SESSION_SECRET changes, any
  * previously-encrypted values will fail to decrypt (return ok:false).
  *
+ * SESSION_SECRET is required — there is no hardcoded fallback key, since a
+ * known default would make any stored provider secret trivially decryptable.
+ *
  * Plain-text values (stored before encryption was introduced) are detected
  * automatically: if the stored string does NOT start with "enc:v1:", it is
  * returned as-is so old credentials continue to work until re-saved.
@@ -18,7 +21,10 @@ const ALGO = "aes-256-gcm";
 const PREFIX = "enc:v1:";
 
 function getKey(): Buffer {
-  const secret = process.env["SESSION_SECRET"] ?? "rasokart-secret-key-change-in-production";
+  const secret = process.env["SESSION_SECRET"];
+  if (!secret) {
+    throw new Error("SESSION_SECRET must be set to encrypt/decrypt stored provider secrets");
+  }
   return createHash("sha256").update(secret).digest();
 }
 
