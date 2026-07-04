@@ -1,4 +1,4 @@
-import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes, useGetGithubSyncStatus, useGetDashboardWebhookHealth, useGetEkqrWebhookStats, useGetMerchantsEmailOptOutStats } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes, useGetGithubSyncStatus, useGetGithubSyncHistory, useGetDashboardWebhookHealth, useGetEkqrWebhookStats, useGetMerchantsEmailOptOutStats } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap, Github, Webhook, Radio, MailX } from "lucide-react";
@@ -30,6 +30,7 @@ export default function AdminDashboard() {
   const { data: reconSummary } = useGetDashboardReconSummary();
   const { data: providerVolumes, isLoading: pvLoading } = useGetDashboardProviderVolumes();
   const { data: githubSync } = useGetGithubSyncStatus();
+  const { data: githubSyncHistory } = useGetGithubSyncHistory();
   const { data: webhookHealth } = useGetDashboardWebhookHealth();
   const { data: ekqrStats } = useGetEkqrWebhookStats();
   const { data: emailOptOut } = useGetMerchantsEmailOptOutStats();
@@ -405,6 +406,26 @@ export default function AdminDashboard() {
                   {isFailure && githubSync.errorMessage && (
                     <p className="text-xs text-rose-400 mt-1 truncate" title={githubSync.errorMessage}>{githubSync.errorMessage}</p>
                   )}
+                  {githubSyncHistory && githubSyncHistory.entries.length > 0 && (() => {
+                    const recent = githubSyncHistory.entries.slice(0, 10);
+                    const succeeded = recent.filter((e) => e.status === "success").length;
+                    return (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {succeeded}/{recent.length} runs succeeded in the last {recent.length} runs
+                        </span>
+                        <div className="flex items-center gap-0.5">
+                          {recent.slice().reverse().map((entry, i) => (
+                            <span
+                              key={i}
+                              title={`${entry.status === "success" ? "Success" : "Failed"} — ${format(new Date(entry.syncedAt), "MMM d, h:mm a")}${entry.errorMessage ? `: ${entry.errorMessage}` : ""}`}
+                              className={`inline-block w-1.5 h-4 rounded-sm ${entry.status === "failure" ? "bg-rose-500" : "bg-emerald-500/60"}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </CardContent>
