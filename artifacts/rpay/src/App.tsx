@@ -271,6 +271,7 @@ function Router() {
       <Route path="/admin/payment-links"><AdminRoute component={AdminPaymentLinks} /></Route>
       <Route path="/admin/settings"><AdminRoute component={AdminSettings} /></Route>
       <Route path="/admin/payment-gateways"><AdminRoute component={AdminPaymentGateways} /></Route>
+      <Route path="/admin/payin-gateway"><AdminRoute component={AdminPaymentGateway} /></Route>
       <Route path="/admin/payment-gateway"><AdminRoute component={AdminPaymentGateway} /></Route>
       <Route path="/admin/payout-gateway"><AdminRoute component={AdminPayoutGateway} /></Route>
       <Route path="/admin/provider-integrations"><AdminRoute component={AdminProviderIntegrations} /></Route>

@@ -4070,6 +4070,24 @@ export interface CashfreeGatewayConfig {
   env: CashfreeGatewayConfigEnv;
   /** Whether a webhook signature secret has been configured */
   webhookSecretSet: boolean;
+  /** Optional custom Cashfree base URL override */
+  baseUrl?: string;
+  /** Cashfree API version header value */
+  apiVersion?: string;
+  /** Whether UPI payin is enabled */
+  upiEnabled?: boolean;
+  /** Whether QR payin is enabled */
+  qrEnabled?: boolean;
+  /** Whether payment-link payin is enabled */
+  paymentLinksEnabled?: boolean;
+  /** Whether merchants can create payin deposit orders */
+  merchantPayinEnabled?: boolean;
+  /** Minimum allowed payin amount */
+  minAmount?: number;
+  /** Maximum allowed payin amount */
+  maxAmount?: number;
+  /** Maximum total payin amount per merchant per day */
+  dailyLimit?: number;
 }
 
 /**
@@ -4094,6 +4112,87 @@ export interface CashfreeGatewayConfigInput {
   enabled?: boolean;
   /** Cashfree environment */
   env?: CashfreeGatewayConfigInputEnv;
+  /** Optional custom Cashfree base URL override (empty string to clear) */
+  baseUrl?: string;
+  /** Cashfree API version header value */
+  apiVersion?: string;
+  upiEnabled?: boolean;
+  qrEnabled?: boolean;
+  paymentLinksEnabled?: boolean;
+  merchantPayinEnabled?: boolean;
+  minAmount?: number;
+  maxAmount?: number;
+  dailyLimit?: number;
+}
+
+export type CashfreeTestCreateOrderResultEnv = typeof CashfreeTestCreateOrderResultEnv[keyof typeof CashfreeTestCreateOrderResultEnv];
+
+
+export const CashfreeTestCreateOrderResultEnv = {
+  test: 'test',
+  live: 'live',
+} as const;
+
+export interface CashfreeTestCreateOrderResult {
+  ok: boolean;
+  message: string;
+  env?: CashfreeTestCreateOrderResultEnv;
+}
+
+export type PayinOrderCreateResultStatus = typeof PayinOrderCreateResultStatus[keyof typeof PayinOrderCreateResultStatus];
+
+
+export const PayinOrderCreateResultStatus = {
+  created: 'created',
+} as const;
+
+export interface PayinOrderCreateResult {
+  /** RasoKart-branded order identifier (RKPAYIN_...) */
+  publicOrderId: string;
+  /** Opaque token used to render the RasoKart Secure Checkout — never a raw provider identifier */
+  paymentToken: string;
+  amount: number;
+  status: PayinOrderCreateResultStatus;
+  checkoutLabel: string;
+  message: string;
+}
+
+export interface PayinOrderStatus {
+  publicOrderId: string;
+  amount: number;
+  status: string;
+  /** UTR — only populated once status is "paid" */
+  utr?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export interface PayinOrderStatusCheck {
+  enabled: boolean;
+  minAmount: number;
+  maxAmount: number;
+}
+
+export interface AdminPayinOrderRow {
+  id: number;
+  publicOrderId?: string | null;
+  merchantId: number;
+  merchantName?: string | null;
+  amount: string;
+  currency: string;
+  status: string;
+  paymentMethod?: string | null;
+  utr?: string | null;
+  failureReason?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export interface AdminPayinOrdersResponse {
+  orders: AdminPayinOrderRow[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 /**
@@ -6446,6 +6545,31 @@ export type UpdateGithubSyncConfigBody = {
 export type ListCashfreePaymentLogsParams = {
 page?: number;
 limit?: number;
+};
+
+export type CreatePayinOrderBody = {
+  amount: number;
+  customerPhone: string;
+  customerName?: string;
+  customerEmail?: string;
+};
+
+export type ListAdminPayinOrdersParams = {
+page?: number;
+pageSize?: number;
+status?: string;
+merchantId?: string;
+search?: string;
+dateFrom?: string;
+dateTo?: string;
+};
+
+export type ExportAdminPayinOrdersCsvParams = {
+status?: string;
+merchantId?: string;
+search?: string;
+dateFrom?: string;
+dateTo?: string;
 };
 
 export type CreateCashfreeOrderBody = {

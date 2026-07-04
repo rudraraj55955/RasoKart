@@ -7244,7 +7244,16 @@ export const GetCashfreeConfigResponse = zod.object({
   "clientSecretSet": zod.boolean().describe('Whether a Cashfree Client Secret has been configured'),
   "enabled": zod.boolean().describe('Whether Cashfree gateway is enabled'),
   "env": zod.enum(['test', 'live']).describe('Cashfree environment (test = sandbox, live = production)'),
-  "webhookSecretSet": zod.boolean().describe('Whether a webhook signature secret has been configured')
+  "webhookSecretSet": zod.boolean().describe('Whether a webhook signature secret has been configured'),
+  "baseUrl": zod.string().optional().describe('Optional custom Cashfree base URL override'),
+  "apiVersion": zod.string().optional().describe('Cashfree API version header value'),
+  "upiEnabled": zod.boolean().optional().describe('Whether UPI payin is enabled'),
+  "qrEnabled": zod.boolean().optional().describe('Whether QR payin is enabled'),
+  "paymentLinksEnabled": zod.boolean().optional().describe('Whether payment-link payin is enabled'),
+  "merchantPayinEnabled": zod.boolean().optional().describe('Whether merchants can create payin deposit orders'),
+  "minAmount": zod.number().optional().describe('Minimum allowed payin amount'),
+  "maxAmount": zod.number().optional().describe('Maximum allowed payin amount'),
+  "dailyLimit": zod.number().optional().describe('Maximum total payin amount per merchant per day')
 })
 
 
@@ -7256,7 +7265,16 @@ export const UpdateCashfreeConfigBody = zod.object({
   "clientSecret": zod.string().optional().describe('Cashfree Client Secret (omit to leave unchanged, empty string to clear)'),
   "webhookSecret": zod.string().optional().describe('Cashfree webhook signature secret (omit to leave unchanged, empty string to clear)'),
   "enabled": zod.boolean().optional().describe('Whether to enable\/disable Cashfree gateway'),
-  "env": zod.enum(['test', 'live']).optional().describe('Cashfree environment')
+  "env": zod.enum(['test', 'live']).optional().describe('Cashfree environment'),
+  "baseUrl": zod.string().optional().describe('Optional custom Cashfree base URL override (empty string to clear)'),
+  "apiVersion": zod.string().optional().describe('Cashfree API version header value'),
+  "upiEnabled": zod.boolean().optional(),
+  "qrEnabled": zod.boolean().optional(),
+  "paymentLinksEnabled": zod.boolean().optional(),
+  "merchantPayinEnabled": zod.boolean().optional(),
+  "minAmount": zod.number().optional(),
+  "maxAmount": zod.number().optional(),
+  "dailyLimit": zod.number().optional()
 })
 
 export const UpdateCashfreeConfigResponse = zod.object({
@@ -7265,7 +7283,16 @@ export const UpdateCashfreeConfigResponse = zod.object({
   "clientSecretSet": zod.boolean().describe('Whether a Cashfree Client Secret has been configured'),
   "enabled": zod.boolean().describe('Whether Cashfree gateway is enabled'),
   "env": zod.enum(['test', 'live']).describe('Cashfree environment (test = sandbox, live = production)'),
-  "webhookSecretSet": zod.boolean().describe('Whether a webhook signature secret has been configured')
+  "webhookSecretSet": zod.boolean().describe('Whether a webhook signature secret has been configured'),
+  "baseUrl": zod.string().optional().describe('Optional custom Cashfree base URL override'),
+  "apiVersion": zod.string().optional().describe('Cashfree API version header value'),
+  "upiEnabled": zod.boolean().optional().describe('Whether UPI payin is enabled'),
+  "qrEnabled": zod.boolean().optional().describe('Whether QR payin is enabled'),
+  "paymentLinksEnabled": zod.boolean().optional().describe('Whether payment-link payin is enabled'),
+  "merchantPayinEnabled": zod.boolean().optional().describe('Whether merchants can create payin deposit orders'),
+  "minAmount": zod.number().optional().describe('Minimum allowed payin amount'),
+  "maxAmount": zod.number().optional().describe('Maximum allowed payin amount'),
+  "dailyLimit": zod.number().optional().describe('Maximum total payin amount per merchant per day')
 })
 
 
@@ -7310,6 +7337,112 @@ export const ListCashfreePaymentLogsResponse = zod.object({
   "total": zod.number(),
   "page": zod.number(),
   "limit": zod.number()
+})
+
+
+/**
+ * @summary Test saved Cashfree Payin credentials by creating a small sanitized test order (admin only)
+ */
+export const TestCashfreeCreateOrderResponse = zod.object({
+  "ok": zod.boolean(),
+  "message": zod.string(),
+  "env": zod.enum(['test', 'live']).optional()
+})
+
+
+/**
+ * @summary Whether RasoKart UPI deposits are available to the current merchant
+ */
+export const GetPayinStatusResponse = zod.object({
+  "enabled": zod.boolean(),
+  "minAmount": zod.number(),
+  "maxAmount": zod.number()
+})
+
+
+/**
+ * @summary Create a RasoKart UPI deposit order (merchant only, white-label)
+ */
+export const CreatePayinOrderBody = zod.object({
+  "amount": zod.number(),
+  "customerPhone": zod.string(),
+  "customerName": zod.string().optional(),
+  "customerEmail": zod.string().optional()
+})
+
+export const CreatePayinOrderResponse = zod.object({
+  "publicOrderId": zod.string().describe('RasoKart-branded order identifier (RKPAYIN_...)'),
+  "paymentToken": zod.string().describe('Opaque token used to render the RasoKart Secure Checkout — never a raw provider identifier'),
+  "amount": zod.number(),
+  "status": zod.enum(['created']),
+  "checkoutLabel": zod.string(),
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Get a RasoKart UPI deposit order's status (merchant only, white-label)
+ */
+export const GetPayinOrderStatusParams = zod.object({
+  "publicOrderId": zod.coerce.string()
+})
+
+export const GetPayinOrderStatusResponse = zod.object({
+  "publicOrderId": zod.string(),
+  "amount": zod.number(),
+  "status": zod.string(),
+  "utr": zod.string().nullish().describe('UTR — only populated once status is \"paid\"'),
+  "paidAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List Payin deposit orders across all merchants (admin only)
+ */
+export const listAdminPayinOrdersQueryPageDefault = 1;
+export const listAdminPayinOrdersQueryPageSizeDefault = 20;
+
+export const ListAdminPayinOrdersQueryParams = zod.object({
+  "page": zod.coerce.number().default(listAdminPayinOrdersQueryPageDefault),
+  "pageSize": zod.coerce.number().default(listAdminPayinOrdersQueryPageSizeDefault),
+  "status": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional()
+})
+
+export const ListAdminPayinOrdersResponse = zod.object({
+  "orders": zod.array(zod.object({
+  "id": zod.number(),
+  "publicOrderId": zod.string().nullish(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "amount": zod.string(),
+  "currency": zod.string(),
+  "status": zod.string(),
+  "paymentMethod": zod.string().nullish(),
+  "utr": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "paidAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "pageSize": zod.number()
+})
+
+
+/**
+ * @summary Export Payin deposit orders as CSV (admin only)
+ */
+export const ExportAdminPayinOrdersCsvQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional()
 })
 
 

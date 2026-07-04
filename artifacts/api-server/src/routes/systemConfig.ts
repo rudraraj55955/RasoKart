@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, auditLogsTable, signatureFailureAlertLogsTable, webhookFailureAlertLogsTable, storageCleanupRunsTable, uploadedObjectsTable, merchantsTable, merchantConnectionsTable, qrCodesTable, cashfreePaymentOrdersTable, cashfreePayoutsTable } from "@workspace/db";
 import { ekqrCreateOrder, ekqrClientTxnId } from "../helpers/ekqr";
 import { testPayoutConnection, cashfreePayoutGetTransferStatus, normalizeCashfreePayoutStatus, type CashfreePayoutEnv } from "../helpers/cashfreePayout";
+import { cashfreeCreateOrder, type CashfreeEnv } from "../helpers/cashfree";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
 import { inArray, desc, count, countDistinct, sql, eq, and, isNotNull } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -1106,6 +1107,15 @@ async function getCashfreeConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_ENV,
     SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET,
     SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_BASE_URL,
+    SYSTEM_CONFIG_KEYS.CASHFREE_API_VERSION,
+    SYSTEM_CONFIG_KEYS.CASHFREE_UPI_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_QR_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYMENT_LINKS_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_MERCHANT_PAYIN_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT,
+    SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT,
+    SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const map = new Map(rows.map((r) => [r.key, r.value]));
@@ -1119,6 +1129,15 @@ async function getCashfreeConfig() {
     env: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENV) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_ENV]) as "test" | "live",
     webhookSecretSet: rawWHSecret.length > 0,
     clientSecretSet: rawSecret.length > 0,
+    baseUrl: map.get(SYSTEM_CONFIG_KEYS.CASHFREE_BASE_URL) ?? "",
+    apiVersion: map.get(SYSTEM_CONFIG_KEYS.CASHFREE_API_VERSION) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_API_VERSION],
+    upiEnabled: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_UPI_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_UPI_ENABLED]) !== "false",
+    qrEnabled: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_QR_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_QR_ENABLED]) !== "false",
+    paymentLinksEnabled: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYMENT_LINKS_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYMENT_LINKS_ENABLED]) === "true",
+    merchantPayinEnabled: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_MERCHANT_PAYIN_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_MERCHANT_PAYIN_ENABLED]) !== "false",
+    minAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT]),
+    maxAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT]),
+    dailyLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT]),
   };
 }
 
@@ -1133,62 +1152,129 @@ router.get("/cashfree", async (req, res, next) => {
 router.put("/cashfree", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { clientId, clientSecret, webhookSecret, enabled, env } = req.body as {
+    const {
+      clientId, clientSecret, webhookSecret, enabled, env,
+      baseUrl, apiVersion, upiEnabled, qrEnabled, paymentLinksEnabled, merchantPayinEnabled,
+      minAmount, maxAmount, dailyLimit,
+    } = req.body as {
       clientId?: string;
       clientSecret?: string;
       webhookSecret?: string;
       enabled?: boolean;
       env?: "test" | "live";
+      baseUrl?: string;
+      apiVersion?: string;
+      upiEnabled?: boolean;
+      qrEnabled?: boolean;
+      paymentLinksEnabled?: boolean;
+      merchantPayinEnabled?: boolean;
+      minAmount?: number;
+      maxAmount?: number;
+      dailyLimit?: number;
     };
 
-    if (clientId !== undefined) {
+    async function upsert(key: string, value: string) {
       await db.insert(systemConfigTable)
-        .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_ID, value: clientId, updatedByEmail: user.email })
-        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: clientId, updatedByEmail: user.email } });
+        .values({ key, value, updatedByEmail: user.email })
+        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value, updatedByEmail: user.email } });
+    }
+    async function upsertOrDelete(key: string, value: string | undefined) {
+      if (value === undefined) return;
+      if (value === "") {
+        await db.delete(systemConfigTable).where(eq(systemConfigTable.key, key));
+      } else {
+        await upsert(key, value);
+      }
     }
 
+    if (clientId !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_ID, clientId);
+
+    // Encrypt secrets before storing — decryptSecret auto-detects the enc:v1: prefix
+    // and remains backward-compatible with any legacy plaintext values.
     if (clientSecret !== undefined) {
-      if (clientSecret === "") {
-        await db.delete(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET));
-      } else {
-        await db.insert(systemConfigTable)
-          .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET, value: clientSecret, updatedByEmail: user.email })
-          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: clientSecret, updatedByEmail: user.email } });
-      }
+      await upsertOrDelete(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET, clientSecret === "" ? "" : encryptSecret(clientSecret));
     }
-
     if (webhookSecret !== undefined) {
-      if (webhookSecret === "") {
-        await db.delete(systemConfigTable).where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET));
-      } else {
-        await db.insert(systemConfigTable)
-          .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET, value: webhookSecret, updatedByEmail: user.email })
-          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: webhookSecret, updatedByEmail: user.email } });
-      }
+      await upsertOrDelete(SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET, webhookSecret === "" ? "" : encryptSecret(webhookSecret));
     }
 
-    if (enabled !== undefined) {
-      const val = enabled ? "true" : "false";
-      await db.insert(systemConfigTable)
-        .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED, value: val, updatedByEmail: user.email })
-        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: val, updatedByEmail: user.email } });
-    }
-
-    if (env !== undefined) {
-      await db.insert(systemConfigTable)
-        .values({ key: SYSTEM_CONFIG_KEYS.CASHFREE_ENV, value: env, updatedByEmail: user.email })
-        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: env, updatedByEmail: user.email } });
-    }
+    if (enabled !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED, enabled ? "true" : "false");
+    if (env !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_ENV, env);
+    if (baseUrl !== undefined) await upsertOrDelete(SYSTEM_CONFIG_KEYS.CASHFREE_BASE_URL, baseUrl);
+    if (apiVersion !== undefined && apiVersion !== "") await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_API_VERSION, apiVersion);
+    if (upiEnabled !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_UPI_ENABLED, upiEnabled ? "true" : "false");
+    if (qrEnabled !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_QR_ENABLED, qrEnabled ? "true" : "false");
+    if (paymentLinksEnabled !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYMENT_LINKS_ENABLED, paymentLinksEnabled ? "true" : "false");
+    if (merchantPayinEnabled !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_MERCHANT_PAYIN_ENABLED, merchantPayinEnabled ? "true" : "false");
+    if (minAmount !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT, String(minAmount));
+    if (maxAmount !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT, String(maxAmount));
+    if (dailyLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT, String(dailyLimit));
 
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
       action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify({ section: "cashfree", clientIdUpdated: clientId !== undefined, clientSecretUpdated: clientSecret !== undefined, webhookSecretUpdated: webhookSecret !== undefined, enabled, env }),
+      details: JSON.stringify({ section: "cashfree", clientIdUpdated: clientId !== undefined, clientSecretUpdated: clientSecret !== undefined, webhookSecretUpdated: webhookSecret !== undefined, enabled, env, baseUrl, apiVersion, upiEnabled, qrEnabled, paymentLinksEnabled, merchantPayinEnabled }),
       ipAddress: (req as any).ip ?? null,
     });
 
     req.log.info({ enabled, env, clientIdUpdated: clientId !== undefined }, "Cashfree config updated");
     res.json(await getCashfreeConfig());
+  } catch (err) { next(err); }
+});
+
+// POST /api/system-config/cashfree/test-create-order
+// Creates a small (₹1) sanitized test order using the SAVED credentials to
+// confirm the configured Client ID/Secret/base URL/API version actually work.
+// Never returns the raw provider response, cf_order_id, or credential values.
+router.post("/cashfree/test-create-order", async (req, res, next) => {
+  try {
+    const cfg = await getCashfreeConfig();
+    if (!cfg.clientIdSet || !cfg.clientSecretSet) {
+      res.json({ ok: false, message: "Client ID and Client Secret must be saved before testing credentials." });
+      return;
+    }
+
+    const keys = [
+      SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_ID,
+      SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET,
+      SYSTEM_CONFIG_KEYS.CASHFREE_ENV,
+      SYSTEM_CONFIG_KEYS.CASHFREE_BASE_URL,
+      SYSTEM_CONFIG_KEYS.CASHFREE_API_VERSION,
+    ];
+    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const map = new Map(rows.map((r) => [r.key, r.value]));
+    const clientId = (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_ID) ?? "").trim();
+    const rawSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET) ?? "";
+    const env = (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENV) ?? "test") as CashfreeEnv;
+    const baseUrl = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_BASE_URL) || undefined;
+    const apiVersion = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_API_VERSION) || undefined;
+
+    const decrypted = decryptSecret(rawSecret);
+    if (!decrypted.ok || !decrypted.value.trim()) {
+      req.log.warn({ safeReason: "decrypt_failed" }, "cashfree_credentials_test: clientSecret decrypt failed or empty");
+      res.json({ ok: false, message: "Saved credential could not be decrypted. Re-enter Client ID and Secret." });
+      return;
+    }
+
+    const testOrderId = `RKPAYIN_TEST_${Date.now()}`;
+    const { parsed } = await cashfreeCreateOrder(clientId, decrypted.value, env, {
+      order_id: testOrderId,
+      order_amount: 1,
+      order_currency: "INR",
+      customer_details: {
+        customer_id: "test-credentials-check",
+        customer_phone: "9999999999",
+      },
+      order_note: "RasoKart admin credential test",
+    }, { baseUrl, apiVersion });
+
+    req.log.info({ ok: !!parsed.payment_session_id, env, testOrderId }, "cashfree_test_create_order");
+
+    if (!parsed.payment_session_id) {
+      res.json({ ok: false, message: "Credential check failed. Verify Client ID, Secret, base URL and API version." });
+      return;
+    }
+    res.json({ ok: true, message: "Test order created successfully. Credentials are valid.", env });
   } catch (err) { next(err); }
 });
 

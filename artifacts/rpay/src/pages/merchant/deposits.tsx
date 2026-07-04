@@ -14,6 +14,9 @@ import {
   useDeleteMerchantSavedFilter,
   useRenameMerchantSavedFilter,
   useReorderMerchantSavedFilters,
+  useGetPayinStatus,
+  useCreatePayinOrder,
+  useGetPayinOrderStatus,
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -870,65 +873,64 @@ export default function MerchantDeposits() {
   const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
   const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
 
-  // Cashfree payment dialog state
+  // RasoKart UPI deposit dialog state
   const [showCashfree, setShowCashfree] = useState(false);
   const [cfAmount, setCfAmount] = useState("");
   const [cfPhone, setCfPhone] = useState("");
   const [cfName, setCfName] = useState("");
   const [cfEmail, setCfEmail] = useState("");
-  const [cfNote, setCfNote] = useState("");
   const [cfCreating, setCfCreating] = useState(false);
+  const [activePayinOrder, setActivePayinOrder] = useState<{ publicOrderId: string; paymentToken: string; amount: number } | null>(null);
 
-  const { data: cashfreeStatusData } = useQuery<{ enabled: boolean }>({
-    queryKey: ["/api/merchant/payment/status"],
-    queryFn: async () => {
-      const token = localStorage.getItem("rasokart_token");
-      const res = await fetch("/api/merchant/payment/status", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) return { enabled: false };
-      return res.json() as Promise<{ enabled: boolean }>;
+  const { data: payinStatusData } = useGetPayinStatus();
+  const cashfreeEnabled = payinStatusData?.enabled ?? false;
+
+  const createPayinOrder = useCreatePayinOrder();
+  const { data: activeOrderStatus } = useGetPayinOrderStatus(
+    activePayinOrder?.publicOrderId ?? "",
+    {
+      query: {
+        queryKey: ["/api/merchant/payin/orders", activePayinOrder?.publicOrderId ?? ""] as const,
+        enabled: !!activePayinOrder,
+        refetchInterval: (query) => {
+          const s = query.state.data?.status;
+          return s === "paid" || s === "failed" || s === "expired" ? false : 3000;
+        },
+      },
     },
-    staleTime: 60_000,
-  });
-  const cashfreeEnabled = cashfreeStatusData?.enabled ?? false;
+  );
+
+  useEffect(() => {
+    if (activeOrderStatus?.status === "paid") {
+      toast.success("Deposit received successfully");
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    }
+  }, [activeOrderStatus?.status]);
+
+  const resetPayinDialog = () => {
+    setShowCashfree(false);
+    setActivePayinOrder(null);
+    setCfAmount(""); setCfPhone(""); setCfName(""); setCfEmail("");
+  };
 
   const handleCashfreePay = async () => {
     if (!cfAmount || Number(cfAmount) <= 0) { toast.error("Enter a valid amount"); return; }
     if (!cfPhone.trim()) { toast.error("Customer phone number is required"); return; }
     setCfCreating(true);
     try {
-      const authToken = localStorage.getItem("rasokart_token");
-      const res = await fetch("/api/merchant/payment/create-order", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({
+      const result = await createPayinOrder.mutateAsync({
+        data: {
           amount: Number(cfAmount),
           customerPhone: cfPhone.trim(),
           customerName: cfName.trim() || undefined,
           customerEmail: cfEmail.trim() || undefined,
-          note: cfNote.trim() || undefined,
-        }),
+        },
       });
-      const result = await res.json() as {
-        publicOrderId?: string;
-        checkoutUrl?: string;
-        amount?: number;
-        status?: string;
-        message?: string;
-        error?: string;
-      };
-      if (!res.ok) throw new Error(result.error ?? "Failed to create payment order");
-      if (!result.checkoutUrl) throw new Error("Invalid payment order response");
-      setShowCashfree(false);
-      setCfAmount(""); setCfPhone(""); setCfName(""); setCfEmail(""); setCfNote("");
-      toast.success("Payment order created — opening checkout…");
-      window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
+      setActivePayinOrder({ publicOrderId: result.publicOrderId, paymentToken: result.paymentToken, amount: result.amount });
+      toast.success("Deposit order created");
     } catch (err: any) {
-      toast.error(err?.message ?? "Failed to create payment order");
+      toast.error(err?.message ?? "Failed to create deposit order");
     } finally {
       setCfCreating(false);
     }
@@ -1096,7 +1098,7 @@ export default function MerchantDeposits() {
           {cashfreeEnabled && (
             <Button size="sm" variant="outline" onClick={() => setShowCashfree(true)} className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/50">
               <CreditCard className="w-4 h-4 mr-2" />
-              Pay via RasoKart
+              Deposit via UPI
             </Button>
           )}
           <Button size="sm" onClick={() => setShowSimulate(true)}>
@@ -1772,71 +1774,105 @@ export default function MerchantDeposits() {
         </div>
       )}
 
-      {/* Payment Dialog */}
-      <Dialog open={showCashfree} onOpenChange={setShowCashfree}>
+      {/* RasoKart UPI Deposit Dialog */}
+      <Dialog open={showCashfree} onOpenChange={(open) => { if (!open) resetPayinDialog(); else setShowCashfree(true); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-emerald-400" />
-              Pay via RasoKart
+              Deposit via UPI
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Amount (₹) <span className="text-destructive">*</span></Label>
-              <Input
-                type="number"
-                placeholder="e.g. 5000"
-                min="1"
-                value={cfAmount}
-                onChange={e => setCfAmount(e.target.value)}
-              />
+
+          {!activePayinOrder ? (
+            <>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>Amount (₹) <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g. 5000"
+                    min="1"
+                    value={cfAmount}
+                    onChange={e => setCfAmount(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer Phone <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="tel"
+                    placeholder="e.g. 9876543210"
+                    value={cfPhone}
+                    onChange={e => setCfPhone(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Required for payment processing</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer Name <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Input
+                    placeholder="e.g. John Doe"
+                    value={cfName}
+                    onChange={e => setCfName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer Email <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Input
+                    type="email"
+                    placeholder="e.g. john@example.com"
+                    value={cfEmail}
+                    onChange={e => setCfEmail(e.target.value)}
+                  />
+                </div>
+                <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground">
+                  A RasoKart Secure Checkout deposit order will be created. Once the customer completes payment, the deposit will appear in this list automatically.
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetPayinDialog} disabled={cfCreating}>Cancel</Button>
+                <Button onClick={handleCashfreePay} disabled={cfCreating || !cfAmount || !cfPhone.trim()}>
+                  {cfCreating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating…</> : "Create Deposit Order"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-border/40 bg-muted/30 p-4 text-center space-y-2">
+                <p className="text-xs text-muted-foreground">Order ID</p>
+                <p className="font-mono text-sm">{activePayinOrder.publicOrderId}</p>
+                <p className="text-2xl font-bold font-mono">₹{activePayinOrder.amount.toLocaleString()}</p>
+              </div>
+
+              {activeOrderStatus?.status === "paid" ? (
+                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-4 text-center space-y-1">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                  <p className="text-sm font-medium text-emerald-300">Deposit received</p>
+                  {activeOrderStatus.utr && (
+                    <p className="text-xs text-muted-foreground font-mono">UTR: {activeOrderStatus.utr}</p>
+                  )}
+                </div>
+              ) : activeOrderStatus?.status === "failed" || activeOrderStatus?.status === "expired" ? (
+                <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-4 text-center space-y-1">
+                  <XCircle className="w-8 h-8 text-rose-400 mx-auto" />
+                  <p className="text-sm font-medium text-rose-300">
+                    {activeOrderStatus.status === "expired" ? "Order expired" : "Payment failed"}
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-md border border-sky-500/30 bg-sky-500/10 p-4 text-center space-y-2">
+                  <Loader2 className="w-6 h-6 text-sky-400 mx-auto animate-spin" />
+                  <p className="text-sm text-sky-300">Waiting for the customer to complete UPI payment…</p>
+                  <p className="text-xs text-muted-foreground">This will update automatically once payment is confirmed.</p>
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Customer Phone <span className="text-destructive">*</span></Label>
-              <Input
-                type="tel"
-                placeholder="e.g. 9876543210"
-                value={cfPhone}
-                onChange={e => setCfPhone(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Required for payment processing</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Customer Name <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Input
-                placeholder="e.g. John Doe"
-                value={cfName}
-                onChange={e => setCfName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Customer Email <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Input
-                type="email"
-                placeholder="e.g. john@example.com"
-                value={cfEmail}
-                onChange={e => setCfEmail(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Input
-                placeholder="e.g. Order #123"
-                value={cfNote}
-                onChange={e => setCfNote(e.target.value)}
-              />
-            </div>
-            <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground">
-              A RasoKart payment order will be created and you will be redirected to RasoKart&apos;s hosted checkout page in a new tab. Once the customer completes payment, the deposit will appear in this list automatically.
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCashfree(false)} disabled={cfCreating}>Cancel</Button>
-            <Button onClick={handleCashfreePay} disabled={cfCreating || !cfAmount || !cfPhone.trim()}>
-              {cfCreating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating…</> : "Create & Pay"}
-            </Button>
-          </DialogFooter>
+          )}
+
+          {activePayinOrder && (
+            <DialogFooter>
+              <Button variant="outline" onClick={resetPayinDialog}>Close</Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 

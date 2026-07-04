@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
-import { useListTransactions } from "@workspace/api-client-react";
+import { useListTransactions, useListAdminPayinOrders } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowDownLeft, Search, TrendingUp, Clock, CheckCircle, XCircle, Sparkles, X, Hash, CheckCircle2, Bookmark, BookmarkCheck, Trash2, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowDownLeft, Search, TrendingUp, Clock, CheckCircle, XCircle, Sparkles, X, Hash, CheckCircle2, Bookmark, BookmarkCheck, Trash2, Pencil, ChevronLeft, ChevronRight, RefreshCw, Download } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, startOfDay, endOfDay } from "date-fns";
 import { toast } from "sonner";
@@ -150,6 +151,142 @@ function exportCsv(data: any[]) {
   a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   a.download = "deposits.csv";
   a.click();
+}
+
+function exportPayinCsv(rows: { id: number; publicOrderId?: string | null; merchantName?: string | null; merchantId: number; amount: string; currency: string; status: string; utr?: string | null; paidAt?: string | null; createdAt: string }[]) {
+  if (!rows.length) return;
+  const csvRows = [["Order ID", "Merchant", "Amount", "Currency", "UTR", "Status", "Paid At", "Created At"]];
+  rows.forEach(r => csvRows.push([
+    r.publicOrderId ?? String(r.id),
+    r.merchantName ?? `Merchant #${r.merchantId}`,
+    r.amount, r.currency, r.utr ?? "",
+    r.status, r.paidAt ?? "", r.createdAt,
+  ]));
+  const csv = csvRows.map(row => row.map(v => `"${v}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = `upi-deposits-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+}
+
+function AdminPayinOrdersPanel() {
+  const [status, setStatus] = useState("all");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  const { data, isLoading, isFetching, refetch } = useListAdminPayinOrders({
+    status: status !== "all" ? status : undefined,
+    search: search || undefined,
+    page,
+    pageSize: 20,
+  });
+
+  const rows = data?.orders ?? [];
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-1 items-center gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                className="pl-8"
+                placeholder="Search by order ID or merchant..."
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+              />
+            </div>
+            <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="created">Created</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportPayinCsv(rows)} disabled={!rows.length}>
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order ID</TableHead>
+                  <TableHead>Merchant</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>UTR</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Paid At</TableHead>
+                  <TableHead>Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 7 }).map((_, j) => (
+                        <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : !rows.length ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                      No UPI deposit orders found
+                    </TableCell>
+                  </TableRow>
+                ) : rows.map(r => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{r.publicOrderId ?? `#${r.id}`}</TableCell>
+                    <TableCell className="font-medium">{r.merchantName ?? `Merchant #${r.merchantId}`}</TableCell>
+                    <TableCell className="font-mono font-semibold text-emerald-400">
+                      ₹{Number(r.amount).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{r.utr ?? "—"}</TableCell>
+                    <TableCell><StatusBadge status={r.status === "paid" ? "success" : r.status === "failed" || r.status === "expired" ? "failed" : "pending"} /></TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {r.paidAt ? format(new Date(r.paidAt), "MMM d, yyyy HH:mm") : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {format(new Date(r.createdAt), "MMM d, yyyy HH:mm")}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {data && data.total > 20 && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">{data.total} total UPI orders</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+              Previous
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 20 >= data.total}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AdminDeposits() {
@@ -340,6 +477,13 @@ export default function AdminDeposits() {
           Export CSV
         </Button>
       </div>
+
+      <Tabs defaultValue="manual" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="manual">Bank Deposits</TabsTrigger>
+          <TabsTrigger value="upi">UPI (Payin)</TabsTrigger>
+        </TabsList>
+        <TabsContent value="manual" className="space-y-6 mt-0">
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-border/50 bg-card/50">
@@ -794,6 +938,12 @@ export default function AdminDeposits() {
           </div>
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="upi" className="mt-0">
+          <AdminPayinOrdersPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

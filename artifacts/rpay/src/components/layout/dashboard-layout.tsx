@@ -354,7 +354,7 @@ const ADMIN_NAV = [
     group: "Gateways",
     items: [
       { title: "Payment Gateways", icon: Plug, href: "/admin/payment-gateways" },
-      { title: "Payin Gateway", icon: CreditCard, href: "/admin/payment-gateway" },
+      { title: "Payin Gateway", icon: CreditCard, href: "/admin/payin-gateway" },
       { title: "Payout Gateway", icon: Landmark, href: "/admin/payout-gateway" },
       { title: "Smart Routing", icon: GitMerge, href: "/admin/smart-routing" },
       { title: "Payment Providers", icon: Zap, href: "/admin/providers" },

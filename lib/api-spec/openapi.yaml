@@ -7688,6 +7688,200 @@ paths:
         "403":
           description: Forbidden
 
+  /system-config/cashfree/test-create-order:
+    post:
+      operationId: testCashfreeCreateOrder
+      tags: [system-config]
+      summary: Test saved Cashfree Payin credentials by creating a small sanitized test order (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Test result — never includes raw provider identifiers or credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashfreeTestCreateOrderResult"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /merchant/payin/status:
+    get:
+      operationId: getPayinStatus
+      tags: [system-config]
+      summary: Whether RasoKart UPI deposits are available to the current merchant
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Payin availability and limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayinOrderStatusCheck"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /merchant/payin/orders:
+    post:
+      operationId: createPayinOrder
+      tags: [system-config]
+      summary: Create a RasoKart UPI deposit order (merchant only, white-label)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, customerPhone]
+              properties:
+                amount:
+                  type: number
+                customerPhone:
+                  type: string
+                customerName:
+                  type: string
+                customerEmail:
+                  type: string
+      responses:
+        "200":
+          description: Deposit order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayinOrderCreateResult"
+        "400":
+          description: Payin unavailable, limit exceeded, or invalid input
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "502":
+          description: Unable to start deposit
+
+  /merchant/payin/orders/{publicOrderId}:
+    get:
+      operationId: getPayinOrderStatus
+      tags: [system-config]
+      summary: Get a RasoKart UPI deposit order's status (merchant only, white-label)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: publicOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order status — UTR only present once status is "paid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayinOrderStatus"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Order not found
+
+  /admin/payin/orders:
+    get:
+      operationId: listAdminPayinOrders
+      tags: [system-config]
+      summary: List Payin deposit orders across all merchants (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payin orders page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPayinOrdersResponse"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /admin/payin/orders/export/csv:
+    get:
+      operationId: exportAdminPayinOrdersCsv
+      tags: [system-config]
+      summary: Export Payin deposit orders as CSV (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV file of payin orders
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
   /merchant/cashfree/create-order:
     post:
       operationId: createCashfreeOrder
@@ -14047,6 +14241,33 @@ components:
         webhookSecretSet:
           type: boolean
           description: Whether a webhook signature secret has been configured
+        baseUrl:
+          type: string
+          description: Optional custom Cashfree base URL override
+        apiVersion:
+          type: string
+          description: Cashfree API version header value
+        upiEnabled:
+          type: boolean
+          description: Whether UPI payin is enabled
+        qrEnabled:
+          type: boolean
+          description: Whether QR payin is enabled
+        paymentLinksEnabled:
+          type: boolean
+          description: Whether payment-link payin is enabled
+        merchantPayinEnabled:
+          type: boolean
+          description: Whether merchants can create payin deposit orders
+        minAmount:
+          type: number
+          description: Minimum allowed payin amount
+        maxAmount:
+          type: number
+          description: Maximum allowed payin amount
+        dailyLimit:
+          type: number
+          description: Maximum total payin amount per merchant per day
 
     CashfreeGatewayConfigInput:
       type: object
@@ -14067,6 +14288,143 @@ components:
           type: string
           enum: [test, live]
           description: Cashfree environment
+        baseUrl:
+          type: string
+          description: Optional custom Cashfree base URL override (empty string to clear)
+        apiVersion:
+          type: string
+          description: Cashfree API version header value
+        upiEnabled:
+          type: boolean
+        qrEnabled:
+          type: boolean
+        paymentLinksEnabled:
+          type: boolean
+        merchantPayinEnabled:
+          type: boolean
+        minAmount:
+          type: number
+        maxAmount:
+          type: number
+        dailyLimit:
+          type: number
+
+    CashfreeTestCreateOrderResult:
+      type: object
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+        env:
+          type: string
+          enum: [test, live]
+
+    PayinOrderCreateResult:
+      type: object
+      required: [publicOrderId, paymentToken, amount, status, checkoutLabel, message]
+      properties:
+        publicOrderId:
+          type: string
+          description: RasoKart-branded order identifier (RKPAYIN_...)
+        paymentToken:
+          type: string
+          description: Opaque token used to render the RasoKart Secure Checkout — never a raw provider identifier
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [created]
+        checkoutLabel:
+          type: string
+        message:
+          type: string
+
+    PayinOrderStatus:
+      type: object
+      required: [publicOrderId, amount, status, createdAt]
+      properties:
+        publicOrderId:
+          type: string
+        amount:
+          type: number
+        status:
+          type: string
+        utr:
+          type: string
+          nullable: true
+          description: UTR — only populated once status is "paid"
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PayinOrderStatusCheck:
+      type: object
+      required: [enabled, minAmount, maxAmount]
+      properties:
+        enabled:
+          type: boolean
+        minAmount:
+          type: number
+        maxAmount:
+          type: number
+
+    AdminPayinOrderRow:
+      type: object
+      required: [id, merchantId, amount, currency, status, createdAt]
+      properties:
+        id:
+          type: integer
+        publicOrderId:
+          type: string
+          nullable: true
+        merchantId:
+          type: integer
+        merchantName:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+        paymentMethod:
+          type: string
+          nullable: true
+        utr:
+          type: string
+          nullable: true
+        failureReason:
+          type: string
+          nullable: true
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AdminPayinOrdersResponse:
+      type: object
+      required: [orders, total, page, pageSize]
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPayinOrderRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
 
     CashfreeOrderCreateResult:
       type: object

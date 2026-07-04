@@ -20,4 +20,22 @@ export interface CashfreeGatewayConfig {
   env: CashfreeGatewayConfigEnv;
   /** Whether a webhook signature secret has been configured */
   webhookSecretSet: boolean;
+  /** Optional custom Cashfree base URL override */
+  baseUrl?: string;
+  /** Cashfree API version header value */
+  apiVersion?: string;
+  /** Whether UPI payin is enabled */
+  upiEnabled?: boolean;
+  /** Whether QR payin is enabled */
+  qrEnabled?: boolean;
+  /** Whether payment-link payin is enabled */
+  paymentLinksEnabled?: boolean;
+  /** Whether merchants can create payin deposit orders */
+  merchantPayinEnabled?: boolean;
+  /** Minimum allowed payin amount */
+  minAmount?: number;
+  /** Maximum allowed payin amount */
+  maxAmount?: number;
+  /** Maximum total payin amount per merchant per day */
+  dailyLimit?: number;
 }

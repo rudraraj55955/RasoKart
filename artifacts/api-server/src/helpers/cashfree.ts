@@ -2,20 +2,28 @@ import { createHmac, timingSafeEqual } from "crypto";
 
 export const CASHFREE_API_BASE_PROD = "https://api.cashfree.com/pg";
 export const CASHFREE_API_BASE_TEST = "https://sandbox.cashfree.com/pg";
-export const CASHFREE_API_VERSION = "2023-08-01";
+export const CASHFREE_API_VERSION = "2025-01-01";
 
 export type CashfreeEnv = "test" | "live";
 
-function baseUrl(env: CashfreeEnv): string {
+export interface CashfreeRequestOptions {
+  /** Admin-configured base URL override (e.g. custom Cashfree endpoint). Falls back to env default. */
+  baseUrl?: string;
+  /** Admin-configured API version override. Falls back to CASHFREE_API_VERSION. */
+  apiVersion?: string;
+}
+
+function resolveBaseUrl(env: CashfreeEnv, override?: string): string {
+  if (override && override.trim()) return override.trim().replace(/\/+$/, "");
   return env === "live" ? CASHFREE_API_BASE_PROD : CASHFREE_API_BASE_TEST;
 }
 
-function headers(clientId: string, clientSecret: string): Record<string, string> {
+function headers(clientId: string, clientSecret: string, apiVersion?: string): Record<string, string> {
   return {
     "Content-Type": "application/json",
     "x-client-id": clientId,
     "x-client-secret": clientSecret,
-    "x-api-version": CASHFREE_API_VERSION,
+    "x-api-version": apiVersion && apiVersion.trim() ? apiVersion.trim() : CASHFREE_API_VERSION,
   };
 }
 
@@ -63,10 +71,11 @@ export async function cashfreeCreateOrder(
   clientSecret: string,
   env: CashfreeEnv,
   payload: CashfreeOrderRequest,
+  options?: CashfreeRequestOptions,
 ): Promise<{ raw: string; parsed: CashfreeOrderResponse }> {
-  const res = await fetch(`${baseUrl(env)}/orders`, {
+  const res = await fetch(`${resolveBaseUrl(env, options?.baseUrl)}/orders`, {
     method: "POST",
-    headers: headers(clientId, clientSecret),
+    headers: headers(clientId, clientSecret, options?.apiVersion),
     body: JSON.stringify(payload),
   });
   const raw = await res.text();
@@ -90,10 +99,11 @@ export async function cashfreeGetOrder(
   clientSecret: string,
   env: CashfreeEnv,
   orderId: string,
+  options?: CashfreeRequestOptions,
 ): Promise<{ raw: string; parsed: CashfreeOrderResponse }> {
-  const res = await fetch(`${baseUrl(env)}/orders/${encodeURIComponent(orderId)}`, {
+  const res = await fetch(`${resolveBaseUrl(env, options?.baseUrl)}/orders/${encodeURIComponent(orderId)}`, {
     method: "GET",
-    headers: headers(clientId, clientSecret),
+    headers: headers(clientId, clientSecret, options?.apiVersion),
   });
   const raw = await res.text();
   let parsed: CashfreeOrderResponse;

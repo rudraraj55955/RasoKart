@@ -3,6 +3,7 @@ import {
   useGetCashfreeConfig as useGetPayinGatewayConfig,
   useUpdateCashfreeConfig as useUpdatePayinGatewayConfig,
   useListCashfreePaymentLogs as useListPayinLogs,
+  useTestCashfreeCreateOrder,
   getGetCashfreeConfigQueryKey as getPayinGatewayConfigQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,12 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDisableGatewayGuard } from "@/components/admin/disable-gateway-dialog";
 import { toast } from "sonner";
-import { Save, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Shield, Zap, CreditCard, ChevronLeft, ChevronRight } from "lucide-react";
-
-function maskSecret(s: string, show: boolean) {
-  if (show) return s;
-  return s ? "••••••••••••••••" : "";
-}
+import { Save, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Shield, Zap, CreditCard, ChevronLeft, ChevronRight, PlugZap, IndianRupee } from "lucide-react";
 
 export default function AdminPaymentGateway() {
   const qc = useQueryClient();
@@ -31,8 +27,11 @@ export default function AdminPaymentGateway() {
   });
 
   const updateConfig = useUpdatePayinGatewayConfig();
+  const testCreateOrder = useTestCashfreeCreateOrder({
+    request: { headers: { Authorization: `Bearer ${getToken()}` } },
+  });
 
-  // Form state
+  // Form state — credentials
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
@@ -42,6 +41,21 @@ export default function AdminPaymentGateway() {
   const [showClientSecret, setShowClientSecret] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Advanced connection settings
+  const [baseUrl, setBaseUrl] = useState<string | null>(null);
+  const [apiVersion, setApiVersion] = useState<string | null>(null);
+
+  // Feature toggles
+  const [upiEnabled, setUpiEnabled] = useState<boolean | null>(null);
+  const [qrEnabled, setQrEnabled] = useState<boolean | null>(null);
+  const [paymentLinksEnabled, setPaymentLinksEnabled] = useState<boolean | null>(null);
+  const [merchantPayinEnabled, setMerchantPayinEnabled] = useState<boolean | null>(null);
+
+  // Limits
+  const [minAmount, setMinAmount] = useState<string | null>(null);
+  const [maxAmount, setMaxAmount] = useState<string | null>(null);
+  const [dailyLimit, setDailyLimit] = useState<string | null>(null);
 
   // Logs
   const [logsPage, setLogsPage] = useState(1);
@@ -53,6 +67,15 @@ export default function AdminPaymentGateway() {
 
   const currentEnabled = enabled !== null ? enabled : (config?.enabled ?? false);
   const currentEnv: "test" | "live" = env !== null ? env : (config?.env ?? "test");
+  const currentBaseUrl = baseUrl !== null ? baseUrl : (config?.baseUrl ?? "");
+  const currentApiVersion = apiVersion !== null ? apiVersion : (config?.apiVersion ?? "2025-01-01");
+  const currentUpiEnabled = upiEnabled !== null ? upiEnabled : (config?.upiEnabled ?? true);
+  const currentQrEnabled = qrEnabled !== null ? qrEnabled : (config?.qrEnabled ?? true);
+  const currentPaymentLinksEnabled = paymentLinksEnabled !== null ? paymentLinksEnabled : (config?.paymentLinksEnabled ?? true);
+  const currentMerchantPayinEnabled = merchantPayinEnabled !== null ? merchantPayinEnabled : (config?.merchantPayinEnabled ?? true);
+  const currentMinAmount = minAmount !== null ? minAmount : String(config?.minAmount ?? 10);
+  const currentMaxAmount = maxAmount !== null ? maxAmount : String(config?.maxAmount ?? 100000);
+  const currentDailyLimit = dailyLimit !== null ? dailyLimit : String(config?.dailyLimit ?? 500000);
 
   const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard("cashfree");
 
@@ -62,10 +85,19 @@ export default function AdminPaymentGateway() {
       const body: Record<string, unknown> = {
         enabled: currentEnabled,
         env: currentEnv,
+        apiVersion: currentApiVersion,
+        upiEnabled: currentUpiEnabled,
+        qrEnabled: currentQrEnabled,
+        paymentLinksEnabled: currentPaymentLinksEnabled,
+        merchantPayinEnabled: currentMerchantPayinEnabled,
+        minAmount: Number(currentMinAmount),
+        maxAmount: Number(currentMaxAmount),
+        dailyLimit: Number(currentDailyLimit),
       };
       if (clientId.trim()) body.clientId = clientId.trim();
       if (clientSecret.trim()) body.clientSecret = clientSecret.trim();
       if (webhookSecret !== undefined && webhookSecret !== "") body.webhookSecret = webhookSecret.trim() || "";
+      if (baseUrl !== null) body.baseUrl = baseUrl.trim();
 
       await updateConfig.mutateAsync(
         { data: body as Parameters<typeof updateConfig.mutateAsync>[0]["data"] },
@@ -88,6 +120,19 @@ export default function AdminPaymentGateway() {
     guardSave(willDisable, doSave);
   }
 
+  async function handleTestConnection() {
+    try {
+      const result = await testCreateOrder.mutateAsync();
+      if (result.ok) {
+        toast.success(result.message || "Test order created successfully");
+      } else {
+        toast.error(result.message || "Test failed");
+      }
+    } catch {
+      toast.error("Unable to verify credentials right now");
+    }
+  }
+
   function formatDate(ts: string) {
     return new Date(ts).toLocaleString("en-IN", {
       day: "2-digit", month: "short", year: "numeric",
@@ -103,8 +148,8 @@ export default function AdminPaymentGateway() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Payment Collection Gateway</h1>
-          <p className="text-muted-foreground mt-1">Configure payment gateway credentials and webhook settings</p>
+          <h1 className="text-3xl font-bold tracking-tight">Payin Gateway</h1>
+          <p className="text-muted-foreground mt-1">Configure the RasoKart UPI deposit collection engine and webhook settings</p>
         </div>
         <div className="flex items-center gap-3">
           {isLoading ? (
@@ -184,23 +229,111 @@ export default function AdminPaymentGateway() {
                 </p>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Environment</Label>
+                  <Select
+                    value={currentEnv}
+                    onValueChange={(v) => setEnv(v as "test" | "live")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="test">Sandbox (Test)</SelectItem>
+                      <SelectItem value="live">Production (Live)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>API Version</Label>
+                  <Input
+                    value={currentApiVersion}
+                    onChange={(e) => setApiVersion(e.target.value)}
+                    placeholder="2025-01-01"
+                    className="font-mono text-sm"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Sandbox mode routes payments through the test environment; Live mode processes real transactions.
+              </p>
+
               <div className="space-y-2">
-                <Label>Environment</Label>
-                <Select
-                  value={currentEnv}
-                  onValueChange={(v) => setEnv(v as "test" | "live")}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="test">Sandbox (Test)</SelectItem>
-                    <SelectItem value="live">Production (Live)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Sandbox mode routes payments through the test environment; Live mode processes real transactions.
-                </p>
+                <Label>Custom Base URL (optional)</Label>
+                <Input
+                  value={currentBaseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="Leave blank to use the default endpoint"
+                  className="font-mono text-sm"
+                />
+              </div>
+
+              <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testCreateOrder.isPending}>
+                <PlugZap className="w-3.5 h-3.5 mr-1.5" />
+                {testCreateOrder.isPending ? "Testing…" : "Test Connection"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CreditCard className="w-4 h-4 text-primary" />
+                Collection Methods
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">UPI</p>
+                  <p className="text-xs text-muted-foreground">Allow UPI intent/collect deposits</p>
+                </div>
+                <Switch checked={currentUpiEnabled} onCheckedChange={setUpiEnabled} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">QR</p>
+                  <p className="text-xs text-muted-foreground">Allow QR-based deposits</p>
+                </div>
+                <Switch checked={currentQrEnabled} onCheckedChange={setQrEnabled} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Payment Links</p>
+                  <p className="text-xs text-muted-foreground">Allow hosted payment link deposits</p>
+                </div>
+                <Switch checked={currentPaymentLinksEnabled} onCheckedChange={setPaymentLinksEnabled} />
+              </div>
+              <div className="flex items-center justify-between border-t border-border/40 pt-4">
+                <div>
+                  <p className="text-sm font-medium">Merchant Self-Serve Deposits</p>
+                  <p className="text-xs text-muted-foreground">Allow merchants to create their own deposit orders from the merchant portal</p>
+                </div>
+                <Switch checked={currentMerchantPayinEnabled} onCheckedChange={setMerchantPayinEnabled} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <IndianRupee className="w-4 h-4 text-primary" />
+                Deposit Limits
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Min Amount (₹)</Label>
+                <Input type="number" value={currentMinAmount} onChange={(e) => setMinAmount(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Amount (₹)</Label>
+                <Input type="number" value={currentMaxAmount} onChange={(e) => setMaxAmount(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Daily Limit (₹)</Label>
+                <Input type="number" value={currentDailyLimit} onChange={(e) => setDailyLimit(e.target.value)} />
               </div>
             </CardContent>
           </Card>
@@ -241,7 +374,7 @@ export default function AdminPaymentGateway() {
               <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground space-y-1">
                 <p className="font-medium text-foreground">Webhook URL to configure in your gateway dashboard:</p>
                 <code className="block bg-background/60 rounded px-2 py-1 font-mono select-all">
-                  {window.location.origin}/api/payment/cashfree-webhook
+                  {window.location.origin}/api/webhooks/payin/cashfree
                 </code>
                 <p>The gateway sends <code>x-webhook-signature</code> (base64 HMAC-SHA256) and <code>x-webhook-timestamp</code> headers.</p>
               </div>
@@ -315,6 +448,7 @@ export default function AdminPaymentGateway() {
               <p>4. Set the webhook URL to this page's endpoint (shown above)</p>
               <p>5. Copy the <strong className="text-foreground">Webhook Secret Key</strong> from your gateway and paste above</p>
               <p>6. Set environment to <strong className="text-foreground">Sandbox</strong> for testing, <strong className="text-foreground">Live</strong> for production</p>
+              <p>7. Use <strong className="text-foreground">Test Connection</strong> to verify credentials before enabling merchant collections</p>
             </CardContent>
           </Card>
         </div>

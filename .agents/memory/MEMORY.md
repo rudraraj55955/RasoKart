@@ -17,3 +17,4 @@
 - [Provider config threading across call sites](provider-config-threading-call-sites.md) — grep the whole tree for every call site when changing a shared helper signature; duplicate-looking route files are often still mounted.
 - [Fresh-env stale legacy workflows](fresh-env-stale-workflows.md) — a fresh env can have duplicate legacy .replit workflows conflicting in port with artifact-managed ones; remove the non-`artifacts/...`-named duplicates, don't edit .replit directly.
 - [RasoKart gateway toggle locations](rasokart-gateway-toggle-locations.md) — the real Enable/Save flows for each gateway are on 3 separate files; `payment-gateways.tsx` also has decoy read-only summary panels.
+- [White-label scope is merchant/customer-only](white-label-scope.md) — "never expose Cashfree/raw ids" applies to merchant/customer surfaces only; admin config/ops screens may show provider name, base URL, and raw order ids.

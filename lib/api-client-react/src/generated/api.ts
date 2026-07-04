@@ -36,6 +36,7 @@ import type {
   AdminCreateTransactionInput,
   AdminListVerificationsParams,
   AdminNotificationListResponse,
+  AdminPayinOrdersResponse,
   AdminRiskStats,
   AdminUpdateTransactionInput,
   AdminUpdateVerificationStatusInput,
@@ -83,6 +84,7 @@ import type {
   CashfreePayoutCreateInput,
   CashfreePayoutListResponse,
   CashfreePayoutRow,
+  CashfreeTestCreateOrderResult,
   ChartDataPoint,
   CleanupRunHistoryResponse,
   CleanupStats,
@@ -94,6 +96,7 @@ import type {
   CreateActivationRequestBody,
   CreateCashfreeOrderBody,
   CreateMerchantSavedFilterInput,
+  CreatePayinOrderBody,
   CreateSavedFilterInput,
   CreateSettlementInput,
   CreateSupportTicketInput,
@@ -115,6 +118,7 @@ import type {
   ErrorResponse,
   ExpiryCheckResult,
   ExportAdminAuditLogsCsvParams,
+  ExportAdminPayinOrdersCsvParams,
   ExportMerchantBalanceHistoryParams,
   ExportMerchantsCsvParams,
   ExportVaBalanceAuditCsvParams,
@@ -176,6 +180,7 @@ import type {
   LedgerListResponse,
   ListAccountDetailsParams,
   ListAdminAuditLogsParams,
+  ListAdminPayinOrdersParams,
   ListAllAuditReportScheduleLogsParams,
   ListApiKeyHistoryParams,
   ListAuditReportScheduleLogsParams,
@@ -244,6 +249,9 @@ import type {
   Notification,
   NotificationListResponse,
   NotificationUnreadCounts,
+  PayinOrderCreateResult,
+  PayinOrderStatus,
+  PayinOrderStatusCheck,
   PaymentCallbackInput,
   PaymentCallbackResponse,
   PaymentLink,
@@ -22683,6 +22691,469 @@ export function useListCashfreePaymentLogs<TData = Awaited<ReturnType<typeof lis
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListCashfreePaymentLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getTestCashfreeCreateOrderUrl = () => {
+
+
+
+
+  return `/api/system-config/cashfree/test-create-order`
+}
+
+/**
+ * @summary Test saved Cashfree Payin credentials by creating a small sanitized test order (admin only)
+ */
+export const testCashfreeCreateOrder = async ( options?: RequestInit): Promise<CashfreeTestCreateOrderResult> => {
+
+  return customFetch<CashfreeTestCreateOrderResult>(getTestCashfreeCreateOrderUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getTestCashfreeCreateOrderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testCashfreeCreateOrder>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testCashfreeCreateOrder>>, TError,void, TContext> => {
+
+const mutationKey = ['testCashfreeCreateOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testCashfreeCreateOrder>>, void> = () => {
+
+
+          return  testCashfreeCreateOrder(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestCashfreeCreateOrderMutationResult = NonNullable<Awaited<ReturnType<typeof testCashfreeCreateOrder>>>
+
+    export type TestCashfreeCreateOrderMutationError = ErrorType<void>
+
+    /**
+ * @summary Test saved Cashfree Payin credentials by creating a small sanitized test order (admin only)
+ */
+export const useTestCashfreeCreateOrder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testCashfreeCreateOrder>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testCashfreeCreateOrder>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestCashfreeCreateOrderMutationOptions(options));
+    }
+
+export const getGetPayinStatusUrl = () => {
+
+
+
+
+  return `/api/merchant/payin/status`
+}
+
+/**
+ * @summary Whether RasoKart UPI deposits are available to the current merchant
+ */
+export const getPayinStatus = async ( options?: RequestInit): Promise<PayinOrderStatusCheck> => {
+
+  return customFetch<PayinOrderStatusCheck>(getGetPayinStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPayinStatusQueryKey = () => {
+    return [
+    `/api/merchant/payin/status`
+    ] as const;
+    }
+
+
+export const getGetPayinStatusQueryOptions = <TData = Awaited<ReturnType<typeof getPayinStatus>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPayinStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPayinStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPayinStatus>>> = ({ signal }) => getPayinStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPayinStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPayinStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getPayinStatus>>>
+export type GetPayinStatusQueryError = ErrorType<void>
+
+
+/**
+ * @summary Whether RasoKart UPI deposits are available to the current merchant
+ */
+
+export function useGetPayinStatus<TData = Awaited<ReturnType<typeof getPayinStatus>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPayinStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPayinStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreatePayinOrderUrl = () => {
+
+
+
+
+  return `/api/merchant/payin/orders`
+}
+
+/**
+ * @summary Create a RasoKart UPI deposit order (merchant only, white-label)
+ */
+export const createPayinOrder = async (createPayinOrderBody: CreatePayinOrderBody, options?: RequestInit): Promise<PayinOrderCreateResult> => {
+
+  return customFetch<PayinOrderCreateResult>(getCreatePayinOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createPayinOrderBody,)
+  }
+);}
+
+
+
+
+export const getCreatePayinOrderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPayinOrder>>, TError,{data: BodyType<CreatePayinOrderBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPayinOrder>>, TError,{data: BodyType<CreatePayinOrderBody>}, TContext> => {
+
+const mutationKey = ['createPayinOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPayinOrder>>, {data: BodyType<CreatePayinOrderBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPayinOrder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePayinOrderMutationResult = NonNullable<Awaited<ReturnType<typeof createPayinOrder>>>
+    export type CreatePayinOrderMutationBody = BodyType<CreatePayinOrderBody>
+    export type CreatePayinOrderMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a RasoKart UPI deposit order (merchant only, white-label)
+ */
+export const useCreatePayinOrder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPayinOrder>>, TError,{data: BodyType<CreatePayinOrderBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPayinOrder>>,
+        TError,
+        {data: BodyType<CreatePayinOrderBody>},
+        TContext
+      > => {
+      return useMutation(getCreatePayinOrderMutationOptions(options));
+    }
+
+export const getGetPayinOrderStatusUrl = (publicOrderId: string,) => {
+
+
+
+
+  return `/api/merchant/payin/orders/${publicOrderId}`
+}
+
+/**
+ * @summary Get a RasoKart UPI deposit order's status (merchant only, white-label)
+ */
+export const getPayinOrderStatus = async (publicOrderId: string, options?: RequestInit): Promise<PayinOrderStatus> => {
+
+  return customFetch<PayinOrderStatus>(getGetPayinOrderStatusUrl(publicOrderId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPayinOrderStatusQueryKey = (publicOrderId: string,) => {
+    return [
+    `/api/merchant/payin/orders/${publicOrderId}`
+    ] as const;
+    }
+
+
+export const getGetPayinOrderStatusQueryOptions = <TData = Awaited<ReturnType<typeof getPayinOrderStatus>>, TError = ErrorType<void>>(publicOrderId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPayinOrderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPayinOrderStatusQueryKey(publicOrderId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPayinOrderStatus>>> = ({ signal }) => getPayinOrderStatus(publicOrderId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(publicOrderId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPayinOrderStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPayinOrderStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getPayinOrderStatus>>>
+export type GetPayinOrderStatusQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a RasoKart UPI deposit order's status (merchant only, white-label)
+ */
+
+export function useGetPayinOrderStatus<TData = Awaited<ReturnType<typeof getPayinOrderStatus>>, TError = ErrorType<void>>(
+ publicOrderId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPayinOrderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPayinOrderStatusQueryOptions(publicOrderId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAdminPayinOrdersUrl = (params?: ListAdminPayinOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/payin/orders?${stringifiedParams}` : `/api/admin/payin/orders`
+}
+
+/**
+ * @summary List Payin deposit orders across all merchants (admin only)
+ */
+export const listAdminPayinOrders = async (params?: ListAdminPayinOrdersParams, options?: RequestInit): Promise<AdminPayinOrdersResponse> => {
+
+  return customFetch<AdminPayinOrdersResponse>(getListAdminPayinOrdersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminPayinOrdersQueryKey = (params?: ListAdminPayinOrdersParams,) => {
+    return [
+    `/api/admin/payin/orders`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAdminPayinOrdersQueryOptions = <TData = Awaited<ReturnType<typeof listAdminPayinOrders>>, TError = ErrorType<void>>(params?: ListAdminPayinOrdersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminPayinOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminPayinOrdersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminPayinOrders>>> = ({ signal }) => listAdminPayinOrders(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminPayinOrders>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminPayinOrdersQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminPayinOrders>>>
+export type ListAdminPayinOrdersQueryError = ErrorType<void>
+
+
+/**
+ * @summary List Payin deposit orders across all merchants (admin only)
+ */
+
+export function useListAdminPayinOrders<TData = Awaited<ReturnType<typeof listAdminPayinOrders>>, TError = ErrorType<void>>(
+ params?: ListAdminPayinOrdersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminPayinOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminPayinOrdersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportAdminPayinOrdersCsvUrl = (params?: ExportAdminPayinOrdersCsvParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/payin/orders/export/csv?${stringifiedParams}` : `/api/admin/payin/orders/export/csv`
+}
+
+/**
+ * @summary Export Payin deposit orders as CSV (admin only)
+ */
+export const exportAdminPayinOrdersCsv = async (params?: ExportAdminPayinOrdersCsvParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportAdminPayinOrdersCsvUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportAdminPayinOrdersCsvQueryKey = (params?: ExportAdminPayinOrdersCsvParams,) => {
+    return [
+    `/api/admin/payin/orders/export/csv`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportAdminPayinOrdersCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportAdminPayinOrdersCsv>>, TError = ErrorType<void>>(params?: ExportAdminPayinOrdersCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminPayinOrdersCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportAdminPayinOrdersCsvQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportAdminPayinOrdersCsv>>> = ({ signal }) => exportAdminPayinOrdersCsv(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportAdminPayinOrdersCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportAdminPayinOrdersCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportAdminPayinOrdersCsv>>>
+export type ExportAdminPayinOrdersCsvQueryError = ErrorType<void>
+
+
+/**
+ * @summary Export Payin deposit orders as CSV (admin only)
+ */
+
+export function useExportAdminPayinOrdersCsv<TData = Awaited<ReturnType<typeof exportAdminPayinOrdersCsv>>, TError = ErrorType<void>>(
+ params?: ExportAdminPayinOrdersCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminPayinOrdersCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportAdminPayinOrdersCsvQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -18,4 +18,15 @@ export interface CashfreeGatewayConfigInput {
   enabled?: boolean;
   /** Cashfree environment */
   env?: CashfreeGatewayConfigInputEnv;
+  /** Optional custom Cashfree base URL override (empty string to clear) */
+  baseUrl?: string;
+  /** Cashfree API version header value */
+  apiVersion?: string;
+  upiEnabled?: boolean;
+  qrEnabled?: boolean;
+  paymentLinksEnabled?: boolean;
+  merchantPayinEnabled?: boolean;
+  minAmount?: number;
+  maxAmount?: number;
+  dailyLimit?: number;
 }
