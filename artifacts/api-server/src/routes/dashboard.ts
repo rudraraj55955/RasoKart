@@ -1,10 +1,40 @@
 import { Router } from "express";
+import { readFileSync } from "fs";
 import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable } from "@workspace/db";
 import { eq, sql, and, gte, count, countDistinct, inArray, lte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
 router.use(requireAuth);
+
+const GITHUB_SYNC_HISTORY_FILE = new URL("../../../.github-sync-history.json", import.meta.url).pathname;
+const GITHUB_SYNC_FAILURE_THRESHOLD = 3;
+
+interface GithubSyncHistoryEntry {
+  status: "success" | "failure";
+  syncedAt: string;
+  repo: string;
+  errorMessage?: string;
+}
+
+function countConsecutiveGithubSyncFailures(): { count: number; lastErrorMessage?: string } {
+  try {
+    const raw = readFileSync(GITHUB_SYNC_HISTORY_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { count: 0 };
+
+    let streak = 0;
+    let lastErrorMessage: string | undefined;
+    for (const entry of parsed as GithubSyncHistoryEntry[]) {
+      if (entry?.status !== "failure") break;
+      streak++;
+      if (streak === 1) lastErrorMessage = entry.errorMessage;
+    }
+    return { count: streak, lastErrorMessage };
+  } catch {
+    return { count: 0 };
+  }
+}
 
 // GET /api/dashboard/stats
 router.get("/stats", async (req, res, next) => {
@@ -321,6 +351,18 @@ router.get("/notifications", async (req, res, next) => {
         message: `${upcomingRenewals[0].count} merchant plan${upcomingRenewals[0].count > 1 ? "s" : ""} scheduled for renewal in the next 3 days`,
         severity: "info",
         link: "/admin/merchants",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const githubSyncFailures = countConsecutiveGithubSyncFailures();
+    if (githubSyncFailures.count >= GITHUB_SYNC_FAILURE_THRESHOLD) {
+      notifications.push({
+        id: "github-sync-failing",
+        type: "github_sync_failing",
+        message: `GitHub sync has failed ${githubSyncFailures.count} times in a row${githubSyncFailures.lastErrorMessage ? ` — ${githubSyncFailures.lastErrorMessage}` : ""}`,
+        severity: "error",
+        link: "/admin/settings#github-sync",
         createdAt: new Date().toISOString(),
       });
     }
