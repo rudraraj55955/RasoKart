@@ -5,7 +5,7 @@ import {
   resolvePayoutBaseUrl,
   cashfreePayoutEnsureBeneficiary,
   type PayoutProviderConfig,
-} from "./cashfreePayout.ts";
+} from "./cashfreePayout";
 
 describe("buildPayoutEndpoint", () => {
   it("joins baseUrl + path with exactly one slash", () => {
