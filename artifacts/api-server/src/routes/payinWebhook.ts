@@ -1,11 +1,18 @@
 import { Router } from "express";
 import { db, cashfreePaymentOrdersTable, cashfreePaymentLogsTable, ledgerEntriesTable, merchantsTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
-import { eq, and, ne, sql } from "drizzle-orm";
+import { eq, and, ne, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyCashfreeWebhookSignature } from "../helpers/cashfree";
 import { decryptSecret } from "../helpers/cryptoUtils";
 
 const router = Router();
+
+/** Masks an order id for safe logging — keeps only a short prefix/suffix. */
+function maskOrderId(id: string | null | undefined): string {
+  if (!id) return "unknown";
+  if (id.length <= 8) return `${id[0]}***`;
+  return `${id.slice(0, 4)}***${id.slice(-4)}`;
+}
 
 /**
  * POST /api/webhooks/payin/cashfree
@@ -18,9 +25,20 @@ const router = Router();
  *
  * White-label: never logs or stores the raw Cashfree order id in any merchant-facing
  * field; only the RasoKart publicOrderId / UTR reach merchant UI.
+ *
+ * Signature verification rules (Cashfree PG):
+ *   signedPayload = x-webhook-timestamp + rawBody (exact bytes, before JSON parsing)
+ *   expected      = base64(HMAC_SHA256(signedPayload, secret))
+ * Tries the configured webhookSecret first, then falls back to the Client Secret —
+ * Cashfree PG webhooks are commonly signed with the Client Secret unless a distinct
+ * webhook secret was explicitly configured for the endpoint.
  */
 router.post("/cashfree", async (req, res) => {
-  const rawBody = ((req as any).rawBody as Buffer | undefined)?.toString("utf8") ?? JSON.stringify(req.body);
+  // Raw body MUST be the exact bytes Express captured via the JSON body-parser's
+  // `verify` hook (see app.ts) — never JSON.stringify(req.body), which can reorder
+  // keys / change whitespace and silently break signature verification.
+  const rawBodyBuffer = (req as any).rawBody as Buffer | undefined;
+  const rawBody = rawBodyBuffer ? rawBodyBuffer.toString("utf8") : "";
   const body = req.body as Record<string, unknown>;
 
   const signature = req.headers["x-webhook-signature"] as string | undefined;
@@ -34,24 +52,50 @@ router.post("/cashfree", async (req, res) => {
   let amount: string | null = null;
   let status: string | null = null;
 
-  try {
-    // ── Signature verification (fail-closed only when a secret is configured) ──
-    const [secretRow] = await db
-      .select({ value: systemConfigTable.value })
-      .from(systemConfigTable)
-      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET))
-      .limit(1);
+  logger.info({
+    event: "payin_webhook_received",
+    endpoint: "/api/webhooks/payin/cashfree",
+    hasSignature: Boolean(signature),
+    hasTimestamp: Boolean(timestamp),
+    rawBodyLength: rawBody.length,
+  }, "payin_webhook_received");
 
-    const rawSecret = secretRow?.value ?? "";
-    if (rawSecret) {
-      const decryptedSecret = decryptSecret(rawSecret);
-      const secretValue = decryptedSecret.ok ? decryptedSecret.value : rawSecret;
-      const valid = verifyCashfreeWebhookSignature(rawBody, timestamp ?? "", signature ?? "", secretValue);
+  try {
+    // ── Signature verification (fail-closed only when at least one candidate
+    // secret is configured). Tries CASHFREE_WEBHOOK_SECRET first, then falls
+    // back to CASHFREE_CLIENT_SECRET — both decrypted and trimmed. ──────────
+    const secretRows = await db
+      .select({ key: systemConfigTable.key, value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(inArray(systemConfigTable.key, [SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET, SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET]));
+
+    const secretMap = new Map(secretRows.map((r) => [r.key, r.value]));
+
+    function resolveSecret(key: string): string | null {
+      const raw = secretMap.get(key);
+      if (!raw) return null;
+      const decrypted = decryptSecret(raw);
+      const value = (decrypted.ok ? decrypted.value : raw).trim();
+      return value || null;
+    }
+
+    const webhookSecret = resolveSecret(SYSTEM_CONFIG_KEYS.CASHFREE_WEBHOOK_SECRET);
+    const clientSecret = resolveSecret(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET);
+    const candidateSecrets = [webhookSecret, clientSecret].filter((s): s is string => Boolean(s));
+
+    if (candidateSecrets.length > 0) {
+      logger.info({ event: "payin_webhook_signature_check_started", triedWebhookSecret: Boolean(webhookSecret), triedClientSecret: Boolean(clientSecret) }, "payin_webhook_signature_check_started");
+
+      const valid = candidateSecrets.some((secret) => verifyCashfreeWebhookSignature(rawBody, timestamp ?? "", signature ?? "", secret));
+
       if (!valid) {
-        logger.warn("Payin webhook rejected: invalid signature");
+        logger.warn({ event: "payin_webhook_signature_check_failed", hasSignature: Boolean(signature), hasTimestamp: Boolean(timestamp), httpStatus: 401 }, "payin_webhook_signature_check_failed");
         res.status(401).json({ error: "Invalid webhook signature" });
         return;
       }
+      logger.info({ event: "payin_webhook_signature_check_success" }, "payin_webhook_signature_check_success");
+    } else {
+      logger.warn("Payin webhook: no webhook/client secret configured — accepting without signature verification");
     }
 
     // ── Guard: Cashfree must be enabled ────────────────────────────────────
@@ -79,30 +123,19 @@ router.post("/cashfree", async (req, res) => {
     status = (payment?.["payment_status"] as string) ?? null;
     const paymentGroup = (payment?.["payment_group"] as string) ?? null;
 
-    logger.info({ eventType, status }, "Payin webhook received");
-
-    // Acknowledge immediately — Cashfree only cares about a fast 2xx.
-    res.json({ success: true });
-
     if (!cashfreeOrderId) {
+      res.json({ success: true, message: "Webhook verified, no order id in payload" });
       processingResult = "ignored";
       errorMessage = "Missing order_id in payload";
+      logger.info({ event: "payin_webhook_processed", eventType, orderId: maskOrderId(null), processingResult, httpStatus: 200 }, "payin_webhook_processed");
       await insertLog({ eventType, cashfreeOrderId: null, merchantId: null, amount, status, rawPayload: rawBody, processingResult, errorMessage });
       return;
     }
 
-    if (status?.toUpperCase() !== "SUCCESS") {
-      processingResult = "ignored";
-      errorMessage = `Non-success payment status: ${status}`;
-      // Track failure reason on the order for admin visibility (sanitized, no raw payload).
-      await db.update(cashfreePaymentOrdersTable)
-        .set({ rawProviderStatus: status ?? null, failureReason: status && status.toUpperCase() !== "SUCCESS" ? `Payment ${status}` : null })
-        .where(eq(cashfreePaymentOrdersTable.cashfreeOrderId, cashfreeOrderId));
-      await insertLog({ eventType, cashfreeOrderId, merchantId: null, amount, status, rawPayload: rawBody, processingResult, errorMessage });
-      return;
-    }
-
-    // ── Look up the order in our DB ────────────────────────────────────────
+    // ── Look up the order in our DB — determines the exact ack we send back.
+    // Cashfree's dashboard "Test" button sends a dummy order_id that will
+    // never exist in our DB; that must still ack 200 (signature already
+    // passed), never 401/500, and must never trigger a wallet credit. ──────
     const [cfOrder] = await db
       .select()
       .from(cashfreePaymentOrdersTable)
@@ -110,12 +143,31 @@ router.post("/cashfree", async (req, res) => {
       .limit(1);
 
     if (!cfOrder) {
-      logger.warn("Payin webhook: order not found in DB");
+      res.json({ success: true, message: "Webhook verified, order not found for test payload" });
+      logger.warn({ event: "payin_webhook_processed", eventType, orderId: maskOrderId(cashfreeOrderId), processingResult: "ignored", httpStatus: 200 }, "payin_webhook_processed");
       processingResult = "ignored";
       errorMessage = "Order not found in DB";
       await insertLog({ eventType, cashfreeOrderId, merchantId: null, amount, status, rawPayload: rawBody, processingResult, errorMessage });
       return;
     }
+
+    if (status?.toUpperCase() !== "SUCCESS") {
+      res.json({ success: true });
+      processingResult = "ignored";
+      errorMessage = `Non-success payment status: ${status}`;
+      // Track failure reason on the order for admin visibility (sanitized, no raw payload).
+      await db.update(cashfreePaymentOrdersTable)
+        .set({ rawProviderStatus: status ?? null, failureReason: status && status.toUpperCase() !== "SUCCESS" ? `Payment ${status}` : null })
+        .where(eq(cashfreePaymentOrdersTable.cashfreeOrderId, cashfreeOrderId));
+      logger.info({ event: "payin_webhook_processed", eventType, orderId: maskOrderId(cashfreeOrderId), processingResult, httpStatus: 200 }, "payin_webhook_processed");
+      await insertLog({ eventType, cashfreeOrderId, merchantId: null, amount, status, rawPayload: rawBody, processingResult, errorMessage });
+      return;
+    }
+
+    // Acknowledge success case immediately after validation — the credit
+    // transaction below is fast and idempotent regardless of whether the ack
+    // has already been flushed to the client.
+    res.json({ success: true });
 
     merchantId = cfOrder.merchantId;
     const orderId: string = cashfreeOrderId;
@@ -188,21 +240,28 @@ router.post("/cashfree", async (req, res) => {
     });
 
     if (!creditResult.credited) {
-      logger.info("Payin webhook: order already credited (atomic check) — skipping");
       processingResult = "duplicate";
       errorMessage = "Order already credited";
+      logger.info({ event: "payin_webhook_processed", eventType, orderId: maskOrderId(cashfreeOrderId), processingResult, httpStatus: 200 }, "payin_webhook_processed");
       await insertLog({ eventType, cashfreeOrderId, merchantId, amount: paidAmount, status, rawPayload: rawBody, processingResult, errorMessage });
       return;
     }
 
-    logger.info({ merchantId, amount: paidAmount }, "Payin deposit credited to wallet");
     processingResult = "credited";
+    logger.info({ event: "payin_webhook_processed", eventType, orderId: maskOrderId(cashfreeOrderId), processingResult, httpStatus: 200 }, "payin_webhook_processed");
     await insertLog({ eventType, cashfreeOrderId, merchantId, amount: paidAmount, status, rawPayload: rawBody, processingResult, errorMessage: null });
 
   } catch (err) {
-    logger.error({ err }, "Payin webhook processing error");
     processingResult = "error";
     errorMessage = err instanceof Error ? err.message : String(err);
+    logger.error({ event: "payin_webhook_processed", eventType, orderId: maskOrderId(cashfreeOrderId), processingResult, httpStatus: res.headersSent ? res.statusCode : 500 }, "payin_webhook_processed");
+    if (!res.headersSent) {
+      // Never surface a 401/500 once we get this far — signature checks and
+      // validation already happened; an unexpected internal error must still
+      // ack so Cashfree doesn't retry-storm us. Wallet crediting is safely
+      // idempotent via the atomic conditional UPDATE above.
+      res.json({ success: true });
+    }
     try {
       await insertLog({ eventType, cashfreeOrderId, merchantId, amount, status, rawPayload: rawBody, processingResult: "error", errorMessage });
     } catch (logErr) {
