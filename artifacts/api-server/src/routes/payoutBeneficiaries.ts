@@ -21,6 +21,8 @@ async function getPayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const cfg = new Map(rows.map(r => [r.key, r.value]));
@@ -31,6 +33,10 @@ async function getPayoutConfig() {
     clientSecret: decrypted.ok ? decrypted.value.trim() : "",
     env: (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv,
     enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) === "true",
+    providerConfig: {
+      baseUrl: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL) ?? "",
+      apiVersion: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION) ?? "",
+    },
   };
 }
 
@@ -112,7 +118,7 @@ router.post("/", async (req, res) => {
   const beneficiaryRow = await resolveOrCreateBeneficiary(user.merchantId!, cfg.env, input);
 
   if (cfg.enabled && cfg.clientId && cfg.clientSecret) {
-    await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, null);
+    await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, null, false, undefined, cfg.providerConfig);
   }
 
   const [fresh] = await db.select().from(payoutBeneficiariesTable).where(eq(payoutBeneficiariesTable.id, beneficiaryRow.id)).limit(1);
@@ -172,7 +178,7 @@ router.patch("/:id", async (req, res) => {
 
   const cfg = await getPayoutConfig();
   if (cfg.enabled && cfg.clientId && cfg.clientSecret) {
-    await ensureBeneficiaryProviderRegistered(req, updated!, cfg.env, cfg.clientId, cfg.clientSecret, null, true);
+    await ensureBeneficiaryProviderRegistered(req, updated!, cfg.env, cfg.clientId, cfg.clientSecret, null, true, undefined, cfg.providerConfig);
   }
 
   const [fresh] = await db.select().from(payoutBeneficiariesTable).where(eq(payoutBeneficiariesTable.id, id)).limit(1);
@@ -238,7 +244,7 @@ router.post("/:id/retry-provider", requireAdmin, async (req, res) => {
     return;
   }
 
-  await ensureBeneficiaryProviderRegistered(req, existing, cfg.env, cfg.clientId, cfg.clientSecret, null, true);
+  await ensureBeneficiaryProviderRegistered(req, existing, cfg.env, cfg.clientId, cfg.clientSecret, null, true, undefined, cfg.providerConfig);
 
   const [fresh] = await db.select().from(payoutBeneficiariesTable).where(eq(payoutBeneficiariesTable.id, id)).limit(1);
   const used = await beneficiaryUsedInSuccessfulPayout(id);

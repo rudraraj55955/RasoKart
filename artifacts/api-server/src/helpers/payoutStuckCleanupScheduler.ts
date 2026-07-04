@@ -52,6 +52,8 @@ async function getPayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const cfg = new Map(rows.map(r => [r.key, r.value]));
@@ -62,6 +64,10 @@ async function getPayoutConfig() {
     clientSecret: decrypted.ok ? decrypted.value.trim() : "",
     env: (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv,
     enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) === "true",
+    providerConfig: {
+      baseUrl: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL) ?? "",
+      apiVersion: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION) ?? "",
+    },
   };
 }
 
@@ -169,7 +175,8 @@ export async function runStuckPayoutCleanup(): Promise<StuckPayoutCleanupResult>
         cfg.clientId,
         cfg.clientSecret,
         cfg.env,
-        w.providerReferenceId
+        w.providerReferenceId,
+        cfg.providerConfig
       );
 
       if (isBeneficiaryNotFound(status.parsed, status.httpStatus)) {

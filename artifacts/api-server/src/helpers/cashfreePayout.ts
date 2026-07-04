@@ -1,4 +1,19 @@
+import { logger } from "../lib/logger";
+
 export type CashfreePayoutEnv = "test" | "live";
+
+/**
+ * Admin-configurable overrides for the Cashfree Payouts V2 base URL and API
+ * version (`system_config` table, surfaced in Admin → Payout Gateway
+ * Settings). Both are optional — when unset/blank, callers fall back to the
+ * hardcoded defaults for the selected environment.
+ */
+export type PayoutProviderConfig = {
+  baseUrl?: string | null;
+  apiVersion?: string | null;
+};
+
+const DEFAULT_API_VERSION = "2024-01-01";
 
 /**
  * Cashfree Payouts V2 Standard Transfer base URLs (environment-specific).
@@ -28,6 +43,62 @@ const PAYOUT_AUTHORIZE_URLS: Record<CashfreePayoutEnv, string> = {
   test: "https://payout-gamma.cashfree.com/payout/v1/authorize",
   live: "https://payout-api.cashfree.com/payout/v1/authorize",
 };
+
+/**
+ * Resolve the V2 Standard Transfer base URL for the given environment,
+ * honoring an admin-configured override (`CASHFREE_PAYOUT_BASE_URL` system
+ * config) when one is present, falling back to the hardcoded default
+ * otherwise. Trims whitespace and any trailing slash so downstream
+ * concatenation in `buildPayoutEndpoint` never produces a doubled or
+ * malformed path.
+ */
+export function resolvePayoutBaseUrl(env: CashfreePayoutEnv, configuredBaseUrl?: string | null): string {
+  const configured = (configuredBaseUrl ?? "").trim();
+  const base = configured || PAYOUT_BASE_URLS[env] || PAYOUT_BASE_URLS.test;
+  return base.replace(/\/+$/, "");
+}
+
+/** Resolve the `x-api-version` header value, honoring an admin override. */
+export function resolveApiVersion(configuredApiVersion?: string | null): string {
+  const configured = (configuredApiVersion ?? "").trim();
+  return configured || DEFAULT_API_VERSION;
+}
+
+/**
+ * The ONLY place a Cashfree Payouts V2 request URL is assembled. Every call
+ * site (create beneficiary, get beneficiary, create transfer, transfer
+ * status) MUST go through this function so `baseUrl` + `path` can never be
+ * malformed, doubled, or drift from what is actually sent on the wire.
+ *
+ * - Normalizes `baseUrl` to have no trailing slash and `path` to have
+ *   exactly one leading slash.
+ * - Defensively collapses an accidental doubled path segment (e.g. a
+ *   misconfigured baseUrl already ending in "/beneficiary" plus a path of
+ *   "/beneficiary" would otherwise produce ".../beneficiary/beneficiary").
+ * - Never appends a beneficiary/transfer id as a path segment — V2 lookups
+ *   are query-param based (`?beneficiary_id=...`), added by the caller via
+ *   `URL.searchParams` on the returned string.
+ */
+export function buildPayoutEndpoint(baseUrl: string, path: string): string {
+  const normalizedBase = baseUrl.trim().replace(/\/+$/, "");
+  const normalizedPath = `/${path.trim().replace(/^\/+/, "")}`;
+
+  if (normalizedPath !== "/" && normalizedBase.endsWith(normalizedPath)) {
+    return normalizedBase;
+  }
+
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+/**
+ * Logs the exact method + endpoint path about to be called, BEFORE the
+ * provider request is made. Sanitized — never includes the client secret,
+ * full account number, or query-string values (which may carry account
+ * numbers/IFSC on GET lookups).
+ */
+function logEndpointPathBuilt(method: "GET" | "POST", endpointPath: string) {
+  logger.info({ method, endpointPath: endpointPath.split("?")[0] }, "cashfree_endpoint_path_built");
+}
 
 type PayoutCreateInput = {
   referenceId?: string;
@@ -132,14 +203,31 @@ export function isBeneficiaryNotFound(parsed: any, httpStatus: number): boolean 
   return httpStatus === 404 || code.includes("beneficiary_not_found") || msg.includes("does not exist");
 }
 
+/**
+ * A 404 on the CREATE beneficiary call is never a legitimate provider
+ * response — "not found" only makes sense for a lookup (GET). If create
+ * returns 404 it means the request hit the wrong route (wrong base URL,
+ * doubled/malformed path, or a legacy V1 endpoint) or the payload was
+ * rejected in a way the gateway surfaces as a generic 404, NOT that the
+ * beneficiary itself is missing. Distinguishing this from a normal
+ * beneficiary_not_found (which is expected/handled on GET/transfer calls)
+ * lets callers log and report it as an endpoint/payload problem instead of
+ * silently retrying the same broken call.
+ */
+function isLikelyEndpointOrPayloadIssue(httpStatus: number): boolean {
+  return httpStatus === 404;
+}
+
 async function cashfreePayoutCreateBeneficiary(
   clientId: string,
   clientSecret: string,
   env: CashfreePayoutEnv,
   beneficiaryId: string,
-  input: PayoutCreateInput
+  input: PayoutCreateInput,
+  providerConfig?: PayoutProviderConfig
 ) {
-  const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
+  const baseUrl = resolvePayoutBaseUrl(env, providerConfig?.baseUrl);
+  const apiVersion = resolveApiVersion(providerConfig?.apiVersion);
   const isUpi = Boolean(input.upiId?.trim());
 
   // Cashfree validates contact details more strictly in live mode — a
@@ -167,18 +255,22 @@ async function cashfreePayoutCreateBeneficiary(
     }
   };
 
-  const res = await fetch(`${baseUrl}/beneficiary`, {
+  const endpointUrl = buildPayoutEndpoint(baseUrl, "/beneficiary");
+  logEndpointPathBuilt("POST", endpointUrl.replace(baseUrl, ""));
+
+  const res = await fetch(endpointUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-version": "2024-01-01",
+      "x-api-version": apiVersion,
       "x-client-id": clientId,
       "x-client-secret": clientSecret,
     },
     body: JSON.stringify(body),
   });
 
-  return await readJson(res);
+  const result = await readJson(res);
+  return { ...result, endpointPath: endpointUrl.replace(baseUrl, "") };
 }
 
 /**
@@ -198,10 +290,12 @@ export async function cashfreePayoutGetBeneficiary(
   clientSecret: string,
   env: CashfreePayoutEnv,
   beneficiaryId: string,
-  fallback?: { bankAccountNumber?: string; bankIfsc?: string }
+  fallback?: { bankAccountNumber?: string; bankIfsc?: string },
+  providerConfig?: PayoutProviderConfig
 ) {
-  const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
-  const url = new URL(`${baseUrl}/beneficiary`);
+  const baseUrl = resolvePayoutBaseUrl(env, providerConfig?.baseUrl);
+  const apiVersion = resolveApiVersion(providerConfig?.apiVersion);
+  const url = new URL(buildPayoutEndpoint(baseUrl, "/beneficiary"));
   if (beneficiaryId) {
     url.searchParams.set("beneficiary_id", beneficiaryId);
   } else if (fallback?.bankAccountNumber && fallback?.bankIfsc) {
@@ -209,11 +303,13 @@ export async function cashfreePayoutGetBeneficiary(
     url.searchParams.set("bank_ifsc", fallback.bankIfsc);
   }
 
+  logEndpointPathBuilt("GET", url.toString().replace(baseUrl, ""));
+
   const res = await fetch(url.toString(), {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "x-api-version": "2024-01-01",
+      "x-api-version": apiVersion,
       "x-client-id": clientId,
       "x-client-secret": clientSecret,
     },
@@ -293,6 +389,15 @@ export type EnsureBeneficiaryResult = {
   message?: string;
   /** Which stage failed — only meaningful when ok=false. Lets callers log/report precisely. */
   stage?: "create" | "verify";
+  /** The exact path (e.g. "/beneficiary") that was called for the failing stage — safe to log. */
+  endpointPath?: string;
+  /**
+   * True when a CREATE-stage failure returned httpStatus 404 — a signal that
+   * is never a legitimate provider response for create and instead points
+   * at a wrong route/base URL or a rejected payload, not a genuinely missing
+   * beneficiary. Only meaningful when `stage === "create"`.
+   */
+  likelyEndpointOrPayloadIssue?: boolean;
 };
 
 export type VerifyBeneficiaryResult = {
@@ -316,13 +421,14 @@ export async function cashfreePayoutVerifyBeneficiaryWithRetry(
   env: CashfreePayoutEnv,
   beneficiaryId: string,
   attempts = 3,
-  delayMs = 600
+  delayMs = 600,
+  providerConfig?: PayoutProviderConfig
 ): Promise<VerifyBeneficiaryResult> {
   let lastHttpStatus = 0;
   let lastSubCode: string | undefined;
 
   for (let i = 0; i < attempts; i++) {
-    const fetched = await cashfreePayoutGetBeneficiary(clientId, clientSecret, env, beneficiaryId);
+    const fetched = await cashfreePayoutGetBeneficiary(clientId, clientSecret, env, beneficiaryId, undefined, providerConfig);
 
     // A 200 status alone is not sufficient proof. Cashfree's GET beneficiary
     // response must actually echo back the same beneficiary_id (and must not
@@ -375,10 +481,11 @@ export async function cashfreePayoutEnsureBeneficiary(
   clientSecret: string,
   env: CashfreePayoutEnv,
   beneficiaryId: string,
-  input: PayoutCreateInput
+  input: PayoutCreateInput,
+  providerConfig?: PayoutProviderConfig
 ): Promise<EnsureBeneficiaryResult> {
   try {
-    const created = await cashfreePayoutCreateBeneficiary(clientId, clientSecret, env, beneficiaryId, input);
+    const created = await cashfreePayoutCreateBeneficiary(clientId, clientSecret, env, beneficiaryId, input, providerConfig);
 
     const createdOk = created.httpStatus === 200 || created.httpStatus === 201;
     const alreadyExists = !createdOk && isBeneficiaryAlreadyExists(created.parsed, created.httpStatus);
@@ -391,13 +498,15 @@ export async function cashfreePayoutEnsureBeneficiary(
         subCode: String(created.parsed?.code ?? created.parsed?.subCode ?? created.parsed?.status_code ?? ""),
         message: created.parsed?.message ?? created.parsed?.status_description ?? "Cashfree beneficiary create failed",
         stage: "create",
+        endpointPath: created.endpointPath,
+        likelyEndpointOrPayloadIssue: isLikelyEndpointOrPayloadIssue(created.httpStatus),
       };
     }
 
     // Created fresh, or already existed — either way, verify it is actually
     // retrievable (with retry/backoff for propagation delay) before trusting
     // it for a transfer.
-    const verified = await cashfreePayoutVerifyBeneficiaryWithRetry(clientId, clientSecret, env, beneficiaryId);
+    const verified = await cashfreePayoutVerifyBeneficiaryWithRetry(clientId, clientSecret, env, beneficiaryId, 3, 600, providerConfig);
     if (!verified.ok) {
       return {
         ok: false,
@@ -427,12 +536,14 @@ export async function cashfreePayoutCreateTransfer(
   rawClientId: string,
   rawClientSecret: string,
   env: CashfreePayoutEnv,
-  input: PayoutCreateInput
+  input: PayoutCreateInput,
+  providerConfig?: PayoutProviderConfig
 ): Promise<{ raw: string; parsed: any; httpStatus: number }> {
   // Trim whitespace — a stray space silently breaks auth on the transfer call too
   const clientId = (rawClientId ?? "").trim();
   const clientSecret = (rawClientSecret ?? "").trim();
-  const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
+  const baseUrl = resolvePayoutBaseUrl(env, providerConfig?.baseUrl);
+  const apiVersion = resolveApiVersion(providerConfig?.apiVersion);
 
   const isUpi = Boolean(input.upiId?.trim());
 
@@ -444,7 +555,7 @@ export async function cashfreePayoutCreateTransfer(
       ? input.upiId!.trim()
       : `${input.accountNumber ?? ""}_${input.ifsc ?? ""}`;
     beneficiaryId = cleanId(`BENE_${beneficiarySeed}`, 50);
-    const ensured = await cashfreePayoutEnsureBeneficiary(clientId, clientSecret, env, beneficiaryId, input);
+    const ensured = await cashfreePayoutEnsureBeneficiary(clientId, clientSecret, env, beneficiaryId, input, providerConfig);
     if (!ensured.ok) {
       return {
         raw: "",
@@ -477,11 +588,14 @@ export async function cashfreePayoutCreateTransfer(
         },
   };
 
-  const res = await fetch(`${baseUrl}/transfers`, {
+  const endpointUrl = buildPayoutEndpoint(baseUrl, "/transfers");
+  logEndpointPathBuilt("POST", endpointUrl.replace(baseUrl, ""));
+
+  const res = await fetch(endpointUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-version": "2024-01-01",
+      "x-api-version": apiVersion,
       "x-client-id": clientId,
       "x-client-secret": clientSecret,
     },
@@ -496,20 +610,24 @@ export async function cashfreePayoutGetTransferStatus(
   rawClientId: string,
   rawClientSecret: string,
   env: CashfreePayoutEnv,
-  referenceId: string
+  referenceId: string,
+  providerConfig?: PayoutProviderConfig
 ) {
   // Trim whitespace — a stray space silently breaks auth on the status call too
   const clientId = (rawClientId ?? "").trim();
   const clientSecret = (rawClientSecret ?? "").trim();
-  const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
-  const url = new URL(`${baseUrl}/transfers`);
+  const baseUrl = resolvePayoutBaseUrl(env, providerConfig?.baseUrl);
+  const apiVersion = resolveApiVersion(providerConfig?.apiVersion);
+  const url = new URL(buildPayoutEndpoint(baseUrl, "/transfers"));
   url.searchParams.set("transfer_id", referenceId);
+
+  logEndpointPathBuilt("GET", url.toString().replace(baseUrl, ""));
 
   const res = await fetch(url.toString(), {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "x-api-version": "2024-01-01",
+      "x-api-version": apiVersion,
       "x-client-id": clientId,
       "x-client-secret": clientSecret,
     },

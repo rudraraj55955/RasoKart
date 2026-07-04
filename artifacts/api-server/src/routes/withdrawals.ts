@@ -50,6 +50,8 @@ async function getPayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const cfg = new Map(rows.map(r => [r.key, r.value]));
@@ -62,6 +64,10 @@ async function getPayoutConfig() {
     env: (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv,
     enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) === "true",
     fundsourceId: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_FUNDSOURCE_ID) ?? "",
+    providerConfig: {
+      baseUrl: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL) ?? "",
+      apiVersion: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION) ?? "",
+    },
   };
 }
 
@@ -470,7 +476,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     const accountMasked = claimed.payoutMode === "UPI"
       ? (claimed.upiId ? `${claimed.upiId.slice(0, 2)}***` : null)
       : (claimed.bankAccount ? `****${claimed.bankAccount.trim().slice(-4)}` : null);
-    const bene = await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact);
+    const bene = await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact, cfg.providerConfig);
     if (!bene.ok) {
       transferStatus = "FAILED";
       failureReason = bene.message ?? "Beneficiary setup failed. Please re-register beneficiary.";
@@ -499,7 +505,8 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
           upiId: claimed.payoutMode === "UPI" ? (claimed.upiId ?? undefined) : undefined,
           amount: amt,
           remark: `Payout #${id}`,
-        }
+        },
+        cfg.providerConfig
       );
 
       // Safe log only — transferId, mode, amount, httpStatus, providerStatus,
@@ -739,7 +746,8 @@ router.post("/:id/refresh-status", requireAdmin, async (req, res) => {
     cfg.clientId,
     cfg.clientSecret,
     cfg.env,
-    w.providerReferenceId
+    w.providerReferenceId,
+    cfg.providerConfig
   );
   const normalized = normalizeCashfreePayoutStatus(result.parsed?.status);
   const amt = Number(w.amount);
@@ -958,7 +966,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     ? (w.upiId ? `${w.upiId.slice(0, 2)}***` : null)
     : (w.bankAccount ? `****${w.bankAccount.trim().slice(-4)}` : null);
   const retryBeneficiaryRow = await resolveBeneficiaryRowForWithdrawal(w, cfg.env, merchantName);
-  const retryBene = await ensureBeneficiaryProviderRegistered(req, retryBeneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact);
+  const retryBene = await ensureBeneficiaryProviderRegistered(req, retryBeneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact, cfg.providerConfig);
 
   if (!retryBene.ok) {
     transferStatus = "FAILED";
@@ -988,7 +996,8 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
         upiId: w.payoutMode === "UPI" ? (w.upiId ?? undefined) : undefined,
         amount: amt,
         remark: `Payout #${id} retry`,
-      }
+      },
+      cfg.providerConfig
     );
 
     // Safe log only — transferId, mode, amount, httpStatus, providerStatus,
@@ -1159,7 +1168,8 @@ router.post("/:id/reregister-beneficiary", requireAdmin, async (req, res) => {
     cfg.clientSecret,
     id,
     "Admin manual re-registration from payout row",
-    merchantContact
+    merchantContact,
+    cfg.providerConfig
   );
 
   const [freshBeneficiary] = await db

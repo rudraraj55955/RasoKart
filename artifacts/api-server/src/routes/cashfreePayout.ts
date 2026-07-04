@@ -18,6 +18,8 @@ async function getPayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const cfg = new Map(rows.map(r => [r.key, r.value]));
@@ -31,6 +33,10 @@ async function getPayoutConfig() {
     clientSecretDecryptOk: decrypted.ok,
     env: (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv,
     enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) === "true",
+    providerConfig: {
+      baseUrl: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL) ?? "",
+      apiVersion: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION) ?? "",
+    },
   };
 }
 
@@ -136,7 +142,7 @@ router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
       upiId: upiId?.trim(),
       amount: Number(amount),
       remark: remark?.trim(),
-    });
+    }, cfg.providerConfig);
 
     const cashfreeStatus = parsed.status as string | undefined;
     const normalizedStatus = normalizeCashfreePayoutStatus(cashfreeStatus);
@@ -245,7 +251,7 @@ router.post("/bulk", requireAuth, requireAdmin, async (req, res, next) => {
           upiId: upiId || undefined,
           amount,
           remark: remark || undefined,
-        });
+        }, cfg.providerConfig);
 
         const cashfreeStatus = parsed.status as string | undefined;
         const normalizedStatus = normalizeCashfreePayoutStatus(cashfreeStatus);
@@ -321,7 +327,7 @@ router.post("/:id/retry", requireAuth, requireAdmin, async (req, res, next) => {
       upiId: payout.upiId ?? undefined,
       amount: Number(payout.amount),
       remark: payout.remark ?? undefined,
-    });
+    }, cfg.providerConfig);
 
     const cashfreeStatus = parsed.status as string | undefined;
     const normalizedStatus = normalizeCashfreePayoutStatus(cashfreeStatus);
@@ -367,7 +373,7 @@ router.post("/sync-status", requireAuth, requireAdmin, async (req, res, next) =>
     let updatedCount = 0;
     for (const row of pendingRows) {
       try {
-        const { parsed } = await cashfreePayoutGetTransferStatus(cfg.clientId, cfg.clientSecret, cfg.env, row.transferId);
+        const { parsed } = await cashfreePayoutGetTransferStatus(cfg.clientId, cfg.clientSecret, cfg.env, row.transferId, cfg.providerConfig);
         const cashfreeStatus = parsed.status as string | undefined;
         const normalizedStatus = normalizeCashfreePayoutStatus(cashfreeStatus);
 

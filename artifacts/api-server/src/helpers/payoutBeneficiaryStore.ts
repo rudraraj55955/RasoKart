@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import {
   cashfreePayoutEnsureBeneficiary,
   type CashfreePayoutEnv,
+  type PayoutProviderConfig,
 } from "./cashfreePayout";
 
 export type BeneficiaryDestinationInput = {
@@ -141,7 +142,8 @@ export async function ensureBeneficiaryProviderRegistered(
   clientSecret: string,
   withdrawalId?: number | null,
   forceRefresh = false,
-  merchantContact?: { email?: string | null; phone?: string | null }
+  merchantContact?: { email?: string | null; phone?: string | null },
+  providerConfig?: PayoutProviderConfig
 ): Promise<EnsureProviderResult> {
   if (!forceRefresh && beneficiaryRow.providerStatus === "created" && beneficiaryRow.providerBeneficiaryId) {
     return { ok: true, providerBeneficiaryId: beneficiaryRow.providerBeneficiaryId };
@@ -171,7 +173,7 @@ export async function ensureBeneficiaryProviderRegistered(
     amount: 0,
     beneficiaryEmail: merchantContact?.email ?? undefined,
     beneficiaryPhone: merchantContact?.phone ?? undefined,
-  });
+  }, providerConfig);
 
   // Logged unconditionally right after the create call returns, before any
   // pass/fail decision is made — records only the safe httpStatus/subCode,
@@ -182,6 +184,16 @@ export async function ensureBeneficiaryProviderRegistered(
   );
 
   if (!ensured.ok && ensured.stage === "create") {
+    if (ensured.likelyEndpointOrPayloadIssue) {
+      // A 404 on CREATE is never a legitimate "beneficiary not found" — it
+      // means the request hit the wrong route or the payload was rejected.
+      // Logged as a distinct event so it is never confused with a genuine
+      // provider-side not-found on GET/transfer calls.
+      req.log.error(
+        { ...logCtx, httpStatus: ensured.httpStatus, subCode: ensured.subCode, endpointPath: ensured.endpointPath },
+        "payout_beneficiary_create_failed_endpoint_or_payload"
+      );
+    }
     req.log.warn(
       { ...logCtx, httpStatus: ensured.httpStatus, subCode: ensured.subCode },
       "payout_beneficiary_create_failed"
@@ -275,7 +287,8 @@ export async function reregisterBeneficiaryWithProvider(
   clientSecret: string,
   withdrawalId?: number | null,
   reason = "Manual re-registration requested",
-  merchantContact?: { email?: string | null; phone?: string | null }
+  merchantContact?: { email?: string | null; phone?: string | null },
+  providerConfig?: PayoutProviderConfig
 ): Promise<EnsureProviderResult> {
   req.log.info(
     { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id, reason },
@@ -298,7 +311,8 @@ export async function reregisterBeneficiaryWithProvider(
     clientSecret,
     withdrawalId,
     true,
-    merchantContact
+    merchantContact,
+    providerConfig
   );
 
   if (result.ok) {
