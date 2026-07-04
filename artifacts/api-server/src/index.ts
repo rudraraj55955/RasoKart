@@ -25,6 +25,7 @@ import { db, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } fro
 import { eq } from "drizzle-orm";
 import { initNotifReminderScheduler, runNotifReminderScan } from "./helpers/notifReminderScheduler";
 import { initSnoozeCleanupScheduler, runSnoozeCleanup } from "./helpers/snoozeCleanupScheduler";
+import { initPayoutStuckCleanupScheduler, runStuckPayoutCleanup } from "./helpers/payoutStuckCleanupScheduler";
 
 const rawPort = process.env["PORT"];
 
@@ -132,6 +133,7 @@ async function main() {
   initDeliverySuccessRateAlertScheduler();
   initNotifReminderScheduler();
   initSnoozeCleanupScheduler();
+  initPayoutStuckCleanupScheduler();
   scheduleCallbackRetryWorker();
   initQuietHoursFlushScheduler();
 
@@ -171,6 +173,13 @@ async function main() {
   // was down so they don't linger until the next nightly run.
   runSnoozeCleanup().catch((err) => {
     logger.warn({ err }, "Startup snooze cleanup sweep failed");
+  });
+
+  // Startup sweep: clean up payouts stuck INITIATED/PENDING past the
+  // threshold (e.g. server crashed mid-transfer) so locked wallet balances
+  // don't stay stuck until the next scheduled run.
+  runStuckPayoutCleanup().catch((err) => {
+    logger.warn({ err }, "Startup stuck payout cleanup sweep failed");
   });
 
   app.listen(port, (err) => {

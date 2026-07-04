@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * stale = provider previously reported this beneficiary id as invalid/not found; will be re-registered on next attempt
+ */
 export type PayoutBeneficiaryProviderStatus = typeof PayoutBeneficiaryProviderStatus[keyof typeof PayoutBeneficiaryProviderStatus];
 
 
@@ -13,4 +16,5 @@ export const PayoutBeneficiaryProviderStatus = {
   not_created: 'not_created',
   created: 'created',
   failed: 'failed',
+  stale: 'stale',
 } as const;

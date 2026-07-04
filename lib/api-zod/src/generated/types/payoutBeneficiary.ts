@@ -34,6 +34,7 @@ export interface PayoutBeneficiary {
      */
   upiIdMasked?: string | null;
   localStatus: PayoutBeneficiaryLocalStatus;
+  /** stale = provider previously reported this beneficiary id as invalid/not found; will be re-registered on next attempt */
   providerStatus: PayoutBeneficiaryProviderStatus;
   /**
      * Safe, admin-facing error message only — never raw provider response

@@ -1212,6 +1212,26 @@ export interface WithdrawalInput {
   remarks?: string;
 }
 
+export type ReregisterBeneficiaryResponseProviderStatus = typeof ReregisterBeneficiaryResponseProviderStatus[keyof typeof ReregisterBeneficiaryResponseProviderStatus];
+
+
+export const ReregisterBeneficiaryResponseProviderStatus = {
+  not_created: 'not_created',
+  created: 'created',
+  failed: 'failed',
+  stale: 'stale',
+} as const;
+
+export interface ReregisterBeneficiaryResponse {
+  success: boolean;
+  providerStatus: ReregisterBeneficiaryResponseProviderStatus;
+  /**
+     * Safe, admin-facing message only — never raw provider response
+     * @nullable
+     */
+  message?: string | null;
+}
+
 export type PayoutBeneficiaryPayoutMode = typeof PayoutBeneficiaryPayoutMode[keyof typeof PayoutBeneficiaryPayoutMode];
 
 
@@ -1230,6 +1250,9 @@ export const PayoutBeneficiaryLocalStatus = {
   disabled: 'disabled',
 } as const;
 
+/**
+ * stale = provider previously reported this beneficiary id as invalid/not found; will be re-registered on next attempt
+ */
 export type PayoutBeneficiaryProviderStatus = typeof PayoutBeneficiaryProviderStatus[keyof typeof PayoutBeneficiaryProviderStatus];
 
 
@@ -1237,6 +1260,7 @@ export const PayoutBeneficiaryProviderStatus = {
   not_created: 'not_created',
   created: 'created',
   failed: 'failed',
+  stale: 'stale',
 } as const;
 
 export interface PayoutBeneficiary {
@@ -1264,6 +1288,7 @@ export interface PayoutBeneficiary {
      */
   upiIdMasked?: string | null;
   localStatus: PayoutBeneficiaryLocalStatus;
+  /** stale = provider previously reported this beneficiary id as invalid/not found; will be re-registered on next attempt */
   providerStatus: PayoutBeneficiaryProviderStatus;
   /**
      * Safe, admin-facing error message only — never raw provider response

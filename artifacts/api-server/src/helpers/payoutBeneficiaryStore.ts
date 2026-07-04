@@ -194,7 +194,7 @@ export async function ensureBeneficiaryProviderRegistered(
     return { ok: true, providerBeneficiaryId: ensured.beneficiaryId };
   }
 
-  const safeMessage = "Beneficiary setup failed. Check bank account, IFSC, and name.";
+  const safeMessage = "Beneficiary setup failed. Please re-register beneficiary.";
   await db
     .update(payoutBeneficiariesTable)
     .set({
@@ -210,20 +210,81 @@ export async function ensureBeneficiaryProviderRegistered(
 
 /**
  * Reset a beneficiary's provider registration after the provider reports
- * beneficiary_not_found on a transfer, so the next attempt re-creates it
- * instead of retrying against an ID Cashfree says doesn't exist.
+ * beneficiary_not_found (or another stale/invalid signal) on a transfer, so
+ * the next attempt re-creates it instead of retrying against an ID Cashfree
+ * says doesn't exist. Marks the row `provider_status = 'stale'` — distinct
+ * from `'failed'` (a genuine registration failure) — so the UI/admin can
+ * tell "we know this ID is bad, will re-register" apart from "registration
+ * itself failed at the provider".
  */
-export async function invalidateBeneficiaryProviderRegistration(beneficiaryId: number) {
+export async function invalidateBeneficiaryProviderRegistration(
+  beneficiaryId: number,
+  reason = "Provider reported beneficiary not found on transfer — will re-register on next attempt"
+) {
   await db
     .update(payoutBeneficiariesTable)
     .set({
       providerBeneficiaryId: null,
-      providerStatus: "failed",
-      lastProviderError: "Provider reported beneficiary not found on transfer — will re-register on next attempt",
+      providerStatus: "stale",
+      lastProviderError: reason,
       status: "failed",
-      lastError: "Provider reported beneficiary not found on transfer",
+      lastError: reason,
     })
     .where(eq(payoutBeneficiariesTable.id, beneficiaryId));
+}
+
+/**
+ * Force a fresh provider registration for a beneficiary — used by the admin
+ * "Re-register Beneficiary" action and by the automatic invalid-beneficiary
+ * recovery path. Always clears the existing (possibly stale/invalid)
+ * provider_beneficiary_id first and only persists a new one after the
+ * provider confirms it was created — never reuses the old id.
+ */
+export async function reregisterBeneficiaryWithProvider(
+  req: any,
+  beneficiaryRow: BeneficiaryRow,
+  env: CashfreePayoutEnv,
+  clientId: string,
+  clientSecret: string,
+  withdrawalId?: number | null,
+  reason = "Manual re-registration requested"
+): Promise<EnsureProviderResult> {
+  req.log.info(
+    { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id, reason },
+    "payout_beneficiary_reregister_started"
+  );
+
+  await invalidateBeneficiaryProviderRegistration(beneficiaryRow.id, reason);
+
+  const staleRow: BeneficiaryRow = {
+    ...beneficiaryRow,
+    providerBeneficiaryId: null,
+    providerStatus: "stale",
+  };
+
+  const result = await ensureBeneficiaryProviderRegistered(
+    req,
+    staleRow,
+    env,
+    clientId,
+    clientSecret,
+    withdrawalId,
+    true
+  );
+
+  if (result.ok) {
+    req.log.info(
+      { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id },
+      "payout_beneficiary_reregister_success"
+    );
+  } else {
+    req.log.warn(
+      { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id, message: result.message },
+      "payout_beneficiary_reregister_failed"
+    );
+  }
+
+  return result;
 }
 
 /**

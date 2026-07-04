@@ -28,6 +28,7 @@ import {
   resolveOrCreateBeneficiary,
   ensureBeneficiaryProviderRegistered,
   invalidateBeneficiaryProviderRegistration,
+  reregisterBeneficiaryWithProvider,
   type BeneficiaryDestinationInput,
 } from "../helpers/payoutBeneficiaryStore";
 
@@ -466,8 +467,11 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     const bene = await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id);
     if (!bene.ok) {
       transferStatus = "FAILED";
-      failureReason = "Beneficiary setup failed. Check bank account, IFSC, and name.";
-      req.log.warn({ withdrawalId: id, providerMessage: bene.message }, "cashfree_payout_beneficiary_failed");
+      failureReason = "Beneficiary setup failed. Please re-register beneficiary.";
+      req.log.warn(
+        { withdrawalId: id, providerMessage: bene.message },
+        "payout_transfer_create_skipped_beneficiary_invalid"
+      );
     } else {
     try {
       const result = await cashfreePayoutCreateTransfer(
@@ -507,9 +511,12 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
         // fail with "transfer_id does not exist"). Invalidate the
         // beneficiary so the next retry re-registers it and dispatches a
         // brand-new transfer_id.
-        await invalidateBeneficiaryProviderRegistration(beneficiaryRow.id);
+        await invalidateBeneficiaryProviderRegistration(
+          beneficiaryRow.id,
+          "Provider reported beneficiary not found on transfer create — will re-register on next attempt"
+        );
         transferStatus = "FAILED";
-        failureReason = "Transfer was not created. Please retry payout.";
+        failureReason = "Transfer was not created. Please retry after beneficiary setup.";
         req.log.warn({ withdrawalId: id, httpStatus: result.httpStatus }, "cashfree_payout_beneficiary_not_found_on_transfer");
       } else {
       // Prefer the provider's own reference (cf_transfer_id) when returned;
@@ -527,7 +534,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
         utr = result.parsed?.utr ?? null;
       } else if (normalized === "FAILED") {
         transferStatus = "FAILED";
-        failureReason = "Transfer was not created. Please retry payout.";
+        failureReason = "Transfer was not created. Please retry after beneficiary setup.";
       } else {
         transferStatus = "PENDING";
       }
@@ -926,8 +933,11 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
 
   if (!retryBene.ok) {
     transferStatus = "FAILED";
-    failureReason = "Beneficiary setup failed. Check bank account, IFSC, and name.";
-    req.log.warn({ withdrawalId: id, providerMessage: retryBene.message }, "cashfree_payout_beneficiary_failed_on_retry");
+    failureReason = "Beneficiary setup failed. Please re-register beneficiary.";
+    req.log.warn(
+      { withdrawalId: id, providerMessage: retryBene.message },
+      "payout_transfer_create_skipped_beneficiary_invalid"
+    );
   } else {
   try {
     const result = await cashfreePayoutCreateTransfer(
@@ -964,9 +974,12 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
       // No real transfer was created at the provider — do not persist a
       // providerReferenceId. Invalidate the beneficiary so the next retry
       // re-registers it and dispatches a brand-new transfer_id.
-      await invalidateBeneficiaryProviderRegistration(retryBeneficiaryRow.id);
+      await invalidateBeneficiaryProviderRegistration(
+        retryBeneficiaryRow.id,
+        "Provider reported beneficiary not found on transfer create (retry) — will re-register on next attempt"
+      );
       transferStatus = "FAILED";
-      failureReason = "Transfer was not created. Please retry payout.";
+      failureReason = "Transfer was not created. Please retry after beneficiary setup.";
       req.log.warn({ withdrawalId: id, httpStatus: result.httpStatus }, "cashfree_payout_beneficiary_not_found_on_transfer_retry");
     } else {
     // Prefer the provider's own reference (cf_transfer_id) when returned;
@@ -983,7 +996,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
       utr = result.parsed?.utr ?? null;
     } else if (normalized === "FAILED") {
       transferStatus = "FAILED";
-      failureReason = "Transfer was not created. Please retry payout.";
+      failureReason = "Transfer was not created. Please retry after beneficiary setup.";
     } else {
       transferStatus = "PENDING";
     }
@@ -1055,6 +1068,76 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
 
   req.log.info({ withdrawalId: id, transferStatus, adminId: user.id }, "payout_retried");
   res.json(mapWithdrawal(updated, merchantName, true));
+});
+
+// POST /api/withdrawals/:id/reregister-beneficiary — admin only.
+// Forces a fresh provider registration for this payout's beneficiary,
+// clearing any stale/invalid provider_beneficiary_id. Does NOT create a
+// transfer or touch wallet balances — it only fixes the beneficiary so a
+// subsequent retry can dispatch a brand-new transfer_id.
+router.post("/:id/reregister-beneficiary", requireAdmin, async (req, res) => {
+  const user = (req as any).user;
+  const id = parseInt(req.params["id"] as string);
+
+  const [row] = await db
+    .select({ withdrawal: withdrawalsTable, merchantName: merchantsTable.businessName })
+    .from(withdrawalsTable)
+    .leftJoin(merchantsTable, eq(withdrawalsTable.merchantId, merchantsTable.id))
+    .where(eq(withdrawalsTable.id, id))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Payout not found" });
+    return;
+  }
+  const w = row.withdrawal;
+  const merchantName = row.merchantName ?? null;
+
+  const cfg = await getPayoutConfig();
+  if (!cfg.enabled || !cfg.clientId || !cfg.clientSecret) {
+    res.status(400).json({
+      error: "Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings.",
+    });
+    return;
+  }
+
+  const beneficiaryRow = await resolveBeneficiaryRowForWithdrawal(w, cfg.env, merchantName);
+  const result = await reregisterBeneficiaryWithProvider(
+    req,
+    beneficiaryRow,
+    cfg.env,
+    cfg.clientId,
+    cfg.clientSecret,
+    id,
+    "Admin manual re-registration from payout row"
+  );
+
+  const [freshBeneficiary] = await db
+    .select()
+    .from(payoutBeneficiariesTable)
+    .where(eq(payoutBeneficiariesTable.id, beneficiaryRow.id))
+    .limit(1);
+
+  await db.insert(auditLogsTable).values({
+    adminId: user.id,
+    adminEmail: user.email,
+    action: "payout_beneficiary_reregistered",
+    targetType: "withdrawal",
+    targetId: id,
+    details: JSON.stringify({ beneficiaryId: beneficiaryRow.id, success: result.ok }),
+    ipAddress: (req as any).ip ?? null,
+  });
+
+  req.log.info(
+    { withdrawalId: id, beneficiaryId: beneficiaryRow.id, adminId: user.id, success: result.ok },
+    "payout_beneficiary_reregistered"
+  );
+
+  res.json({
+    success: result.ok,
+    providerStatus: freshBeneficiary?.providerStatus ?? "failed",
+    message: result.ok ? null : result.message,
+  });
 });
 
 export default router;

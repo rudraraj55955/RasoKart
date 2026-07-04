@@ -2890,6 +2890,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Withdrawal"
 
+  /withdrawals/{id}/reregister-beneficiary:
+    post:
+      operationId: reregisterWithdrawalBeneficiary
+      tags: [withdrawals]
+      summary: Force a fresh provider registration for this payout's beneficiary, clearing any stale/invalid provider id (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Re-registration attempted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReregisterBeneficiaryResponse"
+
   /payout-beneficiaries:
     get:
       operationId: listPayoutBeneficiaries
@@ -10448,6 +10467,19 @@ components:
         remarks:
           type: string
 
+    ReregisterBeneficiaryResponse:
+      type: object
+      required: [success, providerStatus]
+      properties:
+        success:
+          type: boolean
+        providerStatus:
+          type: string
+          enum: [not_created, created, failed, stale]
+        message:
+          type: ["string", "null"]
+          description: Safe, admin-facing message only — never raw provider response
+
     PayoutBeneficiary:
       type: object
       required: [id, merchantId, payoutMode, localStatus, providerStatus, createdAt, updatedAt]
@@ -10480,7 +10512,8 @@ components:
           enum: [active, disabled]
         providerStatus:
           type: string
-          enum: [not_created, created, failed]
+          enum: [not_created, created, failed, stale]
+          description: "stale = provider previously reported this beneficiary id as invalid/not found; will be re-registered on next attempt"
         lastProviderError:
           type: ["string", "null"]
           description: Safe, admin-facing error message only — never raw provider response

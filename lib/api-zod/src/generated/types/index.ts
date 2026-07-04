@@ -458,6 +458,8 @@ export * from './reportSettlementStatus';
 export * from './reportTransaction';
 export * from './reportTransactionStatus';
 export * from './reportTransactionType';
+export * from './reregisterBeneficiaryResponse';
+export * from './reregisterBeneficiaryResponseProviderStatus';
 export * from './resendReconciliationAlertEmail200';
 export * from './resendReconciliationReportEmail200';
 export * from './resetAdminMerchantReportScheduleFailures200';

@@ -5,6 +5,7 @@ import {
   useRejectWithdrawal,
   useRefreshWithdrawalStatus,
   useRetryWithdrawal,
+  useReregisterWithdrawalBeneficiary,
   getListWithdrawalsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -26,6 +27,7 @@ import {
   Lock,
   Send,
   AlertTriangle,
+  UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -59,6 +61,7 @@ export default function AdminPayouts() {
   const rejectMutation = useRejectWithdrawal();
   const refreshMutation = useRefreshWithdrawalStatus();
   const retryMutation = useRetryWithdrawal();
+  const reregisterMutation = useReregisterWithdrawalBeneficiary();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() });
 
@@ -82,8 +85,8 @@ export default function AdminPayouts() {
           if (ts === "SUCCESS") toast.success("Payout approved and sent successfully");
           else if (fr?.startsWith("PAYOUT_CREDENTIAL_ERROR"))
             toast.error("Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings.");
-          else if (fr?.startsWith("PAYOUT_BENEFICIARY_ERROR"))
-            toast.error("Beneficiary setup failed. Check bank account/IFSC/name.");
+          else if (fr?.startsWith("PAYOUT_BENEFICIARY_ERROR") || fr === "Beneficiary setup failed. Please re-register beneficiary.")
+            toast.error("Beneficiary setup failed. Please re-register beneficiary.");
           else if (ts === "FAILED" || ts === "REVERSED") toast.warning("Payout approved but transfer failed — check status");
           else toast.success("Payout approved — processing with provider");
           setConfirmApproveId(null);
@@ -134,12 +137,26 @@ export default function AdminPayouts() {
           if (ts === "SUCCESS") toast.success("Retry successful — payout sent");
           else if (fr?.startsWith("PAYOUT_CREDENTIAL_ERROR"))
             toast.error("Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings.");
-          else if (fr?.startsWith("PAYOUT_BENEFICIARY_ERROR"))
-            toast.error("Beneficiary setup failed. Check bank account/IFSC/name.");
+          else if (fr?.startsWith("PAYOUT_BENEFICIARY_ERROR") || fr === "Beneficiary setup failed. Please re-register beneficiary.")
+            toast.error("Beneficiary setup failed. Please re-register beneficiary.");
           else toast.info(`Retry initiated — status: ${ts}`);
           invalidate();
         },
         onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to retry payout"),
+      }
+    );
+  };
+
+  const handleReregisterBeneficiary = (id: number) => {
+    reregisterMutation.mutate(
+      { id },
+      {
+        onSuccess: (result: any) => {
+          if (result?.providerStatus === "created") toast.success("Beneficiary re-registered with provider — you can retry the payout now");
+          else toast.error("Beneficiary setup failed. Please re-register beneficiary.");
+          invalidate();
+        },
+        onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to re-register beneficiary"),
       }
     );
   };
@@ -365,15 +382,23 @@ export default function AdminPayouts() {
                                   title={
                                     w.failureReason.startsWith("PAYOUT_CREDENTIAL_ERROR")
                                       ? "Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings."
-                                      : w.failureReason.startsWith("PAYOUT_BENEFICIARY_ERROR")
-                                      ? "Beneficiary setup failed. Check bank account/IFSC/name."
+                                      : w.failureReason.startsWith("PAYOUT_BENEFICIARY_ERROR") ||
+                                        w.failureReason === "Beneficiary setup failed. Please re-register beneficiary."
+                                      ? "Beneficiary setup failed. Please re-register beneficiary."
+                                      : w.failureReason === "Transfer was not created. Please retry after beneficiary setup." ||
+                                        w.failureReason === "Transfer was not created / provider transfer not found"
+                                      ? "Transfer was not created. Please retry after beneficiary setup."
                                       : "Payout failed. Please retry or contact support."
                                   }
                                 >
                                   {w.failureReason.startsWith("PAYOUT_CREDENTIAL_ERROR")
                                     ? "⚠ Payout provider credentials invalid — fix in Gateway Settings"
-                                    : w.failureReason.startsWith("PAYOUT_BENEFICIARY_ERROR")
-                                    ? "⚠ Beneficiary setup failed. Check bank account/IFSC/name."
+                                    : w.failureReason.startsWith("PAYOUT_BENEFICIARY_ERROR") ||
+                                      w.failureReason === "Beneficiary setup failed. Please re-register beneficiary."
+                                    ? "⚠ Beneficiary setup failed. Please re-register beneficiary."
+                                    : w.failureReason === "Transfer was not created. Please retry after beneficiary setup." ||
+                                      w.failureReason === "Transfer was not created / provider transfer not found"
+                                    ? "⚠ Transfer was not created. Please retry after beneficiary setup."
                                     : "Payout failed. Please retry or contact support."}
                                 </p>
                               )}
@@ -440,29 +465,46 @@ export default function AdminPayouts() {
                                       <AlertTriangle className="w-4 h-4 mr-1" />
                                       Retry (fix creds first)
                                     </Button>
-                                  ) : w.failureReason?.startsWith("PAYOUT_BENEFICIARY_ERROR") ? (
+                                  ) : w.failureReason?.startsWith("PAYOUT_BENEFICIARY_ERROR") ||
+                                    w.failureReason === "Beneficiary setup failed. Please re-register beneficiary." ? (
                                     <Button
                                       size="sm"
                                       variant="ghost"
                                       className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
-                                      onClick={() => handleRetry(w.id)}
-                                      disabled={retryMutation.isPending}
-                                      title="Beneficiary setup failed. Check bank account/IFSC/name, then retry."
+                                      onClick={() => handleReregisterBeneficiary(w.id)}
+                                      disabled={reregisterMutation.isPending}
+                                      title="Beneficiary setup failed. Re-register the beneficiary with the provider, then retry."
                                     >
-                                      <AlertTriangle className="w-4 h-4 mr-1" />
-                                      Retry (fix bank details first)
+                                      <UserCog className="w-4 h-4 mr-1" />
+                                      Re-register Beneficiary
                                     </Button>
                                   ) : (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
-                                      onClick={() => handleRetry(w.id)}
-                                      disabled={retryMutation.isPending}
-                                    >
-                                      <RotateCcw className="w-4 h-4 mr-1" />
-                                      Retry
-                                    </Button>
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+                                        onClick={() => handleRetry(w.id)}
+                                        disabled={retryMutation.isPending}
+                                      >
+                                        <RotateCcw className="w-4 h-4 mr-1" />
+                                        Retry
+                                      </Button>
+                                      {(w.failureReason === "Transfer was not created. Please retry after beneficiary setup." ||
+                                        w.failureReason === "Transfer was not created / provider transfer not found") && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                                          onClick={() => handleReregisterBeneficiary(w.id)}
+                                          disabled={reregisterMutation.isPending}
+                                          title="Re-register the beneficiary with the provider before retrying."
+                                        >
+                                          <UserCog className="w-4 h-4 mr-1" />
+                                          Re-register Beneficiary
+                                        </Button>
+                                      )}
+                                    </>
                                   )
                                 )}
                                 {w.status !== "pending" && !isProcessing && !isFailed && (

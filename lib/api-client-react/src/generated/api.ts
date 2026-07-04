@@ -302,6 +302,7 @@ import type {
   RenameMerchantSavedFilterInput,
   RenewPlanInput,
   ReorderMerchantSavedFiltersInput,
+  ReregisterBeneficiaryResponse,
   ResendReconciliationAlertEmail200,
   ResendReconciliationReportEmail200,
   ResetAdminMerchantReportScheduleFailures200,
@@ -7192,6 +7193,76 @@ export const useRetryWithdrawal = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRetryWithdrawalMutationOptions(options));
+    }
+
+export const getReregisterWithdrawalBeneficiaryUrl = (id: number,) => {
+
+
+
+
+  return `/api/withdrawals/${id}/reregister-beneficiary`
+}
+
+/**
+ * @summary Force a fresh provider registration for this payout's beneficiary, clearing any stale/invalid provider id (admin only)
+ */
+export const reregisterWithdrawalBeneficiary = async (id: number, options?: RequestInit): Promise<ReregisterBeneficiaryResponse> => {
+
+  return customFetch<ReregisterBeneficiaryResponse>(getReregisterWithdrawalBeneficiaryUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getReregisterWithdrawalBeneficiaryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reregisterWithdrawalBeneficiary>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reregisterWithdrawalBeneficiary>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['reregisterWithdrawalBeneficiary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reregisterWithdrawalBeneficiary>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  reregisterWithdrawalBeneficiary(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReregisterWithdrawalBeneficiaryMutationResult = NonNullable<Awaited<ReturnType<typeof reregisterWithdrawalBeneficiary>>>
+
+    export type ReregisterWithdrawalBeneficiaryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Force a fresh provider registration for this payout's beneficiary, clearing any stale/invalid provider id (admin only)
+ */
+export const useReregisterWithdrawalBeneficiary = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reregisterWithdrawalBeneficiary>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reregisterWithdrawalBeneficiary>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getReregisterWithdrawalBeneficiaryMutationOptions(options));
     }
 
 export const getListPayoutBeneficiariesUrl = (params?: ListPayoutBeneficiariesParams,) => {
