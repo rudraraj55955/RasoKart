@@ -14422,7 +14422,7 @@ components:
           type: number
         status:
           type: string
-          enum: [created]
+          enum: [CREATED]
         checkoutLabel:
           type: string
         message:
@@ -14441,7 +14441,7 @@ components:
         utr:
           type: string
           nullable: true
-          description: UTR — only populated once status is "paid"
+          description: UTR — only populated once status is "PAID"
         paidAt:
           type: string
           format: date-time

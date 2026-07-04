@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, cashfreePaymentOrdersTable, cashfreePaymentLogsTable, ledgerEntriesTable, merchantsTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
+import { db, cashfreePaymentOrdersTable, cashfreePaymentLogsTable, ledgerEntriesTable, merchantsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, PAYIN_ORDER_STATUS } from "@workspace/db";
 import { eq, and, ne, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyCashfreeWebhookSignature } from "../helpers/cashfree";
@@ -189,7 +189,7 @@ router.post("/cashfree", async (req, res) => {
       const updated = await trx
         .update(cashfreePaymentOrdersTable)
         .set({
-          status: "paid",
+          status: PAYIN_ORDER_STATUS.PAID,
           utr,
           paymentMethod: paymentGroup ?? "upi",
           rawProviderStatus: status,
@@ -197,7 +197,7 @@ router.post("/cashfree", async (req, res) => {
         })
         .where(and(
           eq(cashfreePaymentOrdersTable.cashfreeOrderId, orderId),
-          ne(cashfreePaymentOrdersTable.status, "paid"),
+          ne(cashfreePaymentOrdersTable.status, PAYIN_ORDER_STATUS.PAID),
         ))
         .returning({ id: cashfreePaymentOrdersTable.id, merchantId: cashfreePaymentOrdersTable.merchantId });
 

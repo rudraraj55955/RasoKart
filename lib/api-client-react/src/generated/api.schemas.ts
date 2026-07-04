@@ -4144,7 +4144,7 @@ export type PayinOrderCreateResultStatus = typeof PayinOrderCreateResultStatus[k
 
 
 export const PayinOrderCreateResultStatus = {
-  created: 'created',
+  CREATED: 'CREATED',
 } as const;
 
 export interface PayinOrderCreateResult {
@@ -4162,7 +4162,7 @@ export interface PayinOrderStatus {
   publicOrderId: string;
   amount: number;
   status: string;
-  /** UTR — only populated once status is "paid" */
+  /** UTR — only populated once status is "PAID" */
   utr?: string | null;
   paidAt?: string | null;
   createdAt: string;

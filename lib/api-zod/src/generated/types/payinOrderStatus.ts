@@ -10,7 +10,7 @@ export interface PayinOrderStatus {
   publicOrderId: string;
   amount: number;
   status: string;
-  /** UTR — only populated once status is "paid" */
+  /** UTR — only populated once status is "PAID" */
   utr?: string | null;
   paidAt?: Date | null;
   createdAt: Date;

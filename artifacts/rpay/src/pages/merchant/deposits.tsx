@@ -894,14 +894,14 @@ export default function MerchantDeposits() {
         enabled: !!activePayinOrder,
         refetchInterval: (query) => {
           const s = query.state.data?.status;
-          return s === "paid" || s === "failed" || s === "expired" ? false : 3000;
+          return s === "PAID" || s === "FAILED" || s === "EXPIRED" ? false : 3000;
         },
       },
     },
   );
 
   useEffect(() => {
-    if (activeOrderStatus?.status === "paid") {
+    if (activeOrderStatus?.status === "PAID") {
       toast.success("Deposit received successfully");
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -1843,7 +1843,7 @@ export default function MerchantDeposits() {
                 <p className="text-2xl font-bold font-mono">₹{activePayinOrder.amount.toLocaleString()}</p>
               </div>
 
-              {activeOrderStatus?.status === "paid" ? (
+              {activeOrderStatus?.status === "PAID" ? (
                 <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-4 text-center space-y-1">
                   <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
                   <p className="text-sm font-medium text-emerald-300">Deposit received</p>
@@ -1851,11 +1851,11 @@ export default function MerchantDeposits() {
                     <p className="text-xs text-muted-foreground font-mono">UTR: {activeOrderStatus.utr}</p>
                   )}
                 </div>
-              ) : activeOrderStatus?.status === "failed" || activeOrderStatus?.status === "expired" ? (
+              ) : activeOrderStatus?.status === "FAILED" || activeOrderStatus?.status === "EXPIRED" ? (
                 <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-4 text-center space-y-1">
                   <XCircle className="w-8 h-8 text-rose-400 mx-auto" />
                   <p className="text-sm font-medium text-rose-300">
-                    {activeOrderStatus.status === "expired" ? "Order expired" : "Payment failed"}
+                    {activeOrderStatus.status === "EXPIRED" ? "Order expired" : "Payment failed"}
                   </p>
                 </div>
               ) : (

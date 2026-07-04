@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, cashfreePaymentOrdersTable, cashfreePaymentLogsTable, transactionsTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
+import { db, cashfreePaymentOrdersTable, cashfreePaymentLogsTable, transactionsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, PAYIN_ORDER_STATUS } from "@workspace/db";
 import { eq, and, ne } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyCashfreeWebhookSignature } from "../helpers/cashfree";
@@ -118,10 +118,10 @@ router.post("/cashfree-webhook", async (req, res) => {
     // same order will find zero updated rows and be treated as duplicates.
     const updated = await db
       .update(cashfreePaymentOrdersTable)
-      .set({ status: "paid" })
+      .set({ status: PAYIN_ORDER_STATUS.PAID })
       .where(and(
         eq(cashfreePaymentOrdersTable.cashfreeOrderId, cashfreeOrderId),
-        ne(cashfreePaymentOrdersTable.status, "paid"),
+        ne(cashfreePaymentOrdersTable.status, PAYIN_ORDER_STATUS.PAID),
       ))
       .returning({ id: cashfreePaymentOrdersTable.id });
 

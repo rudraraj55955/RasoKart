@@ -2,6 +2,21 @@ import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+/**
+ * Canonical payin order status values. Always compare/insert/update
+ * `cashfreePaymentOrdersTable.status` using these constants — never raw
+ * string literals — so the app and the daily-limit / reconciliation
+ * queries can never drift on casing (e.g. "paid" vs "PAID").
+ */
+export const PAYIN_ORDER_STATUS = {
+  CREATED: "CREATED",
+  PENDING: "PENDING",
+  PAID: "PAID",
+  FAILED: "FAILED",
+  EXPIRED: "EXPIRED",
+} as const;
+export type PayinOrderStatus = (typeof PAYIN_ORDER_STATUS)[keyof typeof PAYIN_ORDER_STATUS];
+
 export const cashfreePaymentOrdersTable = pgTable("cashfree_payment_orders", {
   id: serial("id").primaryKey(),
   merchantId: integer("merchant_id").notNull(),
@@ -11,7 +26,7 @@ export const cashfreePaymentOrdersTable = pgTable("cashfree_payment_orders", {
   paymentSessionId: text("payment_session_id"),
   amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
   currency: text("currency").notNull().default("INR"),
-  status: text("status").notNull().default("created"),
+  status: text("status").notNull().default(PAYIN_ORDER_STATUS.CREATED),
   paymentMethod: text("payment_method"),
   utr: text("utr"),
   customerPhone: text("customer_phone"),

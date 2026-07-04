@@ -7374,7 +7374,7 @@ export const CreatePayinOrderResponse = zod.object({
   "publicOrderId": zod.string().describe('RasoKart-branded order identifier (RKPAYIN_...)'),
   "paymentToken": zod.string().describe('Opaque token used to render the RasoKart Secure Checkout — never a raw provider identifier'),
   "amount": zod.number(),
-  "status": zod.enum(['created']),
+  "status": zod.enum(['CREATED']),
   "checkoutLabel": zod.string(),
   "message": zod.string()
 })
@@ -7391,7 +7391,7 @@ export const GetPayinOrderStatusResponse = zod.object({
   "publicOrderId": zod.string(),
   "amount": zod.number(),
   "status": zod.string(),
-  "utr": zod.string().nullish().describe('UTR — only populated once status is \"paid\"'),
+  "utr": zod.string().nullish().describe('UTR — only populated once status is \"PAID\"'),
   "paidAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date()
 })

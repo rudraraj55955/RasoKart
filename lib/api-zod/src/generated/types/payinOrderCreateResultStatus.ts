@@ -10,5 +10,5 @@ export type PayinOrderCreateResultStatus = typeof PayinOrderCreateResultStatus[k
 
 
 export const PayinOrderCreateResultStatus = {
-  created: 'created',
+  CREATED: 'CREATED',
 } as const;

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, cashfreePaymentOrdersTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
+import { db, cashfreePaymentOrdersTable, systemConfigTable, SYSTEM_CONFIG_KEYS, PAYIN_ORDER_STATUS } from "@workspace/db";
 import { eq, inArray, ne, and } from "drizzle-orm";
 import { cashfreeCreateOrder, type CashfreeEnv } from "../helpers/cashfree";
 import { requireAuth } from "../middlewares/auth";
@@ -116,7 +116,7 @@ router.post("/cashfree/create-order", requireAuth, async (req, res, next) => {
       paymentSessionId: parsed.payment_session_id,
       amount: String(amount),
       currency,
-      status: "created",
+      status: PAYIN_ORDER_STATUS.CREATED,
       rawPayload: raw,
     }).onConflictDoNothing();
 
@@ -231,7 +231,7 @@ router.post("/payment/create-order", requireAuth, async (req, res, next) => {
       paymentSessionId: parsed.payment_session_id,
       amount: String(amount),
       currency,
-      status: "created",
+      status: PAYIN_ORDER_STATUS.CREATED,
       rawPayload: raw,
     }).onConflictDoNothing();
 
@@ -243,7 +243,7 @@ router.post("/payment/create-order", requireAuth, async (req, res, next) => {
       publicOrderId: orderId,
       checkoutUrl,
       amount: Number(amount),
-      status: "created",
+      status: PAYIN_ORDER_STATUS.CREATED,
       message: "Payment order created successfully",
     });
   } catch (err) { next(err); }

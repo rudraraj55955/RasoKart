@@ -201,11 +201,11 @@ function AdminPayinOrdersPanel() {
               <SelectTrigger className="w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="created">Created</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
+                <SelectItem value="CREATED">Created</SelectItem>
+                <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="PAID">Paid</SelectItem>
+                <SelectItem value="FAILED">Failed</SelectItem>
+                <SelectItem value="EXPIRED">Expired</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -257,7 +257,7 @@ function AdminPayinOrdersPanel() {
                       ₹{Number(r.amount).toLocaleString()}
                     </TableCell>
                     <TableCell className="font-mono text-xs">{r.utr ?? "—"}</TableCell>
-                    <TableCell><StatusBadge status={r.status === "paid" ? "success" : r.status === "failed" || r.status === "expired" ? "failed" : "pending"} /></TableCell>
+                    <TableCell><StatusBadge status={r.status === "PAID" ? "success" : r.status === "FAILED" || r.status === "EXPIRED" ? "failed" : "pending"} /></TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {r.paidAt ? format(new Date(r.paidAt), "MMM d, yyyy HH:mm") : "—"}
                     </TableCell>

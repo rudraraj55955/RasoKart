@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, cashfreePaymentOrdersTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { db, cashfreePaymentOrdersTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, PAYIN_ORDER_STATUS } from "@workspace/db";
 import { eq, inArray, and, gte, sql } from "drizzle-orm";
 import { cashfreeCreateOrder, cashfreeGetOrder, type CashfreeEnv } from "../helpers/cashfree";
 import { decryptSecret } from "../helpers/cryptoUtils";
@@ -69,13 +69,23 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
  * Creates a RasoKart UPI deposit order. Enforces admin-configured min/max/daily limits.
  * Response never includes cf_order_id, payment_session_id, or raw provider fields.
  */
-router.post("/payin/orders", requireAuth, async (req, res, next) => {
+router.post("/payin/orders", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const merchantId: number | undefined = user?.merchantId;
+
+  // Generic, safe response used for every failure path below — never leaks
+  // raw SQL/DB errors, provider responses, or internal identifiers.
+  const genericFailure = () => {
+    res.status(500).json({ error: "Deposit order could not be created. Please try again." });
+  };
+
   try {
-    const user = (req as any).user;
-    if (user.role !== "merchant" || !user.merchantId) {
+    if (user.role !== "merchant" || !merchantId) {
       res.status(403).json({ error: "Merchant access only" });
       return;
     }
+
+    req.log.info({ event: "payin_deposit_create_started", merchantId }, "payin_deposit_create_started");
 
     const { amount, customerPhone, customerName, customerEmail } = req.body as {
       amount?: number;
@@ -104,18 +114,27 @@ router.post("/payin/orders", requireAuth, async (req, res, next) => {
       return;
     }
 
-    // Daily limit check — sum of this merchant's paid payin orders created today.
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const [dailyTotalRow] = await db
-      .select({ total: sql<string>`COALESCE(SUM(${cashfreePaymentOrdersTable.amount}), 0)` })
-      .from(cashfreePaymentOrdersTable)
-      .where(and(
-        eq(cashfreePaymentOrdersTable.merchantId, user.merchantId),
-        eq(cashfreePaymentOrdersTable.status, "paid"),
-        gte(cashfreePaymentOrdersTable.paidAt, startOfDay),
-      ));
-    const dailyTotal = Number(dailyTotalRow?.total ?? 0);
+    // Daily limit check — sum of this merchant's PAID payin orders created today.
+    req.log.info({ event: "payin_daily_limit_check_started", merchantId }, "payin_daily_limit_check_started");
+    let dailyTotal: number;
+    try {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const [dailyTotalRow] = await db
+        .select({ total: sql<string>`COALESCE(SUM(${cashfreePaymentOrdersTable.amount}), 0)` })
+        .from(cashfreePaymentOrdersTable)
+        .where(and(
+          eq(cashfreePaymentOrdersTable.merchantId, merchantId),
+          eq(cashfreePaymentOrdersTable.status, PAYIN_ORDER_STATUS.PAID),
+          gte(cashfreePaymentOrdersTable.paidAt, startOfDay),
+        ));
+      dailyTotal = Number(dailyTotalRow?.total ?? 0);
+    } catch (limitErr) {
+      req.log.error({ event: "payin_daily_limit_check_failed", merchantId }, "payin_daily_limit_check_failed");
+      genericFailure();
+      return;
+    }
+
     if (dailyTotal + depositAmount > cfg.dailyLimit) {
       res.status(400).json({ error: "Daily deposit limit reached. Please try again tomorrow or contact support." });
       return;
@@ -127,64 +146,83 @@ router.post("/payin/orders", requireAuth, async (req, res, next) => {
     }
     const decrypted = decryptSecret(cfg.rawClientSecret);
     if (!decrypted.ok || !decrypted.value.trim()) {
-      req.log.warn({ safeReason: "decrypt_failed" }, "payin_create_order: clientSecret decrypt failed");
-      res.status(500).json({ error: "UPI deposits are temporarily unavailable. Please try again later." });
+      req.log.warn({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "decrypt_failed" }, "payin_deposit_order_create_failed");
+      genericFailure();
       return;
     }
 
-    const publicOrderId = `RKPAYIN_${user.merchantId}_${Date.now()}`;
+    const publicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
 
-    const { raw, parsed } = await cashfreeCreateOrder(cfg.clientId, decrypted.value, cfg.env, {
-      order_id: publicOrderId,
-      order_amount: depositAmount,
-      order_currency: "INR",
-      customer_details: {
-        customer_id: `merchant-${user.merchantId}`,
-        customer_name: customerName,
-        customer_email: customerEmail,
-        customer_phone: customerPhone,
-      },
-      order_note: "RasoKart UPI Deposit",
-    }, { baseUrl: cfg.baseUrl, apiVersion: cfg.apiVersion });
+    let raw: string;
+    let parsed: Awaited<ReturnType<typeof cashfreeCreateOrder>>["parsed"];
+    try {
+      ({ raw, parsed } = await cashfreeCreateOrder(cfg.clientId, decrypted.value, cfg.env, {
+        order_id: publicOrderId,
+        order_amount: depositAmount,
+        order_currency: "INR",
+        customer_details: {
+          customer_id: `merchant-${merchantId}`,
+          customer_name: customerName,
+          customer_email: customerEmail,
+          customer_phone: customerPhone,
+        },
+        order_note: "RasoKart UPI Deposit",
+      }, { baseUrl: cfg.baseUrl, apiVersion: cfg.apiVersion }));
+    } catch (providerErr) {
+      req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "provider_request_error" }, "payin_deposit_order_create_failed");
+      genericFailure();
+      return;
+    }
 
     if (!parsed.payment_session_id) {
-      req.log.warn({ safeReason: "provider_create_order_failed" }, "payin_create_order failed");
+      req.log.warn({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "provider_no_session_id" }, "payin_deposit_order_create_failed");
       res.status(502).json({ error: "Unable to start deposit right now. Please try again." });
       return;
     }
 
-    await db.insert(cashfreePaymentOrdersTable).values({
-      merchantId: user.merchantId,
-      publicOrderId,
-      providerKey: "cashfree",
-      cashfreeOrderId: parsed.order_id ?? publicOrderId,
-      paymentSessionId: parsed.payment_session_id,
-      amount: depositAmount.toFixed(2),
-      currency: "INR",
-      status: "created",
-      paymentMethod: "upi",
-      customerPhone,
-      customerEmail: customerEmail ?? null,
-      rawPayload: raw,
-    }).onConflictDoNothing();
+    try {
+      await db.insert(cashfreePaymentOrdersTable).values({
+        merchantId,
+        publicOrderId,
+        providerKey: "cashfree",
+        cashfreeOrderId: parsed.order_id ?? publicOrderId,
+        paymentSessionId: parsed.payment_session_id,
+        amount: depositAmount.toFixed(2),
+        currency: "INR",
+        status: PAYIN_ORDER_STATUS.CREATED,
+        paymentMethod: "upi",
+        customerPhone,
+        customerEmail: customerEmail ?? null,
+        rawPayload: raw,
+      }).onConflictDoNothing();
+    } catch (insertErr) {
+      req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "db_insert_failed" }, "payin_deposit_order_create_failed");
+      genericFailure();
+      return;
+    }
+
+    req.log.info({ event: "payin_deposit_order_created", merchantId, amount: depositAmount }, "payin_deposit_order_created");
 
     // checkoutUrl / paymentToken point to our own branded checkout — never expose provider internals.
     res.json({
       publicOrderId,
       paymentToken: parsed.payment_session_id,
       amount: depositAmount,
-      status: "created",
+      status: PAYIN_ORDER_STATUS.CREATED,
       checkoutLabel: "RasoKart Secure Checkout",
       message: "Deposit order created. Complete the payment via UPI to add funds to your wallet.",
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "unexpected_error" }, "payin_deposit_order_create_failed");
+    genericFailure();
+  }
 });
 
 /**
  * GET /api/merchant/payin/orders/:publicOrderId
  * White-label status check. UTR is only ever included once status is "paid".
  */
-router.get("/payin/orders/:publicOrderId", requireAuth, async (req, res, next) => {
+router.get("/payin/orders/:publicOrderId", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user;
     if (user.role !== "merchant" || !user.merchantId) {
@@ -208,7 +246,7 @@ router.get("/payin/orders/:publicOrderId", requireAuth, async (req, res, next) =
     }
 
     // Optionally refresh status from provider if still pending (best-effort, never surfaces raw errors).
-    if (order.status === "created" || order.status === "pending") {
+    if (order.status === PAYIN_ORDER_STATUS.CREATED || order.status === PAYIN_ORDER_STATUS.PENDING) {
       try {
         const cfg = await loadPayinConfig();
         if (cfg.clientId && cfg.rawClientSecret) {
@@ -236,7 +274,7 @@ router.get("/payin/orders/:publicOrderId", requireAuth, async (req, res, next) =
       .where(eq(cashfreePaymentOrdersTable.id, order.id))
       .limit(1);
 
-    const isPaid = fresh?.status === "paid";
+    const isPaid = fresh?.status === PAYIN_ORDER_STATUS.PAID;
     res.json({
       publicOrderId,
       amount: Number(fresh?.amount ?? order.amount),
@@ -245,7 +283,10 @@ router.get("/payin/orders/:publicOrderId", requireAuth, async (req, res, next) =
       paidAt: isPaid ? fresh?.paidAt ?? null : null,
       createdAt: fresh?.createdAt ?? order.createdAt,
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    req.log.error({ event: "payin_order_status_check_failed" }, "payin_order_status_check_failed");
+    res.status(500).json({ error: "Unable to check deposit status. Please try again." });
+  }
 });
 
 export default router;

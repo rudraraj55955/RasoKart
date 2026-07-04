@@ -20,3 +20,4 @@
 - [White-label scope is merchant/customer-only](white-label-scope.md) — "never expose Cashfree/raw ids" applies to merchant/customer surfaces only; admin config/ops screens may show provider name, base URL, and raw order ids.
 - [Radix Select flaky in e2e tests](radix-select-e2e-flaky.md) — testing subagent repeatedly fails to interact with shadcn/Radix Select dropdowns; verify via direct API/curl + source read instead of retrying the same click.
 - [Cashfree PG payin webhook secret fallback](cashfree-payin-webhook-secret-fallback.md) — live payin webhooks may be signed with Client Secret not Webhook Secret; try both; dashboard test pings need 200+safe message, never 401/credit.
+- [Payin order status casing](payin-order-status-casing.md) — cashfree_payment_orders.status is plain text, not an enum; always use shared PAYIN_ORDER_STATUS uppercase constants everywhere, never raw literals.
