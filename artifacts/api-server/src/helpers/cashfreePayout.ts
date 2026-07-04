@@ -45,6 +45,14 @@ type PayoutCreateInput = {
    * directly instead of trying to create/verify a beneficiary inline.
    */
   beneficiaryId?: string;
+  /**
+   * Real merchant contact details. Cashfree's live environment validates
+   * beneficiary contact info more strictly than sandbox — sending a
+   * hardcoded placeholder email/phone can cause create to be silently
+   * rejected. Falls back to a safe placeholder only if genuinely absent.
+   */
+  beneficiaryEmail?: string;
+  beneficiaryPhone?: string;
 };
 
 /**
@@ -134,6 +142,14 @@ async function cashfreePayoutCreateBeneficiary(
   const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
   const isUpi = Boolean(input.upiId?.trim());
 
+  // Cashfree validates contact details more strictly in live mode — a
+  // hardcoded placeholder email/phone can be silently rejected there even
+  // though sandbox accepts it. Use the real merchant contact when supplied,
+  // falling back to a safe placeholder only if genuinely absent.
+  const email = (input.beneficiaryEmail?.trim()) || "test@rasokart.com";
+  const phoneDigits = (input.beneficiaryPhone ?? "").replace(/\D/g, "").slice(-10);
+  const phone = phoneDigits.length === 10 ? phoneDigits : "9999999999";
+
   const body: any = {
     beneficiary_id: beneficiaryId,
     beneficiary_name: cleanName(input.beneficiaryName),
@@ -141,8 +157,8 @@ async function cashfreePayoutCreateBeneficiary(
       ? { vpa: input.upiId?.trim() }
       : { bank_account_number: input.accountNumber?.trim(), bank_ifsc: input.ifsc?.trim() },
     beneficiary_contact_details: {
-      beneficiary_email: "test@rasokart.com",
-      beneficiary_phone: "9999999999",
+      beneficiary_email: email,
+      beneficiary_phone: phone,
       beneficiary_country_code: "+91",
       beneficiary_address: "RasoKart",
       beneficiary_city: "Jaipur",
@@ -165,14 +181,35 @@ async function cashfreePayoutCreateBeneficiary(
   return await readJson(res);
 }
 
+/**
+ * GET /payout/beneficiary — Cashfree V2 Get Beneficiary.
+ *
+ * IMPORTANT: per the official V2 contract this is a QUERY-PARAM lookup, NOT
+ * a path-segment lookup — `GET {baseUrl}/beneficiary?beneficiary_id=...` (or
+ * `?bank_account_number=...&bank_ifsc=...`). Calling
+ * `{baseUrl}/beneficiary/{id}` (a path segment) does not match Cashfree's
+ * documented route and can return an unexpected/empty response instead of a
+ * real 200 or 404 — masking the true verification result. Always look up by
+ * `beneficiary_id`; the bank_account_number/bank_ifsc pair is available as a
+ * fallback identifier when no id is supplied.
+ */
 export async function cashfreePayoutGetBeneficiary(
   clientId: string,
   clientSecret: string,
   env: CashfreePayoutEnv,
-  beneficiaryId: string
+  beneficiaryId: string,
+  fallback?: { bankAccountNumber?: string; bankIfsc?: string }
 ) {
   const baseUrl = PAYOUT_BASE_URLS[env] ?? PAYOUT_BASE_URLS.test;
-  const res = await fetch(`${baseUrl}/beneficiary/${encodeURIComponent(beneficiaryId)}`, {
+  const url = new URL(`${baseUrl}/beneficiary`);
+  if (beneficiaryId) {
+    url.searchParams.set("beneficiary_id", beneficiaryId);
+  } else if (fallback?.bankAccountNumber && fallback?.bankIfsc) {
+    url.searchParams.set("bank_account_number", fallback.bankAccountNumber);
+    url.searchParams.set("bank_ifsc", fallback.bankIfsc);
+  }
+
+  const res = await fetch(url.toString(), {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -294,13 +331,21 @@ export async function cashfreePayoutVerifyBeneficiaryWithRetry(
     // when the beneficiary was never really created on the provider side.
     const echoedId = String(fetched.parsed?.beneficiary_id ?? "").trim();
     const bodyLooksValid = echoedId.length > 0 && echoedId === beneficiaryId;
+    // The V2 response also carries `beneficiary_status` (VERIFIED / PENDING /
+    // INVALID / UNVERIFIED). A 200 with a matching id but INVALID status
+    // means Cashfree has the record but rejected the bank/UPI details — that
+    // must NOT be trusted as usable for a transfer.
+    const beneficiaryStatus = String(fetched.parsed?.beneficiary_status ?? "").toUpperCase();
+    const statusUsable = beneficiaryStatus !== "INVALID";
 
-    if (fetched.httpStatus === 200 && bodyLooksValid) {
+    if (fetched.httpStatus === 200 && bodyLooksValid && statusUsable) {
       return { ok: true, httpStatus: fetched.httpStatus, attempts: i + 1 };
     }
 
     lastHttpStatus = fetched.httpStatus;
-    lastSubCode = fetched.httpStatus === 200 && !bodyLooksValid
+    lastSubCode = fetched.httpStatus === 200 && bodyLooksValid && !statusUsable
+      ? `beneficiary_status_${beneficiaryStatus.toLowerCase() || "invalid"}`
+      : fetched.httpStatus === 200 && !bodyLooksValid
       ? "verify_response_id_mismatch"
       : String(fetched.parsed?.code ?? fetched.parsed?.subCode ?? fetched.parsed?.status_code ?? "");
     if (i < attempts - 1) {

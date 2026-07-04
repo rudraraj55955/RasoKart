@@ -437,13 +437,16 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     return;
   }
 
-  // Step 2: Fetch merchant name for response (non-blocking, separate query)
+  // Step 2: Fetch merchant name + real contact details (used for beneficiary
+  // registration — Cashfree live mode validates contact info more strictly
+  // than sandbox, so a hardcoded placeholder can cause silent create failures)
   const [merchantRow] = await db
-    .select({ businessName: merchantsTable.businessName })
+    .select({ businessName: merchantsTable.businessName, email: merchantsTable.email, phone: merchantsTable.phone })
     .from(merchantsTable)
     .where(eq(merchantsTable.id, claimed.merchantId))
     .limit(1);
   const merchantName = merchantRow?.businessName ?? null;
+  const merchantContact = { email: merchantRow?.email ?? null, phone: merchantRow?.phone ?? null };
 
   const amt = Number(claimed.amount);
   const cfg = await getPayoutConfig();
@@ -467,7 +470,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     const accountMasked = claimed.payoutMode === "UPI"
       ? (claimed.upiId ? `${claimed.upiId.slice(0, 2)}***` : null)
       : (claimed.bankAccount ? `****${claimed.bankAccount.trim().slice(-4)}` : null);
-    const bene = await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id);
+    const bene = await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact);
     if (!bene.ok) {
       transferStatus = "FAILED";
       failureReason = bene.message ?? "Beneficiary setup failed. Please re-register beneficiary.";
@@ -828,7 +831,12 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   const id = parseInt(req.params["id"] as string);
 
   const [row] = await db
-    .select({ withdrawal: withdrawalsTable, merchantName: merchantsTable.businessName })
+    .select({
+      withdrawal: withdrawalsTable,
+      merchantName: merchantsTable.businessName,
+      merchantEmail: merchantsTable.email,
+      merchantPhone: merchantsTable.phone,
+    })
     .from(withdrawalsTable)
     .leftJoin(merchantsTable, eq(withdrawalsTable.merchantId, merchantsTable.id))
     .where(eq(withdrawalsTable.id, id))
@@ -840,6 +848,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   }
   const w = row.withdrawal;
   const merchantName = row.merchantName ?? null;
+  const merchantContact = { email: row.merchantEmail ?? null, phone: row.merchantPhone ?? null };
 
   if (w.status !== "approved") {
     res.status(400).json({ error: "Can only retry approved payouts" });
@@ -949,7 +958,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     ? (w.upiId ? `${w.upiId.slice(0, 2)}***` : null)
     : (w.bankAccount ? `****${w.bankAccount.trim().slice(-4)}` : null);
   const retryBeneficiaryRow = await resolveBeneficiaryRowForWithdrawal(w, cfg.env, merchantName);
-  const retryBene = await ensureBeneficiaryProviderRegistered(req, retryBeneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id);
+  const retryBene = await ensureBeneficiaryProviderRegistered(req, retryBeneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact);
 
   if (!retryBene.ok) {
     transferStatus = "FAILED";
@@ -1114,7 +1123,12 @@ router.post("/:id/reregister-beneficiary", requireAdmin, async (req, res) => {
   const id = parseInt(req.params["id"] as string);
 
   const [row] = await db
-    .select({ withdrawal: withdrawalsTable, merchantName: merchantsTable.businessName })
+    .select({
+      withdrawal: withdrawalsTable,
+      merchantName: merchantsTable.businessName,
+      merchantEmail: merchantsTable.email,
+      merchantPhone: merchantsTable.phone,
+    })
     .from(withdrawalsTable)
     .leftJoin(merchantsTable, eq(withdrawalsTable.merchantId, merchantsTable.id))
     .where(eq(withdrawalsTable.id, id))
@@ -1126,6 +1140,7 @@ router.post("/:id/reregister-beneficiary", requireAdmin, async (req, res) => {
   }
   const w = row.withdrawal;
   const merchantName = row.merchantName ?? null;
+  const merchantContact = { email: row.merchantEmail ?? null, phone: row.merchantPhone ?? null };
 
   const cfg = await getPayoutConfig();
   if (!cfg.enabled || !cfg.clientId || !cfg.clientSecret) {
@@ -1143,7 +1158,8 @@ router.post("/:id/reregister-beneficiary", requireAdmin, async (req, res) => {
     cfg.clientId,
     cfg.clientSecret,
     id,
-    "Admin manual re-registration from payout row"
+    "Admin manual re-registration from payout row",
+    merchantContact
   );
 
   const [freshBeneficiary] = await db

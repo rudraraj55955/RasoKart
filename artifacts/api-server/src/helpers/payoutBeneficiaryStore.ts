@@ -140,7 +140,8 @@ export async function ensureBeneficiaryProviderRegistered(
   clientId: string,
   clientSecret: string,
   withdrawalId?: number | null,
-  forceRefresh = false
+  forceRefresh = false,
+  merchantContact?: { email?: string | null; phone?: string | null }
 ): Promise<EnsureProviderResult> {
   if (!forceRefresh && beneficiaryRow.providerStatus === "created" && beneficiaryRow.providerBeneficiaryId) {
     return { ok: true, providerBeneficiaryId: beneficiaryRow.providerBeneficiaryId };
@@ -168,6 +169,8 @@ export async function ensureBeneficiaryProviderRegistered(
     ifsc: beneficiaryRow.ifscCode ?? undefined,
     upiId: beneficiaryRow.payoutMode === "UPI" ? (beneficiaryRow.upiId ?? undefined) : undefined,
     amount: 0,
+    beneficiaryEmail: merchantContact?.email ?? undefined,
+    beneficiaryPhone: merchantContact?.phone ?? undefined,
   });
 
   // Logged unconditionally right after the create call returns, before any
@@ -271,7 +274,8 @@ export async function reregisterBeneficiaryWithProvider(
   clientId: string,
   clientSecret: string,
   withdrawalId?: number | null,
-  reason = "Manual re-registration requested"
+  reason = "Manual re-registration requested",
+  merchantContact?: { email?: string | null; phone?: string | null }
 ): Promise<EnsureProviderResult> {
   req.log.info(
     { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id, reason },
@@ -293,7 +297,8 @@ export async function reregisterBeneficiaryWithProvider(
     clientId,
     clientSecret,
     withdrawalId,
-    true
+    true,
+    merchantContact
   );
 
   if (result.ok) {
