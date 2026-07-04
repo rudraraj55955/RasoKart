@@ -244,6 +244,9 @@ async function migrate() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_end TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_timezone TEXT;
 
+    -- ── users: github sync repeated-failure escalation email preference ─────────
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS github_sync_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
+
     -- ── quiet_hours_queue ────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS quiet_hours_queue (
       id SERIAL PRIMARY KEY,

@@ -1,6 +1,7 @@
 import { execSync } from "child_process";
 import { writeFileSync, readFileSync } from "fs";
 import { sendAdminAlert } from "./mailer.js";
+import { notifyAdminsOfGithubSyncFailing } from "./githubSyncAlertEmail.js";
 import { db, systemSettingsTable } from "@workspace/db";
 import { inArray } from "drizzle-orm";
 
@@ -10,6 +11,36 @@ const REMOTE_NAME = "github";
 const STATUS_FILE = new URL("../../.github-sync-status.json", import.meta.url).pathname;
 const HISTORY_FILE = new URL("../../.github-sync-history.json", import.meta.url).pathname;
 const HISTORY_MAX = 50;
+
+// Mirrors the dashboard's GITHUB_SYNC_FAILURE_THRESHOLD (artifacts/api-server/src/routes/dashboard.ts)
+// so the escalation email fires at the same point the admin dashboard banner appears.
+const FAILURE_ESCALATION_THRESHOLD = 3;
+// Once escalated, don't re-notify on every subsequent failure — only every N failures beyond the threshold.
+const FAILURE_ESCALATION_RENOTIFY_INTERVAL = 10;
+
+interface GithubSyncHistoryEntry {
+  status: "success" | "failure";
+  syncedAt: string;
+  repo: string;
+  errorMessage?: string;
+}
+
+function countConsecutiveFailures(): number {
+  try {
+    const raw = readFileSync(HISTORY_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return 0;
+
+    let streak = 0;
+    for (const entry of parsed as GithubSyncHistoryEntry[]) {
+      if (entry?.status !== "failure") break;
+      streak++;
+    }
+    return streak;
+  } catch {
+    return 0;
+  }
+}
 
 function run(cmd: string, opts: { stdio?: "pipe" | "inherit" } = {}) {
   return execSync(cmd, { stdio: opts.stdio ?? "pipe" });
@@ -247,6 +278,19 @@ async function main() {
       subject: `[RasoKart] ⚠ GitHub Sync Failed — Push error`,
       html: buildFailureHtml("Push failed", message),
     });
+
+    const streak = countConsecutiveFailures();
+    const crossedThreshold = streak === FAILURE_ESCALATION_THRESHOLD;
+    const onRenotifyCadence =
+      streak > FAILURE_ESCALATION_THRESHOLD &&
+      (streak - FAILURE_ESCALATION_THRESHOLD) % FAILURE_ESCALATION_RENOTIFY_INTERVAL === 0;
+    if (crossedThreshold || onRenotifyCadence) {
+      await notifyAdminsOfGithubSyncFailing({
+        repo: GITHUB_REPO,
+        streak,
+        lastErrorMessage: message,
+      });
+    }
 
     throw pushError;
   } finally {

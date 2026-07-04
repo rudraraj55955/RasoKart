@@ -13,6 +13,8 @@ export type UpdateMyPreferencesBody = {
   signatureFailureAlertEmails?: boolean;
   webhookFailureEmails?: boolean;
   reportFailureAlertEmails?: boolean;
+  /** Whether the admin wants an escalated email when GitHub sync fails repeatedly (crosses the consecutive-failure threshold). */
+  githubSyncFailureAlertEmails?: boolean;
   /** Whether the admin wants to receive the weekly report delivery health digest email. */
   weeklyDeliveryDigestEmails?: boolean;
   apiKeyGeneratedEmails?: boolean;

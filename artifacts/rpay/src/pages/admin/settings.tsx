@@ -262,6 +262,7 @@ export default function AdminSettings() {
   const signatureFailureEnabled = me?.signatureFailureAlertEmails ?? true;
   const webhookFailureEnabled = me?.webhookFailureEmails ?? true;
   const reportFailureEnabled = (me as any)?.reportFailureAlertEmails ?? true;
+  const githubSyncFailureEnabled = (me as any)?.githubSyncFailureAlertEmails ?? true;
   const weeklyDigestEnabled = me?.weeklyDeliveryDigestEmails ?? true;
 
   const { mutate: updatePrefs, isPending: savingPrefs } = useUpdateMyPreferences({
@@ -2817,6 +2818,28 @@ export default function AdminSettings() {
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               You will not receive emails when merchant report schedules are auto-paused.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">GitHub sync repeated-failure emails</p>
+              <p className="text-xs text-muted-foreground">
+                Receive an escalated email when the GitHub sync fails 3 times in a row, in addition to the dashboard banner.
+              </p>
+            </div>
+            <Switch
+              checked={githubSyncFailureEnabled}
+              onCheckedChange={val =>
+                updatePrefs({ data: { githubSyncFailureAlertEmails: val } as any })
+              }
+              disabled={savingPrefs || me === undefined}
+            />
+          </div>
+          {!githubSyncFailureEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive escalation emails when GitHub sync fails repeatedly.
             </p>
           )}
 

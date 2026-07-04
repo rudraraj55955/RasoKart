@@ -180,6 +180,9 @@ paths:
                   type: boolean
                 reportFailureAlertEmails:
                   type: boolean
+                githubSyncFailureAlertEmails:
+                  type: boolean
+                  description: Whether the admin wants an escalated email when GitHub sync fails repeatedly (crosses the consecutive-failure threshold).
                 weeklyDeliveryDigestEmails:
                   type: boolean
                   description: Whether the admin wants to receive the weekly report delivery health digest email.
@@ -9774,6 +9777,9 @@ components:
           type: boolean
         reportFailureAlertEmails:
           type: boolean
+        githubSyncFailureAlertEmails:
+          type: boolean
+          description: Whether the admin wants an escalated email when GitHub sync fails repeatedly (crosses the consecutive-failure threshold). Defaults to true.
         weeklyDeliveryDigestEmails:
           type: boolean
           description: Whether the admin wants to receive the weekly report delivery health digest email. Defaults to true.
