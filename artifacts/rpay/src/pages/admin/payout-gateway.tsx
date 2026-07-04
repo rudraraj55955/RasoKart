@@ -310,6 +310,11 @@ function SettingsTab() {
             <Banknote className="w-4 h-4 text-muted-foreground" />
             Gateway Status
           </CardTitle>
+          {config?.lastUpdatedByEmail && config?.lastUpdatedAt && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Last changed by <span className="font-medium text-foreground">{config.lastUpdatedByEmail}</span> on {fmt(config.lastUpdatedAt)}
+            </p>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Enabled */}

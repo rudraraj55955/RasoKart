@@ -22,4 +22,8 @@ export interface CashfreePayoutConfig {
   minLimit: number;
   maxLimit: number;
   dailyLimit: number;
+  /** Email of the admin who most recently changed this gateway's config */
+  lastUpdatedByEmail?: string | null;
+  /** Timestamp of the most recent config change for this gateway */
+  lastUpdatedAt?: Date | null;
 }

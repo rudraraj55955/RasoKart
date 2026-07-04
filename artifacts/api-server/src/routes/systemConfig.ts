@@ -17,6 +17,22 @@ import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
+// Returns who last touched any of the given config keys and when — used to
+// surface "Last changed by X on <date>" directly on each gateway config panel.
+async function getLastUpdatedInfo(keys: string[]): Promise<{ lastUpdatedByEmail: string | null; lastUpdatedAt: string | null }> {
+  const [row] = await db
+    .select({ updatedByEmail: systemConfigTable.updatedByEmail, updatedAt: systemConfigTable.updatedAt })
+    .from(systemConfigTable)
+    .where(inArray(systemConfigTable.key, keys))
+    .orderBy(desc(systemConfigTable.updatedAt))
+    .limit(1);
+
+  return {
+    lastUpdatedByEmail: row?.updatedByEmail ?? null,
+    lastUpdatedAt: row?.updatedAt ? row.updatedAt.toISOString() : null,
+  };
+}
+
 async function getReconConfig() {
   const keys = [
     SYSTEM_CONFIG_KEYS.RECONCILIATION_HOUR,
@@ -1117,7 +1133,10 @@ async function getCashfreeConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT,
     SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT,
   ];
-  const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+  const [rows, lastUpdated] = await Promise.all([
+    db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys)),
+    getLastUpdatedInfo(keys),
+  ]);
   const map = new Map(rows.map((r) => [r.key, r.value]));
   const rawId = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_ID) ?? "";
   const rawSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET) ?? "";
@@ -1138,6 +1157,7 @@ async function getCashfreeConfig() {
     minAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT]),
     maxAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT]),
     dailyLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT]),
+    ...lastUpdated,
   };
 }
 
@@ -1317,7 +1337,10 @@ async function getCashfreePayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BULK_ENABLED,
   ];
-  const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+  const [rows, lastUpdated] = await Promise.all([
+    db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys)),
+    getLastUpdatedInfo(keys),
+  ]);
   const map = new Map(rows.map((r) => [r.key, r.value]));
   const rawId = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID) ?? "";
   const rawSecret = map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "";
@@ -1345,6 +1368,7 @@ async function getCashfreePayoutConfig() {
     minLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MIN_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MIN_LIMIT]),
     maxLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT]),
     dailyLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT]),
+    ...lastUpdated,
   };
 }
 
@@ -1537,7 +1561,10 @@ router.post("/cashfree-payout/check-transfer-status", async (req, res, next) => 
 
 async function getEkqrConfig() {
   const keys = [SYSTEM_CONFIG_KEYS.EKQR_API_KEY, SYSTEM_CONFIG_KEYS.EKQR_ENABLED, SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET, SYSTEM_CONFIG_KEYS.EKQR_ENV];
-  const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+  const [rows, lastUpdated] = await Promise.all([
+    db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys)),
+    getLastUpdatedInfo(keys),
+  ]);
   const map = new Map(rows.map((r) => [r.key, r.value]));
   const rawKey = map.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
   const rawSecret = map.get(SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET) ?? "";
@@ -1547,6 +1574,7 @@ async function getEkqrConfig() {
     enabled: (map.get(SYSTEM_CONFIG_KEYS.EKQR_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_ENABLED]) === "true",
     webhookSecretSet: rawSecret.length > 0,
     env: (map.get(SYSTEM_CONFIG_KEYS.EKQR_ENV) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_ENV] ?? "test") as "test" | "live",
+    ...lastUpdated,
   };
 }
 

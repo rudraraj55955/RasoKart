@@ -7127,7 +7127,9 @@ export const GetEkqrConfigResponse = zod.object({
   "apiKeyMasked": zod.string().describe('Masked version of the API key (first 4 + last 4 chars visible)'),
   "enabled": zod.boolean().describe('Whether EKQR gateway is enabled'),
   "webhookSecretSet": zod.boolean().describe('Whether a webhook signature secret has been configured'),
-  "env": zod.enum(['test', 'live']).describe('EKQR gateway environment (test or live)')
+  "env": zod.enum(['test', 'live']).describe('EKQR gateway environment (test or live)'),
+  "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who most recently changed this gateway\'s config'),
+  "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change for this gateway')
 })
 
 
@@ -7146,7 +7148,9 @@ export const UpdateEkqrConfigResponse = zod.object({
   "apiKeyMasked": zod.string().describe('Masked version of the API key (first 4 + last 4 chars visible)'),
   "enabled": zod.boolean().describe('Whether EKQR gateway is enabled'),
   "webhookSecretSet": zod.boolean().describe('Whether a webhook signature secret has been configured'),
-  "env": zod.enum(['test', 'live']).describe('EKQR gateway environment (test or live)')
+  "env": zod.enum(['test', 'live']).describe('EKQR gateway environment (test or live)'),
+  "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who most recently changed this gateway\'s config'),
+  "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change for this gateway')
 })
 
 
@@ -7201,7 +7205,9 @@ export const GetCashfreePayoutConfigResponse = zod.object({
   "adminApprovalRequired": zod.boolean(),
   "minLimit": zod.number(),
   "maxLimit": zod.number(),
-  "dailyLimit": zod.number()
+  "dailyLimit": zod.number(),
+  "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who most recently changed this gateway\'s config'),
+  "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change for this gateway')
 })
 
 
@@ -7237,7 +7243,9 @@ export const UpdateCashfreePayoutConfigResponse = zod.object({
   "adminApprovalRequired": zod.boolean(),
   "minLimit": zod.number(),
   "maxLimit": zod.number(),
-  "dailyLimit": zod.number()
+  "dailyLimit": zod.number(),
+  "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who most recently changed this gateway\'s config'),
+  "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change for this gateway')
 })
 
 
@@ -7259,7 +7267,9 @@ export const GetCashfreeConfigResponse = zod.object({
   "merchantPayinEnabled": zod.boolean().optional().describe('Whether merchants can create payin deposit orders'),
   "minAmount": zod.number().optional().describe('Minimum allowed payin amount'),
   "maxAmount": zod.number().optional().describe('Maximum allowed payin amount'),
-  "dailyLimit": zod.number().optional().describe('Maximum total payin amount per merchant per day')
+  "dailyLimit": zod.number().optional().describe('Maximum total payin amount per merchant per day'),
+  "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who most recently changed this gateway\'s config'),
+  "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change for this gateway')
 })
 
 
@@ -7298,7 +7308,9 @@ export const UpdateCashfreeConfigResponse = zod.object({
   "merchantPayinEnabled": zod.boolean().optional().describe('Whether merchants can create payin deposit orders'),
   "minAmount": zod.number().optional().describe('Minimum allowed payin amount'),
   "maxAmount": zod.number().optional().describe('Maximum allowed payin amount'),
-  "dailyLimit": zod.number().optional().describe('Maximum total payin amount per merchant per day')
+  "dailyLimit": zod.number().optional().describe('Maximum total payin amount per merchant per day'),
+  "lastUpdatedByEmail": zod.string().nullish().describe('Email of the admin who most recently changed this gateway\'s config'),
+  "lastUpdatedAt": zod.coerce.date().nullish().describe('Timestamp of the most recent config change for this gateway')
 })
 
 

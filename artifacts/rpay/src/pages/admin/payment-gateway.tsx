@@ -150,6 +150,11 @@ export default function AdminPaymentGateway() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Payin Gateway</h1>
           <p className="text-muted-foreground mt-1">Configure the RasoKart UPI deposit collection engine and webhook settings</p>
+          {config?.lastUpdatedByEmail && config?.lastUpdatedAt && (
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Last changed by <span className="font-medium text-foreground">{config.lastUpdatedByEmail}</span> on {formatDate(config.lastUpdatedAt)}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {isLoading ? (

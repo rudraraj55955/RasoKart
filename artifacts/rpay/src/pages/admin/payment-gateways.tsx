@@ -327,6 +327,11 @@ function EkqrConfigPanel() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium">UPI Gateway</p>
           <p className="text-xs text-muted-foreground">UPI Collection for merchants — dynamic QR code generation</p>
+          {ekqrConfig?.lastUpdatedByEmail && ekqrConfig?.lastUpdatedAt && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Last changed by <span className="font-medium text-foreground">{ekqrConfig.lastUpdatedByEmail}</span> on {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(ekqrConfig.lastUpdatedAt))}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {!ekqrLoading && ekqrConfig && <StatusBadge enabled={ekqrConfig.enabled} />}

@@ -22,3 +22,4 @@
 - [Cashfree PG payin webhook secret fallback](cashfree-payin-webhook-secret-fallback.md) — live payin webhooks may be signed with Client Secret not Webhook Secret; try both; dashboard test pings need 200+safe message, never 401/credit.
 - [Payin order status casing](payin-order-status-casing.md) — cashfree_payment_orders.status is plain text, not an enum; always use shared PAYIN_ORDER_STATUS uppercase constants everywhere, never raw literals.
 - [Demo credential health check](demo-credential-healthcheck.md) — seed.ts verifies replit.md's documented demo logins after seeding; keep both in sync when adding/removing a demo account.
+- [Config audit attribution](config-audit-attribution.md) — "last changed by" for multi-key config panels needs max(updatedAt) across keys; older seeded rows may have null updatedByEmail — hide the line, don't show "null".

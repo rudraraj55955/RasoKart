@@ -14161,6 +14161,15 @@ components:
           type: string
           enum: [test, live]
           description: EKQR gateway environment (test or live)
+        lastUpdatedByEmail:
+          type: string
+          nullable: true
+          description: Email of the admin who most recently changed this gateway's config
+        lastUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of the most recent config change for this gateway
 
     EkqrConfigInput:
       type: object
@@ -14361,6 +14370,15 @@ components:
         dailyLimit:
           type: number
           description: Maximum total payin amount per merchant per day
+        lastUpdatedByEmail:
+          type: string
+          nullable: true
+          description: Email of the admin who most recently changed this gateway's config
+        lastUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of the most recent config change for this gateway
 
     CashfreeGatewayConfigInput:
       type: object
@@ -14615,6 +14633,15 @@ components:
           type: number
         dailyLimit:
           type: number
+        lastUpdatedByEmail:
+          type: string
+          nullable: true
+          description: Email of the admin who most recently changed this gateway's config
+        lastUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of the most recent config change for this gateway
 
     CashfreePayoutConfigInput:
       type: object

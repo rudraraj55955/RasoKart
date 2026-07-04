@@ -3916,6 +3916,10 @@ export interface EkqrConfig {
   webhookSecretSet: boolean;
   /** EKQR gateway environment (test or live) */
   env: EkqrConfigEnv;
+  /** Email of the admin who most recently changed this gateway's config */
+  lastUpdatedByEmail?: string | null;
+  /** Timestamp of the most recent config change for this gateway */
+  lastUpdatedAt?: string | null;
 }
 
 /**
@@ -4091,6 +4095,10 @@ export interface CashfreeGatewayConfig {
   maxAmount?: number;
   /** Maximum total payin amount per merchant per day */
   dailyLimit?: number;
+  /** Email of the admin who most recently changed this gateway's config */
+  lastUpdatedByEmail?: string | null;
+  /** Timestamp of the most recent config change for this gateway */
+  lastUpdatedAt?: string | null;
 }
 
 /**
@@ -4271,6 +4279,10 @@ export interface CashfreePayoutConfig {
   minLimit: number;
   maxLimit: number;
   dailyLimit: number;
+  /** Email of the admin who most recently changed this gateway's config */
+  lastUpdatedByEmail?: string | null;
+  /** Timestamp of the most recent config change for this gateway */
+  lastUpdatedAt?: string | null;
 }
 
 export type CashfreePayoutConfigInputEnv = typeof CashfreePayoutConfigInputEnv[keyof typeof CashfreePayoutConfigInputEnv];
