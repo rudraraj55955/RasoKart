@@ -8,6 +8,7 @@
     "db-migrate": "tsx ./src/db-migrate.ts",
     "github-sync": "tsx ./src/github-sync.ts",
     "fix-credentials": "tsx ./src/fix-credentials.ts",
+    "verify-demo-credentials": "tsx ./src/verify-demo-credentials.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

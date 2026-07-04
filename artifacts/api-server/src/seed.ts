@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
-import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { logger } from "./lib/logger";
 import {
   db,
   usersTable,
@@ -108,6 +109,77 @@ const PLAN_TIERS = [
     apiAccess: true, webhookAccess: true, providerAccess: true, isActive: true,
   },
 ];
+
+// Source of truth: the "Demo Credentials" table in replit.md. Keep these two
+// in sync — if you add/remove/change a documented demo account, update both.
+// verifyDemoCredentials() below asserts every one of these can actually log
+// in right after seeding, so a missing/broken demo account fails loudly at
+// startup instead of surfacing later as a silent 401 someone has to debug.
+const DEMO_CREDENTIALS = [
+  { email: "admin@rasokart.com", password: "Admin@123456", role: "admin" as const },
+  { email: "merchant@demo.com", password: "Merchant@123456", role: "merchant" as const },
+  { email: "merchant2@demo.com", password: "Merchant@123456", role: "merchant" as const },
+];
+
+async function verifyDemoCredentials() {
+  const emails = DEMO_CREDENTIALS.map((c) => c.email);
+  const rows = await db
+    .select({
+      email: usersTable.email,
+      passwordHash: usersTable.passwordHash,
+      role: usersTable.role,
+      isActive: usersTable.isActive,
+    })
+    .from(usersTable)
+    .where(inArray(usersTable.email, emails));
+
+  const byEmail = new Map(rows.map((r) => [r.email, r]));
+  let allOk = true;
+
+  for (const cred of DEMO_CREDENTIALS) {
+    const row = byEmail.get(cred.email);
+
+    if (!row) {
+      allOk = false;
+      logger.error(
+        { email: cred.email },
+        "Demo credential check FAILED: account documented in replit.md does not exist in the database",
+      );
+      continue;
+    }
+
+    const passwordOk = await bcrypt.compare(cred.password, row.passwordHash);
+    const roleOk = row.role === cred.role;
+    const activeOk = row.isActive;
+
+    if (!passwordOk || !roleOk || !activeOk) {
+      allOk = false;
+      logger.error(
+        {
+          email: cred.email,
+          passwordMatches: passwordOk,
+          expectedRole: cred.role,
+          actualRole: row.role,
+          isActive: row.isActive,
+        },
+        "Demo credential check FAILED: documented demo account cannot authenticate as expected",
+      );
+    }
+  }
+
+  if (allOk) {
+    logger.info(
+      { accounts: emails },
+      "Demo credential check passed: all documented demo/test accounts can authenticate",
+    );
+  } else {
+    logger.error(
+      "One or more documented demo accounts (see replit.md 'Demo Credentials') are broken — fix seed.ts or the DB before relying on those logins",
+    );
+  }
+
+  return allOk;
+}
 
 export async function seed() {
   console.log("Seeding database...");
@@ -1332,6 +1404,8 @@ export async function seed() {
   }
 
   console.log("Seed complete.");
+
+  await verifyDemoCredentials();
 }
 
 // Standalone runner (pnpm --filter @workspace/api-server run seed)
