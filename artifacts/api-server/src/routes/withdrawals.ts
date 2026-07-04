@@ -464,16 +464,24 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     const transferId = `RKPAY_${id}_${Date.now()}`;
     const mode = claimed.payoutMode === "UPI" ? "upi" : "banktransfer";
     const beneficiaryRow = await resolveBeneficiaryRowForWithdrawal(claimed, cfg.env, merchantName);
+    const accountMasked = claimed.payoutMode === "UPI"
+      ? (claimed.upiId ? `${claimed.upiId.slice(0, 2)}***` : null)
+      : (claimed.bankAccount ? `****${claimed.bankAccount.trim().slice(-4)}` : null);
     const bene = await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id);
     if (!bene.ok) {
       transferStatus = "FAILED";
-      failureReason = "Beneficiary setup failed. Please re-register beneficiary.";
+      failureReason = bene.message ?? "Beneficiary setup failed. Please re-register beneficiary.";
       req.log.warn(
-        { withdrawalId: id, providerMessage: bene.message },
+        { withdrawalId: id, merchantId: claimed.merchantId, accountMasked },
         "payout_transfer_create_skipped_beneficiary_invalid"
       );
     } else {
     try {
+      req.log.info(
+        { withdrawalId: id, merchantId: claimed.merchantId, accountMasked, mode, amount: amt },
+        "payout_transfer_create_started"
+      );
+
       const result = await cashfreePayoutCreateTransfer(
         cfg.clientId,
         cfg.clientSecret,
@@ -516,8 +524,17 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
           "Provider reported beneficiary not found on transfer create — will re-register on next attempt"
         );
         transferStatus = "FAILED";
-        failureReason = "Transfer was not created. Please retry after beneficiary setup.";
-        req.log.warn({ withdrawalId: id, httpStatus: result.httpStatus }, "cashfree_payout_beneficiary_not_found_on_transfer");
+        failureReason = "Beneficiary setup could not be verified. Please retry later.";
+        req.log.warn(
+          {
+            withdrawalId: id,
+            merchantId: claimed.merchantId,
+            accountMasked,
+            httpStatus: result.httpStatus,
+            subCode: result.parsed?.subCode,
+          },
+          "payout_transfer_create_failed_beneficiary_not_found"
+        );
       } else {
       // Prefer the provider's own reference (cf_transfer_id) when returned;
       // fall back to our own transfer_id if the provider didn't echo one.
@@ -928,18 +945,26 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   // call would query a transfer that was never actually created on Cashfree.
   let providerReferenceId: string | null = null;
 
+  const retryAccountMasked = w.payoutMode === "UPI"
+    ? (w.upiId ? `${w.upiId.slice(0, 2)}***` : null)
+    : (w.bankAccount ? `****${w.bankAccount.trim().slice(-4)}` : null);
   const retryBeneficiaryRow = await resolveBeneficiaryRowForWithdrawal(w, cfg.env, merchantName);
   const retryBene = await ensureBeneficiaryProviderRegistered(req, retryBeneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id);
 
   if (!retryBene.ok) {
     transferStatus = "FAILED";
-    failureReason = "Beneficiary setup failed. Please re-register beneficiary.";
+    failureReason = retryBene.message ?? "Beneficiary setup failed. Please re-register beneficiary.";
     req.log.warn(
-      { withdrawalId: id, providerMessage: retryBene.message },
+      { withdrawalId: id, merchantId: w.merchantId, accountMasked: retryAccountMasked },
       "payout_transfer_create_skipped_beneficiary_invalid"
     );
   } else {
   try {
+    req.log.info(
+      { withdrawalId: id, merchantId: w.merchantId, accountMasked: retryAccountMasked, mode: retryMode, amount: amt },
+      "payout_transfer_create_started"
+    );
+
     const result = await cashfreePayoutCreateTransfer(
       cfg.clientId,
       cfg.clientSecret,
@@ -979,8 +1004,17 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
         "Provider reported beneficiary not found on transfer create (retry) — will re-register on next attempt"
       );
       transferStatus = "FAILED";
-      failureReason = "Transfer was not created. Please retry after beneficiary setup.";
-      req.log.warn({ withdrawalId: id, httpStatus: result.httpStatus }, "cashfree_payout_beneficiary_not_found_on_transfer_retry");
+      failureReason = "Beneficiary setup could not be verified. Please retry later.";
+      req.log.warn(
+        {
+          withdrawalId: id,
+          merchantId: w.merchantId,
+          accountMasked: retryAccountMasked,
+          httpStatus: result.httpStatus,
+          subCode: result.parsed?.subCode,
+        },
+        "payout_transfer_create_failed_beneficiary_not_found"
+      );
     } else {
     // Prefer the provider's own reference (cf_transfer_id) when returned;
     // fall back to our own transfer_id if the provider didn't echo one.

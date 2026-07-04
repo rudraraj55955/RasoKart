@@ -148,6 +148,20 @@ export async function ensureBeneficiaryProviderRegistered(
 
   const localBeneficiaryId = `BENE_M${beneficiaryRow.merchantId}_${beneficiaryRow.id}`.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 50);
 
+  // Safe log fields only — payoutId/merchantId/masked account, never
+  // bank/secret/token/raw provider response.
+  const accountMasked = beneficiaryRow.payoutMode === "UPI"
+    ? maskUpiId(beneficiaryRow.upiId)
+    : `****${maskBankAccountLast4(beneficiaryRow.bankAccount) ?? ""}`;
+  const logCtx = {
+    payoutId: withdrawalId ?? null,
+    merchantId: beneficiaryRow.merchantId,
+    accountMasked,
+    mode: beneficiaryRow.payoutMode,
+  };
+
+  req.log.info(logCtx, "payout_beneficiary_create_started");
+
   const ensured = await cashfreePayoutEnsureBeneficiary(clientId, clientSecret, env, localBeneficiaryId, {
     beneficiaryName: beneficiaryRow.accountHolder ?? undefined,
     accountNumber: beneficiaryRow.bankAccount ?? undefined,
@@ -156,56 +170,59 @@ export async function ensureBeneficiaryProviderRegistered(
     amount: 0,
   });
 
-  // Safe log only — whitelisted fields, never bank/secret/token/raw response.
-  req.log.info(
-    {
-      withdrawalId: withdrawalId ?? null,
-      localBeneficiaryId,
-      providerBeneficiaryIdLast4: localBeneficiaryId.slice(-4),
-      mode: beneficiaryRow.payoutMode,
-      httpStatus: ensured.httpStatus,
-      subCode: ensured.subCode,
-      providerMessage: ensured.message,
-    },
-    "payout_beneficiary_create_attempted"
-  );
-
-  if (ensured.ok) {
+  if (!ensured.ok && ensured.stage === "create") {
+    req.log.warn(
+      { ...logCtx, httpStatus: ensured.httpStatus, subCode: ensured.subCode },
+      "payout_beneficiary_create_failed"
+    );
+    const safeMessage = "Beneficiary setup failed. Please re-register beneficiary.";
     await db
       .update(payoutBeneficiariesTable)
       .set({
-        providerBeneficiaryId: ensured.beneficiaryId,
-        providerStatus: "created",
-        lastProviderError: null,
-        status: "active",
-        lastError: null,
+        providerStatus: "failed",
+        lastProviderError: safeMessage,
+        status: "failed",
+        lastError: safeMessage,
       })
       .where(eq(payoutBeneficiariesTable.id, beneficiaryRow.id));
-
-    req.log.info(
-      {
-        withdrawalId: withdrawalId ?? null,
-        localBeneficiaryId,
-        providerBeneficiaryIdLast4: ensured.beneficiaryId.slice(-4),
-        httpStatus: ensured.httpStatus,
-      },
-      "payout_beneficiary_created"
-    );
-    return { ok: true, providerBeneficiaryId: ensured.beneficiaryId };
+    return { ok: false, message: safeMessage };
   }
 
-  const safeMessage = "Beneficiary setup failed. Please re-register beneficiary.";
+  req.log.info({ ...logCtx, httpStatus: ensured.httpStatus }, "payout_beneficiary_create_success");
+  req.log.info(logCtx, "payout_beneficiary_verify_started");
+
+  if (!ensured.ok && ensured.stage === "verify") {
+    req.log.warn(
+      { ...logCtx, httpStatus: ensured.httpStatus, subCode: ensured.subCode },
+      "payout_beneficiary_verify_failed"
+    );
+    const safeMessage = "Beneficiary setup could not be verified. Please retry later.";
+    await db
+      .update(payoutBeneficiariesTable)
+      .set({
+        providerStatus: "failed",
+        lastProviderError: safeMessage,
+        status: "failed",
+        lastError: safeMessage,
+      })
+      .where(eq(payoutBeneficiariesTable.id, beneficiaryRow.id));
+    return { ok: false, message: safeMessage };
+  }
+
+  req.log.info({ ...logCtx, httpStatus: ensured.httpStatus }, "payout_beneficiary_verify_success");
+
   await db
     .update(payoutBeneficiariesTable)
     .set({
-      providerStatus: "failed",
-      lastProviderError: safeMessage,
-      status: "failed",
-      lastError: safeMessage,
+      providerBeneficiaryId: ensured.beneficiaryId,
+      providerStatus: "created",
+      lastProviderError: null,
+      status: "active",
+      lastError: null,
     })
     .where(eq(payoutBeneficiariesTable.id, beneficiaryRow.id));
 
-  return { ok: false, message: safeMessage };
+  return { ok: true, providerBeneficiaryId: ensured.beneficiaryId };
 }
 
 /**

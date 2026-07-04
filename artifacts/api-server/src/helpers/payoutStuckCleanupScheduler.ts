@@ -23,6 +23,7 @@ import cron from "node-cron";
 import {
   db,
   withdrawalsTable,
+  merchantsTable,
   systemConfigTable,
   SYSTEM_CONFIG_KEYS,
 } from "@workspace/db";
@@ -68,29 +69,47 @@ async function releaseStuckPayout(w: typeof withdrawalsTable.$inferSelect) {
   const amt = Number(w.amount);
   const now = new Date();
 
-  // Release the wallet hold first — if this fails (e.g. orphaned/invalid
-  // merchant reference), the withdrawal is left untouched (still
-  // INITIATED/PENDING) so the next scheduled run retries it, rather than
-  // leaving the withdrawal marked FAILED with its locked funds never
-  // released back to the merchant.
-  await mutateWallet(
-    w.merchantId,
-    { holdDelta: -amt, availableDelta: amt, totalReversalsDelta: amt },
-    {
-      txnType: "payout_failed_release",
-      bucket: "hold",
-      amount: amt,
-      referenceType: "withdrawal",
-      referenceId: w.id,
-      description: `Payout #${w.id} stuck cleanup — ₹${amt.toFixed(2)} released back`,
-      createdBy: null,
-    }
-  );
+  // Always resolve the merchant via the withdrawal's own merchantId column —
+  // never the withdrawal/payout id itself — and confirm the merchant row
+  // actually exists before mutating its wallet. A stale/orphaned merchantId
+  // reference would otherwise violate the merchant_wallets FK and throw,
+  // leaving the withdrawal stuck forever since the FAILED update below would
+  // never run.
+  const [merchant] = await db
+    .select({ id: merchantsTable.id })
+    .from(merchantsTable)
+    .where(eq(merchantsTable.id, w.merchantId))
+    .limit(1);
 
-  logger.warn(
-    { withdrawalId: w.id, merchantId: w.merchantId, amount: amt },
-    "payout_locked_amount_released"
-  );
+  if (!merchant) {
+    logger.warn(
+      { withdrawalId: w.id, merchantId: w.merchantId },
+      "payout_locked_release_skipped_missing_merchant"
+    );
+  } else {
+    // Release the wallet hold first — if this fails, the withdrawal is left
+    // untouched (still INITIATED/PENDING) so the next scheduled run retries
+    // it, rather than leaving the withdrawal marked FAILED with its locked
+    // funds never released back to the merchant.
+    await mutateWallet(
+      w.merchantId,
+      { holdDelta: -amt, availableDelta: amt, totalReversalsDelta: amt },
+      {
+        txnType: "payout_failed_release",
+        bucket: "hold",
+        amount: amt,
+        referenceType: "withdrawal",
+        referenceId: w.id,
+        description: `Payout #${w.id} stuck cleanup — ₹${amt.toFixed(2)} released back`,
+        createdBy: null,
+      }
+    );
+
+    logger.warn(
+      { withdrawalId: w.id, merchantId: w.merchantId, amount: amt },
+      "payout_locked_amount_released"
+    );
+  }
 
   await db
     .update(withdrawalsTable)

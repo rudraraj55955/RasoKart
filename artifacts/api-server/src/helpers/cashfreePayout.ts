@@ -165,7 +165,7 @@ async function cashfreePayoutCreateBeneficiary(
   return await readJson(res);
 }
 
-async function cashfreePayoutGetBeneficiary(
+export async function cashfreePayoutGetBeneficiary(
   clientId: string,
   clientSecret: string,
   env: CashfreePayoutEnv,
@@ -254,20 +254,64 @@ export type EnsureBeneficiaryResult = {
   httpStatus: number;
   subCode?: string;
   message?: string;
+  /** Which stage failed — only meaningful when ok=false. Lets callers log/report precisely. */
+  stage?: "create" | "verify";
 };
+
+export type VerifyBeneficiaryResult = {
+  ok: boolean;
+  httpStatus: number;
+  subCode?: string;
+  attempts: number;
+};
+
+/**
+ * Confirm a beneficiary is actually retrievable via GET before it is trusted
+ * for a transfer. A 200/201 (or already-exists) response on create does NOT
+ * guarantee the record has propagated on Cashfree's side yet — retrying a
+ * transfer immediately after "successful" registration can still 404 with
+ * beneficiary_not_found. Retries with a short backoff, never mutates
+ * anything, and never creates a second beneficiary.
+ */
+export async function cashfreePayoutVerifyBeneficiaryWithRetry(
+  clientId: string,
+  clientSecret: string,
+  env: CashfreePayoutEnv,
+  beneficiaryId: string,
+  attempts = 3,
+  delayMs = 600
+): Promise<VerifyBeneficiaryResult> {
+  let lastHttpStatus = 0;
+  let lastSubCode: string | undefined;
+
+  for (let i = 0; i < attempts; i++) {
+    const fetched = await cashfreePayoutGetBeneficiary(clientId, clientSecret, env, beneficiaryId);
+    if (fetched.httpStatus === 200) {
+      return { ok: true, httpStatus: fetched.httpStatus, attempts: i + 1 };
+    }
+    lastHttpStatus = fetched.httpStatus;
+    lastSubCode = String(fetched.parsed?.code ?? fetched.parsed?.subCode ?? fetched.parsed?.status_code ?? "");
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (i + 1)));
+    }
+  }
+  return { ok: false, httpStatus: lastHttpStatus, subCode: lastSubCode, attempts };
+}
 
 /**
  * Ensure a Cashfree Payouts V2 beneficiary exists for the given deterministic
  * `beneficiaryId`, following the required flow:
  *   1. Try to create it.
- *   2. If the provider says it already exists (409 / already-exists code),
- *      fetch it via GET to confirm it's really registered before proceeding.
- *   3. Only a confirmed create-or-fetch success is treated as `ok: true`.
+ *   2. Whether created fresh or already-existing, NEVER trust the create
+ *      response alone — verify the record is actually retrievable via GET
+ *      (with short retry/backoff for provider propagation delay) before
+ *      returning ok:true.
+ *   3. Only a confirmed, verified beneficiary is treated as `ok: true`.
  *
  * This never assumes a beneficiary exists just because we previously computed
- * the same deterministic ID — that assumption is what caused
- * "beneficiary_not_found" on transfer/retry when the create step had silently
- * failed (e.g. during the earlier /v2-URL "Token is not valid" outage).
+ * the same deterministic ID, and never assumes a 200 create response means
+ * the beneficiary is immediately usable for a transfer — both assumptions
+ * caused "beneficiary_not_found" on transfer/retry in the past.
  */
 export async function cashfreePayoutEnsureBeneficiary(
   clientId: string,
@@ -279,33 +323,36 @@ export async function cashfreePayoutEnsureBeneficiary(
   try {
     const created = await cashfreePayoutCreateBeneficiary(clientId, clientSecret, env, beneficiaryId, input);
 
-    if (created.httpStatus === 200 || created.httpStatus === 201) {
-      return { ok: true, beneficiaryId, httpStatus: created.httpStatus };
-    }
+    const createdOk = created.httpStatus === 200 || created.httpStatus === 201;
+    const alreadyExists = !createdOk && isBeneficiaryAlreadyExists(created.parsed, created.httpStatus);
 
-    if (isBeneficiaryAlreadyExists(created.parsed, created.httpStatus)) {
-      // Already registered on Cashfree's side — fetch it to confirm before
-      // trusting it for a transfer, rather than assuming success.
-      const fetched = await cashfreePayoutGetBeneficiary(clientId, clientSecret, env, beneficiaryId);
-      if (fetched.httpStatus === 200) {
-        return { ok: true, beneficiaryId, httpStatus: fetched.httpStatus };
-      }
+    if (!createdOk && !alreadyExists) {
       return {
         ok: false,
         beneficiaryId,
-        httpStatus: fetched.httpStatus,
-        subCode: String(fetched.parsed?.code ?? fetched.parsed?.subCode ?? fetched.parsed?.status_code ?? ""),
-        message: fetched.parsed?.message ?? fetched.parsed?.status_description ?? "Could not verify existing beneficiary",
+        httpStatus: created.httpStatus,
+        subCode: String(created.parsed?.code ?? created.parsed?.subCode ?? created.parsed?.status_code ?? ""),
+        message: created.parsed?.message ?? created.parsed?.status_description ?? "Cashfree beneficiary create failed",
+        stage: "create",
       };
     }
 
-    return {
-      ok: false,
-      beneficiaryId,
-      httpStatus: created.httpStatus,
-      subCode: String(created.parsed?.code ?? created.parsed?.subCode ?? created.parsed?.status_code ?? ""),
-      message: created.parsed?.message ?? created.parsed?.status_description ?? "Cashfree beneficiary create failed",
-    };
+    // Created fresh, or already existed — either way, verify it is actually
+    // retrievable (with retry/backoff for propagation delay) before trusting
+    // it for a transfer.
+    const verified = await cashfreePayoutVerifyBeneficiaryWithRetry(clientId, clientSecret, env, beneficiaryId);
+    if (!verified.ok) {
+      return {
+        ok: false,
+        beneficiaryId,
+        httpStatus: verified.httpStatus,
+        subCode: verified.subCode,
+        message: "Could not verify beneficiary registration",
+        stage: "verify",
+      };
+    }
+
+    return { ok: true, beneficiaryId, httpStatus: created.httpStatus || verified.httpStatus };
   } catch (err: any) {
     // Network/connection error reaching Cashfree — never let this bubble up
     // as an unhandled exception in the route handler.
@@ -314,6 +361,7 @@ export async function cashfreePayoutEnsureBeneficiary(
       beneficiaryId,
       httpStatus: 0,
       message: err?.message ?? "Could not reach payout provider",
+      stage: "create",
     };
   }
 }
