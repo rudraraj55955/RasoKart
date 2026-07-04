@@ -378,58 +378,66 @@ export default function AdminDashboard() {
         const isFailure = githubSync.status === "failure";
         const isNever = githubSync.status === "never";
         return (
-          <Card className={isFailure ? "border-rose-500/40 bg-rose-500/5" : isNever ? "border-border/50 bg-card/50" : "border-emerald-500/30 bg-emerald-500/5"}>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isFailure ? "bg-rose-500/10" : isNever ? "bg-muted/30" : "bg-emerald-500/10"}`}>
-                  <Github className={`w-4 h-4 ${isFailure ? "text-rose-400" : isNever ? "text-muted-foreground" : "text-emerald-400"}`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className="text-xs text-muted-foreground">Last GitHub Sync</p>
-                    {!isNever && (
-                      <span className={`rounded-full text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide ${isFailure ? "bg-rose-500/20 text-rose-400 border-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"}`}>
-                        {isFailure ? "Failed" : "Success"}
-                      </span>
-                    )}
-                  </div>
-                  {isNever ? (
-                    <p className="text-sm text-muted-foreground">Never run</p>
-                  ) : (
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-                      <p className="text-sm font-medium">{githubSync.repo ?? "—"}</p>
-                      {githubSync.syncedAt && (
-                        <p className="text-xs text-muted-foreground">{format(new Date(githubSync.syncedAt), "MMM d, yyyy 'at' h:mm a")}</p>
-                      )}
+          <Link href="/admin/settings#github-sync">
+            <Card className={`cursor-pointer transition-all hover:border-border/80 ${isFailure ? "border-rose-500/40 bg-rose-500/5 hover:bg-rose-500/10" : isNever ? "border-border/50 bg-card/50" : "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10"}`}>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isFailure ? "bg-rose-500/10" : isNever ? "bg-muted/30" : "bg-emerald-500/10"}`}>
+                      <Github className={`w-4 h-4 ${isFailure ? "text-rose-400" : isNever ? "text-muted-foreground" : "text-emerald-400"}`} />
                     </div>
-                  )}
-                  {isFailure && githubSync.errorMessage && (
-                    <p className="text-xs text-rose-400 mt-1 truncate" title={githubSync.errorMessage}>{githubSync.errorMessage}</p>
-                  )}
-                  {githubSyncHistory && githubSyncHistory.entries.length > 0 && (() => {
-                    const recent = githubSyncHistory.entries.slice(0, 10);
-                    const succeeded = recent.filter((e) => e.status === "success").length;
-                    return (
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {succeeded}/{recent.length} runs succeeded in the last {recent.length} runs
-                        </span>
-                        <div className="flex items-center gap-0.5">
-                          {recent.slice().reverse().map((entry, i) => (
-                            <span
-                              key={i}
-                              title={`${entry.status === "success" ? "Success" : "Failed"} — ${format(new Date(entry.syncedAt), "MMM d, h:mm a")}${entry.errorMessage ? `: ${entry.errorMessage}` : ""}`}
-                              className={`inline-block w-1.5 h-4 rounded-sm ${entry.status === "failure" ? "bg-rose-500" : "bg-emerald-500/60"}`}
-                            />
-                          ))}
-                        </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-xs text-muted-foreground">Last GitHub Sync</p>
+                        {!isNever && (
+                          <span className={`rounded-full text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide ${isFailure ? "bg-rose-500/20 text-rose-400 border-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"}`}>
+                            {isFailure ? "Failed" : "Success"}
+                          </span>
+                        )}
                       </div>
-                    );
-                  })()}
+                      {isNever ? (
+                        <p className="text-sm text-muted-foreground">Never run</p>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                          <p className="text-sm font-medium">{githubSync.repo ?? "—"}</p>
+                          {githubSync.syncedAt && (
+                            <p className="text-xs text-muted-foreground">{format(new Date(githubSync.syncedAt), "MMM d, yyyy 'at' h:mm a")}</p>
+                          )}
+                        </div>
+                      )}
+                      {isFailure && githubSync.errorMessage && (
+                        <p className="text-xs text-rose-400 mt-1 truncate" title={githubSync.errorMessage}>{githubSync.errorMessage}</p>
+                      )}
+                      {githubSyncHistory && githubSyncHistory.entries.length > 0 && (() => {
+                        const recent = githubSyncHistory.entries.slice(0, 10);
+                        const succeeded = recent.filter((e) => e.status === "success").length;
+                        return (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {succeeded}/{recent.length} runs succeeded in the last {recent.length} runs
+                            </span>
+                            <div className="flex items-center gap-0.5">
+                              {recent.slice().reverse().map((entry, i) => (
+                                <span
+                                  key={i}
+                                  title={`${entry.status === "success" ? "Success" : "Failed"} — ${format(new Date(entry.syncedAt), "MMM d, h:mm a")}${entry.errorMessage ? `: ${entry.errorMessage}` : ""}`}
+                                  className={`inline-block w-1.5 h-4 rounded-sm ${entry.status === "failure" ? "bg-rose-500" : "bg-emerald-500/60"}`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                    <span>{isFailure ? "Investigate" : "View settings"}</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
         );
       })()}
 

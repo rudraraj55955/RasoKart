@@ -191,6 +191,16 @@ function MaintenanceCard() {
 
 export default function AdminSettings() {
   const qc = useQueryClient();
+
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    const el = document.getElementById(hash);
+    if (el) {
+      setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    }
+  }, []);
+
   const [financeEmail, setFinanceEmail] = useState<string>("");
   const [testEmailTo, setTestEmailTo] = useState<string>("");
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("daily");
@@ -2813,7 +2823,7 @@ export default function AdminSettings() {
       </Card>
 
       {/* GitHub Sync */}
-      <Card className="border-border/50">
+      <Card id="github-sync" className="border-border/50 scroll-mt-6">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <GitBranch className="w-4 h-4 text-muted-foreground" />
