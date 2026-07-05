@@ -232,6 +232,7 @@ export * from './getWebhookLogsParams';
 export * from './getWebhookLogsStatus';
 export * from './getWebhookPlatformDefaults200';
 export * from './githubSyncConfig';
+export * from './githubSyncDivergence';
 export * from './githubSyncHistory';
 export * from './githubSyncHistoryEntry';
 export * from './githubSyncHistoryEntryStatus';

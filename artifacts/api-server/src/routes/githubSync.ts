@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { readFileSync } from "fs";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import { logger } from "../lib/logger";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { db, systemSettingsTable, auditLogsTable } from "@workspace/db";
@@ -16,8 +16,20 @@ const LOG_DIR = new URL("../../../.github-sync-logs/", import.meta.url).pathname
 const REPO_ROOT = new URL("../../../", import.meta.url).pathname;
 
 const GITHUB_SYNC_KEYS = ["github_sync_enabled", "github_sync_schedule"] as const;
+const REMOTE_NAME = "github";
+const GITHUB_REPO = process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
 
 let syncRunInProgress = false;
+
+function resetRemote() {
+  try {
+    execSync(`git remote set-url ${REMOTE_NAME} https://github.com/${GITHUB_REPO}.git`, {
+      cwd: REPO_ROOT,
+      stdio: "pipe",
+    });
+  } catch {
+  }
+}
 
 // GET /api/github-sync/config
 router.get("/config", async (req, res, next) => {
@@ -167,6 +179,58 @@ router.get("/history/:id/log", (req, res, next) => {
     }
   } catch (err) {
     next(err);
+  }
+});
+
+// GET /api/github-sync/divergence
+router.get("/divergence", (req, res) => {
+  const token = process.env["GITHUB_TOKEN"];
+
+  if (!token) {
+    res.json({ checked: false, diverged: false, reason: "GITHUB_TOKEN is not set in the environment" });
+    return;
+  }
+
+  const remoteUrl = `https://x-access-token:${token}@github.com/${GITHUB_REPO}.git`;
+
+  try {
+    try {
+      execSync(`git remote get-url ${REMOTE_NAME}`, { cwd: REPO_ROOT, stdio: "pipe" });
+      execSync(`git remote set-url ${REMOTE_NAME} ${remoteUrl}`, { cwd: REPO_ROOT, stdio: "pipe" });
+    } catch {
+      execSync(`git remote add ${REMOTE_NAME} ${remoteUrl}`, { cwd: REPO_ROOT, stdio: "pipe" });
+    }
+
+    try {
+      execSync(`git fetch ${REMOTE_NAME} main`, { cwd: REPO_ROOT, stdio: "pipe" });
+    } catch (fetchErr: unknown) {
+      const message = fetchErr instanceof Error ? fetchErr.message.replace(token, "<REDACTED>") : String(fetchErr);
+      req.log.warn({ err: message }, "GitHub sync divergence check: fetch failed");
+      res.json({ checked: false, diverged: false, repo: GITHUB_REPO, reason: "Could not reach the remote repository to check for divergence" });
+      return;
+    }
+
+    let remoteAheadBy = 0;
+    try {
+      const out = execSync(`git rev-list --count HEAD..${REMOTE_NAME}/main`, { cwd: REPO_ROOT, stdio: "pipe" }).toString().trim();
+      remoteAheadBy = parseInt(out, 10) || 0;
+    } catch {
+      res.json({ checked: true, diverged: false, repo: GITHUB_REPO, reason: "Remote branch does not exist yet — this will be the first push" });
+      return;
+    }
+
+    res.json({
+      checked: true,
+      diverged: remoteAheadBy > 0,
+      remoteAheadBy,
+      repo: GITHUB_REPO,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message.replace(token, "<REDACTED>") : String(err);
+    req.log.warn({ err: message }, "GitHub sync divergence check failed");
+    res.json({ checked: false, diverged: false, repo: GITHUB_REPO, reason: "Divergence check failed" });
+  } finally {
+    resetRemote();
   }
 });
 

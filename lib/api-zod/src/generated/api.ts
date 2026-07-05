@@ -7226,6 +7226,19 @@ export const GetGithubSyncRunLogResponse = zod.object({
 
 
 /**
+ * Performs a read-only fetch (no push) against the remote and reports whether it has diverged from the local history, so the UI can warn before a force-push discards those commits.
+ * @summary Check whether the remote GitHub branch has commits not present locally
+ */
+export const GetGithubSyncDivergenceResponse = zod.object({
+  "checked": zod.boolean().describe('Whether the divergence check could actually be performed (false if GITHUB_TOKEN is missing or the fetch failed)'),
+  "diverged": zod.boolean().describe('True if the remote main branch has commits that are not present in the local history. A force-push would discard them.'),
+  "remoteAheadBy": zod.number().optional().describe('Number of commits present on the remote but not reachable from local HEAD'),
+  "repo": zod.string().optional().describe('GitHub repository that was checked'),
+  "reason": zod.string().optional().describe('Human-readable reason the check could not be performed, or a note (e.g. remote branch does not exist yet)')
+})
+
+
+/**
  * @summary Get GitHub sync run history (last N runs)
  */
 export const GetGithubSyncHistoryResponse = zod.object({

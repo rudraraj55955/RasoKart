@@ -7613,6 +7613,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /github-sync/divergence:
+    get:
+      operationId: getGithubSyncDivergence
+      tags: [github-sync]
+      summary: Check whether the remote GitHub branch has commits not present locally
+      description: Performs a read-only fetch (no push) against the remote and reports whether it has diverged from the local history, so the UI can warn before a force-push discards those commits.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Divergence check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubSyncDivergence"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /github-sync/history:
     get:
       operationId: getGithubSyncHistory
@@ -10193,6 +10221,26 @@ components:
           items:
             $ref: "#/components/schemas/GithubSyncHistoryEntry"
           description: Past sync runs, newest first, capped at 50
+
+    GithubSyncDivergence:
+      type: object
+      required: [checked, diverged]
+      properties:
+        checked:
+          type: boolean
+          description: Whether the divergence check could actually be performed (false if GITHUB_TOKEN is missing or the fetch failed)
+        diverged:
+          type: boolean
+          description: True if the remote main branch has commits that are not present in the local history. A force-push would discard them.
+        remoteAheadBy:
+          type: integer
+          description: Number of commits present on the remote but not reachable from local HEAD
+        repo:
+          type: string
+          description: GitHub repository that was checked
+        reason:
+          type: string
+          description: Human-readable reason the check could not be performed, or a note (e.g. remote branch does not exist yet)
 
     GithubSyncRunLog:
       type: object

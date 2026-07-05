@@ -169,6 +169,19 @@ export interface GithubSyncHistory {
   entries: GithubSyncHistoryEntry[];
 }
 
+export interface GithubSyncDivergence {
+  /** Whether the divergence check could actually be performed (false if GITHUB_TOKEN is missing or the fetch failed) */
+  checked: boolean;
+  /** True if the remote main branch has commits that are not present in the local history. A force-push would discard them. */
+  diverged: boolean;
+  /** Number of commits present on the remote but not reachable from local HEAD */
+  remoteAheadBy?: number;
+  /** GitHub repository that was checked */
+  repo?: string;
+  /** Human-readable reason the check could not be performed, or a note (e.g. remote branch does not exist yet) */
+  reason?: string;
+}
+
 export interface GithubSyncRunLog {
   /** Full captured stdout/stderr output for this sync run (git fetch/push commands) */
   log: string;

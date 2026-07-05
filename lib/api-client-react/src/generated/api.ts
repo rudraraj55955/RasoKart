@@ -161,6 +161,7 @@ import type {
   GetWebhookLogsParams,
   GetWebhookPlatformDefaults200,
   GithubSyncConfig,
+  GithubSyncDivergence,
   GithubSyncHistory,
   GithubSyncRunLog,
   GithubSyncStatus,
@@ -22256,6 +22257,84 @@ export const useRunGithubSync = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getRunGithubSyncMutationOptions(options));
     }
+
+export const getGetGithubSyncDivergenceUrl = () => {
+
+
+
+
+  return `/api/github-sync/divergence`
+}
+
+/**
+ * Performs a read-only fetch (no push) against the remote and reports whether it has diverged from the local history, so the UI can warn before a force-push discards those commits.
+ * @summary Check whether the remote GitHub branch has commits not present locally
+ */
+export const getGithubSyncDivergence = async ( options?: RequestInit): Promise<GithubSyncDivergence> => {
+
+  return customFetch<GithubSyncDivergence>(getGetGithubSyncDivergenceUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGithubSyncDivergenceQueryKey = () => {
+    return [
+    `/api/github-sync/divergence`
+    ] as const;
+    }
+
+
+export const getGetGithubSyncDivergenceQueryOptions = <TData = Awaited<ReturnType<typeof getGithubSyncDivergence>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncDivergence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGithubSyncDivergenceQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGithubSyncDivergence>>> = ({ signal }) => getGithubSyncDivergence({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncDivergence>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGithubSyncDivergenceQueryResult = NonNullable<Awaited<ReturnType<typeof getGithubSyncDivergence>>>
+export type GetGithubSyncDivergenceQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Check whether the remote GitHub branch has commits not present locally
+ */
+
+export function useGetGithubSyncDivergence<TData = Awaited<ReturnType<typeof getGithubSyncDivergence>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncDivergence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGithubSyncDivergenceQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetGithubSyncHistoryUrl = () => {
 

@@ -11,7 +11,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -902,6 +902,16 @@ export default function AdminSettings() {
       onError: (err: Error) => toast.error(getApiErrorMessage(err, "Failed to start GitHub sync")),
     },
   });
+
+  const [githubSyncConfirmOpen, setGithubSyncConfirmOpen] = useState(false);
+  const { data: githubSyncDivergence, isLoading: githubSyncDivergenceLoading } = useGetGithubSyncDivergence({
+    query: { enabled: githubSyncConfirmOpen },
+  } as any);
+
+  const handleConfirmGithubSync = () => {
+    setGithubSyncConfirmOpen(false);
+    runGithubSyncNow();
+  };
 
   const [selectedSyncRun, setSelectedSyncRun] = useState<GithubSyncHistoryEntry | null>(null);
   const { data: selectedSyncRunLog, isLoading: selectedSyncRunLogLoading, isError: selectedSyncRunLogError } = useGetGithubSyncRunLog(
@@ -2924,7 +2934,7 @@ export default function AdminSettings() {
                 size="sm"
                 variant="outline"
                 className="ml-auto shrink-0"
-                onClick={() => runGithubSyncNow()}
+                onClick={() => setGithubSyncConfirmOpen(true)}
                 disabled={githubSyncIsRunning || runningGithubSync}
               >
                 <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${githubSyncIsRunning ? "animate-spin" : ""}`} />
@@ -3123,6 +3133,65 @@ export default function AdminSettings() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={githubSyncConfirmOpen} onOpenChange={setGithubSyncConfirmOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400" />
+              Force-push to GitHub?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              This will force-push this environment's code to the{" "}
+              <span className="font-mono text-xs">main</span> branch of{" "}
+              <span className="font-medium">{githubSyncDivergence?.repo ?? "the configured repository"}</span>,
+              overwriting whatever is currently on GitHub. Any commits on the remote that aren't in this environment will be permanently discarded.
+            </p>
+
+            {githubSyncDivergenceLoading && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground rounded-md border border-border/50 bg-muted/5 px-3 py-2">
+                <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" />
+                Checking whether the remote has diverged…
+              </div>
+            )}
+
+            {!githubSyncDivergenceLoading && githubSyncDivergence?.checked && githubSyncDivergence.diverged && (
+              <div className="flex items-start gap-2 text-xs text-red-300 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2">
+                <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-400" />
+                <span>
+                  The remote has <strong>{githubSyncDivergence.remoteAheadBy}</strong> commit
+                  {githubSyncDivergence.remoteAheadBy === 1 ? "" : "s"} not present here — likely pushed directly on GitHub.
+                  Forcing this sync will permanently overwrite {githubSyncDivergence.remoteAheadBy === 1 ? "it" : "them"}.
+                </span>
+              </div>
+            )}
+
+            {!githubSyncDivergenceLoading && githubSyncDivergence?.checked && !githubSyncDivergence.diverged && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                {githubSyncDivergence.reason ?? "The remote has no commits that aren't already reflected here."}
+              </div>
+            )}
+
+            {!githubSyncDivergenceLoading && githubSyncDivergence && !githubSyncDivergence.checked && (
+              <div className="flex items-start gap-2 text-xs text-amber-400 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>Couldn't verify whether the remote has diverged ({githubSyncDivergence.reason ?? "check failed"}) — proceed with caution.</span>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setGithubSyncConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleConfirmGithubSync}>
+              Force push anyway
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
