@@ -5,11 +5,14 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ReregisterBeneficiaryResponseBeneficiaryStatus } from './reregisterBeneficiaryResponseBeneficiaryStatus';
 import type { ReregisterBeneficiaryResponseProviderStatus } from './reregisterBeneficiaryResponseProviderStatus';
 
 export interface ReregisterBeneficiaryResponse {
   success: boolean;
   providerStatus: ReregisterBeneficiaryResponseProviderStatus;
+  /** Only set to VERIFIED after the provider has confirmed the beneficiary via a follow-up status check */
+  beneficiaryStatus?: ReregisterBeneficiaryResponseBeneficiaryStatus;
   /**
      * Safe, admin-facing message only — never raw provider response
      * @nullable

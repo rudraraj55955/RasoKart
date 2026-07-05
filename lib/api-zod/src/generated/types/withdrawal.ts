@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { WithdrawalBeneficiaryStatus } from './withdrawalBeneficiaryStatus';
 import type { WithdrawalPayoutMode } from './withdrawalPayoutMode';
 import type { WithdrawalStatus } from './withdrawalStatus';
 import type { WithdrawalTransferStatus } from './withdrawalTransferStatus';
@@ -36,6 +37,13 @@ export interface Withdrawal {
      * @nullable
      */
   beneficiaryId?: number | null;
+  /** Current beneficiary verification state — Retry is only enabled when this is VERIFIED */
+  beneficiaryStatus?: WithdrawalBeneficiaryStatus;
+  /**
+     * Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response
+     * @nullable
+     */
+  safeFailureReason?: string | null;
   /** @nullable */
   rejectionReason?: string | null;
   /** @nullable */

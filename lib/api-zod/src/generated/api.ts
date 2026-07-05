@@ -2917,6 +2917,8 @@ export const ListWithdrawalsResponse = zod.object({
   "ifscCode": zod.string(),
   "accountHolder": zod.string(),
   "beneficiaryId": zod.number().nullish().describe('Saved beneficiary used for this payout (never exposes provider IDs)'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Current beneficiary verification state — Retry is only enabled when this is VERIFIED'),
+  "safeFailureReason": zod.string().nullish().describe('Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response'),
   "rejectionReason": zod.string().nullish(),
   "approvedAt": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
@@ -2981,6 +2983,8 @@ export const ApproveWithdrawalResponse = zod.object({
   "ifscCode": zod.string(),
   "accountHolder": zod.string(),
   "beneficiaryId": zod.number().nullish().describe('Saved beneficiary used for this payout (never exposes provider IDs)'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Current beneficiary verification state — Retry is only enabled when this is VERIFIED'),
+  "safeFailureReason": zod.string().nullish().describe('Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response'),
   "rejectionReason": zod.string().nullish(),
   "approvedAt": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
@@ -3018,6 +3022,8 @@ export const RejectWithdrawalResponse = zod.object({
   "ifscCode": zod.string(),
   "accountHolder": zod.string(),
   "beneficiaryId": zod.number().nullish().describe('Saved beneficiary used for this payout (never exposes provider IDs)'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Current beneficiary verification state — Retry is only enabled when this is VERIFIED'),
+  "safeFailureReason": zod.string().nullish().describe('Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response'),
   "rejectionReason": zod.string().nullish(),
   "approvedAt": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
@@ -3051,6 +3057,8 @@ export const RefreshWithdrawalStatusResponse = zod.object({
   "ifscCode": zod.string(),
   "accountHolder": zod.string(),
   "beneficiaryId": zod.number().nullish().describe('Saved beneficiary used for this payout (never exposes provider IDs)'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Current beneficiary verification state — Retry is only enabled when this is VERIFIED'),
+  "safeFailureReason": zod.string().nullish().describe('Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response'),
   "rejectionReason": zod.string().nullish(),
   "approvedAt": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
@@ -3084,6 +3092,8 @@ export const RetryWithdrawalResponse = zod.object({
   "ifscCode": zod.string(),
   "accountHolder": zod.string(),
   "beneficiaryId": zod.number().nullish().describe('Saved beneficiary used for this payout (never exposes provider IDs)'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Current beneficiary verification state — Retry is only enabled when this is VERIFIED'),
+  "safeFailureReason": zod.string().nullish().describe('Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response'),
   "rejectionReason": zod.string().nullish(),
   "approvedAt": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
@@ -3102,7 +3112,23 @@ export const ReregisterWithdrawalBeneficiaryParams = zod.object({
 export const ReregisterWithdrawalBeneficiaryResponse = zod.object({
   "success": zod.boolean(),
   "providerStatus": zod.enum(['not_created', 'created', 'failed', 'stale']),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Only set to VERIFIED after the provider has confirmed the beneficiary via a follow-up status check'),
   "message": zod.string().nullish().describe('Safe, admin-facing message only — never raw provider response')
+})
+
+
+/**
+ * @summary Read-only check of the payout's beneficiary status directly with the provider (admin only). Never creates or mutates the beneficiary.
+ */
+export const CheckWithdrawalBeneficiaryStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CheckWithdrawalBeneficiaryStatusResponse = zod.object({
+  "beneficiaryId": zod.number(),
+  "providerStatus": zod.enum(['not_created', 'created', 'failed', 'stale']),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']),
+  "checkedAt": zod.string()
 })
 
 
@@ -3127,6 +3153,7 @@ export const ListPayoutBeneficiariesResponse = zod.object({
   "upiIdMasked": zod.string().nullish().describe('Masked UPI VPA (e.g. me\*\*\*@upi) — raw VPA is not re-exposed after creation'),
   "localStatus": zod.enum(['active', 'disabled']),
   "providerStatus": zod.enum(['not_created', 'created', 'failed', 'stale']).describe('stale = provider previously reported this beneficiary id as invalid\/not found; will be re-registered on next attempt'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Normalized beneficiary verification state derived from providerStatus'),
   "lastProviderError": zod.string().nullish().describe('Safe, admin-facing error message only — never raw provider response'),
   "usedInSuccessfulPayout": zod.boolean().optional().describe('True once a SUCCESS withdrawal has used this beneficiary — blocks direct edits'),
   "createdAt": zod.string(),
@@ -3179,6 +3206,7 @@ export const UpdatePayoutBeneficiaryResponse = zod.object({
   "upiIdMasked": zod.string().nullish().describe('Masked UPI VPA (e.g. me\*\*\*@upi) — raw VPA is not re-exposed after creation'),
   "localStatus": zod.enum(['active', 'disabled']),
   "providerStatus": zod.enum(['not_created', 'created', 'failed', 'stale']).describe('stale = provider previously reported this beneficiary id as invalid\/not found; will be re-registered on next attempt'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Normalized beneficiary verification state derived from providerStatus'),
   "lastProviderError": zod.string().nullish().describe('Safe, admin-facing error message only — never raw provider response'),
   "usedInSuccessfulPayout": zod.boolean().optional().describe('True once a SUCCESS withdrawal has used this beneficiary — blocks direct edits'),
   "createdAt": zod.string(),
@@ -3206,6 +3234,7 @@ export const DisablePayoutBeneficiaryResponse = zod.object({
   "upiIdMasked": zod.string().nullish().describe('Masked UPI VPA (e.g. me\*\*\*@upi) — raw VPA is not re-exposed after creation'),
   "localStatus": zod.enum(['active', 'disabled']),
   "providerStatus": zod.enum(['not_created', 'created', 'failed', 'stale']).describe('stale = provider previously reported this beneficiary id as invalid\/not found; will be re-registered on next attempt'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Normalized beneficiary verification state derived from providerStatus'),
   "lastProviderError": zod.string().nullish().describe('Safe, admin-facing error message only — never raw provider response'),
   "usedInSuccessfulPayout": zod.boolean().optional().describe('True once a SUCCESS withdrawal has used this beneficiary — blocks direct edits'),
   "createdAt": zod.string(),
@@ -3233,6 +3262,7 @@ export const EnablePayoutBeneficiaryResponse = zod.object({
   "upiIdMasked": zod.string().nullish().describe('Masked UPI VPA (e.g. me\*\*\*@upi) — raw VPA is not re-exposed after creation'),
   "localStatus": zod.enum(['active', 'disabled']),
   "providerStatus": zod.enum(['not_created', 'created', 'failed', 'stale']).describe('stale = provider previously reported this beneficiary id as invalid\/not found; will be re-registered on next attempt'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Normalized beneficiary verification state derived from providerStatus'),
   "lastProviderError": zod.string().nullish().describe('Safe, admin-facing error message only — never raw provider response'),
   "usedInSuccessfulPayout": zod.boolean().optional().describe('True once a SUCCESS withdrawal has used this beneficiary — blocks direct edits'),
   "createdAt": zod.string(),
@@ -3260,6 +3290,7 @@ export const RetryPayoutBeneficiaryProviderResponse = zod.object({
   "upiIdMasked": zod.string().nullish().describe('Masked UPI VPA (e.g. me\*\*\*@upi) — raw VPA is not re-exposed after creation'),
   "localStatus": zod.enum(['active', 'disabled']),
   "providerStatus": zod.enum(['not_created', 'created', 'failed', 'stale']).describe('stale = provider previously reported this beneficiary id as invalid\/not found; will be re-registered on next attempt'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']).optional().describe('Normalized beneficiary verification state derived from providerStatus'),
   "lastProviderError": zod.string().nullish().describe('Safe, admin-facing error message only — never raw provider response'),
   "usedInSuccessfulPayout": zod.boolean().optional().describe('True once a SUCCESS withdrawal has used this beneficiary — blocks direct edits'),
   "createdAt": zod.string(),

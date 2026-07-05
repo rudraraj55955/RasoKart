@@ -371,7 +371,7 @@ export default function MerchantPayouts() {
                               )}
                               {(w.transferStatus === "FAILED" || w.transferStatus === "REVERSED") && (
                                 <p className="text-xs text-rose-400 mt-0.5">
-                                  Payout failed. Please contact support.
+                                  Transfer failed. Please contact support or retry after verification.
                                 </p>
                               )}
                             </TableCell>

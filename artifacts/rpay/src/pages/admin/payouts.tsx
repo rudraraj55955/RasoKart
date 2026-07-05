@@ -6,12 +6,14 @@ import {
   useRefreshWithdrawalStatus,
   useRetryWithdrawal,
   useReregisterWithdrawalBeneficiary,
+  useCheckWithdrawalBeneficiaryStatus,
   getListWithdrawalsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +30,27 @@ import {
   Send,
   AlertTriangle,
   UserCog,
+  Eye,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+
+type BeneficiaryStatus = "NOT_REGISTERED" | "VERIFIED" | "NOT_VERIFIED" | "FAILED";
+
+function beneficiaryStatusBadge(bs?: BeneficiaryStatus | null) {
+  switch (bs) {
+    case "VERIFIED":
+      return { label: "Verified", color: "text-emerald-400 bg-emerald-500/10" };
+    case "NOT_VERIFIED":
+      return { label: "Not Verified", color: "text-amber-400 bg-amber-500/10" };
+    case "FAILED":
+      return { label: "Failed", color: "text-rose-400 bg-rose-500/10" };
+    case "NOT_REGISTERED":
+    default:
+      return { label: "Not Registered", color: "text-muted-foreground bg-muted/30" };
+  }
+}
 
 type PayoutStatus = "pending" | "approved" | "rejected";
 type TransferStatus = "NOT_STARTED" | "INITIATED" | "PENDING" | "SUCCESS" | "FAILED" | "REVERSED";
@@ -55,6 +75,7 @@ export default function AdminPayouts() {
   const [rejectReason, setRejectReason] = useState("");
   const [confirmApproveId, setConfirmApproveId] = useState<number | null>(null);
   const [confirmApproveAmount, setConfirmApproveAmount] = useState<number>(0);
+  const [detailId, setDetailId] = useState<number | null>(null);
 
   const { data, isLoading, isError } = useListWithdrawals({ status: status as any, page, limit: 20 });
   const approveMutation = useApproveWithdrawal();
@@ -62,8 +83,11 @@ export default function AdminPayouts() {
   const refreshMutation = useRefreshWithdrawalStatus();
   const retryMutation = useRetryWithdrawal();
   const reregisterMutation = useReregisterWithdrawalBeneficiary();
+  const checkBeneficiaryStatusMutation = useCheckWithdrawalBeneficiaryStatus();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() });
+
+  const detailPayout = data?.data?.find(w => w.id === detailId) ?? null;
 
   const stats = {
     totalVolume: data?.stats?.totalVolume ?? 0,
@@ -152,11 +176,24 @@ export default function AdminPayouts() {
       { id },
       {
         onSuccess: (result: any) => {
-          if (result?.providerStatus === "created") toast.success("Beneficiary re-registered with provider — you can retry the payout now");
+          if (result?.beneficiaryStatus === "VERIFIED") toast.success("Beneficiary re-registered and verified — you can retry the payout now");
           else toast.error("Beneficiary setup failed. Please re-register beneficiary.");
           invalidate();
         },
         onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to re-register beneficiary"),
+      }
+    );
+  };
+
+  const handleCheckBeneficiaryStatus = (id: number) => {
+    checkBeneficiaryStatusMutation.mutate(
+      { id },
+      {
+        onSuccess: (result: any) => {
+          toast.success(`Beneficiary status: ${result?.beneficiaryStatus ?? "unknown"}`);
+          invalidate();
+        },
+        onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to check beneficiary status"),
       }
     );
   };
@@ -465,51 +502,53 @@ export default function AdminPayouts() {
                                       <AlertTriangle className="w-4 h-4 mr-1" />
                                       Retry (fix creds first)
                                     </Button>
-                                  ) : w.failureReason?.startsWith("PAYOUT_BENEFICIARY_ERROR") ||
-                                    w.failureReason === "Beneficiary setup failed. Please re-register beneficiary." ? (
+                                  ) : (w.beneficiaryStatus as BeneficiaryStatus | undefined) === "VERIFIED" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+                                      onClick={() => handleRetry(w.id)}
+                                      disabled={retryMutation.isPending}
+                                    >
+                                      <RotateCcw className="w-4 h-4 mr-1" />
+                                      Retry
+                                    </Button>
+                                  ) : (
                                     <Button
                                       size="sm"
                                       variant="ghost"
                                       className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
                                       onClick={() => handleReregisterBeneficiary(w.id)}
                                       disabled={reregisterMutation.isPending}
-                                      title="Beneficiary setup failed. Re-register the beneficiary with the provider, then retry."
+                                      title="Retry is disabled until the beneficiary is verified. Re-register the beneficiary with the provider first."
                                     >
                                       <UserCog className="w-4 h-4 mr-1" />
                                       Re-register Beneficiary
                                     </Button>
-                                  ) : (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
-                                        onClick={() => handleRetry(w.id)}
-                                        disabled={retryMutation.isPending}
-                                      >
-                                        <RotateCcw className="w-4 h-4 mr-1" />
-                                        Retry
-                                      </Button>
-                                      {(w.failureReason === "Transfer was not created. Please retry after beneficiary setup." ||
-                                        w.failureReason === "Transfer was not created / provider transfer not found") && (
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
-                                          onClick={() => handleReregisterBeneficiary(w.id)}
-                                          disabled={reregisterMutation.isPending}
-                                          title="Re-register the beneficiary with the provider before retrying."
-                                        >
-                                          <UserCog className="w-4 h-4 mr-1" />
-                                          Re-register Beneficiary
-                                        </Button>
-                                      )}
-                                    </>
                                   )
                                 )}
-                                {w.status !== "pending" && !isProcessing && !isFailed && (
-                                  <span className="text-muted-foreground text-xs">—</span>
+                                {isFailed && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-muted-foreground hover:text-foreground"
+                                    onClick={() => handleCheckBeneficiaryStatus(w.id)}
+                                    disabled={checkBeneficiaryStatusMutation.isPending}
+                                    title="Check the beneficiary's current status directly with the provider (read-only)."
+                                  >
+                                    <ShieldCheck className="w-4 h-4 mr-1" />
+                                    Check Beneficiary
+                                  </Button>
                                 )}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-muted-foreground hover:text-foreground"
+                                  onClick={() => setDetailId(w.id)}
+                                >
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  Details
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -618,6 +657,98 @@ export default function AdminPayouts() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Payout detail drawer */}
+      <Sheet open={!!detailId} onOpenChange={(open) => !open && setDetailId(null)}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Payout #{detailPayout?.id}</SheetTitle>
+            <SheetDescription>Full status detail for this payout</SheetDescription>
+          </SheetHeader>
+          {detailPayout && (
+            <div className="mt-6 space-y-5 px-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Local Status</span>
+                <Badge variant="outline" className="capitalize">{detailPayout.status}</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Transfer Status</span>
+                <Badge variant="outline">{detailPayout.transferStatus}</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Beneficiary Status</span>
+                {(() => {
+                  const b = beneficiaryStatusBadge(detailPayout.beneficiaryStatus as BeneficiaryStatus | undefined);
+                  return (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${b.color}`}>
+                      {b.label}
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="space-y-1">
+                <span className="text-sm text-muted-foreground">Safe Failure Reason</span>
+                <p className="text-sm">{detailPayout.safeFailureReason ?? "—"}</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">UTR</span>
+                <span className="font-mono text-sm">{detailPayout.utr ?? "—"}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Updated At</span>
+                <span className="text-sm">{detailPayout.updatedAt ? format(new Date(detailPayout.updatedAt), "MMM d, yyyy HH:mm") : "—"}</span>
+              </div>
+
+              <div className="pt-4 border-t border-border/50 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleRefreshStatus(detailPayout.id)}
+                  disabled={refreshMutation.isPending}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-1 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                  Check Payout Status
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleCheckBeneficiaryStatus(detailPayout.id)}
+                  disabled={checkBeneficiaryStatusMutation.isPending}
+                >
+                  <ShieldCheck className="w-4 h-4 mr-1" />
+                  Check Beneficiary Status
+                </Button>
+                {["FAILED", "REVERSED"].includes(detailPayout.transferStatus) && (
+                  detailPayout.beneficiaryStatus === "VERIFIED" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-amber-500"
+                      onClick={() => handleRetry(detailPayout.id)}
+                      disabled={retryMutation.isPending}
+                    >
+                      <RotateCcw className="w-4 h-4 mr-1" />
+                      Retry
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-rose-500"
+                      onClick={() => handleReregisterBeneficiary(detailPayout.id)}
+                      disabled={reregisterMutation.isPending}
+                      title="Retry is disabled until the beneficiary is verified."
+                    >
+                      <UserCog className="w-4 h-4 mr-1" />
+                      Re-register Beneficiary
+                    </Button>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

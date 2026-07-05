@@ -2,9 +2,32 @@ import { db, payoutBeneficiariesTable, withdrawalsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import {
   cashfreePayoutEnsureBeneficiary,
+  cashfreePayoutGetBeneficiary,
   type CashfreePayoutEnv,
   type PayoutProviderConfig,
 } from "./cashfreePayout";
+
+/**
+ * User-facing beneficiary verification state, derived from the internal
+ * `providerStatus` column. VERIFIED is the only state that unlocks Retry —
+ * it is set exclusively after `ensureBeneficiaryProviderRegistered` gets a
+ * confirmed create+verify pass from the provider (see `providerStatus ===
+ * "created"`). Never inferred from a create response alone.
+ */
+export type BeneficiaryStatus = "NOT_REGISTERED" | "VERIFIED" | "NOT_VERIFIED" | "FAILED";
+
+export function toBeneficiaryStatus(providerStatus: string): BeneficiaryStatus {
+  switch (providerStatus) {
+    case "created":
+      return "VERIFIED";
+    case "failed":
+      return "FAILED";
+    case "stale":
+      return "NOT_VERIFIED";
+    default:
+      return "NOT_REGISTERED";
+  }
+}
 
 export type BeneficiaryDestinationInput = {
   payoutMode: string;
@@ -292,7 +315,7 @@ export async function reregisterBeneficiaryWithProvider(
 ): Promise<EnsureProviderResult> {
   req.log.info(
     { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id, reason },
-    "payout_beneficiary_reregister_started"
+    "payout_beneficiary_re_register_started"
   );
 
   await invalidateBeneficiaryProviderRegistration(beneficiaryRow.id, reason);
@@ -318,16 +341,94 @@ export async function reregisterBeneficiaryWithProvider(
   if (result.ok) {
     req.log.info(
       { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id },
-      "payout_beneficiary_reregister_success"
+      "payout_beneficiary_re_register_success"
     );
   } else {
     req.log.warn(
       { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id, message: result.message },
-      "payout_beneficiary_reregister_failed"
+      "payout_beneficiary_re_register_failed"
     );
   }
 
   return result;
+}
+
+export type CheckBeneficiaryStatusResult = {
+  providerStatus: string;
+  beneficiaryStatus: BeneficiaryStatus;
+  lastProviderError: string | null;
+};
+
+/**
+ * Read-only "Check Status" action — looks up the beneficiary's current
+ * status directly with the provider without ever creating or re-registering
+ * anything. Used by the admin "Check Status" button, distinct from
+ * "Re-register Beneficiary" (which mutates provider state).
+ */
+export async function checkBeneficiaryProviderStatus(
+  req: any,
+  beneficiaryRow: BeneficiaryRow,
+  env: CashfreePayoutEnv,
+  clientId: string,
+  clientSecret: string,
+  providerConfig?: PayoutProviderConfig
+): Promise<CheckBeneficiaryStatusResult> {
+  const accountMasked = beneficiaryRow.payoutMode === "UPI"
+    ? maskUpiId(beneficiaryRow.upiId)
+    : `****${maskBankAccountLast4(beneficiaryRow.bankAccount) ?? ""}`;
+  const logCtx = { beneficiaryId: beneficiaryRow.id, merchantId: beneficiaryRow.merchantId, accountMasked };
+
+  if (!beneficiaryRow.providerBeneficiaryId) {
+    req.log.info(logCtx, "payout_beneficiary_not_found");
+    return {
+      providerStatus: beneficiaryRow.providerStatus,
+      beneficiaryStatus: toBeneficiaryStatus(beneficiaryRow.providerStatus),
+      lastProviderError: beneficiaryRow.lastProviderError,
+    };
+  }
+
+  const { parsed, httpStatus } = await cashfreePayoutGetBeneficiary(
+    clientId,
+    clientSecret,
+    env,
+    beneficiaryRow.providerBeneficiaryId,
+    undefined,
+    providerConfig
+  );
+
+  req.log.info({ ...logCtx, httpStatus, providerStatus: parsed?.beneficiary_status ?? parsed?.status }, "payout_beneficiary_check_status");
+
+  if (httpStatus === 404) {
+    req.log.warn(logCtx, "payout_beneficiary_not_found");
+    await invalidateBeneficiaryProviderRegistration(
+      beneficiaryRow.id,
+      "Provider reported beneficiary not found on status check — will re-register on next attempt"
+    );
+    return {
+      providerStatus: "stale",
+      beneficiaryStatus: "NOT_VERIFIED",
+      lastProviderError: "Beneficiary not registered or not verified",
+    };
+  }
+
+  if (httpStatus === 200) {
+    const remoteStatus = String(parsed?.beneficiary_status ?? parsed?.status ?? "").toUpperCase();
+    if (remoteStatus === "VERIFIED" || remoteStatus === "CONFIRMED") {
+      await db
+        .update(payoutBeneficiariesTable)
+        .set({ providerStatus: "created", lastProviderError: null, status: "active", lastError: null })
+        .where(eq(payoutBeneficiariesTable.id, beneficiaryRow.id));
+      return { providerStatus: "created", beneficiaryStatus: "VERIFIED", lastProviderError: null };
+    }
+  }
+
+  // Any other response (error, unexpected shape) — leave local status as-is,
+  // never guess VERIFIED from an ambiguous response.
+  return {
+    providerStatus: beneficiaryRow.providerStatus,
+    beneficiaryStatus: toBeneficiaryStatus(beneficiaryRow.providerStatus),
+    lastProviderError: beneficiaryRow.lastProviderError,
+  };
 }
 
 /**
@@ -367,6 +468,7 @@ export function mapBeneficiary(
     upiIdMasked: maskUpiId(row.upiId),
     localStatus: row.localStatus,
     providerStatus: row.providerStatus,
+    beneficiaryStatus: toBeneficiaryStatus(row.providerStatus),
     lastProviderError: row.lastProviderError,
     usedInSuccessfulPayout,
     createdAt: row.createdAt.toISOString(),

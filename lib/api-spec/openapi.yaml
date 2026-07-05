@@ -3065,6 +3065,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReregisterBeneficiaryResponse"
 
+  /withdrawals/{id}/beneficiary-status:
+    post:
+      operationId: checkWithdrawalBeneficiaryStatus
+      tags: [withdrawals]
+      summary: Read-only check of the payout's beneficiary status directly with the provider (admin only). Never creates or mutates the beneficiary.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Current beneficiary status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeneficiaryStatusCheckResponse"
+
   /payout-beneficiaries:
     get:
       operationId: listPayoutBeneficiaries
@@ -11489,6 +11508,13 @@ components:
         beneficiaryId:
           type: ["integer", "null"]
           description: Saved beneficiary used for this payout (never exposes provider IDs)
+        beneficiaryStatus:
+          type: string
+          enum: [NOT_REGISTERED, VERIFIED, NOT_VERIFIED, FAILED]
+          description: Current beneficiary verification state — Retry is only enabled when this is VERIFIED
+        safeFailureReason:
+          type: ["string", "null"]
+          description: Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response
         rejectionReason:
           type: ["string", "null"]
         approvedAt:
@@ -11541,9 +11567,28 @@ components:
         providerStatus:
           type: string
           enum: [not_created, created, failed, stale]
+        beneficiaryStatus:
+          type: string
+          enum: [NOT_REGISTERED, VERIFIED, NOT_VERIFIED, FAILED]
+          description: Only set to VERIFIED after the provider has confirmed the beneficiary via a follow-up status check
         message:
           type: ["string", "null"]
           description: Safe, admin-facing message only — never raw provider response
+
+    BeneficiaryStatusCheckResponse:
+      type: object
+      required: [beneficiaryId, providerStatus, beneficiaryStatus, checkedAt]
+      properties:
+        beneficiaryId:
+          type: integer
+        providerStatus:
+          type: string
+          enum: [not_created, created, failed, stale]
+        beneficiaryStatus:
+          type: string
+          enum: [NOT_REGISTERED, VERIFIED, NOT_VERIFIED, FAILED]
+        checkedAt:
+          type: string
 
     PayoutBeneficiary:
       type: object
@@ -11579,6 +11624,10 @@ components:
           type: string
           enum: [not_created, created, failed, stale]
           description: "stale = provider previously reported this beneficiary id as invalid/not found; will be re-registered on next attempt"
+        beneficiaryStatus:
+          type: string
+          enum: [NOT_REGISTERED, VERIFIED, NOT_VERIFIED, FAILED]
+          description: Normalized beneficiary verification state derived from providerStatus
         lastProviderError:
           type: ["string", "null"]
           description: Safe, admin-facing error message only — never raw provider response

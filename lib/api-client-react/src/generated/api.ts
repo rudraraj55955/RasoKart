@@ -57,6 +57,7 @@ import type {
   AuditReportScheduleLogWithScheduleListResponse,
   AuditReportSchedulePatch,
   AuthResponse,
+  BeneficiaryStatusCheckResponse,
   BroadcastNotificationInput,
   BroadcastNotificationResult,
   BulkAssignPlanInput,
@@ -7648,6 +7649,76 @@ export const useReregisterWithdrawalBeneficiary = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getReregisterWithdrawalBeneficiaryMutationOptions(options));
+    }
+
+export const getCheckWithdrawalBeneficiaryStatusUrl = (id: number,) => {
+
+
+
+
+  return `/api/withdrawals/${id}/beneficiary-status`
+}
+
+/**
+ * @summary Read-only check of the payout's beneficiary status directly with the provider (admin only). Never creates or mutates the beneficiary.
+ */
+export const checkWithdrawalBeneficiaryStatus = async (id: number, options?: RequestInit): Promise<BeneficiaryStatusCheckResponse> => {
+
+  return customFetch<BeneficiaryStatusCheckResponse>(getCheckWithdrawalBeneficiaryStatusUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getCheckWithdrawalBeneficiaryStatusMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkWithdrawalBeneficiaryStatus>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof checkWithdrawalBeneficiaryStatus>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['checkWithdrawalBeneficiaryStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkWithdrawalBeneficiaryStatus>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  checkWithdrawalBeneficiaryStatus(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CheckWithdrawalBeneficiaryStatusMutationResult = NonNullable<Awaited<ReturnType<typeof checkWithdrawalBeneficiaryStatus>>>
+
+    export type CheckWithdrawalBeneficiaryStatusMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Read-only check of the payout's beneficiary status directly with the provider (admin only). Never creates or mutates the beneficiary.
+ */
+export const useCheckWithdrawalBeneficiaryStatus = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkWithdrawalBeneficiaryStatus>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof checkWithdrawalBeneficiaryStatus>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCheckWithdrawalBeneficiaryStatusMutationOptions(options));
     }
 
 export const getListPayoutBeneficiariesUrl = (params?: ListPayoutBeneficiariesParams,) => {

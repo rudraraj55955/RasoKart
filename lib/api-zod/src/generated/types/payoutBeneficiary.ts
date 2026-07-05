@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { PayoutBeneficiaryBeneficiaryStatus } from './payoutBeneficiaryBeneficiaryStatus';
 import type { PayoutBeneficiaryLocalStatus } from './payoutBeneficiaryLocalStatus';
 import type { PayoutBeneficiaryPayoutMode } from './payoutBeneficiaryPayoutMode';
 import type { PayoutBeneficiaryProviderStatus } from './payoutBeneficiaryProviderStatus';
@@ -36,6 +37,8 @@ export interface PayoutBeneficiary {
   localStatus: PayoutBeneficiaryLocalStatus;
   /** stale = provider previously reported this beneficiary id as invalid/not found; will be re-registered on next attempt */
   providerStatus: PayoutBeneficiaryProviderStatus;
+  /** Normalized beneficiary verification state derived from providerStatus */
+  beneficiaryStatus?: PayoutBeneficiaryBeneficiaryStatus;
   /**
      * Safe, admin-facing error message only — never raw provider response
      * @nullable

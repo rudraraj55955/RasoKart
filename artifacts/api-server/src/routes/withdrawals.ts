@@ -29,8 +29,12 @@ import {
   ensureBeneficiaryProviderRegistered,
   invalidateBeneficiaryProviderRegistration,
   reregisterBeneficiaryWithProvider,
+  checkBeneficiaryProviderStatus,
+  toBeneficiaryStatus,
   type BeneficiaryDestinationInput,
 } from "../helpers/payoutBeneficiaryStore";
+
+const BENEFICIARY_NOT_VERIFIED_MESSAGE = "Beneficiary not registered or not verified";
 
 const router = Router();
 router.use(requireAuth);
@@ -111,29 +115,39 @@ async function resolveBeneficiaryRowForWithdrawal(
   return row;
 }
 
+// Generic, provider-agnostic failure message shown to merchants — never
+// exposes provider name, raw response, or internal error codes.
+const MERCHANT_GENERIC_FAILURE_MESSAGE = "Transfer failed. Please contact support or retry after verification.";
+
 function mapWithdrawal(
   w: typeof withdrawalsTable.$inferSelect,
   merchantName?: string | null,
-  isAdmin = false
+  isAdmin = false,
+  beneficiaryProviderStatus?: string | null
 ) {
+  // Safe, sanitized failure reason — admin-facing only, never a raw provider
+  // dump. Used for both the legacy `failureReason` field (kept for back
+  // compat) and the explicitly-named `safeFailureReason` field the admin
+  // detail drawer reads from.
+  const safeFailureReason = ["FAILED", "REVERSED"].includes(w.transferStatus)
+    ? (w.failureReason?.startsWith("PAYOUT_CREDENTIAL_ERROR")
+        ? "Payout provider credentials invalid. Check Gateway Settings."
+        : w.failureReason)
+    : null;
+
   return {
     id: w.id,
     merchantId: w.merchantId,
     merchantName: merchantName ?? null,
     beneficiaryId: w.beneficiaryId,
+    beneficiaryStatus: beneficiaryProviderStatus != null ? toBeneficiaryStatus(beneficiaryProviderStatus) : undefined,
     amount: Number(w.amount),
     currency: w.currency,
     status: w.status,
     transferStatus: w.transferStatus,
     utr: w.transferStatus === "SUCCESS" ? w.utr : null,
-    failureReason:
-      isAdmin
-        ? w.failureReason
-        : ["FAILED", "REVERSED"].includes(w.transferStatus)
-          ? (w.failureReason?.startsWith("PAYOUT_CREDENTIAL_ERROR")
-              ? "Payout failed. Please contact support."
-              : w.failureReason)
-          : null,
+    failureReason: isAdmin ? w.failureReason : (safeFailureReason ? MERCHANT_GENERIC_FAILURE_MESSAGE : null),
+    safeFailureReason: isAdmin ? safeFailureReason : (safeFailureReason ? MERCHANT_GENERIC_FAILURE_MESSAGE : null),
     payoutMode: w.payoutMode,
     upiId: w.upiId,
     remarks: w.remarks,
@@ -196,9 +210,11 @@ router.get("/", async (req, res) => {
       .select({
         withdrawal: withdrawalsTable,
         merchantName: merchantsTable.businessName,
+        beneficiaryProviderStatus: payoutBeneficiariesTable.providerStatus,
       })
       .from(withdrawalsTable)
       .leftJoin(merchantsTable, eq(withdrawalsTable.merchantId, merchantsTable.id))
+      .leftJoin(payoutBeneficiariesTable, eq(withdrawalsTable.beneficiaryId, payoutBeneficiariesTable.id))
       .where(where)
       .limit(limitNum)
       .offset(offset)
@@ -207,7 +223,7 @@ router.get("/", async (req, res) => {
 
   const agg = aggregates[0]!;
   res.json({
-    data: rows.map(r => mapWithdrawal(r.withdrawal, r.merchantName, isAdmin)),
+    data: rows.map(r => mapWithdrawal(r.withdrawal, r.merchantName, isAdmin, r.beneficiaryProviderStatus)),
     total: agg.total,
     page: pageNum,
     limit: limitNum,
@@ -476,13 +492,29 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
     const accountMasked = claimed.payoutMode === "UPI"
       ? (claimed.upiId ? `${claimed.upiId.slice(0, 2)}***` : null)
       : (claimed.bankAccount ? `****${claimed.bankAccount.trim().slice(-4)}` : null);
-    const bene = await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact, cfg.providerConfig);
+
+    // First-ever registration for a brand-new beneficiary is allowed inline
+    // (it has never been attempted with the provider yet). Once a beneficiary
+    // has already been attempted and is FAILED/stale (a previously-reported
+    // not-found/invalid state), we never silently retry provider calls here —
+    // require an explicit admin "Re-register Beneficiary" action first so a
+    // transfer is never dispatched against a beneficiary we already know is bad.
+    let bene: { ok: boolean; providerBeneficiaryId?: string; message?: string };
+    if (beneficiaryRow.providerStatus === "failed" || beneficiaryRow.providerStatus === "stale") {
+      bene = { ok: false, message: BENEFICIARY_NOT_VERIFIED_MESSAGE };
+      req.log.warn(
+        { withdrawalId: id, merchantId: claimed.merchantId, accountMasked, providerStatus: beneficiaryRow.providerStatus },
+        "payout_beneficiary_not_found"
+      );
+    } else {
+      bene = await ensureBeneficiaryProviderRegistered(req, beneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact, cfg.providerConfig);
+    }
     if (!bene.ok) {
       transferStatus = "FAILED";
-      failureReason = bene.message ?? "Beneficiary setup failed. Please re-register beneficiary.";
+      failureReason = bene.message ?? BENEFICIARY_NOT_VERIFIED_MESSAGE;
       req.log.warn(
         { withdrawalId: id, merchantId: claimed.merchantId, accountMasked },
-        "payout_transfer_create_skipped_beneficiary_not_verified"
+        "payout_transfer_skipped_beneficiary_not_verified"
       );
     } else {
     try {
@@ -534,7 +566,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
           "Provider reported beneficiary not found on transfer create — will re-register on next attempt"
         );
         transferStatus = "FAILED";
-        failureReason = "Beneficiary setup could not be verified. Please retry later.";
+        failureReason = BENEFICIARY_NOT_VERIFIED_MESSAGE;
         req.log.warn(
           {
             withdrawalId: id,
@@ -543,7 +575,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
             httpStatus: result.httpStatus,
             subCode: result.parsed?.subCode,
           },
-          "payout_transfer_create_failed_beneficiary_not_found"
+          "payout_beneficiary_not_found"
         );
       } else {
       // Prefer the provider's own reference (cf_transfer_id) when returned;
@@ -966,14 +998,28 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
     ? (w.upiId ? `${w.upiId.slice(0, 2)}***` : null)
     : (w.bankAccount ? `****${w.bankAccount.trim().slice(-4)}` : null);
   const retryBeneficiaryRow = await resolveBeneficiaryRowForWithdrawal(w, cfg.env, merchantName);
-  const retryBene = await ensureBeneficiaryProviderRegistered(req, retryBeneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact, cfg.providerConfig);
+
+  // Retry never silently re-attempts provider registration for a beneficiary
+  // already known to be FAILED/stale — require explicit admin "Re-register
+  // Beneficiary" first. Only a brand-new (never-attempted) beneficiary is
+  // registered inline here.
+  let retryBene: { ok: boolean; providerBeneficiaryId?: string; message?: string };
+  if (retryBeneficiaryRow.providerStatus === "failed" || retryBeneficiaryRow.providerStatus === "stale") {
+    retryBene = { ok: false, message: BENEFICIARY_NOT_VERIFIED_MESSAGE };
+    req.log.warn(
+      { withdrawalId: id, merchantId: w.merchantId, accountMasked: retryAccountMasked, providerStatus: retryBeneficiaryRow.providerStatus },
+      "payout_beneficiary_not_found"
+    );
+  } else {
+    retryBene = await ensureBeneficiaryProviderRegistered(req, retryBeneficiaryRow, cfg.env, cfg.clientId, cfg.clientSecret, id, false, merchantContact, cfg.providerConfig);
+  }
 
   if (!retryBene.ok) {
     transferStatus = "FAILED";
-    failureReason = retryBene.message ?? "Beneficiary setup failed. Please re-register beneficiary.";
+    failureReason = retryBene.message ?? BENEFICIARY_NOT_VERIFIED_MESSAGE;
     req.log.warn(
       { withdrawalId: id, merchantId: w.merchantId, accountMasked: retryAccountMasked },
-      "payout_transfer_create_skipped_beneficiary_not_verified"
+      "payout_transfer_skipped_beneficiary_not_verified"
     );
   } else {
   try {
@@ -1022,7 +1068,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
         "Provider reported beneficiary not found on transfer create (retry) — will re-register on next attempt"
       );
       transferStatus = "FAILED";
-      failureReason = "Beneficiary setup could not be verified. Please retry later.";
+      failureReason = BENEFICIARY_NOT_VERIFIED_MESSAGE;
       req.log.warn(
         {
           withdrawalId: id,
@@ -1031,7 +1077,7 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
           httpStatus: result.httpStatus,
           subCode: result.parsed?.subCode,
         },
-        "payout_transfer_create_failed_beneficiary_not_found"
+        "payout_beneficiary_not_found"
       );
     } else {
     // Prefer the provider's own reference (cf_transfer_id) when returned;
@@ -1196,7 +1242,59 @@ router.post("/:id/reregister-beneficiary", requireAdmin, async (req, res) => {
   res.json({
     success: result.ok,
     providerStatus: freshBeneficiary?.providerStatus ?? "failed",
+    beneficiaryStatus: toBeneficiaryStatus(freshBeneficiary?.providerStatus ?? "failed"),
     message: result.ok ? null : result.message,
+  });
+});
+
+// POST /api/withdrawals/:id/beneficiary-status — admin only.
+// Read-only "Check Status" action: queries the provider for the current
+// beneficiary state without creating/mutating anything. Only updates our
+// local record on a confirmed 200 (VERIFIED) or 404 (not found) response —
+// never guesses from an ambiguous/error response.
+router.post("/:id/beneficiary-status", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params["id"] as string);
+
+  const [row] = await db
+    .select({
+      withdrawal: withdrawalsTable,
+      merchantName: merchantsTable.businessName,
+    })
+    .from(withdrawalsTable)
+    .leftJoin(merchantsTable, eq(withdrawalsTable.merchantId, merchantsTable.id))
+    .where(eq(withdrawalsTable.id, id))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Payout not found" });
+    return;
+  }
+  const w = row.withdrawal;
+  const merchantName = row.merchantName ?? null;
+
+  const cfg = await getPayoutConfig();
+  if (!cfg.enabled || !cfg.clientId || !cfg.clientSecret) {
+    res.status(400).json({
+      error: "Payout provider credentials invalid. Check payout Client ID / Secret in Gateway Settings.",
+    });
+    return;
+  }
+
+  const beneficiaryRow = await resolveBeneficiaryRowForWithdrawal(w, cfg.env, merchantName);
+  const status = await checkBeneficiaryProviderStatus(
+    req,
+    beneficiaryRow,
+    cfg.env,
+    cfg.clientId,
+    cfg.clientSecret,
+    cfg.providerConfig
+  );
+
+  res.json({
+    beneficiaryId: beneficiaryRow.id,
+    providerStatus: status.providerStatus,
+    beneficiaryStatus: status.beneficiaryStatus,
+    checkedAt: new Date().toISOString(),
   });
 });
 

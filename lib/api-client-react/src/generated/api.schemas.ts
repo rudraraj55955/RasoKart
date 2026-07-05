@@ -1228,6 +1228,19 @@ export const WithdrawalPayoutMode = {
   UPI: 'UPI',
 } as const;
 
+/**
+ * Current beneficiary verification state — Retry is only enabled when this is VERIFIED
+ */
+export type WithdrawalBeneficiaryStatus = typeof WithdrawalBeneficiaryStatus[keyof typeof WithdrawalBeneficiaryStatus];
+
+
+export const WithdrawalBeneficiaryStatus = {
+  NOT_REGISTERED: 'NOT_REGISTERED',
+  VERIFIED: 'VERIFIED',
+  NOT_VERIFIED: 'NOT_VERIFIED',
+  FAILED: 'FAILED',
+} as const;
+
 export interface Withdrawal {
   id: number;
   merchantId: number;
@@ -1255,6 +1268,13 @@ export interface Withdrawal {
      * @nullable
      */
   beneficiaryId?: number | null;
+  /** Current beneficiary verification state — Retry is only enabled when this is VERIFIED */
+  beneficiaryStatus?: WithdrawalBeneficiaryStatus;
+  /**
+     * Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response
+     * @nullable
+     */
+  safeFailureReason?: string | null;
   /** @nullable */
   rejectionReason?: string | null;
   /** @nullable */
@@ -1319,14 +1339,56 @@ export const ReregisterBeneficiaryResponseProviderStatus = {
   stale: 'stale',
 } as const;
 
+/**
+ * Only set to VERIFIED after the provider has confirmed the beneficiary via a follow-up status check
+ */
+export type ReregisterBeneficiaryResponseBeneficiaryStatus = typeof ReregisterBeneficiaryResponseBeneficiaryStatus[keyof typeof ReregisterBeneficiaryResponseBeneficiaryStatus];
+
+
+export const ReregisterBeneficiaryResponseBeneficiaryStatus = {
+  NOT_REGISTERED: 'NOT_REGISTERED',
+  VERIFIED: 'VERIFIED',
+  NOT_VERIFIED: 'NOT_VERIFIED',
+  FAILED: 'FAILED',
+} as const;
+
 export interface ReregisterBeneficiaryResponse {
   success: boolean;
   providerStatus: ReregisterBeneficiaryResponseProviderStatus;
+  /** Only set to VERIFIED after the provider has confirmed the beneficiary via a follow-up status check */
+  beneficiaryStatus?: ReregisterBeneficiaryResponseBeneficiaryStatus;
   /**
      * Safe, admin-facing message only — never raw provider response
      * @nullable
      */
   message?: string | null;
+}
+
+export type BeneficiaryStatusCheckResponseProviderStatus = typeof BeneficiaryStatusCheckResponseProviderStatus[keyof typeof BeneficiaryStatusCheckResponseProviderStatus];
+
+
+export const BeneficiaryStatusCheckResponseProviderStatus = {
+  not_created: 'not_created',
+  created: 'created',
+  failed: 'failed',
+  stale: 'stale',
+} as const;
+
+export type BeneficiaryStatusCheckResponseBeneficiaryStatus = typeof BeneficiaryStatusCheckResponseBeneficiaryStatus[keyof typeof BeneficiaryStatusCheckResponseBeneficiaryStatus];
+
+
+export const BeneficiaryStatusCheckResponseBeneficiaryStatus = {
+  NOT_REGISTERED: 'NOT_REGISTERED',
+  VERIFIED: 'VERIFIED',
+  NOT_VERIFIED: 'NOT_VERIFIED',
+  FAILED: 'FAILED',
+} as const;
+
+export interface BeneficiaryStatusCheckResponse {
+  beneficiaryId: number;
+  providerStatus: BeneficiaryStatusCheckResponseProviderStatus;
+  beneficiaryStatus: BeneficiaryStatusCheckResponseBeneficiaryStatus;
+  checkedAt: string;
 }
 
 export type PayoutBeneficiaryPayoutMode = typeof PayoutBeneficiaryPayoutMode[keyof typeof PayoutBeneficiaryPayoutMode];
@@ -1360,6 +1422,19 @@ export const PayoutBeneficiaryProviderStatus = {
   stale: 'stale',
 } as const;
 
+/**
+ * Normalized beneficiary verification state derived from providerStatus
+ */
+export type PayoutBeneficiaryBeneficiaryStatus = typeof PayoutBeneficiaryBeneficiaryStatus[keyof typeof PayoutBeneficiaryBeneficiaryStatus];
+
+
+export const PayoutBeneficiaryBeneficiaryStatus = {
+  NOT_REGISTERED: 'NOT_REGISTERED',
+  VERIFIED: 'VERIFIED',
+  NOT_VERIFIED: 'NOT_VERIFIED',
+  FAILED: 'FAILED',
+} as const;
+
 export interface PayoutBeneficiary {
   id: number;
   merchantId: number;
@@ -1387,6 +1462,8 @@ export interface PayoutBeneficiary {
   localStatus: PayoutBeneficiaryLocalStatus;
   /** stale = provider previously reported this beneficiary id as invalid/not found; will be re-registered on next attempt */
   providerStatus: PayoutBeneficiaryProviderStatus;
+  /** Normalized beneficiary verification state derived from providerStatus */
+  beneficiaryStatus?: PayoutBeneficiaryBeneficiaryStatus;
   /**
      * Safe, admin-facing error message only — never raw provider response
      * @nullable
