@@ -15,9 +15,16 @@ const HISTORY_FILE = new URL("../../../.github-sync-history.json", import.meta.u
 const LOG_DIR = new URL("../../../.github-sync-logs/", import.meta.url).pathname;
 const REPO_ROOT = new URL("../../../", import.meta.url).pathname;
 
-const GITHUB_SYNC_KEYS = ["github_sync_enabled", "github_sync_schedule"] as const;
+const GITHUB_SYNC_KEYS = [
+  "github_sync_enabled",
+  "github_sync_schedule",
+  "github_sync_failure_threshold",
+  "github_sync_renotify_interval",
+] as const;
 const REMOTE_NAME = "github";
 const GITHUB_REPO = process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
+const DEFAULT_FAILURE_THRESHOLD = 3;
+const DEFAULT_RENOTIFY_INTERVAL = 10;
 
 let syncRunInProgress = false;
 
@@ -44,8 +51,10 @@ router.get("/config", async (req, res, next) => {
     const rawEnabled = map["github_sync_enabled"];
     const enabled = rawEnabled === null || rawEnabled === undefined ? true : rawEnabled === "true";
     const schedule = map["github_sync_schedule"] ?? "0 2 * * *";
+    const failureThreshold = parseInt(map["github_sync_failure_threshold"] ?? "", 10) || DEFAULT_FAILURE_THRESHOLD;
+    const renotifyInterval = parseInt(map["github_sync_renotify_interval"] ?? "", 10) || DEFAULT_RENOTIFY_INTERVAL;
 
-    res.json({ enabled, schedule });
+    res.json({ enabled, schedule, failureThreshold, renotifyInterval });
   } catch (err) {
     next(err);
   }
@@ -55,7 +64,12 @@ router.get("/config", async (req, res, next) => {
 router.put("/config", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { enabled, schedule } = req.body as { enabled?: boolean; schedule?: string };
+    const { enabled, schedule, failureThreshold, renotifyInterval } = req.body as {
+      enabled?: boolean;
+      schedule?: string;
+      failureThreshold?: number;
+      renotifyInterval?: number;
+    };
 
     if (enabled !== undefined && typeof enabled !== "boolean") {
       res.status(400).json({ error: "enabled must be a boolean" });
@@ -77,6 +91,20 @@ router.put("/config", async (req, res, next) => {
       }
     }
 
+    if (failureThreshold !== undefined) {
+      if (typeof failureThreshold !== "number" || !Number.isInteger(failureThreshold) || failureThreshold < 1) {
+        res.status(400).json({ error: "failureThreshold must be a positive integer" });
+        return;
+      }
+    }
+
+    if (renotifyInterval !== undefined) {
+      if (typeof renotifyInterval !== "number" || !Number.isInteger(renotifyInterval) || renotifyInterval < 1) {
+        res.status(400).json({ error: "renotifyInterval must be a positive integer" });
+        return;
+      }
+    }
+
     const now = new Date();
     const upserts: Array<{ key: string; value: string }> = [];
 
@@ -85,6 +113,12 @@ router.put("/config", async (req, res, next) => {
     }
     if (schedule !== undefined) {
       upserts.push({ key: "github_sync_schedule", value: schedule.trim() || "0 2 * * *" });
+    }
+    if (failureThreshold !== undefined) {
+      upserts.push({ key: "github_sync_failure_threshold", value: String(failureThreshold) });
+    }
+    if (renotifyInterval !== undefined) {
+      upserts.push({ key: "github_sync_renotify_interval", value: String(renotifyInterval) });
     }
 
     for (const { key, value } of upserts) {
@@ -120,8 +154,15 @@ router.put("/config", async (req, res, next) => {
     const rawEnabled = map["github_sync_enabled"];
     const finalEnabled = rawEnabled === null || rawEnabled === undefined ? true : rawEnabled === "true";
     const finalSchedule = map["github_sync_schedule"] ?? "0 2 * * *";
+    const finalFailureThreshold = parseInt(map["github_sync_failure_threshold"] ?? "", 10) || DEFAULT_FAILURE_THRESHOLD;
+    const finalRenotifyInterval = parseInt(map["github_sync_renotify_interval"] ?? "", 10) || DEFAULT_RENOTIFY_INTERVAL;
 
-    res.json({ enabled: finalEnabled, schedule: finalSchedule });
+    res.json({
+      enabled: finalEnabled,
+      schedule: finalSchedule,
+      failureThreshold: finalFailureThreshold,
+      renotifyInterval: finalRenotifyInterval,
+    });
   } catch (err) {
     next(err);
   }

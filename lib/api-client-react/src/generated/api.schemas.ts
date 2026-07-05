@@ -112,6 +112,16 @@ export interface GithubSyncConfig {
   enabled: boolean;
   /** Cron expression for the sync schedule (e.g. "0 2 * * *") */
   schedule: string;
+  /**
+     * Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire. Defaults to 3.
+     * @minimum 1
+     */
+  failureThreshold: number;
+  /**
+     * Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.
+     * @minimum 1
+     */
+  renotifyInterval: number;
 }
 
 /**
@@ -6902,6 +6912,16 @@ export type UpdateGithubSyncConfigBody = {
   enabled?: boolean;
   /** Cron expression for the sync schedule (e.g. "0 2 * * *") */
   schedule?: string;
+  /**
+     * Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire.
+     * @minimum 1
+     */
+  failureThreshold?: number;
+  /**
+     * Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it.
+     * @minimum 1
+     */
+  renotifyInterval?: number;
 };
 
 export type ListCashfreePaymentLogsParams = {

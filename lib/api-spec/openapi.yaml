@@ -7486,6 +7486,14 @@ paths:
                 schedule:
                   type: string
                   description: Cron expression for the sync schedule (e.g. "0 2 * * *")
+                failureThreshold:
+                  type: integer
+                  minimum: 1
+                  description: Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire.
+                renotifyInterval:
+                  type: integer
+                  minimum: 1
+                  description: Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it.
       responses:
         "200":
           description: Updated configuration
@@ -10159,7 +10167,7 @@ components:
 
     GithubSyncConfig:
       type: object
-      required: [enabled, schedule]
+      required: [enabled, schedule, failureThreshold, renotifyInterval]
       properties:
         enabled:
           type: boolean
@@ -10167,6 +10175,14 @@ components:
         schedule:
           type: string
           description: Cron expression for the sync schedule (e.g. "0 2 * * *")
+        failureThreshold:
+          type: integer
+          minimum: 1
+          description: Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire. Defaults to 3.
+        renotifyInterval:
+          type: integer
+          minimum: 1
+          description: Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.
 
     GithubSyncStatus:
       type: object

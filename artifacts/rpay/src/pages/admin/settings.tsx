@@ -238,6 +238,8 @@ export default function AdminSettings() {
 
   const [githubSyncEnabled, setGithubSyncEnabled] = useState<boolean>(true);
   const [githubSyncSchedule, setGithubSyncSchedule] = useState<string>("0 2 * * *");
+  const [githubSyncFailureThreshold, setGithubSyncFailureThreshold] = useState<number>(3);
+  const [githubSyncRenotifyInterval, setGithubSyncRenotifyInterval] = useState<number>(10);
   const [githubSyncInitialized, setGithubSyncInitialized] = useState(false);
 
   const [quietHoursFlushInterval, setQuietHoursFlushInterval] = useState<number>(60);
@@ -843,30 +845,39 @@ export default function AdminSettings() {
     },
   });
 
-  const { data: githubSyncConfig, isLoading: githubSyncLoading } = useGetGithubSyncConfig({
-    query: {
-      onSuccess: (d: { enabled: boolean; schedule: string }) => {
-        if (!githubSyncInitialized) {
-          setGithubSyncEnabled(d.enabled);
-          setGithubSyncSchedule(d.schedule);
-          setGithubSyncInitialized(true);
-        }
-      },
-    },
-  } as any);
+  const { data: githubSyncConfig, isLoading: githubSyncLoading } = useGetGithubSyncConfig();
+
+  useEffect(() => {
+    if (!githubSyncInitialized && githubSyncConfig) {
+      setGithubSyncEnabled(githubSyncConfig.enabled);
+      setGithubSyncSchedule(githubSyncConfig.schedule);
+      setGithubSyncFailureThreshold(githubSyncConfig.failureThreshold);
+      setGithubSyncRenotifyInterval(githubSyncConfig.renotifyInterval);
+      setGithubSyncInitialized(true);
+    }
+  }, [githubSyncInitialized, githubSyncConfig]);
 
   const currentGithubSyncEnabled = githubSyncConfig?.enabled ?? true;
   const currentGithubSyncSchedule = githubSyncConfig?.schedule ?? "0 2 * * *";
-  const githubSyncUnchanged = githubSyncEnabled === currentGithubSyncEnabled && githubSyncSchedule === currentGithubSyncSchedule;
+  const currentGithubSyncFailureThreshold = githubSyncConfig?.failureThreshold ?? 3;
+  const currentGithubSyncRenotifyInterval = githubSyncConfig?.renotifyInterval ?? 10;
+  const githubSyncUnchanged =
+    githubSyncEnabled === currentGithubSyncEnabled &&
+    githubSyncSchedule === currentGithubSyncSchedule &&
+    githubSyncFailureThreshold === currentGithubSyncFailureThreshold &&
+    githubSyncRenotifyInterval === currentGithubSyncRenotifyInterval;
+  const githubSyncThresholdsValid = githubSyncFailureThreshold >= 1 && githubSyncRenotifyInterval >= 1;
 
   const { mutate: saveGithubSyncConfig, isPending: savingGithubSyncConfig } = useUpdateGithubSyncConfig({
     mutation: {
-      onSuccess: (updated: { enabled: boolean; schedule: string }) => {
+      onSuccess: (updated: { enabled: boolean; schedule: string; failureThreshold: number; renotifyInterval: number }) => {
         toast.success("GitHub sync settings saved");
         setGithubSyncInitialized(false);
         qc.invalidateQueries({ queryKey: getGetGithubSyncConfigQueryKey() });
         setGithubSyncEnabled(updated.enabled);
         setGithubSyncSchedule(updated.schedule);
+        setGithubSyncFailureThreshold(updated.failureThreshold);
+        setGithubSyncRenotifyInterval(updated.renotifyInterval);
         setGithubSyncInitialized(true);
       },
       onError: (err: Error) => toast.error(err.message),
@@ -3054,11 +3065,53 @@ export default function AdminSettings() {
             </p>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="github-sync-failure-threshold" className="text-sm">Failure alert threshold</Label>
+              <Input
+                id="github-sync-failure-threshold"
+                type="number"
+                min={1}
+                step={1}
+                value={githubSyncFailureThreshold}
+                onChange={e => setGithubSyncFailureThreshold(parseInt(e.target.value, 10) || 0)}
+                disabled={githubSyncLoading}
+                className="max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                Consecutive failures needed before the dashboard banner and the first escalation email fire.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="github-sync-renotify-interval" className="text-sm">Re-notify cadence</Label>
+              <Input
+                id="github-sync-renotify-interval"
+                type="number"
+                min={1}
+                step={1}
+                value={githubSyncRenotifyInterval}
+                onChange={e => setGithubSyncRenotifyInterval(parseInt(e.target.value, 10) || 0)}
+                disabled={githubSyncLoading}
+                className="max-w-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                Once escalated, only re-send the failure email every N additional consecutive failures.
+              </p>
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              onClick={() => saveGithubSyncConfig({ data: { enabled: githubSyncEnabled, schedule: githubSyncSchedule } })}
-              disabled={savingGithubSyncConfig || githubSyncLoading || githubSyncUnchanged}
+              onClick={() => saveGithubSyncConfig({
+                data: {
+                  enabled: githubSyncEnabled,
+                  schedule: githubSyncSchedule,
+                  failureThreshold: githubSyncFailureThreshold,
+                  renotifyInterval: githubSyncRenotifyInterval,
+                },
+              })}
+              disabled={savingGithubSyncConfig || githubSyncLoading || githubSyncUnchanged || !githubSyncThresholdsValid}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingGithubSyncConfig ? "Saving…" : "Save"}
@@ -3070,11 +3123,16 @@ export default function AdminSettings() {
                 onClick={() => {
                   setGithubSyncEnabled(currentGithubSyncEnabled);
                   setGithubSyncSchedule(currentGithubSyncSchedule);
+                  setGithubSyncFailureThreshold(currentGithubSyncFailureThreshold);
+                  setGithubSyncRenotifyInterval(currentGithubSyncRenotifyInterval);
                 }}
                 disabled={savingGithubSyncConfig}
               >
                 Cancel
               </Button>
+            )}
+            {!githubSyncThresholdsValid && (
+              <span className="text-xs text-red-400">Threshold and cadence must be at least 1.</span>
             )}
           </div>
         </CardContent>

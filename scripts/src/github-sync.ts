@@ -14,11 +14,11 @@ const HISTORY_FILE = new URL("../../.github-sync-history.json", import.meta.url)
 const LOG_DIR = new URL("../../.github-sync-logs/", import.meta.url).pathname;
 const HISTORY_MAX = 50;
 
-// Mirrors the dashboard's GITHUB_SYNC_FAILURE_THRESHOLD (artifacts/api-server/src/routes/dashboard.ts)
-// so the escalation email fires at the same point the admin dashboard banner appears.
-const FAILURE_ESCALATION_THRESHOLD = 3;
-// Once escalated, don't re-notify on every subsequent failure — only every N failures beyond the threshold.
-const FAILURE_ESCALATION_RENOTIFY_INTERVAL = 10;
+// Defaults used when the admin has not configured github_sync_failure_threshold /
+// github_sync_renotify_interval in systemSettingsTable. These are read from the DB in
+// readSyncConfig() so the escalation email fires at the same point as the admin dashboard banner.
+const DEFAULT_FAILURE_ESCALATION_THRESHOLD = 3;
+const DEFAULT_FAILURE_ESCALATION_RENOTIFY_INTERVAL = 10;
 
 interface GithubSyncHistoryEntry {
   id: string;
@@ -229,20 +229,41 @@ function appendHistory(entry: GithubSyncHistoryEntry) {
   }
 }
 
-async function readSyncConfig(): Promise<{ enabled: boolean; schedule: string }> {
+async function readSyncConfig(): Promise<{
+  enabled: boolean;
+  schedule: string;
+  failureThreshold: number;
+  renotifyInterval: number;
+}> {
   try {
     const rows = await db
       .select()
       .from(systemSettingsTable)
-      .where(inArray(systemSettingsTable.key, ["github_sync_enabled", "github_sync_schedule"]));
+      .where(
+        inArray(systemSettingsTable.key, [
+          "github_sync_enabled",
+          "github_sync_schedule",
+          "github_sync_failure_threshold",
+          "github_sync_renotify_interval",
+        ]),
+      );
     const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
     const rawEnabled = map["github_sync_enabled"];
     const enabled = rawEnabled === null || rawEnabled === undefined ? true : rawEnabled === "true";
     const schedule = map["github_sync_schedule"] ?? "0 2 * * *";
-    return { enabled, schedule };
+    const parsedThreshold = parseInt(map["github_sync_failure_threshold"] ?? "", 10);
+    const failureThreshold = Number.isFinite(parsedThreshold) && parsedThreshold > 0 ? parsedThreshold : DEFAULT_FAILURE_ESCALATION_THRESHOLD;
+    const parsedInterval = parseInt(map["github_sync_renotify_interval"] ?? "", 10);
+    const renotifyInterval = Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : DEFAULT_FAILURE_ESCALATION_RENOTIFY_INTERVAL;
+    return { enabled, schedule, failureThreshold, renotifyInterval };
   } catch (err) {
-    console.warn("GITHUB_SYNC: Could not read sync config from DB — assuming enabled, default schedule:", err);
-    return { enabled: true, schedule: "0 2 * * *" };
+    console.warn("GITHUB_SYNC: Could not read sync config from DB — assuming enabled, default schedule and thresholds:", err);
+    return {
+      enabled: true,
+      schedule: "0 2 * * *",
+      failureThreshold: DEFAULT_FAILURE_ESCALATION_THRESHOLD,
+      renotifyInterval: DEFAULT_FAILURE_ESCALATION_RENOTIFY_INTERVAL,
+    };
   }
 }
 
@@ -332,7 +353,7 @@ async function main() {
     const priorStreak = countConsecutiveFailures();
     writeStatus("success", runId, logLines);
 
-    if (priorStreak >= FAILURE_ESCALATION_THRESHOLD) {
+    if (priorStreak >= config.failureThreshold) {
       await notifyAdminsOfGithubSyncRecovered({
         repo: GITHUB_REPO,
         priorStreak,
@@ -352,10 +373,10 @@ async function main() {
     });
 
     const streak = countConsecutiveFailures();
-    const crossedThreshold = streak === FAILURE_ESCALATION_THRESHOLD;
+    const crossedThreshold = streak === config.failureThreshold;
     const onRenotifyCadence =
-      streak > FAILURE_ESCALATION_THRESHOLD &&
-      (streak - FAILURE_ESCALATION_THRESHOLD) % FAILURE_ESCALATION_RENOTIFY_INTERVAL === 0;
+      streak > config.failureThreshold &&
+      (streak - config.failureThreshold) % config.renotifyInterval === 0;
     if (crossedThreshold || onRenotifyCadence) {
       await notifyAdminsOfGithubSyncFailing({
         repo: GITHUB_REPO,

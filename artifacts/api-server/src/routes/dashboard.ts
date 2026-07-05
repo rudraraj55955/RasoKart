@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { readFileSync } from "fs";
-import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable } from "@workspace/db";
+import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable } from "@workspace/db";
 import { eq, sql, and, gte, count, countDistinct, inArray, lte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
@@ -8,7 +8,20 @@ const router = Router();
 router.use(requireAuth);
 
 const GITHUB_SYNC_HISTORY_FILE = new URL("../../../.github-sync-history.json", import.meta.url).pathname;
-const GITHUB_SYNC_FAILURE_THRESHOLD = 3;
+const DEFAULT_GITHUB_SYNC_FAILURE_THRESHOLD = 3;
+
+async function getGithubSyncFailureThreshold(): Promise<number> {
+  try {
+    const [row] = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, "github_sync_failure_threshold"));
+    const parsed = parseInt(row?.value ?? "", 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_GITHUB_SYNC_FAILURE_THRESHOLD;
+  } catch {
+    return DEFAULT_GITHUB_SYNC_FAILURE_THRESHOLD;
+  }
+}
 
 interface GithubSyncHistoryEntry {
   status: "success" | "failure";
@@ -355,8 +368,9 @@ router.get("/notifications", async (req, res, next) => {
       });
     }
 
+    const githubSyncFailureThreshold = await getGithubSyncFailureThreshold();
     const githubSyncFailures = countConsecutiveGithubSyncFailures();
-    if (githubSyncFailures.count >= GITHUB_SYNC_FAILURE_THRESHOLD) {
+    if (githubSyncFailures.count >= githubSyncFailureThreshold) {
       notifications.push({
         id: "github-sync-failing",
         type: "github_sync_failing",

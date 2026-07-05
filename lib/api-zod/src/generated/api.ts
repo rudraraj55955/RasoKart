@@ -7181,23 +7181,41 @@ export const DeleteMerchantSavedFilterResponse = zod.object({
 /**
  * @summary Get GitHub sync configuration
  */
+
+
+
+
 export const GetGithubSyncConfigResponse = zod.object({
   "enabled": zod.boolean().describe('Whether the GitHub sync job is enabled'),
-  "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")')
+  "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
+  "failureThreshold": zod.number().min(1).describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire. Defaults to 3.'),
+  "renotifyInterval": zod.number().min(1).describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.')
 })
 
 
 /**
  * @summary Update GitHub sync configuration
  */
+
+
+
+
 export const UpdateGithubSyncConfigBody = zod.object({
   "enabled": zod.boolean().optional().describe('Whether the GitHub sync job is enabled'),
-  "schedule": zod.string().optional().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")')
+  "schedule": zod.string().optional().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
+  "failureThreshold": zod.number().min(1).optional().describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire.'),
+  "renotifyInterval": zod.number().min(1).optional().describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it.')
 })
+
+
+
+
 
 export const UpdateGithubSyncConfigResponse = zod.object({
   "enabled": zod.boolean().describe('Whether the GitHub sync job is enabled'),
-  "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")')
+  "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
+  "failureThreshold": zod.number().min(1).describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire. Defaults to 3.'),
+  "renotifyInterval": zod.number().min(1).describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.')
 })
 
 
