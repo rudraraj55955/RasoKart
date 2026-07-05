@@ -26,3 +26,4 @@
 - [Mandatory security alerts vs opt-out](mandatory-security-alert-vs-opt-out.md) — credential-rotation-style alerts skip the per-user opt-out column pattern; send unconditionally to all active admins instead.
 - [DB insert fallback + sanitized error pattern](db-insert-fallback-pattern.md) — every Drizzle column needs a matching ALTER TABLE in both in-process guard and deploy migration, or prod silently drifts from dev.
 - [Smart routing rule priority tie-break](smart-routing-priority-tiebreak.md) — equal-priority routing_rules silently favor the lowest-id row; a new rule must use a strictly lower priority number to actually win over the seeded default.
+- [Try It panel share-link pattern](tryit-share-link-pattern.md) — context + recursive child scan auto-opens the right collapsed Section for a shared link, no per-section wiring needed.

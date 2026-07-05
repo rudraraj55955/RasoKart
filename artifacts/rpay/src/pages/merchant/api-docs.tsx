@@ -1,4 +1,15 @@
-import { useState, useCallback } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useContext,
+  createContext,
+  Children,
+  isValidElement,
+  type ReactNode,
+} from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +34,7 @@ import {
   Trash2,
   Save,
   AlertTriangle,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -60,11 +72,28 @@ function Section({
 }: {
   title: string;
   badge?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const shared = useContext(SharedPresetContext);
+  const containsShared = useMemo(
+    () => sectionContainsSharedPanel(children, shared),
+    [children, shared]
+  );
+  const [open, setOpen] = useState(() => containsShared);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (containsShared) {
+      cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
-    <Card className="overflow-hidden">
+    <Card
+      ref={cardRef}
+      className={`overflow-hidden ${containsShared ? "ring-1 ring-primary/50" : ""}`}
+    >
       <CardHeader className="cursor-pointer select-none py-4" onClick={() => setOpen((o) => !o)}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -77,6 +106,11 @@ function Section({
             {badge && (
               <Badge variant="secondary" className="text-[10px]">
                 {badge}
+              </Badge>
+            )}
+            {containsShared && (
+              <Badge className="text-[10px] bg-primary/20 text-primary border-primary/30">
+                Shared link
               </Badge>
             )}
           </div>
@@ -184,6 +218,117 @@ function persistPresetsForEndpoint(method: string, path: string, presets: SavedQ
   }
 }
 
+const SHARE_QUERY_PARAM = "tryit";
+
+interface SharedTryItPreset {
+  method: string;
+  path: string;
+  pathValues: Record<string, string>;
+  queryParams: { key: string; value: string }[];
+  body: string;
+}
+
+function encodeSharedPreset(preset: SharedTryItPreset): string {
+  const json = JSON.stringify(preset);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeSharedPreset(encoded: string): SharedTryItPreset | null {
+  try {
+    const b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const json = new TextDecoder().decode(bytes);
+    const parsed = JSON.parse(json);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.method === "string" &&
+      typeof parsed.path === "string" &&
+      typeof parsed.body === "string" &&
+      parsed.pathValues &&
+      typeof parsed.pathValues === "object" &&
+      Array.isArray(parsed.queryParams)
+    ) {
+      return {
+        method: parsed.method,
+        path: parsed.path,
+        pathValues: parsed.pathValues,
+        queryParams: parsed.queryParams.filter(
+          (row: unknown): row is { key: string; value: string } =>
+            !!row &&
+            typeof row === "object" &&
+            typeof (row as { key?: unknown }).key === "string" &&
+            typeof (row as { value?: unknown }).value === "string"
+        ),
+        body: parsed.body,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function buildSharedPresetUrl(preset: SharedTryItPreset): string {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set(SHARE_QUERY_PARAM, encodeSharedPreset(preset));
+  return url.toString();
+}
+
+function readSharedPresetFromLocation(): SharedTryItPreset | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get(SHARE_QUERY_PARAM);
+    if (!encoded) return null;
+    return decodeSharedPreset(encoded);
+  } catch {
+    return null;
+  }
+}
+
+function stripSharedPresetFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(SHARE_QUERY_PARAM)) return;
+    url.searchParams.delete(SHARE_QUERY_PARAM);
+    window.history.replaceState(null, "", url.toString());
+  } catch {
+    // ignore — non-fatal if the URL can't be rewritten
+  }
+}
+
+const SharedPresetContext = createContext<SharedTryItPreset | null>(null);
+
+function sectionContainsSharedPanel(children: ReactNode, shared: SharedTryItPreset | null): boolean {
+  if (!shared) return false;
+  let found = false;
+  Children.forEach(children, (child) => {
+    if (found || !isValidElement(child)) return;
+    if (child.type === TryItPanel) {
+      const props = child.props as TryItPanelProps;
+      if (props.method === shared.method && props.path === shared.path) {
+        found = true;
+        return;
+      }
+    }
+    const nested = (child.props as { children?: ReactNode } | undefined)?.children;
+    if (nested && sectionContainsSharedPanel(nested, shared)) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 function TryItPanel({
   method,
   path,
@@ -192,20 +337,40 @@ function TryItPanel({
   requiresAuth = true,
   commonQueryParams = [],
 }: TryItPanelProps) {
-  const [open, setOpen] = useState(false);
+  const shared = useContext(SharedPresetContext);
+  const sharedMatch =
+    shared && shared.method === method && shared.path === path ? shared : null;
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const [open, setOpen] = useState(() => !!sharedMatch);
   const [localToken, setLocalToken] = useState(token);
-  const [body, setBody] = useState(defaultBody);
-  const [pathValues, setPathValues] = useState<Record<string, string>>({});
-  const [queryParams, setQueryParams] = useState<QueryParamRow[]>([]);
+  const [body, setBody] = useState(() => sharedMatch?.body ?? defaultBody);
+  const [pathValues, setPathValues] = useState<Record<string, string>>(
+    () => sharedMatch?.pathValues ?? {}
+  );
+  const [queryParams, setQueryParams] = useState<QueryParamRow[]>(() =>
+    sharedMatch
+      ? sharedMatch.queryParams.map((row) => ({ id: ++queryParamRowId, key: row.key, value: row.value }))
+      : []
+  );
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<ApiResponse | null>(null);
   const [curlCopied, setCurlCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [headersCopied, setHeadersCopied] = useState(false);
   const [copiedHeaderKey, setCopiedHeaderKey] = useState<string | null>(null);
   const [presets, setPresets] = useState<SavedQueryPreset[]>(() =>
     loadPresetsForEndpoint(method, path)
   );
   const [presetName, setPresetName] = useState("");
+
+  useEffect(() => {
+    if (sharedMatch) {
+      toast.success("Loaded request setup from shared link");
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const params = extractPathParams(path);
   const hasBody = method === "POST" || method === "PUT" || method === "PATCH";
@@ -307,6 +472,22 @@ function TryItPanel({
     setTimeout(() => setCurlCopied(false), 2000);
   }, [buildCurlCommand]);
 
+  const handleShare = useCallback(() => {
+    const shareUrl = buildSharedPresetUrl({
+      method,
+      path,
+      pathValues: { ...pathValues },
+      queryParams: queryParams
+        .filter((row) => row.key.trim().length > 0)
+        .map((row) => ({ key: row.key, value: row.value })),
+      body,
+    });
+    navigator.clipboard.writeText(shareUrl);
+    setShareCopied(true);
+    toast.success("Share link copied — opening it pre-loads this exact request");
+    setTimeout(() => setShareCopied(false), 2000);
+  }, [method, path, pathValues, queryParams, body]);
+
   const handleCopyAllHeaders = useCallback(() => {
     if (!response) return;
     const text = Object.entries(response.headers)
@@ -391,7 +572,12 @@ function TryItPanel({
   };
 
   return (
-    <div className={`rounded-lg border ${methodColors[method] ?? "border-border/50"} overflow-hidden`}>
+    <div
+      ref={panelRef}
+      className={`rounded-lg border ${methodColors[method] ?? "border-border/50"} overflow-hidden ${
+        sharedMatch ? "ring-1 ring-primary/60" : ""
+      }`}
+    >
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors"
@@ -401,6 +587,11 @@ function TryItPanel({
         <span className="text-xs font-mono text-foreground/70 truncate flex-1">
           {method} {path}
         </span>
+        {sharedMatch && (
+          <Badge className="text-[10px] bg-primary/20 text-primary border-primary/30 shrink-0">
+            From shared link
+          </Badge>
+        )}
         {open ? (
           <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
         ) : (
@@ -616,6 +807,19 @@ function TryItPanel({
               )}
               {curlCopied ? "Copied!" : "Copy as cURL"}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={handleShare}
+            >
+              {shareCopied ? (
+                <Check className="w-3 h-3 text-emerald-400" />
+              ) : (
+                <Share2 className="w-3 h-3" />
+              )}
+              {shareCopied ? "Link copied!" : "Share"}
+            </Button>
             <span className="text-xs text-muted-foreground font-mono truncate">{url}</span>
           </div>
 
@@ -707,6 +911,13 @@ export default function ApiDocs() {
       return "";
     }
   });
+  const [sharedPreset] = useState<SharedTryItPreset | null>(() => readSharedPresetFromLocation());
+
+  useEffect(() => {
+    if (sharedPreset) {
+      stripSharedPresetFromUrl();
+    }
+  }, [sharedPreset]);
 
   const handleTokenChange = (val: string) => {
     setGlobalToken(val);
@@ -717,6 +928,7 @@ export default function ApiDocs() {
   };
 
   return (
+    <SharedPresetContext.Provider value={sharedPreset}>
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">API Documentation</h1>
@@ -1419,5 +1631,6 @@ await fetch("https://your-domain.com/api/callbacks/payment", {
         </Section>
       </div>
     </div>
+    </SharedPresetContext.Provider>
   );
 }
