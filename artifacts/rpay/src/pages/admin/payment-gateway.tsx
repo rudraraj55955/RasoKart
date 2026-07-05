@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDisableGatewayGuard } from "@/components/admin/disable-gateway-dialog";
+import { CredentialHistoryDialog } from "@/components/admin/credential-history-dialog";
 import { toast } from "sonner";
 import { Save, Eye, EyeOff, CheckCircle2, AlertCircle, RefreshCw, Shield, Zap, CreditCard, ChevronLeft, ChevronRight, PlugZap, IndianRupee } from "lucide-react";
 
@@ -151,8 +152,11 @@ export default function AdminPaymentGateway() {
           <h1 className="text-3xl font-bold tracking-tight">Payin Gateway</h1>
           <p className="text-muted-foreground mt-1">Configure the RasoKart UPI deposit collection engine and webhook settings</p>
           {config?.lastUpdatedByEmail && config?.lastUpdatedAt && (
-            <p className="text-xs text-muted-foreground mt-1.5">
-              Last changed by <span className="font-medium text-foreground">{config.lastUpdatedByEmail}</span> on {formatDate(config.lastUpdatedAt)}
+            <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-2">
+              <span>
+                Last changed by <span className="font-medium text-foreground">{config.lastUpdatedByEmail}</span> on {formatDate(config.lastUpdatedAt)}
+              </span>
+              <CredentialHistoryDialog section="cashfree" label="Payin Gateway" />
             </p>
           )}
         </div>

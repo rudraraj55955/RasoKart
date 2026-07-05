@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDisableGatewayGuard } from "@/components/admin/disable-gateway-dialog";
+import { CredentialHistoryDialog } from "@/components/admin/credential-history-dialog";
 import { toast } from "sonner";
 import {
   Save, Eye, EyeOff, RefreshCw, Upload, Plus, RotateCcw, ChevronLeft, ChevronRight,
@@ -306,9 +307,12 @@ function SettingsTab() {
       {/* ── Section 1: Gateway status ── */}
       <Card className="border-border/50">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Banknote className="w-4 h-4 text-muted-foreground" />
-            Gateway Status
+          <CardTitle className="text-sm font-medium flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <Banknote className="w-4 h-4 text-muted-foreground" />
+              Gateway Status
+            </span>
+            <CredentialHistoryDialog section="cashfree_payout" label="Payout Gateway" />
           </CardTitle>
           {config?.lastUpdatedByEmail && config?.lastUpdatedAt && (
             <p className="text-xs text-muted-foreground mt-1">

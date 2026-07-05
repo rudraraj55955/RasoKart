@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useDisableGatewayGuard } from "@/components/admin/disable-gateway-dialog";
 import { AddGatewayDialog } from "@/components/admin/add-gateway-dialog";
+import { CredentialHistoryDialog } from "@/components/admin/credential-history-dialog";
 import { toast } from "sonner";
 import {
   CreditCard, Landmark, Zap, PlusCircle, CheckCircle2, XCircle, AlertCircle,
@@ -331,8 +332,11 @@ function EkqrConfigPanel() {
           <p className="text-sm font-medium">UPI Gateway</p>
           <p className="text-xs text-muted-foreground">UPI Collection for merchants — dynamic QR code generation</p>
           {ekqrConfig?.lastUpdatedByEmail && ekqrConfig?.lastUpdatedAt && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Last changed by <span className="font-medium text-foreground">{ekqrConfig.lastUpdatedByEmail}</span> on {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(ekqrConfig.lastUpdatedAt))}
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+              <span>
+                Last changed by <span className="font-medium text-foreground">{ekqrConfig.lastUpdatedByEmail}</span> on {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(ekqrConfig.lastUpdatedAt))}
+              </span>
+              <CredentialHistoryDialog section="ekqr" label="UPI Gateway" />
             </p>
           )}
         </div>
