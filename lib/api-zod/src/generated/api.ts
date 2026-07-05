@@ -7424,11 +7424,13 @@ export const CreatePayinOrderBody = zod.object({
 export const CreatePayinOrderResponse = zod.object({
   "publicOrderId": zod.string().describe('RasoKart-branded order identifier (RKPAYIN_...)'),
   "paymentToken": zod.string().describe('Opaque token used to render the RasoKart Secure Checkout — never a raw provider identifier'),
+  "paymentSessionId": zod.string().describe('Alias of paymentToken kept for client compatibility — same opaque, non-provider-identifying value used to render the RasoKart Secure Checkout'),
   "checkoutUrl": zod.string().nullish().describe('URL to open (in a new tab or redirect) to complete the RasoKart Secure Checkout. Null if a payment session could not be started.'),
   "amount": zod.number(),
   "status": zod.enum(['CREATED']),
   "checkoutLabel": zod.string(),
-  "message": zod.string()
+  "message": zod.string(),
+  "safeMessage": zod.string().describe('Alias of message — a merchant-safe, provider-agnostic status message, never a raw provider error')
 })
 
 

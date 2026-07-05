@@ -888,7 +888,7 @@ export default function MerchantDeposits() {
   const cashfreeEnabled = payinStatusData?.enabled ?? false;
 
   const createPayinOrder = useCreatePayinOrder();
-  const { data: activeOrderStatus } = useGetPayinOrderStatus(
+  const { data: activeOrderStatus, refetch: refetchOrderStatus, isFetching: isRefreshingStatus } = useGetPayinOrderStatus(
     activePayinOrder?.publicOrderId ?? "",
     {
       query: {
@@ -920,11 +920,16 @@ export default function MerchantDeposits() {
 
   // Opens the RasoKart Secure Checkout in a new tab. Never logs the raw
   // checkout URL/session — only order-scoped, non-sensitive identifiers.
+  // Some browsers return a non-null Window handle for a blocked popup (it
+  // just never navigates), so a truthy `win` is treated as "attempted", not
+  // as a hard guarantee the tab actually opened — the manual button below
+  // is always available regardless, per spec.
   const openSecureCheckout = (publicOrderId: string, checkoutUrl: string) => {
     console.info("[RasoKart] merchant_checkout_open_started", { publicOrderId });
     try {
       const win = window.open(checkoutUrl, "_blank", "noopener,noreferrer");
-      if (!win) throw new Error("popup_blocked");
+      if (!win || win.closed) throw new Error("popup_blocked");
+      console.info("[RasoKart] merchant_checkout_open_success", { publicOrderId });
       setCheckoutAutoOpenFailed(false);
     } catch {
       console.warn("[RasoKart] merchant_checkout_open_failed", { publicOrderId });
@@ -932,12 +937,28 @@ export default function MerchantDeposits() {
     }
   };
 
+  // Accepts any of the safe session/URL keys the API may use and resolves a
+  // single usable checkout URL. Never reads/returns a raw provider name or
+  // provider response — only opaque, RasoKart-branded fields.
+  const resolveCheckoutUrl = (result: {
+    checkoutUrl?: string | null;
+    paymentUrl?: string | null;
+    paymentSessionId?: string | null;
+    sessionId?: string | null;
+    checkoutSession?: string | null;
+    paymentToken?: string | null;
+  }): string | null => {
+    if (result.checkoutUrl) return result.checkoutUrl;
+    if (result.paymentUrl) return result.paymentUrl;
+    return null;
+  };
+
   const handleCashfreePay = async () => {
     if (!cfAmount || Number(cfAmount) <= 0) { toast.error("Enter a valid amount"); return; }
     if (!cfPhone.trim()) { toast.error("Customer phone number is required"); return; }
     setCfCreating(true);
     try {
-      const result = await createPayinOrder.mutateAsync({
+      const result: any = await createPayinOrder.mutateAsync({
         data: {
           amount: Number(cfAmount),
           customerPhone: cfPhone.trim(),
@@ -945,20 +966,33 @@ export default function MerchantDeposits() {
           customerEmail: cfEmail.trim() || undefined,
         },
       });
-      const checkoutUrl = result.checkoutUrl ?? null;
+      const checkoutUrl = resolveCheckoutUrl(result);
+      const hasSession = !!(checkoutUrl || result.paymentSessionId || result.sessionId || result.checkoutSession || result.paymentToken);
       console.info("[RasoKart] merchant_checkout_session_received", {
         publicOrderId: result.publicOrderId,
         hasCheckoutUrl: !!checkoutUrl,
+        hasSession,
       });
+      if (!hasSession) {
+        console.warn("[RasoKart] merchant_checkout_missing_session", { publicOrderId: result.publicOrderId });
+      }
       setActivePayinOrder({
         publicOrderId: result.publicOrderId,
-        paymentToken: result.paymentToken,
+        paymentToken: result.paymentToken ?? result.paymentSessionId ?? "",
         checkoutUrl,
         amount: result.amount,
       });
       checkoutOpenAttempted.current = false;
       setCheckoutAutoOpenFailed(false);
       toast.success("Deposit order created");
+
+      // Open immediately, still inside the async click-handler call chain
+      // (not a separate effect run on a later render) so the browser's user-
+      // activation window from the triggering click is as fresh as possible.
+      if (checkoutUrl && !checkoutOpenAttempted.current) {
+        checkoutOpenAttempted.current = true;
+        openSecureCheckout(result.publicOrderId, checkoutUrl);
+      }
     } catch (err: any) {
       toast.error(err?.message ?? "Failed to create deposit order");
     } finally {
@@ -966,8 +1000,8 @@ export default function MerchantDeposits() {
     }
   };
 
-  // Auto-open the checkout exactly once per created order, as soon as we
-  // have a usable checkout URL.
+  // Fallback: if the direct open above didn't run (e.g. state updates
+  // batched unexpectedly), still attempt exactly once per created order.
   useEffect(() => {
     if (!activePayinOrder || checkoutOpenAttempted.current) return;
     if (!activePayinOrder.checkoutUrl) return;
@@ -1905,24 +1939,40 @@ export default function MerchantDeposits() {
               ) : (
                 <div className="rounded-md border border-sky-500/30 bg-sky-500/10 p-4 text-center space-y-3">
                   <Loader2 className="w-6 h-6 text-sky-400 mx-auto animate-spin" />
+                  <p className="text-xs font-medium text-sky-200 tracking-wide uppercase">RasoKart Secure Checkout</p>
                   <p className="text-sm text-sky-300">Payment status: Waiting for payment</p>
-                  <p className="text-xs text-muted-foreground">This will update automatically once payment is confirmed.</p>
-                  {checkoutAutoOpenFailed && (
-                    <Button
-                      size="sm"
-                      onClick={() => openSecureCheckout(activePayinOrder.publicOrderId, activePayinOrder.checkoutUrl!)}
-                      className="mt-1"
-                    >
-                      Open Secure Checkout
-                    </Button>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {checkoutAutoOpenFailed
+                      ? "We couldn't open the secure checkout automatically. Use the button below."
+                      : "This will update automatically once payment is confirmed."}
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={() => openSecureCheckout(activePayinOrder.publicOrderId, activePayinOrder.checkoutUrl!)}
+                    className="mt-1"
+                  >
+                    Open Secure Checkout
+                  </Button>
                 </div>
               )}
             </div>
           )}
 
           {activePayinOrder && (
-            <DialogFooter>
+            <DialogFooter className="gap-2">
+              {activeOrderStatus?.status !== "PAID" && activeOrderStatus?.status !== "FAILED" && activeOrderStatus?.status !== "EXPIRED" && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    console.info("[RasoKart] merchant_checkout_status_refresh_started", { publicOrderId: activePayinOrder.publicOrderId });
+                    refetchOrderStatus();
+                  }}
+                  disabled={isRefreshingStatus}
+                >
+                  {isRefreshingStatus ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Refresh Status
+                </Button>
+              )}
               <Button variant="outline" onClick={resetPayinDialog}>Close</Button>
             </DialogFooter>
           )}

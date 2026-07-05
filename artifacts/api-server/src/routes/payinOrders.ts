@@ -204,15 +204,21 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
               ? gatewayResult.paymentUrl
               : null;
 
-          res.json({
-            publicOrderId,
-            paymentToken: gatewayResult.paymentUrl ?? gatewayResult.providerOrderId,
-            checkoutUrl: customCheckoutUrl,
-            amount: depositAmount,
-            status: PAYIN_ORDER_STATUS.CREATED,
-            checkoutLabel: "RasoKart Secure Checkout",
-            message: "Deposit order created. Complete the payment via UPI to add funds to your wallet.",
-          });
+          {
+            const safeToken = gatewayResult.paymentUrl ?? gatewayResult.providerOrderId;
+            const safeMessage = "Deposit order created. Complete the payment via UPI to add funds to your wallet.";
+            res.json({
+              publicOrderId,
+              paymentToken: safeToken,
+              paymentSessionId: safeToken,
+              checkoutUrl: customCheckoutUrl,
+              amount: depositAmount,
+              status: PAYIN_ORDER_STATUS.CREATED,
+              checkoutLabel: "RasoKart Secure Checkout",
+              message: safeMessage,
+              safeMessage,
+            });
+          }
           return;
         }
 
@@ -312,14 +318,17 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
     const checkoutEnv = cfg.env === "live" ? "prod" : "sandbox";
     const checkoutUrl = `/checkout?token=${encodeURIComponent(parsed.payment_session_id)}&env=${checkoutEnv}&amount=${encodeURIComponent(depositAmount.toFixed(2))}`;
 
+    const cashfreeSafeMessage = "Deposit order created. Complete the payment via UPI to add funds to your wallet.";
     res.json({
       publicOrderId,
       paymentToken: parsed.payment_session_id,
+      paymentSessionId: parsed.payment_session_id,
       checkoutUrl,
       amount: depositAmount,
       status: PAYIN_ORDER_STATUS.CREATED,
       checkoutLabel: "RasoKart Secure Checkout",
-      message: "Deposit order created. Complete the payment via UPI to add funds to your wallet.",
+      message: cashfreeSafeMessage,
+      safeMessage: cashfreeSafeMessage,
     });
   } catch (err) {
     req.log.error({ event: "payin_deposit_order_create_failed", merchantId, safeReason: "unexpected_error" }, "payin_deposit_order_create_failed");

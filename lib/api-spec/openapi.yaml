@@ -14529,7 +14529,7 @@ components:
 
     PayinOrderCreateResult:
       type: object
-      required: [publicOrderId, paymentToken, amount, status, checkoutLabel, message]
+      required: [publicOrderId, paymentToken, paymentSessionId, amount, status, checkoutLabel, message, safeMessage]
       properties:
         publicOrderId:
           type: string
@@ -14537,6 +14537,9 @@ components:
         paymentToken:
           type: string
           description: Opaque token used to render the RasoKart Secure Checkout — never a raw provider identifier
+        paymentSessionId:
+          type: string
+          description: Alias of paymentToken kept for client compatibility — same opaque, non-provider-identifying value used to render the RasoKart Secure Checkout
         checkoutUrl:
           type: string
           nullable: true
@@ -14550,6 +14553,9 @@ components:
           type: string
         message:
           type: string
+        safeMessage:
+          type: string
+          description: Alias of message — a merchant-safe, provider-agnostic status message, never a raw provider error
 
     PayinOrderStatus:
       type: object

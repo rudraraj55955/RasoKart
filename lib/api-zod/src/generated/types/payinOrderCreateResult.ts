@@ -12,10 +12,14 @@ export interface PayinOrderCreateResult {
   publicOrderId: string;
   /** Opaque token used to render the RasoKart Secure Checkout — never a raw provider identifier */
   paymentToken: string;
+  /** Alias of paymentToken kept for client compatibility — same opaque, non-provider-identifying value used to render the RasoKart Secure Checkout */
+  paymentSessionId: string;
   /** URL to open (in a new tab or redirect) to complete the RasoKart Secure Checkout. Null if a payment session could not be started. */
   checkoutUrl?: string | null;
   amount: number;
   status: PayinOrderCreateResultStatus;
   checkoutLabel: string;
   message: string;
+  /** Alias of message — a merchant-safe, provider-agnostic status message, never a raw provider error */
+  safeMessage: string;
 }
