@@ -161,6 +161,20 @@ interface TryItPanelProps {
   defaultBody?: string;
   requiresAuth?: boolean;
   commonQueryParams?: string[];
+  expectedBodyKeys?: string[];
+}
+
+function getUnknownBodyKeys(body: string, expectedBodyKeys: string[]): string[] {
+  if (expectedBodyKeys.length === 0 || !body.trim()) return [];
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    return Object.keys(parsed as Record<string, unknown>).filter(
+      (key) => !expectedBodyKeys.includes(key)
+    );
+  } catch {
+    return [];
+  }
 }
 
 interface QueryParamRow {
@@ -411,6 +425,7 @@ function TryItPanel({
   defaultBody = "",
   requiresAuth = true,
   commonQueryParams = [],
+  expectedBodyKeys = [],
 }: TryItPanelProps) {
   const shared = useContext(SharedPresetContext);
   const sharedMatch =
@@ -458,6 +473,10 @@ function TryItPanel({
   const params = extractPathParams(path);
   const hasBody = method === "POST" || method === "PUT" || method === "PATCH";
   const supportsQueryParams = method === "GET" || method === "DELETE";
+  const unknownBodyKeys = useMemo(
+    () => getUnknownBodyKeys(body, expectedBodyKeys),
+    [body, expectedBodyKeys]
+  );
 
   const addQueryParam = useCallback((prefillKey = "") => {
     setQueryParams((prev) => [...prev, { id: ++queryParamRowId, key: prefillKey, value: "" }]);
@@ -857,9 +876,20 @@ function TryItPanel({
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={6}
-                className="text-xs font-mono bg-black/40 resize-y"
+                className={`text-xs font-mono bg-black/40 resize-y ${
+                  unknownBodyKeys.length > 0 ? "border-amber-500/50 focus-visible:ring-amber-500/30" : ""
+                }`}
                 spellCheck={false}
               />
+              {unknownBodyKeys.length > 0 && (
+                <p className="text-[10px] text-amber-500/80 pl-0.5 flex items-center gap-1">
+                  <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                  {unknownBodyKeys.length === 1
+                    ? `"${unknownBodyKeys[0]}" isn't a documented field for this endpoint`
+                    : `${unknownBodyKeys.map((key) => `"${key}"`).join(", ")} aren't documented fields for this endpoint`}
+                  {" "}— it may be ignored by the server (undocumented fields are still sent).
+                </p>
+              )}
             </div>
           )}
 
@@ -1293,6 +1323,7 @@ export default function ApiDocs() {
   "payload": "upi://pay?pa=merchant@upi&pn=MyStore&am=500&cu=INR",
   "amount": "500.00"
 }`}
+              expectedBodyKeys={["type", "label", "payload", "amount"]}
             />
             <TryItPanel
               method="PUT"
@@ -1302,6 +1333,7 @@ export default function ApiDocs() {
   "label": "Updated Label",
   "status": "active"
 }`}
+              expectedBodyKeys={["label", "status"]}
             />
             <TryItPanel method="DELETE" path="/api/qr-codes/{id}" token={globalToken} />
           </div>
@@ -1397,6 +1429,7 @@ export default function ApiDocs() {
   "accountHolder": "MyStore Ltd",
   "label": "Collections Account"
 }`}
+              expectedBodyKeys={["accountNumber", "ifsc", "bankName", "accountHolder", "label"]}
             />
             <TryItPanel
               method="PUT"
@@ -1406,6 +1439,7 @@ export default function ApiDocs() {
   "label": "Updated Label",
   "status": "active"
 }`}
+              expectedBodyKeys={["label", "status"]}
             />
             <TryItPanel method="DELETE" path="/api/virtual-accounts/{id}" token={globalToken} />
           </div>
@@ -1851,6 +1885,7 @@ await fetch("https://your-domain.com/api/callbacks/payment", {
   "email": "merchant@demo.com",
   "password": "Merchant@123456"
 }`}
+              expectedBodyKeys={["email", "password"]}
             />
           </div>
         </Section>
