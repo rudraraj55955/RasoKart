@@ -979,6 +979,28 @@ export async function seed() {
   }
   console.log("System config defaults seeded");
 
+  // Backfill attribution on legacy EKQR config rows that predate the
+  // updatedByEmail column (they were seeded before "last changed by" tracking
+  // was added, so the admin UI would otherwise never show a "last changed by"
+  // line for them). Only touches rows still missing attribution — once an
+  // admin performs a real save, updatedByEmail is overwritten with their
+  // email and this backfill no longer matches that row.
+  const ekqrConfigKeys = [
+    SYSTEM_CONFIG_KEYS.EKQR_API_KEY,
+    SYSTEM_CONFIG_KEYS.EKQR_ENABLED,
+    SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET,
+    SYSTEM_CONFIG_KEYS.EKQR_ENV,
+  ];
+  await db
+    .update(systemConfigTable)
+    .set({
+      updatedByEmail: "system (legacy config)",
+      // Preserve the original updatedAt instead of letting $onUpdate bump it
+      // to "now" for a row we didn't actually just edit.
+      updatedAt: sql`${systemConfigTable.updatedAt}`,
+    })
+    .where(and(inArray(systemConfigTable.key, ekqrConfigKeys), isNull(systemConfigTable.updatedByEmail)));
+
   // Seed system settings defaults (idempotent)
   await db
     .insert(systemSettingsTable)
