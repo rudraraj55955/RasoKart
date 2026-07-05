@@ -30,6 +30,7 @@ import {
   systemSettingsTable,
   scheduledAuditReportLogsTable,
   credentialEventsTable,
+  demoAccountRemovalsTable,
   merchantWalletsTable,
   walletLedgerTable,
   merchantVerificationsTable,
@@ -150,8 +151,20 @@ const SEED_EXCLUDE_DEMO_EMAILS = new Set(
     .filter(Boolean),
 );
 
+// Admin-portal removals (see routes/merchants.ts POST /:id/remove-demo-account)
+// are persisted in demo_account_removals so they survive restarts without
+// touching env vars. Loaded once per seed() run and merged with the env-var
+// set above, which remains supported for scripted/ops use.
+let dbExcludedDemoEmails = new Set<string>();
+
+async function loadDbExcludedDemoEmails(): Promise<void> {
+  const rows = await db.select({ email: demoAccountRemovalsTable.email }).from(demoAccountRemovalsTable);
+  dbExcludedDemoEmails = new Set(rows.map((r) => r.email.toLowerCase()));
+}
+
 function isDemoAccountExcluded(email: string): boolean {
-  return SEED_EXCLUDE_DEMO_EMAILS.has(email.toLowerCase());
+  const normalized = email.toLowerCase();
+  return SEED_EXCLUDE_DEMO_EMAILS.has(normalized) || dbExcludedDemoEmails.has(normalized);
 }
 
 async function verifyDemoCredentials() {
@@ -225,6 +238,7 @@ export async function seed() {
   console.log("Seeding database...");
 
   await ensureSchemaGuard();
+  await loadDbExcludedDemoEmails();
 
   // ── Plan tiers ────────────────────────────────────────────────────────────
   for (const tier of PLAN_TIERS) {

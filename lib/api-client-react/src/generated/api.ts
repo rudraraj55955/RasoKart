@@ -2448,6 +2448,77 @@ export const useUnsuspendMerchant = <TError = ErrorType<unknown>,
       return useMutation(getUnsuspendMerchantMutationOptions(options));
     }
 
+export const getRemoveDemoAccountUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/remove-demo-account`
+}
+
+/**
+ * Deactivates a documented demo merchant account (merchant@demo.com, merchant2@demo.com, or merchant3@demo.com) and records the removal in the database so it persists across restarts without requiring the SEED_EXCLUDE_DEMO_EMAILS env var or manual SQL. Returns 400 if the merchant is not a documented demo account or has already been removed.
+ * @summary Permanently remove a documented demo merchant account (admin only)
+ */
+export const removeDemoAccount = async (id: number, options?: RequestInit): Promise<Merchant> => {
+
+  return customFetch<Merchant>(getRemoveDemoAccountUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRemoveDemoAccountMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeDemoAccount>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeDemoAccount>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['removeDemoAccount'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeDemoAccount>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  removeDemoAccount(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveDemoAccountMutationResult = NonNullable<Awaited<ReturnType<typeof removeDemoAccount>>>
+
+    export type RemoveDemoAccountMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Permanently remove a documented demo merchant account (admin only)
+ */
+export const useRemoveDemoAccount = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeDemoAccount>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeDemoAccount>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRemoveDemoAccountMutationOptions(options));
+    }
+
 export const getGetMerchantPlanUsageAdminUrl = (id: number,) => {
 
 

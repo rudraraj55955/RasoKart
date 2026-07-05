@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useUpload } from "@workspace/object-storage-web";
 import {
   useListMerchants, useApproveMerchant, useRejectMerchant,
-  useSuspendMerchant, useUnsuspendMerchant,
+  useSuspendMerchant, useUnsuspendMerchant, useRemoveDemoAccount,
   useListPlans, useAssignMerchantPlan, useGetMerchantPlan, useGetMerchantPlanHistory,
   useUpgradeMerchantPlan, useDowngradeMerchantPlan, useSuspendMerchantPlan,
   useReinstateMerchantPlan, useRenewMerchantPlan, useBulkAssignMerchantPlan, useBulkUnassignMerchantPlan,
@@ -240,6 +240,7 @@ export default function AdminMerchants() {
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [removeDemoTarget, setRemoveDemoTarget] = useState<{ id: number; businessName: string; email: string } | null>(null);
   const [brandingMerchant, setBrandingMerchant] = useState<{ id: number; name: string; logoUrl: string | null; brandColor: string | null } | null>(null);
   const [brandingLogoUrl, setBrandingLogoUrl] = useState("");
   const [brandingColor, setBrandingColor] = useState("");
@@ -451,6 +452,7 @@ export default function AdminMerchants() {
   const rejectMutation = useRejectMerchant();
   const merchantSuspendMutation = useSuspendMerchant();
   const merchantUnsuspendMutation = useUnsuspendMerchant();
+  const removeDemoAccountMutation = useRemoveDemoAccount();
   const assignPlanMutation = useAssignMerchantPlan();
   const upgradeMutation = useUpgradeMerchantPlan();
   const downgradeMutation = useDowngradeMerchantPlan();
@@ -719,6 +721,18 @@ export default function AdminMerchants() {
         setSingleActionResult({ open: true, title: "Merchant Reinstated", merchantName: merchant.businessName, newStatus: merchant.status, timestamp: new Date().toISOString() });
       },
       onError: () => toast.error("Failed to unsuspend merchant"),
+    });
+  };
+
+  const handleRemoveDemoAccount = () => {
+    if (!removeDemoTarget) return;
+    removeDemoAccountMutation.mutate({ id: removeDemoTarget.id }, {
+      onSuccess: (merchant) => {
+        qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+        setRemoveDemoTarget(null);
+        setSingleActionResult({ open: true, title: "Demo Account Removed", merchantName: merchant.businessName, newStatus: merchant.status, timestamp: new Date().toISOString() });
+      },
+      onError: (err: any) => toast.error(err?.response?.data?.error ?? "Failed to remove demo account"),
     });
   };
 
@@ -1806,6 +1820,16 @@ export default function AdminMerchants() {
                           <ShieldCheck className="w-4 h-4 mr-1" /> Reinstate
                         </Button>
                       )}
+                      {merchant.isDemoAccount && !merchant.demoRemovedAt && (
+                        <Button size="sm" variant="ghost" className="text-rose-500 hover:bg-rose-500/10" onClick={() => setRemoveDemoTarget({ id: merchant.id, businessName: merchant.businessName, email: merchant.email })}>
+                          <UserX className="w-4 h-4 mr-1" /> Remove Demo Account
+                        </Button>
+                      )}
+                      {merchant.isDemoAccount && merchant.demoRemovedAt && (
+                        <Badge variant="outline" className="text-xs py-0 text-rose-400 border-rose-500/30 bg-rose-500/10 gap-1 self-center">
+                          <UserX className="w-3 h-3" /> Demo Removed
+                        </Badge>
+                      )}
                       <Button size="sm" variant="ghost" className="text-primary hover:bg-primary/10" onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails, merchant.signatureFailureAlertEmails, merchant.webhookFailureEmails, merchant.apiKeyGeneratedEmails, merchant.apiKeyRevokedEmails, merchant.reportScheduleChangedEmails, merchant.settlementStateChangedEmails, merchant.planExpiryAlertEmails)}>
                         <CreditCard className="w-4 h-4 mr-1" /> {merchant.currentPlanName ? "Change Plan" : "Assign Plan"}
                       </Button>
@@ -1845,6 +1869,29 @@ export default function AdminMerchants() {
             <Button variant="outline" onClick={() => { setRejectId(null); setRejectReason(""); }}>Cancel</Button>
             <Button variant="destructive" onClick={handleReject} disabled={!rejectReason.trim() || rejectMutation.isPending}>
               {rejectMutation.isPending ? "Rejecting..." : "Reject Merchant"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Demo Account Dialog */}
+      <Dialog open={!!removeDemoTarget} onOpenChange={open => { if (!open) setRemoveDemoTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserX className="w-4 h-4 text-rose-400" />
+              Remove Demo Account
+            </DialogTitle>
+            <DialogDescription>
+              This permanently deactivates <strong>{removeDemoTarget?.businessName}</strong> ({removeDemoTarget?.email}).
+              The account will no longer be able to log in, and it will not be recreated by the demo seed on future
+              restarts. This cannot be undone from this screen.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveDemoTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleRemoveDemoAccount} disabled={removeDemoAccountMutation.isPending}>
+              {removeDemoAccountMutation.isPending ? "Removing..." : "Remove Demo Account"}
             </Button>
           </DialogFooter>
         </DialogContent>

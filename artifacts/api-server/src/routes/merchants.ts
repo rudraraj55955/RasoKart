@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable, credentialEventsTable, webhooksTable, webhookFailureAlertLogsTable, merchantKycTable } from "@workspace/db";
+import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable, credentialEventsTable, webhooksTable, webhookFailureAlertLogsTable, merchantKycTable, demoAccountRemovalsTable } from "@workspace/db";
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull, inArray } from "drizzle-orm";
 import { maskIp } from "../helpers/apiKeyEmail";
 import { loadWebhookRetryConfig } from "../helpers/callbackRetry";
@@ -24,6 +24,21 @@ function serializeMerchant(m: typeof merchantsTable.$inferSelect) {
     totalWithdrawals: Number(m.totalWithdrawals),
     balance: Number(m.balance),
   };
+}
+
+// Demo merchant accounts documented in replit.md's "Demo Credentials" table.
+// Only these emails are eligible for the admin-portal "Remove demo account"
+// action — this route must never be usable to deactivate a real merchant.
+const DEMO_MERCHANT_EMAILS = ["merchant@demo.com", "merchant2@demo.com", "merchant3@demo.com"];
+
+async function getDemoRemovalMap(emails: string[]): Promise<Map<string, Date>> {
+  const relevant = emails.filter(e => DEMO_MERCHANT_EMAILS.includes(e));
+  if (relevant.length === 0) return new Map();
+  const rows = await db
+    .select({ email: demoAccountRemovalsTable.email, createdAt: demoAccountRemovalsTable.createdAt })
+    .from(demoAccountRemovalsTable)
+    .where(inArray(demoAccountRemovalsTable.email, relevant));
+  return new Map(rows.map(r => [r.email, r.createdAt]));
 }
 
 function buildPlanResponse(mp: typeof merchantPlansTable.$inferSelect, plan: typeof plansTable.$inferSelect) {
@@ -163,10 +178,13 @@ router.get("/", requireAdmin, async (req, res) => {
     .limit(limitNum).offset(offset)
     .orderBy(sql`${merchantsTable.createdAt} DESC`);
 
+  const demoRemovalMap = await getDemoRemovalMap(rows.map(r => r.merchant.email));
+
   res.json({
     data: rows.map(r => {
       const expiresAt = r.currentPlanExpiresAt ?? null;
       const isExpired = expiresAt ? now > expiresAt : null;
+      const demoRemovedAt = demoRemovalMap.get(r.merchant.email) ?? null;
       return {
         ...serializeMerchant(r.merchant),
         callbackSecretSet: r.merchant.callbackSecret != null,
@@ -182,6 +200,8 @@ router.get("/", requireAdmin, async (req, res) => {
         reportScheduleChangedEmails: r.reportScheduleChangedEmails ?? true,
         settlementStateChangedEmails: r.settlementStateChangedEmails ?? true,
         planExpiryAlertEmails: r.planExpiryAlertEmails ?? true,
+        isDemoAccount: DEMO_MERCHANT_EMAILS.includes(r.merchant.email),
+        demoRemovedAt: demoRemovedAt ? demoRemovedAt.toISOString() : null,
       };
     }),
     total,
@@ -416,8 +436,12 @@ router.get("/:id", async (req, res) => {
     .where(eq(merchantsTable.id, id))
     .limit(1);
   if (!row) { res.status(404).json({ error: "Merchant not found" }); return; }
+  const demoRemovalMap = await getDemoRemovalMap([row.merchant.email]);
+  const demoRemovedAt = demoRemovalMap.get(row.merchant.email) ?? null;
   res.json({
     ...serializeMerchant(row.merchant),
+    isDemoAccount: DEMO_MERCHANT_EMAILS.includes(row.merchant.email),
+    demoRemovedAt: demoRemovedAt ? demoRemovedAt.toISOString() : null,
     loginAlertEmails: row.loginAlertEmails ?? true,
     signatureFailureAlertEmails: row.signatureFailureAlertEmails ?? true,
     webhookFailureEmails: row.webhookFailureEmails ?? true,
@@ -776,6 +800,59 @@ router.post("/:id/unsuspend", async (req, res) => {
     totalDeposits: Number(merchant.totalDeposits),
     totalWithdrawals: Number(merchant.totalWithdrawals),
     balance: Number(merchant.balance),
+  });
+});
+
+// POST /api/merchants/:id/remove-demo-account
+// Permanently deactivates a documented demo merchant account from the admin
+// portal — the DB-backed replacement for manually setting
+// SEED_EXCLUDE_DEMO_EMAILS + deleting rows via SQL. The removal is recorded
+// in demo_account_removals so seed.ts will never recreate/reactivate it,
+// surviving server restarts with no shell/DB access required.
+router.post("/:id/remove-demo-account", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
+
+  const [merchant] = await db.select().from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+  if (!DEMO_MERCHANT_EMAILS.includes(merchant.email)) {
+    res.status(400).json({ error: "Only documented demo merchant accounts can be removed here" });
+    return;
+  }
+
+  const [existing] = await db.select().from(demoAccountRemovalsTable).where(eq(demoAccountRemovalsTable.email, merchant.email)).limit(1);
+  if (existing) {
+    res.status(400).json({ error: "This demo account has already been removed" });
+    return;
+  }
+
+  await db.insert(demoAccountRemovalsTable).values({
+    email: merchant.email,
+    removedByAdminId: admin.id,
+    removedByEmail: admin.email,
+  });
+
+  await db.update(usersTable).set({ isActive: false }).where(eq(usersTable.email, merchant.email));
+  const [updatedMerchant] = await db.update(merchantsTable)
+    .set({ status: "suspended" })
+    .where(eq(merchantsTable.id, id))
+    .returning();
+
+  await db.insert(auditLogsTable).values({
+    adminId: admin.id,
+    adminEmail: admin.email,
+    action: "demo_account_removed",
+    targetType: "merchant",
+    targetId: merchant.id,
+    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email }),
+    ipAddress: req.ip ?? null,
+  });
+
+  res.json({
+    ...serializeMerchant(updatedMerchant),
+    isDemoAccount: true,
+    demoRemovedAt: new Date().toISOString(),
   });
 });
 

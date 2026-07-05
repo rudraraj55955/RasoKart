@@ -937,6 +937,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/Merchant"
 
+  /merchants/{id}/remove-demo-account:
+    post:
+      operationId: removeDemoAccount
+      tags: [merchants]
+      summary: Permanently remove a documented demo merchant account (admin only)
+      description: >-
+        Deactivates a documented demo merchant account (merchant@demo.com,
+        merchant2@demo.com, or merchant3@demo.com) and records the removal in
+        the database so it persists across restarts without requiring the
+        SEED_EXCLUDE_DEMO_EMAILS env var or manual SQL. Returns 400 if the
+        merchant is not a documented demo account or has already been removed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Demo account removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Merchant"
+        "400":
+          description: Not a demo account, or already removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Merchant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /merchants/{id}/plan/usage:
     get:
       operationId: getMerchantPlanUsageAdmin
@@ -10650,6 +10687,12 @@ components:
         planExpiryAlertEmails:
           type: boolean
           description: Whether the merchant will receive plan expiry alert emails. Defaults to true.
+        isDemoAccount:
+          type: boolean
+          description: Whether this merchant's email is one of the documented demo accounts (merchant@demo.com, merchant2@demo.com, merchant3@demo.com).
+        demoRemovedAt:
+          type: ["string", "null"]
+          description: Timestamp when an admin permanently removed this demo account via the admin portal. Null if not removed.
         reconciliationAlertEmails:
           type: boolean
           description: Whether the merchant will receive reconciliation alert emails. Defaults to true.

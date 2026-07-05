@@ -452,6 +452,14 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    -- ── demo_account_removals ────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS demo_account_removals (
+      email TEXT PRIMARY KEY,
+      removed_by_admin_id INTEGER,
+      removed_by_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   console.log("DB migrations complete.");

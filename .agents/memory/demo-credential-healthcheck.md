@@ -24,3 +24,11 @@ hand.
 **How to apply:** whenever you add, remove, or change a documented demo
 account in replit.md's Demo Credentials table, update `DEMO_CREDENTIALS`
 in both `seed.ts` and `verify-demo-credentials.ts` to match.
+
+Admins can also permanently remove a demo account via the admin-portal
+merchant detail action (`POST /merchants/:id/remove-demo-account`), which
+writes to a `demo_account_removals` DB table that `seed.ts` consults so the
+account is never re-upserted. If you e2e-test that removal flow in a shared
+dev DB, revert it afterward (delete the `demo_account_removals` row,
+reactivate the user, reset merchant status) — otherwise the account stays
+gone and the health check above starts failing on every future restart.

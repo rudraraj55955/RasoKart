@@ -70,3 +70,4 @@ export * from "./merchantVerifications";
 export * from "./merchantDocuments";
 export * from "./quietHoursQueue";
 export * from "./cashfreePayoutWebhookLogs";
+export * from "./demoAccountRemovals";

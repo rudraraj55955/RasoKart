@@ -56,6 +56,13 @@ export interface Merchant {
   settlementStateChangedEmails?: boolean;
   /** Whether the merchant will receive plan expiry alert emails. Defaults to true. */
   planExpiryAlertEmails?: boolean;
+  /** Whether this merchant's email is one of the documented demo accounts (merchant@demo.com, merchant2@demo.com, merchant3@demo.com). */
+  isDemoAccount?: boolean;
+  /**
+     * Timestamp when an admin permanently removed this demo account via the admin portal. Null if not removed.
+     * @nullable
+     */
+  demoRemovedAt?: string | null;
   /** Whether the merchant will receive reconciliation alert emails. Defaults to true. */
   reconciliationAlertEmails?: boolean;
   /** Whether the merchant will receive settlement state emails. Defaults to true. */

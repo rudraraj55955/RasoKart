@@ -64,6 +64,17 @@ async function runGuard(): Promise<void> {
     WHERE NOT EXISTS (SELECT 1 FROM company_settings)
   `);
 
+  // ── demo_account_removals (admin-portal permanent demo account removal) ─
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS demo_account_removals (
+      email TEXT PRIMARY KEY,
+      removed_by_admin_id INTEGER,
+      removed_by_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "demo_account_removals" }, "schema_guard_table_created");
+
   // ── merchant_auth_otps (OTP login + password reset) ────────────────────
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS merchant_auth_otps (
