@@ -18,6 +18,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
   ChevronDown,
   ChevronRight,
   Copy,
@@ -191,6 +198,16 @@ function presetsStorageKeyFor(method: string, path: string): string {
   return `${method} ${path}`;
 }
 
+const PRESETS_CHANGED_EVENT = "rasokart-tryit-presets-changed";
+
+function dispatchPresetsChanged() {
+  try {
+    window.dispatchEvent(new Event(PRESETS_CHANGED_EVENT));
+  } catch {
+    // non-fatal — cross-panel sync just won't fire this time
+  }
+}
+
 function loadAllPresets(): Record<string, SavedQueryPreset[]> {
   try {
     const raw = localStorage.getItem(TRY_IT_PRESETS_STORAGE_KEY);
@@ -202,6 +219,15 @@ function loadAllPresets(): Record<string, SavedQueryPreset[]> {
   }
 }
 
+function saveAllPresets(all: Record<string, SavedQueryPreset[]>) {
+  try {
+    localStorage.setItem(TRY_IT_PRESETS_STORAGE_KEY, JSON.stringify(all));
+    dispatchPresetsChanged();
+  } catch {
+    // localStorage may be unavailable (e.g. private browsing) — presets simply won't persist
+  }
+}
+
 function loadPresetsForEndpoint(method: string, path: string): SavedQueryPreset[] {
   const all = loadAllPresets();
   const presets = all[presetsStorageKeyFor(method, path)];
@@ -209,13 +235,62 @@ function loadPresetsForEndpoint(method: string, path: string): SavedQueryPreset[
 }
 
 function persistPresetsForEndpoint(method: string, path: string, presets: SavedQueryPreset[]) {
-  try {
-    const all = loadAllPresets();
+  const all = loadAllPresets();
+  if (presets.length > 0) {
     all[presetsStorageKeyFor(method, path)] = presets;
-    localStorage.setItem(TRY_IT_PRESETS_STORAGE_KEY, JSON.stringify(all));
-  } catch {
-    // localStorage may be unavailable (e.g. private browsing) — presets simply won't persist
+  } else {
+    delete all[presetsStorageKeyFor(method, path)];
   }
+  saveAllPresets(all);
+}
+
+interface FlatPreset {
+  key: string;
+  method: string;
+  path: string;
+  preset: SavedQueryPreset;
+}
+
+function parsePresetsKey(key: string): { method: string; path: string } {
+  const spaceIdx = key.indexOf(" ");
+  if (spaceIdx === -1) return { method: "", path: key };
+  return { method: key.slice(0, spaceIdx), path: key.slice(spaceIdx + 1) };
+}
+
+function loadAllPresetsFlat(): FlatPreset[] {
+  const all = loadAllPresets();
+  const flat: FlatPreset[] = [];
+  for (const key of Object.keys(all)) {
+    const { method, path } = parsePresetsKey(key);
+    const presets = all[key];
+    if (!Array.isArray(presets)) continue;
+    for (const preset of presets) {
+      flat.push({ key, method, path, preset });
+    }
+  }
+  flat.sort((a, b) => (a.key === b.key ? 0 : a.key < b.key ? -1 : 1));
+  return flat;
+}
+
+function renamePresetGlobal(key: string, id: string, newName: string) {
+  const all = loadAllPresets();
+  const presets = all[key];
+  if (!Array.isArray(presets)) return;
+  all[key] = presets.map((p) => (p.id === id ? { ...p, name: newName } : p));
+  saveAllPresets(all);
+}
+
+function deletePresetGlobal(key: string, id: string) {
+  const all = loadAllPresets();
+  const presets = all[key];
+  if (!Array.isArray(presets)) return;
+  const next = presets.filter((p) => p.id !== id);
+  if (next.length > 0) {
+    all[key] = next;
+  } else {
+    delete all[key];
+  }
+  saveAllPresets(all);
 }
 
 const SHARE_QUERY_PARAM = "tryit";
@@ -371,6 +446,14 @@ function TryItPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const handlePresetsChanged = () => {
+      setPresets(loadPresetsForEndpoint(method, path));
+    };
+    window.addEventListener(PRESETS_CHANGED_EVENT, handlePresetsChanged);
+    return () => window.removeEventListener(PRESETS_CHANGED_EVENT, handlePresetsChanged);
+  }, [method, path]);
 
   const params = extractPathParams(path);
   const hasBody = method === "POST" || method === "PUT" || method === "PATCH";
@@ -903,6 +986,134 @@ function TryItPanel({
   );
 }
 
+function ManagePresetsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [presets, setPresets] = useState<FlatPreset[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+
+  const refresh = useCallback(() => {
+    setPresets(loadAllPresetsFlat());
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    refresh();
+    window.addEventListener(PRESETS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(PRESETS_CHANGED_EVENT, refresh);
+  }, [open, refresh]);
+
+  const startEditing = (item: FlatPreset) => {
+    setEditingId(item.preset.id);
+    setEditingName(item.preset.name);
+  };
+
+  const commitRename = (item: FlatPreset) => {
+    const name = editingName.trim();
+    setEditingId(null);
+    if (!name || name === item.preset.name) return;
+    renamePresetGlobal(item.key, item.preset.id, name);
+    toast.success(`Renamed preset to "${name}"`);
+  };
+
+  const handleDelete = (item: FlatPreset) => {
+    deletePresetGlobal(item.key, item.preset.id);
+    toast.success(`Deleted preset "${item.preset.name}"`);
+  };
+
+  const methodColors: Record<string, string> = {
+    GET: "bg-blue-500/20 text-blue-400",
+    POST: "bg-emerald-500/20 text-emerald-400",
+    PUT: "bg-yellow-500/20 text-yellow-400",
+    DELETE: "bg-rose-500/20 text-rose-400",
+    PATCH: "bg-yellow-500/20 text-yellow-400",
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Manage saved presets</DialogTitle>
+          <DialogDescription>
+            All "Try it" presets saved across every endpoint on this page. Rename or delete them
+            here — changes sync immediately to the endpoint panels below.
+          </DialogDescription>
+        </DialogHeader>
+
+        {presets.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            No presets saved yet. Save one from any "Try it" panel to see it here.
+          </p>
+        ) : (
+          <div className="max-h-[60vh] overflow-y-auto space-y-1.5 -mx-1 px-1">
+            {presets.map((item) => (
+              <div
+                key={`${item.key}::${item.preset.id}`}
+                className="flex items-center gap-2 rounded-lg border border-border/50 bg-black/20 px-3 py-2"
+              >
+                <div className="flex flex-col gap-1 min-w-0 flex-1">
+                  {editingId === item.preset.id ? (
+                    <Input
+                      autoFocus
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitRename(item);
+                        } else if (e.key === "Escape") {
+                          setEditingId(null);
+                        }
+                      }}
+                      onBlur={() => commitRename(item)}
+                      className="h-7 text-xs bg-black/40"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startEditing(item)}
+                      className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-primary transition-colors text-left truncate"
+                      title="Click to rename"
+                    >
+                      <Star className="w-3 h-3 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{item.preset.name}</span>
+                    </button>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    <Badge className={`text-[10px] font-bold shrink-0 ${methodColors[item.method] ?? ""}`}>
+                      {item.method}
+                    </Badge>
+                    <code className="text-[11px] font-mono text-muted-foreground truncate">
+                      {item.path}
+                    </code>
+                  </div>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => startEditing(item)}
+                  aria-label={`Rename preset ${item.preset.name}`}
+                >
+                  <Save className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-rose-400"
+                  onClick={() => handleDelete(item)}
+                  aria-label={`Delete preset ${item.preset.name}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ApiDocs() {
   const [globalToken, setGlobalToken] = useState<string>(() => {
     try {
@@ -912,6 +1123,7 @@ export default function ApiDocs() {
     }
   });
   const [sharedPreset] = useState<SharedTryItPreset | null>(() => readSharedPresetFromLocation());
+  const [managePresetsOpen, setManagePresetsOpen] = useState(false);
 
   useEffect(() => {
     if (sharedPreset) {
@@ -930,12 +1142,25 @@ export default function ApiDocs() {
   return (
     <SharedPresetContext.Provider value={sharedPreset}>
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">API Documentation</h1>
-        <p className="text-muted-foreground mt-1">
-          Reference for integrating RasoKart payment APIs into your application.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">API Documentation</h1>
+          <p className="text-muted-foreground mt-1">
+            Reference for integrating RasoKart payment APIs into your application.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 shrink-0"
+          onClick={() => setManagePresetsOpen(true)}
+        >
+          <Star className="w-3.5 h-3.5" />
+          Manage saved presets
+        </Button>
       </div>
+
+      <ManagePresetsDialog open={managePresetsOpen} onOpenChange={setManagePresetsOpen} />
 
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="pt-4 pb-4 space-y-3">
