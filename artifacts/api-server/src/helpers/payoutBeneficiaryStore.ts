@@ -295,12 +295,135 @@ export async function invalidateBeneficiaryProviderRegistration(
     .where(eq(payoutBeneficiariesTable.id, beneficiaryId));
 }
 
+export type RepairBeneficiaryResult = {
+  ok: boolean;
+  foundOnProvider: boolean;
+  providerBeneficiaryId?: string;
+  beneficiaryStatus: BeneficiaryStatus;
+  message?: string;
+};
+
+/**
+ * Non-destructive repair: look up an existing beneficiary on the provider
+ * side (first by providerBeneficiaryId if present, then by bank account+IFSC)
+ * and sync the result back to the local row.
+ *
+ * Unlike reregisterBeneficiaryWithProvider this never invalidates local state
+ * or creates anything new — it only reads from the provider and updates the
+ * local row if a confirmed beneficiary is found. Used for the admin
+ * "Repair Beneficiary Mapping" action and as a pre-flight in reregister.
+ */
+export async function repairBeneficiaryMappingFromProvider(
+  req: any,
+  beneficiaryRow: BeneficiaryRow,
+  env: CashfreePayoutEnv,
+  clientId: string,
+  clientSecret: string,
+  withdrawalId?: number | null,
+  providerConfig?: PayoutProviderConfig
+): Promise<RepairBeneficiaryResult> {
+  const accountMasked = beneficiaryRow.payoutMode === "UPI"
+    ? maskUpiId(beneficiaryRow.upiId)
+    : `****${maskBankAccountLast4(beneficiaryRow.bankAccount) ?? ""}`;
+  const logCtx = {
+    withdrawalId: withdrawalId ?? null,
+    beneficiaryId: beneficiaryRow.id,
+    merchantId: beneficiaryRow.merchantId,
+    accountMasked,
+  };
+
+  req.log.info(logCtx, "payout_beneficiary_repair_started");
+
+  // Step 1: If we already have a providerBeneficiaryId, check if it's still
+  // alive on the provider before trying account-based lookup.
+  if (beneficiaryRow.providerBeneficiaryId) {
+    try {
+      const { parsed, httpStatus } = await cashfreePayoutGetBeneficiary(
+        clientId, clientSecret, env,
+        beneficiaryRow.providerBeneficiaryId,
+        undefined,
+        providerConfig
+      );
+      if (httpStatus === 200) {
+        const echoedId = String(parsed?.beneficiary_id ?? "").trim();
+        const remoteStatus = String(parsed?.beneficiary_status ?? "").toUpperCase();
+        if (echoedId && remoteStatus !== "INVALID") {
+          req.log.info({ ...logCtx, httpStatus }, "payout_beneficiary_repair_found_by_id");
+          await db.update(payoutBeneficiariesTable)
+            .set({ providerStatus: "created", lastProviderError: null, status: "active", lastError: null })
+            .where(eq(payoutBeneficiariesTable.id, beneficiaryRow.id));
+          return {
+            ok: true,
+            foundOnProvider: true,
+            providerBeneficiaryId: beneficiaryRow.providerBeneficiaryId,
+            beneficiaryStatus: "VERIFIED",
+          };
+        }
+      }
+    } catch { /* fall through to account-based lookup */ }
+  }
+
+  // Step 2: Look up by bank account + IFSC (provider-side search).
+  // This finds beneficiaries registered under a different local ID (e.g.
+  // after row migration or after a providerBeneficiaryId was nulled).
+  const hasBankDetails = beneficiaryRow.payoutMode !== "UPI"
+    && !!(beneficiaryRow.bankAccount?.trim() && beneficiaryRow.ifscCode?.trim());
+
+  if (hasBankDetails) {
+    try {
+      const fallback = await cashfreePayoutGetBeneficiary(
+        clientId, clientSecret, env,
+        "",
+        {
+          bankAccountNumber: beneficiaryRow.bankAccount!.trim(),
+          bankIfsc: beneficiaryRow.ifscCode!.trim(),
+        },
+        providerConfig
+      );
+      if (fallback.httpStatus === 200) {
+        const realId = String(fallback.parsed?.beneficiary_id ?? "").trim();
+        const remoteStatus = String(fallback.parsed?.beneficiary_status ?? "").toUpperCase();
+        if (realId && remoteStatus !== "INVALID") {
+          req.log.info({ ...logCtx, httpStatus: fallback.httpStatus }, "payout_beneficiary_repair_found_by_account");
+          await db.update(payoutBeneficiariesTable)
+            .set({
+              providerBeneficiaryId: realId,
+              providerStatus: "created",
+              lastProviderError: null,
+              status: "active",
+              lastError: null,
+            })
+            .where(eq(payoutBeneficiariesTable.id, beneficiaryRow.id));
+          return {
+            ok: true,
+            foundOnProvider: true,
+            providerBeneficiaryId: realId,
+            beneficiaryStatus: "VERIFIED",
+          };
+        }
+      }
+    } catch { /* fall through */ }
+  }
+
+  req.log.warn(logCtx, "payout_beneficiary_repair_not_found");
+  return {
+    ok: false,
+    foundOnProvider: false,
+    beneficiaryStatus: toBeneficiaryStatus(beneficiaryRow.providerStatus),
+    message: "provider_beneficiary_missing",
+  };
+}
+
 /**
  * Force a fresh provider registration for a beneficiary — used by the admin
  * "Re-register Beneficiary" action and by the automatic invalid-beneficiary
- * recovery path. Always clears the existing (possibly stale/invalid)
- * provider_beneficiary_id first and only persists a new one after the
- * provider confirms it was created — never reuses the old id.
+ * recovery path.
+ *
+ * Before nuking local state and creating a new beneficiary on the provider,
+ * first tries a non-destructive repair (look up by providerBeneficiaryId or
+ * by account+IFSC). Only falls through to POST /beneficiary if the provider
+ * genuinely doesn't have the account registered — avoids duplicate creation
+ * and the "beneficiary already exists" / verify-fails cycle.
  */
 export async function reregisterBeneficiaryWithProvider(
   req: any,
@@ -318,6 +441,20 @@ export async function reregisterBeneficiaryWithProvider(
     "payout_beneficiary_re_register_started"
   );
 
+  // Try repair first — if the provider already has the account we just need
+  // to sync the providerBeneficiaryId, no new registration needed.
+  const repair = await repairBeneficiaryMappingFromProvider(
+    req, beneficiaryRow, env, clientId, clientSecret, withdrawalId, providerConfig
+  );
+  if (repair.ok && repair.foundOnProvider) {
+    req.log.info(
+      { withdrawalId: withdrawalId ?? null, beneficiaryId: beneficiaryRow.id },
+      "payout_beneficiary_re_register_success"
+    );
+    return { ok: true, providerBeneficiaryId: repair.providerBeneficiaryId };
+  }
+
+  // Provider doesn't have the beneficiary — proceed with fresh registration.
   await invalidateBeneficiaryProviderRegistration(beneficiaryRow.id, reason);
 
   const staleRow: BeneficiaryRow = {

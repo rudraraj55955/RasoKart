@@ -483,6 +483,8 @@ export * from './rejectInput';
 export * from './renameMerchantSavedFilterInput';
 export * from './renewPlanInput';
 export * from './reorderMerchantSavedFiltersInput';
+export * from './repairBeneficiaryMappingResponse';
+export * from './repairBeneficiaryMappingResponseBeneficiaryStatus';
 export * from './reportDeliveryLog';
 export * from './reportSchedule';
 export * from './reportScheduleFormat';

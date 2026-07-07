@@ -508,6 +508,34 @@ export async function cashfreePayoutEnsureBeneficiary(
     // it for a transfer.
     const verified = await cashfreePayoutVerifyBeneficiaryWithRetry(clientId, clientSecret, env, beneficiaryId, 3, 600, providerConfig);
     if (!verified.ok) {
+      // Verify by local ID failed. This can happen when the beneficiary was
+      // previously registered on Cashfree under a DIFFERENT local ID (e.g. after
+      // beneficiary row migration or re-registration). In that case POST returns
+      // "already exists" (409), but GET by the NEW local ID returns 404.
+      // Fallback: try GET by bank_account_number + IFSC (or UPI id for UPI payouts)
+      // to find the actual Cashfree-assigned beneficiary_id for this account.
+      const hasAccountFallback = !!(input.accountNumber?.trim() && input.ifsc?.trim());
+      const hasUpiFallback = !!input.upiId?.trim();
+      if (hasAccountFallback || hasUpiFallback) {
+        const fallback = await cashfreePayoutGetBeneficiary(
+          clientId, clientSecret, env,
+          "",
+          hasAccountFallback
+            ? { bankAccountNumber: input.accountNumber!.trim(), bankIfsc: input.ifsc!.trim() }
+            : undefined,
+          providerConfig
+        );
+        if (fallback.httpStatus === 200) {
+          const realId = String(fallback.parsed?.beneficiary_id ?? "").trim();
+          const realStatus = String(fallback.parsed?.beneficiary_status ?? "").toUpperCase();
+          if (realId && realStatus !== "INVALID") {
+            // Found the beneficiary on the provider side under a different ID.
+            // Return the ACTUAL provider-assigned beneficiary_id so callers can
+            // save it and skip repeated re-creation attempts.
+            return { ok: true, beneficiaryId: realId, httpStatus: fallback.httpStatus };
+          }
+        }
+      }
       return {
         ok: false,
         beneficiaryId,

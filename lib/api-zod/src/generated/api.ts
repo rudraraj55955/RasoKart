@@ -3118,6 +3118,22 @@ export const ReregisterWithdrawalBeneficiaryResponse = zod.object({
 
 
 /**
+ * @summary Non-destructive repair: find the beneficiary on the provider side (by providerBeneficiaryId or by bank account+IFSC) and sync back to local row. Never creates a new beneficiary — read-only towards the provider, write to local DB only on a confirmed match (admin only).
+ */
+export const RepairWithdrawalBeneficiaryMappingParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RepairWithdrawalBeneficiaryMappingResponse = zod.object({
+  "ok": zod.boolean().describe('True if a verified beneficiary was found on the provider and local row was updated'),
+  "foundOnProvider": zod.boolean().describe('True if the provider returned a matching beneficiary for this account'),
+  "providerBeneficiaryId": zod.string().nullish().describe('The provider-assigned beneficiary id found on the provider side (may differ from the locally generated id)'),
+  "beneficiaryStatus": zod.enum(['NOT_REGISTERED', 'VERIFIED', 'NOT_VERIFIED', 'FAILED']),
+  "message": zod.string().nullish().describe('provider_beneficiary_missing when not found; otherwise null on success')
+})
+
+
+/**
  * @summary Read-only check of the payout's beneficiary status directly with the provider (admin only). Never creates or mutates the beneficiary.
  */
 export const CheckWithdrawalBeneficiaryStatusParams = zod.object({

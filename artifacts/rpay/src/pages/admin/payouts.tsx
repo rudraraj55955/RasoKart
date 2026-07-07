@@ -6,6 +6,7 @@ import {
   useRefreshWithdrawalStatus,
   useRetryWithdrawal,
   useReregisterWithdrawalBeneficiary,
+  useRepairWithdrawalBeneficiaryMapping,
   useCheckWithdrawalBeneficiaryStatus,
   getListWithdrawalsQueryKey,
 } from "@workspace/api-client-react";
@@ -83,6 +84,7 @@ export default function AdminPayouts() {
   const refreshMutation = useRefreshWithdrawalStatus();
   const retryMutation = useRetryWithdrawal();
   const reregisterMutation = useReregisterWithdrawalBeneficiary();
+  const repairMappingMutation = useRepairWithdrawalBeneficiaryMapping();
   const checkBeneficiaryStatusMutation = useCheckWithdrawalBeneficiaryStatus();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() });
@@ -167,6 +169,25 @@ export default function AdminPayouts() {
           invalidate();
         },
         onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to retry payout"),
+      }
+    );
+  };
+
+  const handleRepairBeneficiaryMapping = (id: number) => {
+    repairMappingMutation.mutate(
+      { id },
+      {
+        onSuccess: (result: any) => {
+          if (result?.ok && result?.beneficiaryStatus === "VERIFIED") {
+            toast.success("Beneficiary mapping repaired — provider record linked. You can retry the payout now.");
+          } else if (result?.foundOnProvider) {
+            toast.info("Beneficiary found on provider but may not be fully verified yet. Check status before retrying.");
+          } else {
+            toast.warning("Beneficiary not found on provider. Try Re-register Beneficiary to create a new registration.");
+          }
+          invalidate();
+        },
+        onError: (e: any) => toast.error((e?.data as any)?.error ?? e?.message ?? "Failed to repair beneficiary mapping"),
       }
     );
   };
@@ -514,17 +535,30 @@ export default function AdminPayouts() {
                                       Retry
                                     </Button>
                                   ) : (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
-                                      onClick={() => handleReregisterBeneficiary(w.id)}
-                                      disabled={reregisterMutation.isPending}
-                                      title="Retry is disabled until the beneficiary is verified. Re-register the beneficiary with the provider first."
-                                    >
-                                      <UserCog className="w-4 h-4 mr-1" />
-                                      Re-register Beneficiary
-                                    </Button>
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                        onClick={() => handleRepairBeneficiaryMapping(w.id)}
+                                        disabled={repairMappingMutation.isPending || reregisterMutation.isPending}
+                                        title="Find the existing beneficiary on the provider side and link it (non-destructive). Try this first before Re-register."
+                                      >
+                                        <ShieldCheck className="w-4 h-4 mr-1" />
+                                        Repair Mapping
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                                        onClick={() => handleReregisterBeneficiary(w.id)}
+                                        disabled={reregisterMutation.isPending || repairMappingMutation.isPending}
+                                        title="Retry is disabled until the beneficiary is verified. Re-register the beneficiary with the provider first."
+                                      >
+                                        <UserCog className="w-4 h-4 mr-1" />
+                                        Re-register
+                                      </Button>
+                                    </>
                                   )
                                 )}
                                 {isFailed && (
@@ -731,17 +765,30 @@ export default function AdminPayouts() {
                       Retry
                     </Button>
                   ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-rose-500"
-                      onClick={() => handleReregisterBeneficiary(detailPayout.id)}
-                      disabled={reregisterMutation.isPending}
-                      title="Retry is disabled until the beneficiary is verified."
-                    >
-                      <UserCog className="w-4 h-4 mr-1" />
-                      Re-register Beneficiary
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-blue-400 border-blue-400/40"
+                        onClick={() => handleRepairBeneficiaryMapping(detailPayout.id)}
+                        disabled={repairMappingMutation.isPending || reregisterMutation.isPending}
+                        title="Find the existing beneficiary on the provider side and link it (non-destructive). Try this first before Re-register."
+                      >
+                        <ShieldCheck className="w-4 h-4 mr-1" />
+                        Repair Mapping
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-rose-500"
+                        onClick={() => handleReregisterBeneficiary(detailPayout.id)}
+                        disabled={reregisterMutation.isPending || repairMappingMutation.isPending}
+                        title="Retry is disabled until the beneficiary is verified."
+                      >
+                        <UserCog className="w-4 h-4 mr-1" />
+                        Re-register Beneficiary
+                      </Button>
+                    </>
                   )
                 )}
               </div>

@@ -3065,6 +3065,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReregisterBeneficiaryResponse"
 
+  /withdrawals/{id}/repair-beneficiary-mapping:
+    post:
+      operationId: repairWithdrawalBeneficiaryMapping
+      tags: [withdrawals]
+      summary: "Non-destructive repair: find the beneficiary on the provider side (by providerBeneficiaryId or by bank account+IFSC) and sync back to local row. Never creates a new beneficiary — read-only towards the provider, write to local DB only on a confirmed match (admin only)."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Repair result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepairBeneficiaryMappingResponse"
+
   /withdrawals/{id}/beneficiary-status:
     post:
       operationId: checkWithdrawalBeneficiaryStatus
@@ -11557,6 +11576,26 @@ components:
           type: string
         remarks:
           type: string
+
+    RepairBeneficiaryMappingResponse:
+      type: object
+      required: [ok, foundOnProvider, beneficiaryStatus]
+      properties:
+        ok:
+          type: boolean
+          description: True if a verified beneficiary was found on the provider and local row was updated
+        foundOnProvider:
+          type: boolean
+          description: True if the provider returned a matching beneficiary for this account
+        providerBeneficiaryId:
+          type: ["string", "null"]
+          description: The provider-assigned beneficiary id found on the provider side (may differ from the locally generated id)
+        beneficiaryStatus:
+          type: string
+          enum: [NOT_REGISTERED, VERIFIED, NOT_VERIFIED, FAILED]
+        message:
+          type: ["string", "null"]
+          description: "provider_beneficiary_missing when not found; otherwise null on success"
 
     ReregisterBeneficiaryResponse:
       type: object

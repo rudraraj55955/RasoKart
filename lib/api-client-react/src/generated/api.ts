@@ -325,6 +325,7 @@ import type {
   RenameMerchantSavedFilterInput,
   RenewPlanInput,
   ReorderMerchantSavedFiltersInput,
+  RepairBeneficiaryMappingResponse,
   ReregisterBeneficiaryResponse,
   ResendReconciliationAlertEmail200,
   ResendReconciliationReportEmail200,
@@ -7649,6 +7650,76 @@ export const useReregisterWithdrawalBeneficiary = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getReregisterWithdrawalBeneficiaryMutationOptions(options));
+    }
+
+export const getRepairWithdrawalBeneficiaryMappingUrl = (id: number,) => {
+
+
+
+
+  return `/api/withdrawals/${id}/repair-beneficiary-mapping`
+}
+
+/**
+ * @summary Non-destructive repair: find the beneficiary on the provider side (by providerBeneficiaryId or by bank account+IFSC) and sync back to local row. Never creates a new beneficiary — read-only towards the provider, write to local DB only on a confirmed match (admin only).
+ */
+export const repairWithdrawalBeneficiaryMapping = async (id: number, options?: RequestInit): Promise<RepairBeneficiaryMappingResponse> => {
+
+  return customFetch<RepairBeneficiaryMappingResponse>(getRepairWithdrawalBeneficiaryMappingUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRepairWithdrawalBeneficiaryMappingMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof repairWithdrawalBeneficiaryMapping>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof repairWithdrawalBeneficiaryMapping>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['repairWithdrawalBeneficiaryMapping'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof repairWithdrawalBeneficiaryMapping>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  repairWithdrawalBeneficiaryMapping(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RepairWithdrawalBeneficiaryMappingMutationResult = NonNullable<Awaited<ReturnType<typeof repairWithdrawalBeneficiaryMapping>>>
+
+    export type RepairWithdrawalBeneficiaryMappingMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Non-destructive repair: find the beneficiary on the provider side (by providerBeneficiaryId or by bank account+IFSC) and sync back to local row. Never creates a new beneficiary — read-only towards the provider, write to local DB only on a confirmed match (admin only).
+ */
+export const useRepairWithdrawalBeneficiaryMapping = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof repairWithdrawalBeneficiaryMapping>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof repairWithdrawalBeneficiaryMapping>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRepairWithdrawalBeneficiaryMappingMutationOptions(options));
     }
 
 export const getCheckWithdrawalBeneficiaryStatusUrl = (id: number,) => {

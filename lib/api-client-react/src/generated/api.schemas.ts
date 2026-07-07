@@ -1329,6 +1329,34 @@ export interface WithdrawalInput {
   remarks?: string;
 }
 
+export type RepairBeneficiaryMappingResponseBeneficiaryStatus = typeof RepairBeneficiaryMappingResponseBeneficiaryStatus[keyof typeof RepairBeneficiaryMappingResponseBeneficiaryStatus];
+
+
+export const RepairBeneficiaryMappingResponseBeneficiaryStatus = {
+  NOT_REGISTERED: 'NOT_REGISTERED',
+  VERIFIED: 'VERIFIED',
+  NOT_VERIFIED: 'NOT_VERIFIED',
+  FAILED: 'FAILED',
+} as const;
+
+export interface RepairBeneficiaryMappingResponse {
+  /** True if a verified beneficiary was found on the provider and local row was updated */
+  ok: boolean;
+  /** True if the provider returned a matching beneficiary for this account */
+  foundOnProvider: boolean;
+  /**
+     * The provider-assigned beneficiary id found on the provider side (may differ from the locally generated id)
+     * @nullable
+     */
+  providerBeneficiaryId?: string | null;
+  beneficiaryStatus: RepairBeneficiaryMappingResponseBeneficiaryStatus;
+  /**
+     * provider_beneficiary_missing when not found; otherwise null on success
+     * @nullable
+     */
+  message?: string | null;
+}
+
 export type ReregisterBeneficiaryResponseProviderStatus = typeof ReregisterBeneficiaryResponseProviderStatus[keyof typeof ReregisterBeneficiaryResponseProviderStatus];
 
 
