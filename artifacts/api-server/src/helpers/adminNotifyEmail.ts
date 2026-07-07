@@ -855,6 +855,26 @@ function buildCredentialRotationHtml(opts: {
 </html>`;
 }
 
+// Optional additional distribution list for credential rotation alerts (e.g. a
+// dedicated security team inbox). This is purely additive — it can never replace
+// or suppress the mandatory "all active admins" recipient list above.
+async function getCredentialRotationExtraRecipients(): Promise<string[]> {
+  try {
+    const rows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CREDENTIAL_ROTATION_EXTRA_RECIPIENTS));
+    const raw = rows[0]?.value ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CREDENTIAL_ROTATION_EXTRA_RECIPIENTS];
+    if (!raw) return [];
+    return raw
+      .split(",")
+      .map(e => e.trim().toLowerCase())
+      .filter(e => e.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 export async function notifyAdminsOfCredentialRotation(opts: {
   gateway: string;
   changedFields: string[];
@@ -863,12 +883,15 @@ export async function notifyAdminsOfCredentialRotation(opts: {
   try {
     if (opts.changedFields.length === 0) return;
 
-    const recipients = await getAllActiveAdminEmails();
+    const adminEmails = await getAllActiveAdminEmails();
 
-    if (recipients.length === 0) {
+    if (adminEmails.length === 0) {
       logger.info({ gateway: opts.gateway }, "No active admins found — skipping credential rotation alert");
       return;
     }
+
+    const extraRecipients = await getCredentialRotationExtraRecipients();
+    const recipients = Array.from(new Set([...adminEmails.map(e => e.toLowerCase()), ...extraRecipients]));
 
     const timestamp = new Date().toISOString();
     const html = buildCredentialRotationHtml({ ...opts, timestamp });

@@ -232,6 +232,9 @@ export default function AdminSettings() {
   const [reportRetryBackoffMs, setReportRetryBackoffMs] = useState<number>(1000);
   const [reportRetryInitialized, setReportRetryInitialized] = useState(false);
 
+  const [credRotationRecipientsInput, setCredRotationRecipientsInput] = useState<string>("");
+  const [credRotationInitialized, setCredRotationInitialized] = useState(false);
+
   const [webhookAlertCooldownHours, setWebhookAlertCooldownHours] = useState<number>(1);
   const [webhookAlertCooldownInitialized, setWebhookAlertCooldownInitialized] = useState(false);
   const [webhookAlertMerchantFilter, setWebhookAlertMerchantFilter] = useState<number | null>(null);
@@ -733,6 +736,36 @@ export default function AdminSettings() {
       qc.invalidateQueries({ queryKey: ["/api/settings/report-delivery-retries"] });
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+
+  const { data: credRotationData, isLoading: credRotationLoading } = useQuery<{ extraRecipients: string[]; lastUpdatedByEmail: string | null; lastUpdatedAt: string | null }>({
+    queryKey: ["/api/system-config/credential-rotation-alert-recipients"],
+    queryFn: () => apiGet("/system-config/credential-rotation-alert-recipients"),
+  });
+
+  useEffect(() => {
+    if (credRotationData && !credRotationInitialized) {
+      setCredRotationRecipientsInput(credRotationData.extraRecipients.join(", "));
+      setCredRotationInitialized(true);
+    }
+  }, [credRotationData, credRotationInitialized]);
+
+  const credRotationParsedRecipients = credRotationRecipientsInput
+    .split(",")
+    .map((e) => e.trim())
+    .filter((e) => e.length > 0);
+  const credRotationCurrentRecipients = credRotationData?.extraRecipients ?? [];
+  const credRotationUnchanged =
+    JSON.stringify([...credRotationParsedRecipients].sort()) === JSON.stringify([...credRotationCurrentRecipients].sort());
+
+  const { mutate: saveCredRotationRecipients, isPending: savingCredRotationRecipients } = useMutation({
+    mutationFn: () => apiPut("/system-config/credential-rotation-alert-recipients", { extraRecipients: credRotationParsedRecipients }),
+    onSuccess: (_data, _vars, _ctx) => {
+      toast.success("Credential rotation alert recipients saved");
+      setCredRotationRecipientsInput(credRotationParsedRecipients.join(", "));
+      qc.invalidateQueries({ queryKey: ["/api/system-config/credential-rotation-alert-recipients"] });
+    },
+    onError: (err: Error) => toast.error(getApiErrorMessage(err, "Failed to save credential rotation alert recipients")),
   });
 
   const [cleanupResult, setCleanupResult] = useState<{ totalScanned: number; deleted: number; errors: number } | null>(null);
@@ -2892,6 +2925,49 @@ export default function AdminSettings() {
               You will not receive the weekly report delivery health digest.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Credential Rotation Alert Recipients */}
+      <Card id="credential-rotation-alert-recipients" className="border-border/50 scroll-mt-6">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base">Credential Rotation Alert Recipients</CardTitle>
+          </div>
+          <CardDescription className="text-sm">
+            Every credential rotation alert (Cashfree Payin, Cashfree Payout, EKQR) is always sent to every active admin — this is mandatory and cannot be disabled.
+            Optionally, add extra recipients (e.g. a dedicated security team inbox) to receive these alerts in addition to admins.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="cred-rotation-extra-recipients" className="text-sm">Additional recipients (comma-separated)</Label>
+            <Input
+              id="cred-rotation-extra-recipients"
+              placeholder="e.g. security-team@yourcompany.com"
+              value={credRotationRecipientsInput}
+              onChange={(e) => setCredRotationRecipientsInput(e.target.value)}
+              disabled={credRotationLoading || savingCredRotationRecipients}
+            />
+            <p className="text-xs text-muted-foreground">
+              These addresses receive credential rotation alerts alongside all active admins. Leave blank to only notify admins (the default).
+            </p>
+          </div>
+          {credRotationData?.lastUpdatedByEmail && (
+            <p className="text-xs text-muted-foreground">
+              Last changed by {credRotationData.lastUpdatedByEmail}
+              {credRotationData.lastUpdatedAt ? ` on ${new Date(credRotationData.lastUpdatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}` : ""}
+            </p>
+          )}
+          <Button
+            size="sm"
+            onClick={() => saveCredRotationRecipients()}
+            disabled={savingCredRotationRecipients || credRotationLoading || credRotationUnchanged}
+          >
+            <Save className="w-3.5 h-3.5 mr-1.5" />
+            {savingCredRotationRecipients ? "Saving…" : "Save"}
+          </Button>
         </CardContent>
       </Card>
 

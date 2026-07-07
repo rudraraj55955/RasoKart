@@ -460,6 +460,91 @@ router.put("/signature-failure-alert", async (req, res, next) => {
   }
 });
 
+// GET /api/system-config/credential-rotation-alert-recipients
+// Additional/alternate distribution list for credential rotation alerts (e.g. a
+// dedicated security inbox). This is purely additive on top of the mandatory
+// "all active admins" recipient list, which cannot be disabled.
+router.get("/credential-rotation-alert-recipients", async (req, res, next) => {
+  try {
+    const rows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CREDENTIAL_ROTATION_EXTRA_RECIPIENTS));
+
+    const raw = rows[0]?.value ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CREDENTIAL_ROTATION_EXTRA_RECIPIENTS];
+    const extraRecipients = raw ? raw.split(",").map((e) => e.trim()).filter((e) => e.length > 0) : [];
+
+    res.json({
+      extraRecipients,
+      lastUpdatedByEmail: rows[0]?.updatedByEmail ?? null,
+      lastUpdatedAt: rows[0]?.updatedAt ? rows[0].updatedAt.toISOString() : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/system-config/credential-rotation-alert-recipients
+router.put("/credential-rotation-alert-recipients", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { extraRecipients } = req.body;
+
+    if (!Array.isArray(extraRecipients) || !extraRecipients.every((e) => typeof e === "string")) {
+      res.status(400).json({ error: "extraRecipients must be an array of strings" });
+      return;
+    }
+
+    if (extraRecipients.length > 20) {
+      res.status(400).json({ error: "extraRecipients cannot exceed 20 addresses" });
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const normalized = extraRecipients
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e.length > 0);
+
+    for (const email of normalized) {
+      if (!emailPattern.test(email)) {
+        res.status(400).json({ error: `Invalid email address: ${email}` });
+        return;
+      }
+    }
+
+    const dedupedRecipients = Array.from(new Set(normalized));
+    const value = dedupedRecipients.join(",");
+
+    await db
+      .insert(systemConfigTable)
+      .values({
+        key: SYSTEM_CONFIG_KEYS.CREDENTIAL_ROTATION_EXTRA_RECIPIENTS,
+        value,
+        updatedByEmail: user.email,
+      })
+      .onConflictDoUpdate({
+        target: systemConfigTable.key,
+        set: { value, updatedByEmail: user.email, updatedAt: sql`now()` },
+      });
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({ section: "credential_rotation_alert_recipients", extraRecipients: dedupedRecipients }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ extraRecipients: dedupedRecipients }, "Credential rotation alert extra recipients updated");
+
+    res.json({ extraRecipients: dedupedRecipients });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/system-config/test-email-retention
 router.get("/test-email-retention", async (req, res, next) => {
   try {
