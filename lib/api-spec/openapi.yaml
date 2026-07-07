@@ -9186,6 +9186,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /admin/upi-gateways/{id}/merchants:
+    get:
+      operationId: getUpiGatewayMerchants
+      summary: List all approved merchants with their assignment status for a gateway (admin)
+      tags: [UpiGateways]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Merchant assignment list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UpiGatewayMerchantAssignment"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/upi-gateways/{id}/assign-merchants:
     post:
       operationId: assignUpiGatewayMerchants
@@ -16198,6 +16225,22 @@ components:
       properties:
         success: { type: boolean }
         message: { type: string }
+
+    UpiGatewayMerchantAssignment:
+      type: object
+      required: [merchantId, businessName, email, isActive, source]
+      properties:
+        merchantId: { type: integer }
+        businessName: { type: string }
+        email: { type: string }
+        isActive: { type: boolean }
+        minAmount: { type: string, nullable: true }
+        maxAmount: { type: string, nullable: true }
+        dailyLimit: { type: string, nullable: true }
+        priorityOverride: { type: integer, nullable: true }
+        source:
+          type: string
+          enum: [merchant, global, default]
 
     UpiGatewayAssignMerchantsBody:
       type: object

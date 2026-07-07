@@ -398,6 +398,7 @@ import type {
   UpiGateway,
   UpiGatewayAssignMerchantsBody,
   UpiGatewayCreateBody,
+  UpiGatewayMerchantAssignment,
   UpiGatewayTestResult,
   UpiGatewayUpdateBody,
   UpigatewayCheckStatusInput,
@@ -26856,6 +26857,83 @@ export const useTestUpiGatewayWebhook = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getTestUpiGatewayWebhookMutationOptions(options));
     }
+
+export const getGetUpiGatewayMerchantsUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/upi-gateways/${id}/merchants`
+}
+
+/**
+ * @summary List all approved merchants with their assignment status for a gateway (admin)
+ */
+export const getUpiGatewayMerchants = async (id: number, options?: RequestInit): Promise<UpiGatewayMerchantAssignment[]> => {
+
+  return customFetch<UpiGatewayMerchantAssignment[]>(getGetUpiGatewayMerchantsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUpiGatewayMerchantsQueryKey = (id: number,) => {
+    return [
+    `/api/admin/upi-gateways/${id}/merchants`
+    ] as const;
+    }
+
+
+export const getGetUpiGatewayMerchantsQueryOptions = <TData = Awaited<ReturnType<typeof getUpiGatewayMerchants>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUpiGatewayMerchants>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUpiGatewayMerchantsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUpiGatewayMerchants>>> = ({ signal }) => getUpiGatewayMerchants(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUpiGatewayMerchants>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUpiGatewayMerchantsQueryResult = NonNullable<Awaited<ReturnType<typeof getUpiGatewayMerchants>>>
+export type GetUpiGatewayMerchantsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List all approved merchants with their assignment status for a gateway (admin)
+ */
+
+export function useGetUpiGatewayMerchants<TData = Awaited<ReturnType<typeof getUpiGatewayMerchants>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUpiGatewayMerchants>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUpiGatewayMerchantsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getAssignUpiGatewayMerchantsUrl = (id: number,) => {
 

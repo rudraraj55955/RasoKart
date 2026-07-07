@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListUpiGateways, getListUpiGatewaysQueryKey,
   useCreateUpiGateway, useUpdateUpiGateway, useDeleteUpiGateway,
   useTestUpiGatewayConnection, useTestUpiGatewayWebhook, useAssignUpiGatewayMerchants,
-  useListMerchants, useGetMe,
+  useGetUpiGatewayMerchants,
+  useGetMe,
 } from "@workspace/api-client-react";
 import type { UpiGateway, UpiGatewayAssignMerchantsBodyPerMerchantItem } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -118,14 +119,45 @@ export default function AdminUpiGateways() {
   const [assignMode, setAssignMode] = useState<"all" | "selected" | "hide">("all");
   const [merchantSearch, setMerchantSearch] = useState("");
   const [selectedMerchants, setSelectedMerchants] = useState<Set<number>>(new Set());
-  const { data: merchantsData } = useListMerchants({ status: "approved", limit: 200 });
-  const merchants = (merchantsData?.data ?? []).filter(
+  const { data: assignMerchantsData, isLoading: assignMerchantsLoading } = useGetUpiGatewayMerchants(
+    assigning?.id ?? 0,
+    { query: { enabled: !!assigning && (assigning.id ?? 0) > 0, queryKey: ["getUpiGatewayMerchants", assigning?.id ?? 0] } }
+  );
+
+  useEffect(() => {
+    if (!assignMerchantsData || !assigning) return;
+    const merchantRows = assignMerchantsData.filter(r => r.source === "merchant");
+    const globalRow = assignMerchantsData.find(r => r.source === "global" || r.source === "default");
+    const hasGlobalFalse = assignMerchantsData.some(r => r.source === "global" && !r.isActive);
+    const hasGlobalTrue = assignMerchantsData.some(r => r.source === "global" && r.isActive);
+    if (hasGlobalFalse) {
+      setAssignMode("hide");
+    } else if (hasGlobalTrue && merchantRows.length === 0) {
+      setAssignMode("all");
+    } else if (merchantRows.length > 0) {
+      setAssignMode("selected");
+      setSelectedMerchants(new Set(merchantRows.filter(r => r.isActive).map(r => r.merchantId)));
+    } else {
+      setAssignMode(assigning.globalVisible === true ? "all" : assigning.globalVisible === false ? "hide" : "all");
+    }
+  }, [assignMerchantsData, assigning]);
+
+  const allMerchants = assignMerchantsData ?? [];
+  const merchants = allMerchants.filter(
     m => !merchantSearch || m.businessName.toLowerCase().includes(merchantSearch.toLowerCase())
   );
+
   const assignMut = useAssignUpiGatewayMerchants({
     mutation: {
-      onSuccess: () => { toast.success("Merchant visibility updated"); setAssigning(null); invalidate(); },
-      onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to update merchant assignments"),
+      onSuccess: () => {
+        toast.success("Merchant assignments updated successfully");
+        setAssigning(null);
+        invalidate();
+      },
+      onError: (e: any) => {
+        const serverMsg = e?.response?.data?.error as string | undefined;
+        toast.error(serverMsg ?? `Failed to update merchant assignments for "${assigning?.name ?? "gateway"}"`);
+      },
     },
   });
 
@@ -196,7 +228,7 @@ export default function AdminUpiGateways() {
 
   function openAssign(g: UpiGateway) {
     setAssigning(g);
-    setAssignMode(g.globalVisible === true ? "all" : g.globalVisible === false ? "hide" : "selected");
+    setAssignMode("all");
     setSelectedMerchants(new Set());
     setMerchantSearch("");
   }
@@ -528,45 +560,82 @@ export default function AdminUpiGateways() {
 
       {/* Assign merchants dialog */}
       <Dialog open={!!assigning} onOpenChange={v => { if (!v) setAssigning(null); }}>
-        <DialogContent className="max-w-lg bg-card border-border max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-lg bg-card border-border max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Users className="w-4 h-4 text-primary" />Assign Merchants — {assigning?.name}</DialogTitle>
-            <DialogDescription>Control which merchants can see and use this gateway.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              Assign Merchants — {assigning?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Control which merchants can see and use <span className="font-medium text-foreground">{assigning?.name}</span>.
+              {assigning && (
+                <span className="block text-xs mt-1 text-muted-foreground/70">
+                  Gateway ID: {assigning.id} · Category: {CATEGORY_LABEL[assigning.category] ?? assigning.category}
+                </span>
+              )}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <Select value={assignMode} onValueChange={v => setAssignMode(v as any)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Visible to all merchants</SelectItem>
-                <SelectItem value="selected">Visible to selected merchants only</SelectItem>
-                <SelectItem value="hide">Hidden from all merchants</SelectItem>
-              </SelectContent>
-            </Select>
-            {assignMode === "selected" && (
-              <div className="space-y-2">
-                <Input placeholder="Search merchants…" value={merchantSearch} onChange={e => setMerchantSearch(e.target.value)} />
-                <div className="max-h-64 overflow-y-auto border border-border/50 rounded-lg divide-y divide-border/30">
-                  {merchants.map(m => (
-                    <label key={m.id} className="flex items-center gap-2 p-2 text-sm cursor-pointer hover:bg-muted/20">
-                      <Checkbox
-                        checked={selectedMerchants.has(m.id)}
-                        onCheckedChange={checked => setSelectedMerchants(prev => {
-                          const next = new Set(prev);
-                          if (checked) next.add(m.id); else next.delete(m.id);
-                          return next;
-                        })}
-                      />
-                      {m.businessName}
-                    </label>
-                  ))}
-                  {merchants.length === 0 && <p className="p-3 text-xs text-muted-foreground">No merchants found</p>}
-                </div>
+            {assignMerchantsLoading ? (
+              <div className="flex items-center justify-center py-6 text-muted-foreground text-sm gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Loading current assignments…
               </div>
+            ) : (
+              <>
+                <Select value={assignMode} onValueChange={v => { setAssignMode(v as "all" | "selected" | "hide"); if (v !== "selected") setSelectedMerchants(new Set()); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Visible to all merchants</SelectItem>
+                    <SelectItem value="selected">Visible to selected merchants only</SelectItem>
+                    <SelectItem value="hide">Hidden from all merchants</SelectItem>
+                  </SelectContent>
+                </Select>
+                {assignMode === "selected" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-muted-foreground">Select merchants to grant access</Label>
+                      <span className="text-xs text-muted-foreground">{selectedMerchants.size} selected</span>
+                    </div>
+                    <Input placeholder="Search merchants…" value={merchantSearch} onChange={e => setMerchantSearch(e.target.value)} />
+                    <div className="max-h-64 overflow-y-auto border border-border/50 rounded-lg divide-y divide-border/30">
+                      {merchants.map(m => (
+                        <label key={m.merchantId} className="flex items-center gap-2 p-2.5 text-sm cursor-pointer hover:bg-muted/20">
+                          <Checkbox
+                            checked={selectedMerchants.has(m.merchantId)}
+                            onCheckedChange={checked => setSelectedMerchants(prev => {
+                              const next = new Set(prev);
+                              if (checked) next.add(m.merchantId); else next.delete(m.merchantId);
+                              return next;
+                            })}
+                          />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{m.businessName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                          </div>
+                        </label>
+                      ))}
+                      {merchants.length === 0 && <p className="p-3 text-xs text-muted-foreground">No approved merchants found</p>}
+                    </div>
+                  </div>
+                )}
+                {assignMode === "all" && (
+                  <p className="text-xs text-muted-foreground bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
+                    This gateway will be visible to all approved merchants.
+                  </p>
+                )}
+                {assignMode === "hide" && (
+                  <p className="text-xs text-muted-foreground bg-rose-500/5 border border-rose-500/20 rounded-lg p-3">
+                    This gateway will be hidden from all merchants.
+                  </p>
+                )}
+              </>
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssigning(null)}>Cancel</Button>
-            <Button onClick={submitAssign} disabled={assignMut.isPending}>{assignMut.isPending ? "Saving…" : "Save Assignments"}</Button>
+            <Button onClick={submitAssign} disabled={assignMut.isPending || assignMerchantsLoading}>
+              {assignMut.isPending ? "Saving…" : "Save Assignments"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

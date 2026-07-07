@@ -8697,6 +8697,27 @@ export const TestUpiGatewayWebhookResponse = zod.object({
 
 
 /**
+ * @summary List all approved merchants with their assignment status for a gateway (admin)
+ */
+export const GetUpiGatewayMerchantsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetUpiGatewayMerchantsResponseItem = zod.object({
+  "merchantId": zod.number(),
+  "businessName": zod.string(),
+  "email": zod.string(),
+  "isActive": zod.boolean(),
+  "minAmount": zod.string().nullish(),
+  "maxAmount": zod.string().nullish(),
+  "dailyLimit": zod.string().nullish(),
+  "priorityOverride": zod.number().nullish(),
+  "source": zod.enum(['merchant', 'global', 'default'])
+})
+export const GetUpiGatewayMerchantsResponse = zod.array(GetUpiGatewayMerchantsResponseItem)
+
+
+/**
  * @summary Assign/hide a UPI gateway for merchants, with optional per-merchant limits (super admin only)
  */
 export const AssignUpiGatewayMerchantsParams = zod.object({

@@ -608,6 +608,8 @@ export * from './upiGatewayCreateBody';
 export * from './upiGatewayCreateBodyCategory';
 export * from './upiGatewayCreateBodyMode';
 export * from './upiGatewayCreateBodyStatus';
+export * from './upiGatewayMerchantAssignment';
+export * from './upiGatewayMerchantAssignmentSource';
 export * from './upiGatewayMode';
 export * from './upigatewaySettings';
 export * from './upigatewaySettingsEnv';

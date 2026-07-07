@@ -4994,6 +4994,27 @@ export interface UpiGatewayTestResult {
   message: string;
 }
 
+export type UpiGatewayMerchantAssignmentSource = typeof UpiGatewayMerchantAssignmentSource[keyof typeof UpiGatewayMerchantAssignmentSource];
+
+
+export const UpiGatewayMerchantAssignmentSource = {
+  merchant: 'merchant',
+  global: 'global',
+  default: 'default',
+} as const;
+
+export interface UpiGatewayMerchantAssignment {
+  merchantId: number;
+  businessName: string;
+  email: string;
+  isActive: boolean;
+  minAmount?: string | null;
+  maxAmount?: string | null;
+  dailyLimit?: string | null;
+  priorityOverride?: number | null;
+  source: UpiGatewayMerchantAssignmentSource;
+}
+
 export type UpiGatewayAssignMerchantsBodyMode = typeof UpiGatewayAssignMerchantsBodyMode[keyof typeof UpiGatewayAssignMerchantsBodyMode];
 
 
