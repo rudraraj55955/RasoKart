@@ -7670,6 +7670,16 @@ paths:
       description: Kicks off the GitHub sync script in the background, bypassing the enabled/schedule checks. Returns immediately with a "running" status; poll /github-sync/status for the outcome.
       security:
         - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                retryOf:
+                  type: string
+                  description: ID of a previous failed sync run this is retrying. Recorded in the audit log and in the history entry for traceability.
       responses:
         "202":
           description: Sync run started
@@ -10440,6 +10450,9 @@ components:
         hasLog:
           type: boolean
           description: Whether a full captured log is available for this run via /github-sync/history/{id}/log
+        retryOf:
+          type: string
+          description: ID of the earlier failed sync run that this run was retrying, if this run was triggered as a retry.
 
     GithubSyncHistory:
       type: object

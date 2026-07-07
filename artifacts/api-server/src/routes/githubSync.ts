@@ -279,6 +279,7 @@ router.get("/divergence", (req, res) => {
 router.post("/run", async (req, res, next) => {
   try {
     const user = (req as any).user;
+    const retryOf = typeof req.body?.retryOf === "string" && req.body.retryOf.trim() ? req.body.retryOf.trim() : undefined;
 
     if (syncRunInProgress) {
       res.status(409).json({ error: "A GitHub sync run is already in progress" });
@@ -287,9 +288,14 @@ router.post("/run", async (req, res, next) => {
 
     syncRunInProgress = true;
 
+    const spawnEnv: NodeJS.ProcessEnv = { ...process.env, GITHUB_SYNC_FORCE: "true" };
+    if (retryOf) {
+      spawnEnv["GITHUB_SYNC_RETRY_OF"] = retryOf;
+    }
+
     const child = spawn("pnpm", ["--filter", "@workspace/scripts", "run", "github-sync"], {
       cwd: REPO_ROOT,
-      env: { ...process.env, GITHUB_SYNC_FORCE: "true" },
+      env: spawnEnv,
       stdio: "ignore",
       detached: true,
     });
@@ -297,7 +303,7 @@ router.post("/run", async (req, res, next) => {
 
     child.on("exit", (code) => {
       syncRunInProgress = false;
-      logger.info({ code }, "Manually-triggered GitHub sync run finished");
+      logger.info({ code, retryOf }, "Manually-triggered GitHub sync run finished");
     });
 
     child.on("error", (err) => {
@@ -312,7 +318,7 @@ router.post("/run", async (req, res, next) => {
         action: "github_sync_triggered",
         targetType: "system_config",
         targetId: null,
-        details: null,
+        details: retryOf ? JSON.stringify({ retryOf }) : null,
         ipAddress: req.ip ?? null,
       });
     } catch (auditErr) {

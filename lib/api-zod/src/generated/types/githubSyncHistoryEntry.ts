@@ -20,4 +20,6 @@ export interface GithubSyncHistoryEntry {
   errorMessage?: string;
   /** Whether a full captured log is available for this run via /github-sync/history/{id}/log */
   hasLog?: boolean;
+  /** ID of the earlier failed sync run that this run was retrying, if this run was triggered as a retry. */
+  retryOf?: string;
 }

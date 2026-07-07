@@ -7387,6 +7387,15 @@ export const GetGithubSyncRunLogResponse = zod.object({
 
 
 /**
+ * Kicks off the GitHub sync script in the background, bypassing the enabled/schedule checks. Returns immediately with a "running" status; poll /github-sync/status for the outcome.
+ * @summary Manually trigger a GitHub sync run immediately
+ */
+export const RunGithubSyncBody = zod.object({
+  "retryOf": zod.string().optional().describe('ID of a previous failed sync run this is retrying. Recorded in the audit log and in the history entry for traceability.')
+})
+
+
+/**
  * Performs a read-only fetch (no push) against the remote and reports whether it has diverged from the local history, so the UI can warn before a force-push discards those commits.
  * @summary Check whether the remote GitHub branch has commits not present locally
  */
@@ -7409,7 +7418,8 @@ export const GetGithubSyncHistoryResponse = zod.object({
   "syncedAt": zod.coerce.date().describe('ISO timestamp of when the sync completed'),
   "repo": zod.string().describe('GitHub repository that was synced'),
   "errorMessage": zod.string().optional().describe('Error detail when status is \"failure\"'),
-  "hasLog": zod.boolean().optional().describe('Whether a full captured log is available for this run via \/github-sync\/history\/{id}\/log')
+  "hasLog": zod.boolean().optional().describe('Whether a full captured log is available for this run via \/github-sync\/history\/{id}\/log'),
+  "retryOf": zod.string().optional().describe('ID of the earlier failed sync run that this run was retrying, if this run was triggered as a retry.')
 })).describe('Past sync runs, newest first, capped at 50')
 })
 

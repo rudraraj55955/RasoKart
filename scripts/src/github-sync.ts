@@ -27,6 +27,7 @@ interface GithubSyncHistoryEntry {
   repo: string;
   errorMessage?: string;
   hasLog?: boolean;
+  retryOf?: string;
 }
 
 function countConsecutiveFailures(): number {
@@ -182,7 +183,7 @@ function writeLogFile(id: string, content: string): boolean {
   }
 }
 
-function writeStatus(status: "success" | "failure", id: string, logLines: string[], errorMessage?: string) {
+function writeStatus(status: "success" | "failure", id: string, logLines: string[], errorMessage?: string, retryOf?: string) {
   const syncedAt = new Date().toISOString();
   const payload: Record<string, string> = {
     id,
@@ -193,12 +194,15 @@ function writeStatus(status: "success" | "failure", id: string, logLines: string
   if (errorMessage) {
     payload["errorMessage"] = errorMessage;
   }
+  if (retryOf) {
+    payload["retryOf"] = retryOf;
+  }
   try {
     writeFileSync(STATUS_FILE, JSON.stringify(payload, null, 2), "utf-8");
   } catch {
   }
   const hasLog = logLines.length > 0 && writeLogFile(id, logLines.join("\n"));
-  appendHistory({ id, status, syncedAt, repo: GITHUB_REPO, errorMessage, hasLog });
+  appendHistory({ id, status, syncedAt, repo: GITHUB_REPO, errorMessage, hasLog, retryOf });
 }
 
 function appendHistory(entry: GithubSyncHistoryEntry) {
@@ -270,6 +274,8 @@ async function readSyncConfig(): Promise<{
 async function main() {
   // GITHUB_SYNC_FORCE=true bypasses schedule and enabled checks (for manual or test runs)
   const force = process.env["GITHUB_SYNC_FORCE"] === "true";
+  // GITHUB_SYNC_RETRY_OF=<id> tags this run as a retry of a specific failed run
+  const retryOf = process.env["GITHUB_SYNC_RETRY_OF"] ?? undefined;
 
   const config = await readSyncConfig();
 
@@ -351,7 +357,7 @@ async function main() {
     // Capture the failure streak that preceded this success BEFORE writeStatus
     // appends the new "success" entry (which would reset countConsecutiveFailures to 0).
     const priorStreak = countConsecutiveFailures();
-    writeStatus("success", runId, logLines);
+    writeStatus("success", runId, logLines, undefined, retryOf);
 
     if (priorStreak >= config.failureThreshold) {
       await notifyAdminsOfGithubSyncRecovered({
@@ -364,7 +370,7 @@ async function main() {
       err instanceof Error
         ? err.message.replace(token, "<REDACTED>")
         : String(err).replace(token, "<REDACTED>");
-    writeStatus("failure", runId, logLines, message);
+    writeStatus("failure", runId, logLines, message, retryOf);
     const pushError = new Error(`Push failed — ${message}`);
 
     await sendAdminAlert({

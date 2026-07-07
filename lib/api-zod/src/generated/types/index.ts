@@ -518,6 +518,7 @@ export * from './routingStatusResponse';
 export * from './routingStatusResponseMetrics24hItem';
 export * from './routingStatusResponseProvidersItem';
 export * from './routingStatusResponseRecentActivity';
+export * from './runGithubSyncBody';
 export * from './runLedgerBackfill200';
 export * from './runVaCleanup200';
 export * from './savedFilter';

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -923,13 +923,19 @@ export default function AdminSettings() {
   });
 
   const [githubSyncTriggering, setGithubSyncTriggering] = useState(false);
+  // retryingFromModal must be declared before the history hook so its value can control the refetch interval
+  const [retryingFromModal, setRetryingFromModal] = useState(false);
+  const [retryResult, setRetryResult] = useState<GithubSyncHistoryEntry | null>(null);
+  // Timestamp recorded when a retry is triggered — used to distinguish a brand-new
+  // retry entry from any older entries that already carry the same retryOf value.
+  const retryStartedAtRef = useRef<Date | null>(null);
 
   const { data: githubSyncStatus } = useGetGithubSyncStatus({
     query: { refetchInterval: githubSyncTriggering ? 2_000 : 60_000 },
   } as any);
 
   const { data: githubSyncHistory } = useGetGithubSyncHistory({
-    query: { refetchInterval: githubSyncTriggering ? 2_000 : 60_000 },
+    query: { refetchInterval: (githubSyncTriggering || retryingFromModal) ? 2_000 : 60_000 },
   } as any);
 
   const githubSyncIsRunning = githubSyncTriggering || githubSyncStatus?.status === "running";
@@ -959,7 +965,7 @@ export default function AdminSettings() {
 
   const handleConfirmGithubSync = () => {
     setGithubSyncConfirmOpen(false);
-    runGithubSyncNow();
+    runGithubSyncNow({});
   };
 
   const [selectedSyncRun, setSelectedSyncRun] = useState<GithubSyncHistoryEntry | null>(null);
@@ -967,6 +973,28 @@ export default function AdminSettings() {
     selectedSyncRun?.id ?? "",
     { query: { enabled: !!selectedSyncRun?.id && !!selectedSyncRun?.hasLog } } as any,
   );
+
+  // Watch history for the retry entry — do NOT depend on githubSyncIsRunning because
+  // the status file never writes "running", causing githubSyncTriggering to reset
+  // almost immediately and creating a race condition if we gate on it.
+  // Instead, keep polling history (controlled via retryingFromModal above) and wait
+  // until an entry whose retryOf matches the selected run AND whose syncedAt is at or
+  // after retryStartedAtRef.current appears — this prevents a prior retry of the same
+  // failed run from being matched as the "new" result.
+  useEffect(() => {
+    if (!retryingFromModal || !selectedSyncRun?.id) return;
+    const baseline = retryStartedAtRef.current;
+    const retryEntry = githubSyncHistory?.entries.find(
+      e =>
+        e.retryOf === selectedSyncRun.id &&
+        (!baseline || new Date(e.syncedAt) >= baseline),
+    ) ?? null;
+    if (retryEntry) {
+      setRetryResult(retryEntry);
+      setRetryingFromModal(false);
+      retryStartedAtRef.current = null;
+    }
+  }, [retryingFromModal, githubSyncHistory, selectedSyncRun?.id]);
 
   const { data: quietHoursFlushData, isLoading: quietHoursFlushLoading } = useGetQuietHoursFlushConfig({
     query: {
@@ -3160,6 +3188,7 @@ export default function AdminSettings() {
                     {githubSyncHistory.entries.map((entry, i) => (
                       <tr
                         key={entry.id ?? i}
+                        data-sync-run-id={entry.id}
                         className={`hover:bg-muted/10 transition-colors ${entry.status === "failure" ? "cursor-pointer" : ""}`}
                         onClick={() => { if (entry.status === "failure") setSelectedSyncRun(entry); }}
                       >
@@ -3323,7 +3352,7 @@ export default function AdminSettings() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!selectedSyncRun} onOpenChange={open => { if (!open) setSelectedSyncRun(null); }}>
+      <Dialog open={!!selectedSyncRun} onOpenChange={open => { if (!open) { setSelectedSyncRun(null); setRetryResult(null); setRetryingFromModal(false); } }}>
         <DialogContent className="sm:max-w-2xl max-h-[calc(100dvh-4rem)] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -3372,6 +3401,132 @@ export default function AdminSettings() {
                   <pre className="rounded-lg border border-border/50 bg-black/30 p-3 text-[11px] font-mono text-muted-foreground whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
                     {selectedSyncRunLog.log}
                   </pre>
+                )}
+              </div>
+
+              {/* Retry section */}
+              <div className="border-t border-border/40 pt-4 space-y-3">
+                <p className="text-xs font-medium text-muted-foreground">Retry this run</p>
+
+                {/* No retry attempted yet */}
+                {!retryingFromModal && !retryResult && (
+                  <div className="flex items-start gap-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      disabled={githubSyncIsRunning || runningGithubSync}
+                      onClick={() => {
+                        setRetryResult(null);
+                        retryStartedAtRef.current = new Date();
+                        setRetryingFromModal(true);
+                        runGithubSyncNow(
+                          { data: { retryOf: selectedSyncRun.id } },
+                          { onError: () => { setRetryingFromModal(false); retryStartedAtRef.current = null; } },
+                        );
+                      }}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                      Retry now
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Fix the underlying issue (e.g. update <span className="font-mono">GITHUB_TOKEN</span>), then click Retry to re-run the sync and see whether it succeeds.
+                    </p>
+                  </div>
+                )}
+
+                {/* Retry in progress — gated on retryingFromModal only; githubSyncIsRunning
+                    resets almost immediately because the status file never writes "running" */}
+                {retryingFromModal && (
+                  <div className="flex items-center gap-2 rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2.5 text-xs text-violet-300">
+                    <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-spin" />
+                    Retry in progress — polling for result…
+                  </div>
+                )}
+
+                {/* Retry result: before/after comparison */}
+                {retryResult && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 space-y-1">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Before (this run)</p>
+                        <div className="flex items-center gap-1.5">
+                          <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                          <span className="text-xs font-medium text-red-400">failure</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{new Date(selectedSyncRun.syncedAt).toLocaleString()}</p>
+                        {selectedSyncRun.errorMessage && (
+                          <p className="text-[11px] text-red-300 break-all line-clamp-2" title={selectedSyncRun.errorMessage}>
+                            {selectedSyncRun.errorMessage}
+                          </p>
+                        )}
+                      </div>
+                      <div className={`rounded-lg border p-3 space-y-1 ${retryResult.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5"}`}>
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">After (retry)</p>
+                        <div className="flex items-center gap-1.5">
+                          {retryResult.status === "success"
+                            ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            : <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                          <span className={`text-xs font-medium ${retryResult.status === "success" ? "text-emerald-400" : "text-red-400"}`}>
+                            {retryResult.status}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{new Date(retryResult.syncedAt).toLocaleString()}</p>
+                        {retryResult.status === "failure" && retryResult.errorMessage && (
+                          <p className="text-[11px] text-red-300 break-all line-clamp-2" title={retryResult.errorMessage}>
+                            {retryResult.errorMessage}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {retryResult.status === "success" ? (
+                        <p className="text-xs text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          Retry succeeded — the underlying issue has been resolved.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-red-400 flex items-center gap-1">
+                          <XCircle className="w-3.5 h-3.5 shrink-0" />
+                          Retry still failed — check the error above and try again.
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        className="ml-auto text-xs text-violet-400 hover:underline shrink-0"
+                        onClick={() => {
+                          setSelectedSyncRun(null);
+                          setRetryResult(null);
+                          setTimeout(() => {
+                            const el = document.querySelector(`[data-sync-run-id="${retryResult.id}"]`);
+                            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }, 150);
+                        }}
+                      >
+                        View in history ↓
+                      </button>
+                      {retryResult.status === "failure" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          disabled={githubSyncIsRunning || runningGithubSync}
+                          onClick={() => {
+                            setRetryResult(null);
+                            retryStartedAtRef.current = new Date();
+                            setRetryingFromModal(true);
+                            runGithubSyncNow(
+                              { data: { retryOf: selectedSyncRun.id } },
+                              { onError: () => { setRetryingFromModal(false); retryStartedAtRef.current = null; } },
+                            );
+                          }}
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                          Retry again
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

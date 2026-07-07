@@ -342,6 +342,7 @@ import type {
   RoutingRule,
   RoutingRuleInput,
   RoutingStatusResponse,
+  RunGithubSyncBody,
   RunLedgerBackfill200,
   SavedFilter,
   ScheduleRenewalInput,
@@ -22419,14 +22420,15 @@ export const getRunGithubSyncUrl = () => {
  * Kicks off the GitHub sync script in the background, bypassing the enabled/schedule checks. Returns immediately with a "running" status; poll /github-sync/status for the outcome.
  * @summary Manually trigger a GitHub sync run immediately
  */
-export const runGithubSync = async ( options?: RequestInit): Promise<GithubSyncStatus> => {
+export const runGithubSync = async (runGithubSyncBody?: RunGithubSyncBody, options?: RequestInit): Promise<GithubSyncStatus> => {
 
   return customFetch<GithubSyncStatus>(getRunGithubSyncUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      runGithubSyncBody,)
   }
 );}
 
@@ -22434,8 +22436,8 @@ export const runGithubSync = async ( options?: RequestInit): Promise<GithubSyncS
 
 
 export const getRunGithubSyncMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runGithubSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof runGithubSync>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runGithubSync>>, TError,{data?: BodyType<RunGithubSyncBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runGithubSync>>, TError,{data?: BodyType<RunGithubSyncBody>}, TContext> => {
 
 const mutationKey = ['runGithubSync'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -22447,10 +22449,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runGithubSync>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runGithubSync>>, {data?: BodyType<RunGithubSyncBody>}> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  runGithubSync(requestOptions)
+          return  runGithubSync(data,requestOptions)
         }
 
 
@@ -22461,18 +22463,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type RunGithubSyncMutationResult = NonNullable<Awaited<ReturnType<typeof runGithubSync>>>
-
+    export type RunGithubSyncMutationBody = BodyType<RunGithubSyncBody> | undefined
     export type RunGithubSyncMutationError = ErrorType<ErrorResponse>
 
     /**
  * @summary Manually trigger a GitHub sync run immediately
  */
 export const useRunGithubSync = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runGithubSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runGithubSync>>, TError,{data?: BodyType<RunGithubSyncBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof runGithubSync>>,
         TError,
-        void,
+        {data?: BodyType<RunGithubSyncBody>},
         TContext
       > => {
       return useMutation(getRunGithubSyncMutationOptions(options));

@@ -172,6 +172,8 @@ export interface GithubSyncHistoryEntry {
   errorMessage?: string;
   /** Whether a full captured log is available for this run via /github-sync/history/{id}/log */
   hasLog?: boolean;
+  /** ID of the earlier failed sync run that this run was retrying, if this run was triggered as a retry. */
+  retryOf?: string;
 }
 
 export interface GithubSyncHistory {
@@ -7206,6 +7208,11 @@ export type UpdateGithubSyncConfigBody = {
      * @minimum 1
      */
   renotifyInterval?: number;
+};
+
+export type RunGithubSyncBody = {
+  /** ID of a previous failed sync run this is retrying. Recorded in the audit log and in the history entry for traceability. */
+  retryOf?: string;
 };
 
 export type ListCashfreePaymentLogsParams = {
