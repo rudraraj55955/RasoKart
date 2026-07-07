@@ -641,6 +641,11 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
   const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard(
     integration.providerKey,
     integration.displayNamePublic,
+    {
+      apiKeySet: integration.apiKeySet,
+      apiSecretSet: integration.apiSecretSet,
+      webhookSecretSet: integration.webhookSecretSet,
+    },
   );
 
   const { mutate: saveConfig, isPending: saving } = useUpdateProviderIntegration({
