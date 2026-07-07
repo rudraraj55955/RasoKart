@@ -163,6 +163,11 @@ function EndpointRow({
   );
 }
 
+interface BodyFieldSchema {
+  key: string;
+  type: "string" | "number" | "integer" | "boolean" | "object" | "array";
+}
+
 interface TryItPanelProps {
   method: string;
   path: string;
@@ -170,7 +175,7 @@ interface TryItPanelProps {
   defaultBody?: string;
   requiresAuth?: boolean;
   commonQueryParams?: string[];
-  expectedBodyKeys?: string[];
+  expectedBodyKeys?: BodyFieldSchema[];
 }
 
 function looksLikeCredential(value: string): boolean {
@@ -227,14 +232,62 @@ function collectCredentialWarnings(
   return warnings;
 }
 
-function getUnknownBodyKeys(body: string, expectedBodyKeys: string[]): string[] {
-  if (expectedBodyKeys.length === 0 || !body.trim()) return [];
+function getUnknownBodyKeys(body: string, schema: BodyFieldSchema[]): string[] {
+  if (schema.length === 0 || !body.trim()) return [];
   try {
     const parsed: unknown = JSON.parse(body);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    const expectedKeys = schema.map((f) => f.key);
     return Object.keys(parsed as Record<string, unknown>).filter(
-      (key) => !expectedBodyKeys.includes(key)
+      (key) => !expectedKeys.includes(key)
     );
+  } catch {
+    return [];
+  }
+}
+
+interface BodyTypeMismatch {
+  key: string;
+  expected: string;
+  actual: string;
+}
+
+function getMismatchedBodyTypes(body: string, schema: BodyFieldSchema[]): BodyTypeMismatch[] {
+  if (schema.length === 0 || !body.trim()) return [];
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    const obj = parsed as Record<string, unknown>;
+    const mismatches: BodyTypeMismatch[] = [];
+    for (const field of schema) {
+      if (!(field.key in obj)) continue;
+      const value = obj[field.key];
+      if (value === null) continue;
+      const actual = Array.isArray(value) ? "array" : typeof value;
+      let matches = false;
+      switch (field.type) {
+        case "string":
+          matches = typeof value === "string";
+          break;
+        case "number":
+        case "integer":
+          matches = typeof value === "number";
+          break;
+        case "boolean":
+          matches = typeof value === "boolean";
+          break;
+        case "object":
+          matches = typeof value === "object" && !Array.isArray(value);
+          break;
+        case "array":
+          matches = Array.isArray(value);
+          break;
+      }
+      if (!matches) {
+        mismatches.push({ key: field.key, expected: field.type, actual });
+      }
+    }
+    return mismatches;
   } catch {
     return [];
   }
@@ -558,6 +611,11 @@ function TryItPanel({
   const supportsQueryParams = method === "GET" || method === "DELETE";
   const unknownBodyKeys = useMemo(
     () => getUnknownBodyKeys(body, expectedBodyKeys),
+    [body, expectedBodyKeys]
+  );
+
+  const typeMismatches = useMemo(
+    () => getMismatchedBodyTypes(body, expectedBodyKeys),
     [body, expectedBodyKeys]
   );
 
@@ -989,7 +1047,9 @@ function TryItPanel({
                 onChange={(e) => setBody(e.target.value)}
                 rows={6}
                 className={`text-xs font-mono bg-black/40 resize-y ${
-                  unknownBodyKeys.length > 0 ? "border-amber-500/50 focus-visible:ring-amber-500/30" : ""
+                  unknownBodyKeys.length > 0 || typeMismatches.length > 0
+                    ? "border-amber-500/50 focus-visible:ring-amber-500/30"
+                    : ""
                 }`}
                 spellCheck={false}
               />
@@ -1002,6 +1062,15 @@ function TryItPanel({
                   {" "}— it may be ignored by the server (undocumented fields are still sent).
                 </p>
               )}
+              {typeMismatches.map((m) => (
+                <p key={m.key} className="text-[10px] text-amber-500/80 pl-0.5 flex items-center gap-1">
+                  <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                  <span>
+                    <span className="font-mono">"{m.key}"</span>
+                    {" "}should be a <span className="font-mono">{m.expected}</span>, but got a <span className="font-mono">{m.actual}</span> — the request will still be sent.
+                  </span>
+                </p>
+              ))}
             </div>
           )}
 
@@ -1685,7 +1754,12 @@ export default function ApiDocs() {
   "payload": "upi://pay?pa=merchant@upi&pn=MyStore&am=500&cu=INR",
   "amount": "500.00"
 }`}
-              expectedBodyKeys={["type", "label", "payload", "amount"]}
+              expectedBodyKeys={[
+                { key: "type", type: "string" },
+                { key: "label", type: "string" },
+                { key: "payload", type: "string" },
+                { key: "amount", type: "string" },
+              ]}
             />
             <TryItPanel
               method="PUT"
@@ -1695,7 +1769,10 @@ export default function ApiDocs() {
   "label": "Updated Label",
   "status": "active"
 }`}
-              expectedBodyKeys={["label", "status"]}
+              expectedBodyKeys={[
+                { key: "label", type: "string" },
+                { key: "status", type: "string" },
+              ]}
             />
             <TryItPanel method="DELETE" path="/api/qr-codes/{id}" token={globalToken} />
           </div>
@@ -1791,7 +1868,13 @@ export default function ApiDocs() {
   "accountHolder": "MyStore Ltd",
   "label": "Collections Account"
 }`}
-              expectedBodyKeys={["accountNumber", "ifsc", "bankName", "accountHolder", "label"]}
+              expectedBodyKeys={[
+                { key: "accountNumber", type: "string" },
+                { key: "ifsc", type: "string" },
+                { key: "bankName", type: "string" },
+                { key: "accountHolder", type: "string" },
+                { key: "label", type: "string" },
+              ]}
             />
             <TryItPanel
               method="PUT"
@@ -1801,7 +1884,10 @@ export default function ApiDocs() {
   "label": "Updated Label",
   "status": "active"
 }`}
-              expectedBodyKeys={["label", "status"]}
+              expectedBodyKeys={[
+                { key: "label", type: "string" },
+                { key: "status", type: "string" },
+              ]}
             />
             <TryItPanel method="DELETE" path="/api/virtual-accounts/{id}" token={globalToken} />
           </div>
@@ -2247,7 +2333,10 @@ await fetch("https://your-domain.com/api/callbacks/payment", {
   "email": "merchant@demo.com",
   "password": "Merchant@123456"
 }`}
-              expectedBodyKeys={["email", "password"]}
+              expectedBodyKeys={[
+                { key: "email", type: "string" },
+                { key: "password", type: "string" },
+              ]}
             />
           </div>
         </Section>
