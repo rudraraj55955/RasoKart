@@ -139,7 +139,7 @@ type PayoutCreateInput = {
  */
 export function normalizeCashfreePayoutStatus(status?: string | null): "PENDING" | "SUCCESS" | "FAILED" {
   const s = String(status ?? "").trim().toUpperCase();
-  if (["SUCCESS", "COMPLETED", "PROCESSED", "TRANSFER_SUCCESS"].includes(s)) return "SUCCESS";
+  if (["SUCCESS", "SUCCESSFUL", "COMPLETED", "PROCESSED", "TRANSFER_SUCCESS", "TRANSFER_SUCCESSFUL"].includes(s)) return "SUCCESS";
   if (["PENDING", "PROCESSING", "IN_PROGRESS", "QUEUED", "APPROVAL_PENDING", "VALIDATION_PENDING", "RECEIVED", "ACKNOWLEDGED"].includes(s)) return "PENDING";
   return "FAILED";
 }
@@ -651,17 +651,29 @@ export async function cashfreePayoutGetTransferStatus(
 
   logEndpointPathBuilt("GET", url.toString().replace(baseUrl, ""));
 
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-version": apiVersion,
-      "x-client-id": clientId,
-      "x-client-secret": clientSecret,
-    },
-  });
+  const headers = {
+    "Content-Type": "application/json",
+    "x-api-version": apiVersion,
+    "x-client-id": clientId,
+    "x-client-secret": clientSecret,
+  };
 
+  const res = await fetch(url.toString(), { method: "GET", headers });
   const { raw, parsed, httpStatus } = await readJson(res);
+
+  // If Cashfree returned 404 and the referenceId looks like a numeric cf_transfer_id
+  // (all digits), retry with ?cf_transfer_id= instead of ?transfer_id=.
+  // This handles rows where the approve/retry route saved Cashfree's own internal
+  // numeric ID as providerReferenceId instead of our local RKPAY_... string.
+  if (httpStatus === 404 && /^\d+$/.test(referenceId.trim())) {
+    const fallbackUrl = new URL(buildPayoutEndpoint(baseUrl, "/transfers"));
+    fallbackUrl.searchParams.set("cf_transfer_id", referenceId);
+    logEndpointPathBuilt("GET", fallbackUrl.toString().replace(baseUrl, "") + " [cf_transfer_id fallback]");
+    const res2 = await fetch(fallbackUrl.toString(), { method: "GET", headers });
+    const r2 = await readJson(res2);
+    return { raw: r2.raw, parsed: flattenV2Response(r2.parsed), httpStatus: r2.httpStatus };
+  }
+
   return { raw, parsed: flattenV2Response(parsed), httpStatus };
 }
 

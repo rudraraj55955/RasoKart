@@ -154,6 +154,7 @@ function mapWithdrawal(
     utr: w.transferStatus === "SUCCESS" ? w.utr : null,
     failureReason: isAdmin ? w.failureReason : (safeFailureReason ? MERCHANT_GENERIC_FAILURE_MESSAGE : null),
     safeFailureReason: isAdmin ? safeFailureReason : (safeFailureReason ? MERCHANT_GENERIC_FAILURE_MESSAGE : null),
+    hasProviderReference: isAdmin ? !!w.providerReferenceId : undefined,
     payoutMode: w.payoutMode,
     upiId: w.upiId,
     remarks: w.remarks,
@@ -765,7 +766,11 @@ router.post("/:id/refresh-status", requireAdmin, async (req, res) => {
     res.status(400).json({ error: "Can only refresh approved payouts" });
     return;
   }
-  if (["SUCCESS", "FAILED", "REVERSED"].includes(w.transferStatus)) {
+  // SUCCESS is already correct — no need to re-check.
+  // REVERSED means it was manually handled — don't re-check.
+  // FAILED rows with a providerReferenceId may have succeeded on the provider side
+  // and need a re-check (that is the core fix for withdrawn #31).
+  if (w.transferStatus === "SUCCESS" || w.transferStatus === "REVERSED") {
     res.status(400).json({ error: `Payout already in terminal state: ${w.transferStatus}` });
     return;
   }
@@ -794,8 +799,13 @@ router.post("/:id/refresh-status", requireAdmin, async (req, res) => {
   const newTransferStatus =
     normalized === "SUCCESS" ? "SUCCESS" : normalized === "FAILED" ? "FAILED" : w.transferStatus;
   const newUtr = normalized === "SUCCESS" ? (result.parsed?.utr ?? w.utr) : w.utr;
+  // Clear failureReason on SUCCESS — provider confirmed it went through.
+  // On FAILED keep the existing reason if set (avoids overwriting a more specific
+  // beneficiary or credential error), or fall back to a safe generic constant.
   const newFailureReason =
-    normalized === "FAILED" ? "Transfer was not created. Please retry payout." : w.failureReason;
+    normalized === "SUCCESS" ? null :
+    normalized === "FAILED" ? (w.failureReason ?? "payout_provider_failed") :
+    w.failureReason;
   const isNewTerminal = normalized === "SUCCESS" || normalized === "FAILED";
 
   // Step 1: Persist the updated status row FIRST, only if the status actually changed.
@@ -828,19 +838,39 @@ router.post("/:id/refresh-status", requireAdmin, async (req, res) => {
 
   // Step 2: Wallet mutations AFTER the status row is committed.
   if (normalized === "SUCCESS" && w.transferStatus !== "SUCCESS") {
-    await mutateWallet(
-      w.merchantId,
-      { holdDelta: -amt, totalPayoutDelta: amt },
-      {
-        txnType: "payout_success",
-        bucket: "hold",
-        amount: -amt,
-        referenceType: "withdrawal",
-        referenceId: id,
-        description: `Payout #${id} confirmed successful — ₹${fmtAmt(amt)} settled`,
-        createdBy: user.id,
-      }
-    );
+    if (["FAILED", "REVERSED"].includes(w.transferStatus)) {
+      // Correction path — funds were already released back to available when the
+      // payout was recorded as FAILED. Pull them back and credit total payouts,
+      // reversing the totalReversals increment that happened at that time.
+      await mutateWallet(
+        w.merchantId,
+        { availableDelta: -amt, totalPayoutDelta: amt, totalReversalsDelta: -amt },
+        {
+          txnType: "payout_success_correction",
+          bucket: "available",
+          amount: -amt,
+          referenceType: "withdrawal",
+          referenceId: id,
+          description: `Payout #${id} — provider confirmed SUCCESS (was locally ${w.transferStatus}) — ₹${fmtAmt(amt)} corrected`,
+          createdBy: user.id,
+        }
+      );
+    } else {
+      // Normal path — funds are still in hold
+      await mutateWallet(
+        w.merchantId,
+        { holdDelta: -amt, totalPayoutDelta: amt },
+        {
+          txnType: "payout_success",
+          bucket: "hold",
+          amount: -amt,
+          referenceType: "withdrawal",
+          referenceId: id,
+          description: `Payout #${id} confirmed successful — ₹${fmtAmt(amt)} settled`,
+          createdBy: user.id,
+        }
+      );
+    }
   } else if (normalized === "FAILED" && !["FAILED", "REVERSED"].includes(w.transferStatus)) {
     await mutateWallet(
       w.merchantId,
@@ -860,9 +890,14 @@ router.post("/:id/refresh-status", requireAdmin, async (req, res) => {
   const [finalRow] = await db
     .select().from(withdrawalsTable).where(eq(withdrawalsTable.id, id)).limit(1);
 
+  const logEvent =
+    normalized === "SUCCESS" && w.transferStatus !== "SUCCESS" ? "provider_success_local_updated" :
+    normalized === "FAILED" && !["FAILED", "REVERSED"].includes(w.transferStatus) ? "provider_failed_local_updated" :
+    "payout_status_refreshed";
+
   req.log.info(
-    { withdrawalId: id, prevStatus: w.transferStatus, newTransferStatus },
-    "payout_status_refreshed"
+    { withdrawalId: id, prevTransferStatus: w.transferStatus, newTransferStatus, logEvent },
+    logEvent
   );
   res.json(mapWithdrawal(finalRow!, merchantName, true));
 });
@@ -903,6 +938,17 @@ router.post("/:id/retry", requireAdmin, async (req, res) => {
   if (!["FAILED", "REVERSED"].includes(w.transferStatus)) {
     res.status(400).json({
       error: `Payout transfer status is ${w.transferStatus} — only FAILED or REVERSED payouts can be retried`,
+    });
+    return;
+  }
+  // Block retry when a provider reference ID exists: the payout reached the provider
+  // and may have succeeded even though the local record shows FAILED. Retrying without
+  // first confirming the outcome would risk a duplicate payment to the merchant.
+  // Admin must run "Check Payout Status" first to clear this gate.
+  if (w.providerReferenceId) {
+    res.status(409).json({
+      error: "This payout has a provider reference ID — it may have succeeded on the provider side. Run 'Check Payout Status' first before retrying to avoid a duplicate payment.",
+      hasProviderReference: true,
     });
     return;
   }

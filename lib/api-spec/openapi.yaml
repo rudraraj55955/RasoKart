@@ -11534,6 +11534,9 @@ components:
         safeFailureReason:
           type: ["string", "null"]
           description: Sanitized, generic failure reason — admin sees a safe internal reason, merchant sees only a generic support message; never a raw provider response
+        hasProviderReference:
+          type: ["boolean", "null"]
+          description: Admin-only — true when a provider reference ID exists, meaning the payout reached the provider and may have succeeded even if local status is FAILED. Retry is blocked while this is true.
         rejectionReason:
           type: ["string", "null"]
         approvedAt:

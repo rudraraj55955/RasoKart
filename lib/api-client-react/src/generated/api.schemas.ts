@@ -1275,6 +1275,11 @@ export interface Withdrawal {
      * @nullable
      */
   safeFailureReason?: string | null;
+  /**
+     * Admin-only — true when a provider reference ID exists, meaning the payout reached the provider and may have succeeded even if local status is FAILED. Retry is blocked while this is true.
+     * @nullable
+     */
+  hasProviderReference?: boolean | null;
   /** @nullable */
   rejectionReason?: string | null;
   /** @nullable */

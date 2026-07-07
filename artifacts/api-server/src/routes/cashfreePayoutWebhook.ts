@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { db, cashfreePayoutsTable, cashfreePayoutWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { db, cashfreePayoutsTable, cashfreePayoutWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, withdrawalsTable } from "@workspace/db";
+import { and, eq, or } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyCashfreeWebhookSignature } from "../helpers/cashfree";
 import { normalizeCashfreePayoutStatus } from "../helpers/cashfreePayout";
+import { mutateWallet } from "./wallets";
 
 const router = Router();
 
@@ -64,18 +65,26 @@ router.post("/", async (req, res) => {
 
   try {
     // ── Signature verification ────────────────────────────────────────────
-    const [secretRow] = await db
-      .select({ value: systemConfigTable.value })
+    // Fetch both the dedicated webhook secret and the client secret.
+    // Cashfree may sign payout webhooks with the Client Secret in some environments,
+    // so we try the webhook secret first and fall back to the client secret.
+    const secretRows = await db
+      .select({ key: systemConfigTable.key, value: systemConfigTable.value })
       .from(systemConfigTable)
-      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_WEBHOOK_SECRET))
-      .limit(1);
+      .where(
+        or(
+          eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_WEBHOOK_SECRET),
+          eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET),
+        )
+      );
+    const secretMap = new Map(secretRows.map(r => [r.key, r.value ?? ""]));
+    const webhookSecret = secretMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_WEBHOOK_SECRET) ?? "";
+    const clientSecretFallback = secretMap.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_SECRET) ?? "";
 
-    const webhookSecret = secretRow?.value ?? "";
-
-    if (!webhookSecret) {
+    if (!webhookSecret && !clientSecretFallback) {
       // Fail-closed: log the event but perform NO state mutations without a verified origin.
       // Return 200 so Cashfree does not retry — configure the secret to enable full processing.
-      logger.warn({ endpoint }, "Cashfree payout webhook received but CASHFREE_PAYOUT_WEBHOOK_SECRET is not configured — skipping all state mutations");
+      logger.warn({ endpoint }, "Cashfree payout webhook received but no webhook secret or client secret is configured — skipping all state mutations");
       const body = req.body as Record<string, unknown>;
       eventType = ((body["type"] ?? body["event"]) as string | undefined) ?? null;
       const data = body["data"] as Record<string, unknown> | undefined;
@@ -90,11 +99,19 @@ router.post("/", async (req, res) => {
       return;
     }
 
-    const valid = verifyCashfreeWebhookSignature(rawBody, timestamp ?? "", signature ?? "", webhookSecret);
+    // Try webhook secret first; fall back to client secret if first attempt fails.
+    const validWithWebhookSecret = webhookSecret
+      ? verifyCashfreeWebhookSignature(rawBody, timestamp ?? "", signature ?? "", webhookSecret)
+      : false;
+    const validWithClientSecret = !validWithWebhookSecret && clientSecretFallback
+      ? verifyCashfreeWebhookSignature(rawBody, timestamp ?? "", signature ?? "", clientSecretFallback)
+      : false;
+    const valid = validWithWebhookSecret || validWithClientSecret;
+
     signatureVerified = valid;
     if (!valid) {
-      logger.warn({ endpoint, timestamp, hasSignature: !!signature }, "Cashfree payout webhook rejected: invalid signature");
-      await insertLog({ endpoint, eventType: null, status: null, signatureVerified: false, payoutId: null, transferId: null, cfTransferId: null, utr: null, safeError: "Invalid webhook signature", processingResult: "rejected", rawPayload: rawBody });
+      logger.warn({ endpoint, timestamp, hasSignature: !!signature, triedFallback: !!clientSecretFallback }, "webhook_signature_mismatch");
+      await insertLog({ endpoint, eventType: null, status: null, signatureVerified: false, payoutId: null, transferId: null, cfTransferId: null, utr: null, safeError: "webhook_signature_mismatch", processingResult: "rejected", rawPayload: rawBody });
       res.status(401).json({ error: "Invalid webhook signature" });
       return;
     }
@@ -127,51 +144,123 @@ router.post("/", async (req, res) => {
       return;
     }
 
-    // ── Find the matching payout in our DB ────────────────────────────────
-    const conditions = [];
-    if (transferId) conditions.push(eq(cashfreePayoutsTable.transferId, transferId));
-    if (cfTransferId) conditions.push(eq(cashfreePayoutsTable.cashfreeTransferId, cfTransferId));
+    const normalizedStatus = normalizeCashfreePayoutStatus(statusRaw);
 
-    const [payout] = conditions.length > 0
-      ? await db.select().from(cashfreePayoutsTable).where(or(...conditions)).limit(1)
-      : [];
+    // ── Look up both tables in parallel ───────────────────────────────────
+    // cashfreePayoutsTable — legacy/internal payout records
+    // withdrawalsTable — merchant withdrawal payouts (the primary path)
+    const cfConditions = [];
+    if (transferId) cfConditions.push(eq(cashfreePayoutsTable.transferId, transferId));
+    if (cfTransferId) cfConditions.push(eq(cashfreePayoutsTable.cashfreeTransferId, cfTransferId));
 
-    if (!payout) {
-      logger.warn({ endpoint, transferId, cfTransferId }, "Cashfree payout webhook: matching payout not found in DB");
+    const wdConditions = [];
+    if (transferId) wdConditions.push(eq(withdrawalsTable.providerReferenceId, transferId));
+    if (cfTransferId) wdConditions.push(eq(withdrawalsTable.providerReferenceId, cfTransferId));
+
+    const [[payout], [withdrawal]] = await Promise.all([
+      cfConditions.length > 0
+        ? db.select().from(cashfreePayoutsTable).where(or(...cfConditions)).limit(1)
+        : Promise.resolve([] as typeof cashfreePayoutsTable.$inferSelect[]),
+      wdConditions.length > 0
+        ? db.select().from(withdrawalsTable).where(or(...wdConditions)).limit(1)
+        : Promise.resolve([] as typeof withdrawalsTable.$inferSelect[]),
+    ]);
+
+    if (!payout && !withdrawal) {
+      logger.warn({ endpoint, transferId, cfTransferId }, "Cashfree payout webhook: matching record not found in DB");
       processingResult = "unmatched";
       safeError = "Payout record not found";
       await insertLog({ endpoint, eventType, status: statusRaw, signatureVerified, payoutId: null, transferId, cfTransferId, utr, safeError, processingResult, rawPayload: rawBody });
       return;
     }
 
-    payoutId = payout.id;
-    const normalizedStatus = normalizeCashfreePayoutStatus(statusRaw);
-
-    // ── Update payout status, UTR (on success), failure reason (on failed) ──
-    if (normalizedStatus !== payout.status || (normalizedStatus === "SUCCESS" && utr && !payout.utr)) {
-      const baseSet = {
-        status: normalizedStatus,
-        cashfreeTransferId: cfTransferId ?? payout.cashfreeTransferId ?? null,
-      };
-
-      let finalSet: typeof baseSet & { utr?: string | null; errorMessage?: string | null };
-      if (normalizedStatus === "SUCCESS") {
-        finalSet = { ...baseSet, utr: utr ?? undefined, errorMessage: null };
-      } else if (normalizedStatus === "FAILED") {
-        finalSet = { ...baseSet, errorMessage: failureReason ? failureReason.substring(0, 500) : "Transfer failed" };
-      } else {
-        finalSet = baseSet;
+    // ── Update cashfreePayoutsTable (legacy path) ─────────────────────────
+    if (payout) {
+      payoutId = payout.id;
+      if (normalizedStatus !== payout.status || (normalizedStatus === "SUCCESS" && utr && !payout.utr)) {
+        const baseSet = {
+          status: normalizedStatus,
+          cashfreeTransferId: cfTransferId ?? payout.cashfreeTransferId ?? null,
+        };
+        let finalSet: typeof baseSet & { utr?: string | null; errorMessage?: string | null };
+        if (normalizedStatus === "SUCCESS") {
+          finalSet = { ...baseSet, utr: utr ?? undefined, errorMessage: null };
+        } else if (normalizedStatus === "FAILED") {
+          finalSet = { ...baseSet, errorMessage: failureReason ? failureReason.substring(0, 500) : "Transfer failed" };
+        } else {
+          finalSet = baseSet;
+        }
+        await db.update(cashfreePayoutsTable).set(finalSet).where(eq(cashfreePayoutsTable.id, payout.id));
+        logger.info({ endpoint, payoutId: payout.id, transferId, oldStatus: payout.status, newStatus: normalizedStatus, utr }, "Cashfree payout status updated via webhook");
       }
+    }
 
-      await db.update(cashfreePayoutsTable)
-        .set(finalSet)
-        .where(eq(cashfreePayoutsTable.id, payout.id));
+    // ── Update withdrawalsTable + wallet mutations ────────────────────────
+    // This is the primary path for merchant withdrawal payouts.
+    if (withdrawal && withdrawal.status === "approved" && withdrawal.transferStatus !== "SUCCESS") {
+      const wAmt = Number(withdrawal.amount);
+      const prevTransferStatus = withdrawal.transferStatus;
 
-      logger.info({ endpoint, payoutId: payout.id, transferId, oldStatus: payout.status, newStatus: normalizedStatus, utr }, "Cashfree payout status updated via webhook");
+      const newWdTransferStatus =
+        normalizedStatus === "SUCCESS" ? "SUCCESS" :
+        normalizedStatus === "FAILED" ? "FAILED" :
+        withdrawal.transferStatus;
+      const newWdUtr = normalizedStatus === "SUCCESS" ? (utr ?? withdrawal.utr) : withdrawal.utr;
+      const newWdFailureReason =
+        normalizedStatus === "SUCCESS" ? null :
+        normalizedStatus === "FAILED" ? (failureReason?.substring(0, 500) ?? withdrawal.failureReason ?? "payout_provider_failed") :
+        withdrawal.failureReason;
+      const isWdTerminal = normalizedStatus === "SUCCESS" || normalizedStatus === "FAILED";
+
+      // Conditional update — guard against concurrent webhook deliveries
+      const [updatedWd] = await db
+        .update(withdrawalsTable)
+        .set({
+          transferStatus: newWdTransferStatus,
+          utr: newWdUtr,
+          failureReason: newWdFailureReason,
+          completedAt: isWdTerminal ? new Date() : withdrawal.completedAt,
+        })
+        .where(
+          and(
+            eq(withdrawalsTable.id, withdrawal.id),
+            eq(withdrawalsTable.transferStatus, withdrawal.transferStatus),
+          )
+        )
+        .returning();
+
+      if (updatedWd) {
+        logger.info({ endpoint, withdrawalId: withdrawal.id, transferId, cfTransferId, prevTransferStatus, newTransferStatus: newWdTransferStatus, utr }, "payout_withdrawal_status_updated_via_webhook");
+
+        // Wallet mutations — only when status actually changed
+        if (normalizedStatus === "SUCCESS") {
+          if (["FAILED", "REVERSED"].includes(prevTransferStatus)) {
+            // Correction: funds were already released back to available when FAILED was recorded
+            await mutateWallet(
+              withdrawal.merchantId,
+              { availableDelta: -wAmt, totalPayoutDelta: wAmt, totalReversalsDelta: -wAmt },
+              { txnType: "payout_success_correction", bucket: "available", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} — provider SUCCESS via webhook (was locally ${prevTransferStatus}) — ₹${wAmt} corrected`, createdBy: null }
+            );
+          } else {
+            // Normal: funds still in hold
+            await mutateWallet(
+              withdrawal.merchantId,
+              { holdDelta: -wAmt, totalPayoutDelta: wAmt },
+              { txnType: "payout_success", bucket: "hold", amount: -wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed successful via webhook — ₹${wAmt} settled`, createdBy: null }
+            );
+          }
+        } else if (normalizedStatus === "FAILED" && !["FAILED", "REVERSED"].includes(prevTransferStatus)) {
+          await mutateWallet(
+            withdrawal.merchantId,
+            { holdDelta: -wAmt, availableDelta: wAmt, totalReversalsDelta: wAmt },
+            { txnType: "payout_failed_release", bucket: "hold", amount: wAmt, referenceType: "withdrawal", referenceId: withdrawal.id, description: `Payout #${withdrawal.id} confirmed failed via webhook — ₹${wAmt} released back`, createdBy: null }
+          );
+        }
+      }
     }
 
     processingResult = "processed";
-    await insertLog({ endpoint, eventType, status: normalizedStatus, signatureVerified, payoutId: payout.id, transferId, cfTransferId, utr, safeError: null, processingResult, rawPayload: rawBody });
+    await insertLog({ endpoint, eventType, status: normalizedStatus, signatureVerified, payoutId: payoutId, transferId, cfTransferId, utr, safeError: null, processingResult, rawPayload: rawBody });
 
   } catch (err) {
     logger.error({ err, endpoint, transferId, eventType }, "Cashfree payout webhook processing error");

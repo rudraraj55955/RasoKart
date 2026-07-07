@@ -511,7 +511,21 @@ export default function AdminPayouts() {
                                   </Button>
                                 )}
                                 {isFailed && (
-                                  w.failureReason?.startsWith("PAYOUT_CREDENTIAL_ERROR") ? (
+                                  w.hasProviderReference ? (
+                                    // Payout reached the provider — may have succeeded. Block retry
+                                    // until Check Payout Status confirms the actual outcome.
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                      onClick={() => handleRefreshStatus(w.id)}
+                                      disabled={refreshMutation.isPending}
+                                      title="This payout reached the provider and may have succeeded. Check the current status before retrying to avoid a duplicate payment."
+                                    >
+                                      <RefreshCw className={`w-4 h-4 mr-1 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                                      Check Payout Status
+                                    </Button>
+                                  ) : w.failureReason?.startsWith("PAYOUT_CREDENTIAL_ERROR") ? (
                                     <Button
                                       size="sm"
                                       variant="ghost"
@@ -753,7 +767,19 @@ export default function AdminPayouts() {
                   Check Beneficiary Status
                 </Button>
                 {["FAILED", "REVERSED"].includes(detailPayout.transferStatus) && (
-                  detailPayout.beneficiaryStatus === "VERIFIED" ? (
+                  detailPayout.hasProviderReference ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-sky-400 border-sky-400/40"
+                      onClick={() => handleRefreshStatus(detailPayout.id)}
+                      disabled={refreshMutation.isPending}
+                      title="This payout reached the provider and may have succeeded. Check payout status before retrying to avoid a duplicate payment."
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-1 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                      Check Payout Status
+                    </Button>
+                  ) : detailPayout.beneficiaryStatus === "VERIFIED" ? (
                     <Button
                       size="sm"
                       variant="outline"
