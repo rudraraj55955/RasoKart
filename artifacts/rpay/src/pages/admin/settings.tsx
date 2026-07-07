@@ -234,6 +234,11 @@ export default function AdminSettings() {
 
   const [credRotationRecipientsInput, setCredRotationRecipientsInput] = useState<string>("");
   const [credRotationInitialized, setCredRotationInitialized] = useState(false);
+  const [credRotationTestGateway, setCredRotationTestGateway] = useState("cashfree");
+  const [credRotationTestResult, setCredRotationTestResult] = useState<"success" | "error" | null>(null);
+  const [credRotationTestMessage, setCredRotationTestMessage] = useState("");
+  const [sendingCredRotationTest, setSendingCredRotationTest] = useState(false);
+  const [previewingCredRotationEmail, setPreviewingCredRotationEmail] = useState(false);
 
   const [webhookAlertCooldownHours, setWebhookAlertCooldownHours] = useState<number>(1);
   const [webhookAlertCooldownInitialized, setWebhookAlertCooldownInitialized] = useState(false);
@@ -2968,6 +2973,110 @@ export default function AdminSettings() {
             <Save className="w-3.5 h-3.5 mr-1.5" />
             {savingCredRotationRecipients ? "Saving…" : "Save"}
           </Button>
+
+          {/* Test credential rotation alert email */}
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-foreground mb-0.5">Send a test credential rotation alert</p>
+              <p className="text-xs text-muted-foreground">
+                Fires the real alert path with synthetic data — no credentials are changed. The email goes to all active admins and any configured extra recipients, exactly as a live rotation would.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={credRotationTestGateway}
+                onChange={(e) => {
+                  setCredRotationTestGateway(e.target.value);
+                  setCredRotationTestResult(null);
+                }}
+                disabled={sendingCredRotationTest || smtpConfigured === false}
+                className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="cashfree">Cashfree Payin</option>
+                <option value="cashfree-payout">Cashfree Payout</option>
+                <option value="ekqr">EKQR</option>
+              </select>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  setCredRotationTestResult(null);
+                  setSendingCredRotationTest(true);
+                  try {
+                    const res = await apiPost("/settings/credential-rotation-alert/send-sample", { gateway: credRotationTestGateway });
+                    const stats = res.stats as { attempted: number; sent: number; failed: number } | undefined;
+                    if (stats && stats.failed > 0) {
+                      setCredRotationTestResult("error");
+                      setCredRotationTestMessage(`Partial delivery — ${stats.sent} of ${stats.attempted} sent (${stats.failed} failed). Check SMTP settings.`);
+                    } else {
+                      setCredRotationTestResult("success");
+                      const count = stats?.sent ?? "all";
+                      setCredRotationTestMessage(`Test alert sent to ${count} admin${stats?.sent === 1 ? "" : "s"} — check your inbox`);
+                    }
+                  } catch (err: any) {
+                    setCredRotationTestResult("error");
+                    setCredRotationTestMessage(err.message ?? "Send failed");
+                  } finally {
+                    setSendingCredRotationTest(false);
+                  }
+                }}
+                disabled={sendingCredRotationTest || smtpConfigured === false}
+                title={smtpConfigured === false ? "Save valid SMTP credentials first" : "Send a test credential rotation alert to all active admins"}
+              >
+                <Send className="w-3.5 h-3.5 mr-1.5" />
+                {sendingCredRotationTest ? "Sending…" : "Send test alert"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  setPreviewingCredRotationEmail(true);
+                  try {
+                    const res = await fetch("/api/settings/credential-rotation-alert/preview", {
+                      headers: { Authorization: `Bearer ${getToken()}` },
+                    });
+                    if (!res.ok) throw new Error("Failed to load preview");
+                    const html = await res.text();
+                    const blob = new Blob([html], { type: "text/html" });
+                    const url = URL.createObjectURL(blob);
+                    const tab = window.open(url, "_blank");
+                    if (tab) {
+                      tab.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+                      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message ?? "Could not load preview");
+                  } finally {
+                    setPreviewingCredRotationEmail(false);
+                  }
+                }}
+                disabled={previewingCredRotationEmail}
+                title="Preview the email template in a new tab (no email sent)"
+              >
+                <Eye className="w-3.5 h-3.5 mr-1.5" />
+                {previewingCredRotationEmail ? "Loading…" : "Preview template"}
+              </Button>
+            </div>
+
+            {credRotationTestResult === "success" && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{credRotationTestMessage}</span>
+              </div>
+            )}
+            {credRotationTestResult === "error" && (
+              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{credRotationTestMessage}</span>
+              </div>
+            )}
+            {smtpConfigured === false && (
+              <p className="text-xs text-muted-foreground">
+                Configure and save SMTP credentials above before sending a test alert.
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
 

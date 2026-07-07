@@ -4,6 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMail, getSmtpConfig } from "../helpers/mailer";
 import { buildEmailHtml, buildUnmatchedAlertHtml, buildSampleCsv } from "../helpers/reconcileEmail";
+import { buildCredentialRotationHtml, notifyAdminsOfCredentialRotation } from "../helpers/adminNotifyEmail";
 
 const router = Router();
 router.use(requireAuth);
@@ -460,6 +461,79 @@ router.post("/test-email", async (req, res, next) => {
 
     await writeAuditLog({ recipients, success: true });
     res.json({ ok: true, to: email });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/settings/credential-rotation-alert/preview — HTML template preview (no email sent)
+router.get("/credential-rotation-alert/preview", (_req, res) => {
+  const html = buildCredentialRotationHtml({
+    gateway: "cashfree",
+    changedFields: ["Client ID", "Client Secret"],
+    actorEmail: "admin@rasokart.com",
+    timestamp: new Date().toISOString(),
+  });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// POST /api/settings/credential-rotation-alert/send-sample
+// Fires the real notifyAdminsOfCredentialRotation function with synthetic data so the full
+// production path is exercised: real recipient expansion (all active admins + configured extras),
+// real HTML build, and the same sendMail call as a live rotation event.
+router.post("/credential-rotation-alert/send-sample", async (req, res, next) => {
+  const user = (req as any).user;
+  try {
+    const gatewayKey: string =
+      typeof req.body?.gateway === "string" && req.body.gateway.trim() ? req.body.gateway.trim() : "cashfree";
+
+    const VALID_GATEWAYS = ["cashfree", "cashfree-payout", "ekqr"] as const;
+    const resolvedGateway = VALID_GATEWAYS.includes(gatewayKey as any) ? gatewayKey : "cashfree";
+
+    // Check SMTP config upfront so we can return a clear 502 rather than a silent no-op.
+    const cfg = await getSmtpConfig();
+    if (!cfg) {
+      res.status(502).json({ error: "SMTP is not configured — save valid SMTP credentials first" });
+      return;
+    }
+
+    // Call the real production function. This exercises:
+    //   1. Real recipient expansion — all active admins + any configured extra recipients
+    //   2. Real buildCredentialRotationHtml call with the same arguments shape as a live rotation
+    //   3. Real sendMail invocation through the identical production code path
+    // The only difference from a real rotation is the synthetic changed-fields list.
+    const stats = await notifyAdminsOfCredentialRotation({
+      gateway: resolvedGateway,
+      changedFields: ["Client ID (TEST — no real credential was changed)", "Client Secret (TEST)"],
+      actorEmail: user.email,
+    });
+
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "test_email_sent",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ type: "credential_rotation_alert", gateway: resolvedGateway, ...stats }),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for credential rotation alert test email");
+    }
+
+    if (stats.sent === 0) {
+      res.status(502).json({
+        error: stats.attempted === 0
+          ? "No active admin recipients found — ensure at least one admin account is active"
+          : `Delivery failed — ${stats.failed} of ${stats.attempted} recipient${stats.attempted !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
+        stats,
+      });
+      return;
+    }
+
+    res.json({ ok: true, gateway: resolvedGateway, stats });
   } catch (err) {
     next(err);
   }

@@ -786,7 +786,7 @@ const GATEWAY_LABELS: Record<string, string> = {
   ekqr: "EKQR",
 };
 
-function buildCredentialRotationHtml(opts: {
+export function buildCredentialRotationHtml(opts: {
   gateway: string;
   changedFields: string[];
   actorEmail: string;
@@ -875,19 +875,25 @@ async function getCredentialRotationExtraRecipients(): Promise<string[]> {
   }
 }
 
+export type CredentialRotationAlertResult = {
+  attempted: number;
+  sent: number;
+  failed: number;
+};
+
 export async function notifyAdminsOfCredentialRotation(opts: {
   gateway: string;
   changedFields: string[];
   actorEmail: string;
-}): Promise<void> {
+}): Promise<CredentialRotationAlertResult> {
   try {
-    if (opts.changedFields.length === 0) return;
+    if (opts.changedFields.length === 0) return { attempted: 0, sent: 0, failed: 0 };
 
     const adminEmails = await getAllActiveAdminEmails();
 
     if (adminEmails.length === 0) {
       logger.info({ gateway: opts.gateway }, "No active admins found — skipping credential rotation alert");
-      return;
+      return { attempted: 0, sent: 0, failed: 0 };
     }
 
     const extraRecipients = await getCredentialRotationExtraRecipients();
@@ -906,10 +912,13 @@ export async function notifyAdminsOfCredentialRotation(opts: {
     const failed = results.length - sent;
 
     logger.info(
-      { gateway: opts.gateway, changedFields: opts.changedFields, actorEmail: opts.actorEmail, totalAdmins: recipients.length, sent, failed },
+      { gateway: opts.gateway, changedFields: opts.changedFields, actorEmail: opts.actorEmail, attempted: recipients.length, sent, failed },
       "Admin credential rotation alert emails dispatched"
     );
+
+    return { attempted: recipients.length, sent, failed };
   } catch (err) {
     logger.error({ err, gateway: opts.gateway }, "Failed to send admin credential rotation alert emails");
+    return { attempted: 0, sent: 0, failed: 0 };
   }
 }
