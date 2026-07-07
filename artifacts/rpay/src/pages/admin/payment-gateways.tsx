@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import type { ProviderIntegration } from "@workspace/api-client-react";
 import { getToken } from "@/lib/auth";
+import { computeWillDisable } from "@/lib/disable-gateway-guard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -315,7 +316,7 @@ function EkqrConfigPanel() {
     const body: Record<string, unknown> = { enabled: currentEnabled, env: currentEnv };
     if (ekqrApiKey.trim()) body.apiKey = ekqrApiKey.trim();
     if (ekqrWebhookSecret !== "") body.webhookSecret = ekqrWebhookSecret.trim();
-    const willDisable = (ekqrConfig?.enabled ?? false) === true && currentEnabled === false;
+    const willDisable = computeWillDisable(ekqrConfig?.enabled ?? false, currentEnabled);
     guardSave(willDisable, () => saveConfig({ data: body as any }));
   }
 
@@ -687,7 +688,7 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
   }
 
   function handleSave() {
-    const willDisable = integration.isEnabled === true && enabled === false;
+    const willDisable = computeWillDisable(integration.isEnabled, enabled);
     guardSave(willDisable, doSave);
   }
 
