@@ -16228,11 +16228,14 @@ components:
 
     UpiGatewayMerchantAssignment:
       type: object
-      required: [merchantId, businessName, email, isActive, source]
+      required: [merchantId, businessName, email, isActive, source, status, verificationStatus]
       properties:
         merchantId: { type: integer }
         businessName: { type: string }
         email: { type: string }
+        phone: { type: string, nullable: true }
+        status: { type: string }
+        verificationStatus: { type: string }
         isActive: { type: boolean }
         minAmount: { type: string, nullable: true }
         maxAmount: { type: string, nullable: true }

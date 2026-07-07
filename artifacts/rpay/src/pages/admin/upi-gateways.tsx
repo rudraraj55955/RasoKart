@@ -119,7 +119,7 @@ export default function AdminUpiGateways() {
   const [assignMode, setAssignMode] = useState<"all" | "selected" | "hide">("all");
   const [merchantSearch, setMerchantSearch] = useState("");
   const [selectedMerchants, setSelectedMerchants] = useState<Set<number>>(new Set());
-  const { data: assignMerchantsData, isLoading: assignMerchantsLoading } = useGetUpiGatewayMerchants(
+  const { data: assignMerchantsData, isLoading: assignMerchantsLoading, isError: assignMerchantsError, error: assignMerchantsErrorObj, refetch: refetchAssignMerchants } = useGetUpiGatewayMerchants(
     assigning?.id ?? 0,
     { query: { enabled: !!assigning && (assigning.id ?? 0) > 0, queryKey: ["getUpiGatewayMerchants", assigning?.id ?? 0] } }
   );
@@ -578,29 +578,57 @@ export default function AdminUpiGateways() {
           <div className="space-y-4 py-2">
             {assignMerchantsLoading ? (
               <div className="flex items-center justify-center py-6 text-muted-foreground text-sm gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin" /> Loading current assignments…
+                <RefreshCw className="w-4 h-4 animate-spin" /> Loading merchants…
+              </div>
+            ) : assignMerchantsError ? (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-4 space-y-2">
+                <p className="text-sm font-medium text-rose-400">Failed to load merchants</p>
+                <p className="text-xs text-muted-foreground">
+                  {(assignMerchantsErrorObj as any)?.response?.data?.error ?? (assignMerchantsErrorObj as any)?.message ?? "Unknown error"}
+                </p>
+                <Button size="sm" variant="outline" className="mt-1 gap-1.5" onClick={() => refetchAssignMerchants()}>
+                  <RefreshCw className="w-3.5 h-3.5" /> Retry
+                </Button>
               </div>
             ) : (
               <>
-                <Select value={assignMode} onValueChange={v => { setAssignMode(v as "all" | "selected" | "hide"); if (v !== "selected") setSelectedMerchants(new Set()); }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Visible to all merchants</SelectItem>
-                    <SelectItem value="selected">Visible to selected merchants only</SelectItem>
-                    <SelectItem value="hide">Hidden from all merchants</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={assignMode} onValueChange={v => { setAssignMode(v as "all" | "selected" | "hide"); if (v !== "selected") setSelectedMerchants(new Set()); }}>
+                    <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Visible to all merchants</SelectItem>
+                      <SelectItem value="selected">Visible to selected merchants only</SelectItem>
+                      <SelectItem value="hide">Hidden from all merchants</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" title="Refresh merchant list" onClick={() => refetchAssignMerchants()}>
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                </div>
                 {assignMode === "selected" && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs text-muted-foreground">Select merchants to grant access</Label>
+                      <Label className="text-xs text-muted-foreground">
+                        {(assignMerchantsData?.length ?? 0)} merchants available
+                      </Label>
                       <span className="text-xs text-muted-foreground">{selectedMerchants.size} selected</span>
                     </div>
-                    <Input placeholder="Search merchants…" value={merchantSearch} onChange={e => setMerchantSearch(e.target.value)} />
-                    <div className="max-h-64 overflow-y-auto border border-border/50 rounded-lg divide-y divide-border/30">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Search by name, email or phone…"
+                        value={merchantSearch}
+                        onChange={e => setMerchantSearch(e.target.value)}
+                        className="flex-1"
+                      />
+                      <Button variant="outline" size="sm" className="shrink-0 gap-1" onClick={() => setMerchantSearch(merchantSearch)}>
+                        <Search className="w-3.5 h-3.5" /> Search
+                      </Button>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto border border-border/50 rounded-lg divide-y divide-border/30">
                       {merchants.map(m => (
-                        <label key={m.merchantId} className="flex items-center gap-2 p-2.5 text-sm cursor-pointer hover:bg-muted/20">
+                        <label key={m.merchantId} className="flex items-start gap-2.5 p-3 text-sm cursor-pointer hover:bg-muted/20">
                           <Checkbox
+                            className="mt-0.5 shrink-0"
                             checked={selectedMerchants.has(m.merchantId)}
                             onCheckedChange={checked => setSelectedMerchants(prev => {
                               const next = new Set(prev);
@@ -608,19 +636,36 @@ export default function AdminUpiGateways() {
                               return next;
                             })}
                           />
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{m.businessName}</p>
-                            <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-medium truncate">{m.businessName}</p>
+                              {m.verificationStatus && m.verificationStatus !== "approved" && (
+                                <Badge className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30 px-1 py-0">KYC pending</Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate">{m.email}{m.phone ? ` · ${m.phone}` : ""}</p>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">ID: {m.merchantId} · Status: {m.status}</p>
                           </div>
                         </label>
                       ))}
-                      {merchants.length === 0 && <p className="p-3 text-xs text-muted-foreground">No approved merchants found</p>}
+                      {merchants.length === 0 && (
+                        <div className="p-4 text-center">
+                          <p className="text-xs text-muted-foreground">
+                            {merchantSearch ? `No merchants matching "${merchantSearch}"` : "No approved merchants found"}
+                          </p>
+                          {merchantSearch && (
+                            <Button variant="ghost" size="sm" className="mt-1 text-xs" onClick={() => setMerchantSearch("")}>
+                              Clear search
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
                 {assignMode === "all" && (
                   <p className="text-xs text-muted-foreground bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
-                    This gateway will be visible to all approved merchants.
+                    This gateway will be visible to all approved merchants ({assignMerchantsData?.length ?? 0} total).
                   </p>
                 )}
                 {assignMode === "hide" && (
@@ -633,7 +678,7 @@ export default function AdminUpiGateways() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssigning(null)}>Cancel</Button>
-            <Button onClick={submitAssign} disabled={assignMut.isPending || assignMerchantsLoading}>
+            <Button onClick={submitAssign} disabled={assignMut.isPending || assignMerchantsLoading || assignMerchantsError}>
               {assignMut.isPending ? "Saving…" : "Save Assignments"}
             </Button>
           </DialogFooter>

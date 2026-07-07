@@ -5007,6 +5007,9 @@ export interface UpiGatewayMerchantAssignment {
   merchantId: number;
   businessName: string;
   email: string;
+  phone?: string | null;
+  status: string;
+  verificationStatus: string;
   isActive: boolean;
   minAmount?: string | null;
   maxAmount?: string | null;

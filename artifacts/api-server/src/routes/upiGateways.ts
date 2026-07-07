@@ -24,7 +24,7 @@ import {
   routingRulesTable,
 } from "@workspace/db";
 import type { Provider, ProviderIntegration } from "@workspace/db";
-import { eq, and, asc, isNull, inArray } from "drizzle-orm";
+import { eq, and, asc, isNull, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
 
@@ -569,8 +569,19 @@ router.get("/:id/merchants", async (req, res, next) => {
     const [p] = await db.select().from(providersTable).where(eq(providersTable.id, id)).limit(1);
     if (!p) { res.status(404).json({ error: "Gateway not found" }); return; }
 
-    const merchants = await db.select({ id: merchantsTable.id, businessName: merchantsTable.businessName, email: merchantsTable.email })
-      .from(merchantsTable).where(eq(merchantsTable.status, "approved")).orderBy(asc(merchantsTable.businessName));
+    // Include approved/active/verified merchants regardless of verification_status
+    const merchants = await db.select({
+      id: merchantsTable.id,
+      businessName: merchantsTable.businessName,
+      email: merchantsTable.email,
+      phone: merchantsTable.phone,
+      status: merchantsTable.status,
+      verificationStatus: merchantsTable.verificationStatus,
+    })
+      .from(merchantsTable)
+      .where(sql`lower(${merchantsTable.status}) IN ('approved', 'active', 'verified')`)
+      .orderBy(asc(merchantsTable.businessName));
+
     const visRows = await db.select().from(providerVisibilityTable).where(eq(providerVisibilityTable.providerId, id));
     const merchantMap = new Map(visRows.filter(r => r.merchantId !== null).map(r => [r.merchantId!, r]));
     const globalRow = visRows.find(r => r.merchantId === null);
@@ -582,6 +593,9 @@ router.get("/:id/merchants", async (req, res, next) => {
         merchantId: m.id,
         businessName: m.businessName,
         email: m.email,
+        phone: m.phone ?? null,
+        status: m.status,
+        verificationStatus: m.verificationStatus ?? "pending",
         isActive: visible,
         minAmount: override?.minAmount ?? null,
         maxAmount: override?.maxAmount ?? null,
