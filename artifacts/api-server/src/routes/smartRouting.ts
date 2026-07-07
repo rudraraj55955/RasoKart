@@ -26,7 +26,7 @@ import {
   providerMetricsTable,
   auditLogsTable,
 } from "@workspace/db";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, ne } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -136,6 +136,21 @@ router.post("/configs/:id/rules", async (req, res, next) => {
     const [existing] = await db.select().from(routingConfigsTable).where(eq(routingConfigsTable.id, configId)).limit(1);
     if (!existing) { res.status(404).json({ error: "Config not found" }); return; }
 
+    const effectivePriority = priority ?? 1;
+    const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
+      .from(routingRulesTable)
+      .where(and(
+        eq(routingRulesTable.configId, configId),
+        eq(routingRulesTable.priority, effectivePriority),
+        eq(routingRulesTable.isEnabled, true),
+      )).limit(1);
+    if (conflicting) {
+      res.status(409).json({
+        error: `Priority ${effectivePriority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so your new rule would be silently ignored. Use a different priority number.`,
+      });
+      return;
+    }
+
     const [row] = await db.insert(routingRulesTable).values({
       configId,
       providerKey: providerKey.trim(),
@@ -165,6 +180,26 @@ router.put("/rules/:id", async (req, res, next) => {
 
     const [existing] = await db.select().from(routingRulesTable).where(eq(routingRulesTable.id, id)).limit(1);
     if (!existing) { res.status(404).json({ error: "Rule not found" }); return; }
+
+    if (priority !== undefined && priority !== existing.priority) {
+      const newEnabled = isEnabled !== undefined ? isEnabled : existing.isEnabled;
+      if (newEnabled) {
+        const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
+          .from(routingRulesTable)
+          .where(and(
+            eq(routingRulesTable.configId, existing.configId),
+            eq(routingRulesTable.priority, priority),
+            eq(routingRulesTable.isEnabled, true),
+            ne(routingRulesTable.id, id),
+          )).limit(1);
+        if (conflicting) {
+          res.status(409).json({
+            error: `Priority ${priority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`,
+          });
+          return;
+        }
+      }
+    }
 
     const updateSet: Record<string, unknown> = {};
     if (providerKey !== undefined) updateSet.providerKey = providerKey;

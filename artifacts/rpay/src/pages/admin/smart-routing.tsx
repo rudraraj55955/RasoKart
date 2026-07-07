@@ -274,6 +274,14 @@ export default function AdminSmartRouting() {
     });
   }
 
+  const priorityConflictRule = rfEnabled
+    ? (rulesQ.data ?? []).find(r =>
+        r.isEnabled &&
+        r.priority === rfPriority &&
+        r.id !== editingRule?.id
+      ) ?? null
+    : null;
+
   const status = statusQ.data;
   const configs = configsQ.data ?? [];
   const activeConfig = configs[0] ?? null;
@@ -460,6 +468,31 @@ export default function AdminSmartRouting() {
               ) : (rulesQ.data ?? []).length === 0 ? (
                 <Card className="bg-zinc-900 border-zinc-800"><CardContent className="py-8 text-center text-zinc-500">No rules configured. Add a provider rule to start routing.</CardContent></Card>
               ) : (
+                <>
+                {(() => {
+                  const enabledRules = (rulesQ.data ?? []).filter(r => r.isEnabled);
+                  const priorityCounts = enabledRules.reduce<Record<number, string[]>>((acc, r) => {
+                    (acc[r.priority] ??= []).push(r.providerKey);
+                    return acc;
+                  }, {});
+                  const clashes = Object.entries(priorityCounts).filter(([, keys]) => keys.length > 1);
+                  if (clashes.length === 0) return null;
+                  return (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 mb-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-amber-300">Priority conflict detected</p>
+                        <ul className="mt-1 space-y-0.5">
+                          {clashes.map(([pri, keys]) => (
+                            <li key={pri} className="text-xs text-amber-200/80">
+                              Priority <span className="font-mono font-semibold">#{pri}</span> is shared by: {keys.map(k => <span key={k} className="font-mono">{k}</span>).reduce((a, b) => <>{a}, {b}</>)}. The oldest rule wins silently — edit one to use a unique priority.
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <Card className="bg-zinc-900 border-zinc-800">
                   <Table>
                     <TableHeader>
@@ -517,6 +550,7 @@ export default function AdminSmartRouting() {
                     </TableBody>
                   </Table>
                 </Card>
+                </>
               )}
 
               {/* Failover info */}
@@ -779,8 +813,21 @@ export default function AdminSmartRouting() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-zinc-400 text-sm mb-1.5 block">Priority</Label>
-                <Input type="number" min={1} value={rfPriority} onChange={e => setRfPriority(parseInt(e.target.value) || 1)} className="bg-zinc-900 border-zinc-700 text-white" />
-                <p className="text-xs text-zinc-600 mt-1">1 = highest priority</p>
+                <Input
+                  type="number" min={1} value={rfPriority}
+                  onChange={e => setRfPriority(parseInt(e.target.value) || 1)}
+                  className={`bg-zinc-900 border-zinc-700 text-white ${priorityConflictRule ? "border-amber-500/60" : ""}`}
+                />
+                {priorityConflictRule ? (
+                  <div className="flex items-start gap-1.5 mt-1.5 p-2 rounded-md bg-amber-500/10 border border-amber-500/30">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                    <p className="text-xs text-amber-300">
+                      Priority {rfPriority} is already used by <span className="font-mono font-medium">{priorityConflictRule.providerKey}</span>. Ties silently favour the oldest rule — your rule would be ignored. Choose a different number.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-600 mt-1">1 = highest priority</p>
+                )}
               </div>
               <div>
                 <Label className="text-zinc-400 text-sm mb-1.5 block">Weight %</Label>
