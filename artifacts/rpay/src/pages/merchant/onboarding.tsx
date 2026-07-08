@@ -9,9 +9,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
-  CheckCircle2, Circle, Loader2, ShieldCheck, Smartphone,
-  Building2, FileCheck, CreditCard, Upload, ClipboardCheck,
-  ChevronRight, AlertTriangle, Info, RefreshCw, Lock,
+  CheckCircle2, Loader2, ShieldCheck, Smartphone,
+  FileCheck, CreditCard, Building2, ClipboardCheck,
+  ChevronRight, AlertTriangle, Info, Lock, XCircle,
 } from "lucide-react";
 
 declare global {
@@ -23,282 +23,308 @@ declare global {
   }
 }
 
-type StepId = "mobile" | "consent" | "details" | "identity" | "bank" | "documents" | "review";
+type StepId = "mobile" | "consent" | "pan" | "aadhaar" | "bank" | "optional" | "review";
 
-interface Step {
-  id: StepId;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
+interface StepDef { id: StepId; label: string; icon: React.ComponentType<{ className?: string }>; mandatory: boolean }
 
-const STEPS: Step[] = [
-  { id: "mobile", label: "Mobile Verify", icon: Smartphone },
-  { id: "consent", label: "Secure Consent", icon: Lock },
-  { id: "details", label: "Business Details", icon: Building2 },
-  { id: "identity", label: "Identity Check", icon: FileCheck },
-  { id: "bank", label: "Bank Verify", icon: CreditCard },
-  { id: "documents", label: "Documents", icon: Upload },
-  { id: "review", label: "Submit", icon: ClipboardCheck },
+const STEPS: StepDef[] = [
+  { id: "mobile",   label: "Mobile",     icon: Smartphone,      mandatory: true },
+  { id: "consent",  label: "Consent",    icon: Lock,            mandatory: true },
+  { id: "pan",      label: "PAN",        icon: FileCheck,       mandatory: true },
+  { id: "aadhaar",  label: "Aadhaar",    icon: ShieldCheck,     mandatory: true },
+  { id: "bank",     label: "Bank",       icon: CreditCard,      mandatory: true },
+  { id: "optional", label: "Optional",   icon: Building2,       mandatory: false },
+  { id: "review",   label: "Submit",     icon: ClipboardCheck,  mandatory: true },
 ];
 
-interface Session {
-  verificationId: string;
-  sessionToken: string;
-  dataAvailable: boolean;
-  mode: string;
-}
+interface Session { verificationId: string; sessionToken: string; dataAvailable: boolean; mode: string }
 
-interface KycData {
+interface KycState {
   fullName?: string;
   panMasked?: string;
   aadhaarLast4?: string;
+  aadhaarStatus?: string;
   businessName?: string;
   city?: string;
   state?: string;
-  mismatchFlags?: string[];
-}
-
-interface VerifyStatus {
+  stateName?: string;
   panStatus?: string;
-  gstStatus?: string;
-  cinStatus?: string;
   bankStatus?: string;
+  gstinMasked?: string;
 }
 
-function StatusBadge({ status }: { status?: string }) {
+function VerifyBadge({ status }: { status?: string }) {
   if (!status || status === "PENDING") return <Badge variant="secondary" className="text-xs">Pending</Badge>;
-  if (status === "VERIFIED") return <Badge className="bg-emerald-600 text-white text-xs">Verified</Badge>;
-  if (status === "MISMATCH") return <Badge className="bg-amber-600 text-white text-xs">Mismatch</Badge>;
-  if (status === "SKIPPED") return <Badge variant="outline" className="text-xs">Skipped</Badge>;
+  if (status === "VERIFIED") return <Badge className="bg-emerald-600 text-white text-xs">Verified ✓</Badge>;
+  if (status === "SKIPPED") return <Badge variant="outline" className="text-xs text-neutral-400">Skipped</Badge>;
   return <Badge className="bg-red-600 text-white text-xs">Failed</Badge>;
 }
 
-function StepIndicator({ step, index, current, done }: { step: Step; index: number; current: number; done: boolean }) {
-  const Icon = step.icon;
-  const isActive = index === current;
-  const isDone = done || index < current;
+function MandatoryTag() {
+  return <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-red-400 border border-red-700 rounded px-1">Required</span>;
+}
+
+function OptionalTag() {
+  return <span className="ml-1.5 text-[10px] font-medium text-neutral-400 border border-neutral-700 rounded px-1">Optional</span>;
+}
+
+function StepBar({ current }: { current: number }) {
   return (
-    <div className="flex flex-col items-center gap-1 min-w-[60px]">
-      <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all ${
-        isDone ? "bg-emerald-600 border-emerald-600 text-white" :
-        isActive ? "bg-indigo-600 border-indigo-600 text-white" :
-        "bg-neutral-800 border-neutral-700 text-neutral-500"
-      }`}>
-        {isDone ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-4 h-4" />}
-      </div>
-      <span className={`text-[10px] font-medium text-center leading-tight ${
-        isActive ? "text-white" : isDone ? "text-emerald-400" : "text-neutral-500"
-      }`}>{step.label}</span>
+    <div className="flex items-start justify-between overflow-x-auto gap-0.5 pb-1">
+      {STEPS.map((step, i) => {
+        const Icon = step.icon;
+        const done = i < current;
+        const active = i === current;
+        return (
+          <div key={step.id} className="flex items-center flex-shrink-0">
+            <div className="flex flex-col items-center gap-1 min-w-[52px]">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+                done   ? "bg-emerald-600 border-emerald-600 text-white" :
+                active ? "bg-indigo-600 border-indigo-600 text-white" :
+                         "bg-neutral-800 border-neutral-700 text-neutral-500"
+              }`}>
+                {done ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-3.5 h-3.5" />}
+              </div>
+              <span className={`text-[9px] font-medium text-center leading-tight ${
+                active ? "text-white" : done ? "text-emerald-400" : "text-neutral-600"
+              }`}>{step.label}{step.mandatory ? "" : " ★"}</span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <ChevronRight className={`w-3.5 h-3.5 mx-0.5 flex-shrink-0 ${i < current ? "text-emerald-500" : "text-neutral-700"}`} />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 export default function MerchantOnboarding() {
-  const [currentStep, setCurrentStep] = useState(0);
+  const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [onboardingEnabled, setOnboardingEnabled] = useState(false);
+  const [submitResult, setSubmitResult] = useState<"SUBMITTED" | "APPROVED" | "REJECTED" | "RE_UPLOAD_REQUIRED" | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
 
+  // Session
   const [mobile, setMobile] = useState("");
   const [session, setSession] = useState<Session | null>(null);
-  const [kycData, setKycData] = useState<KycData | null>(null);
-  const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>({});
 
+  // KYC state (pulled from server + updated by verify calls)
+  const [kycState, setKycState] = useState<KycState>({});
+  const [verifyStatus, setVerifyStatus] = useState<Record<string, string>>({});
+
+  // PAN step
   const [panInput, setPanInput] = useState("");
   const [panName, setPanName] = useState("");
-  const [gstinInput, setGstinInput] = useState("");
-  const [cinInput, setCinInput] = useState("");
+
+  // Aadhaar step
+  const [aadhaarLast4, setAadhaarLast4] = useState("");
+
+  // Bank step
   const [bankAccount, setBankAccount] = useState("");
   const [bankIfsc, setBankIfsc] = useState("");
+  const [bankHolder, setBankHolder] = useState("");
 
+  // Optional step
+  const [gstinInput, setGstinInput] = useState("");
+  const [cinInput, setCinInput] = useState("");
+  const [udyamInput, setUdyamInput] = useState("");
   const [businessName, setBusinessName] = useState("");
-  const [gstin, setGstin] = useState("");
 
   const sdkContainerRef = useRef<HTMLDivElement>(null);
+  const auth = () => `Bearer ${localStorage.getItem("rasokart_token")}`;
 
+  // Load status on mount
   useEffect(() => {
-    fetch("/api/onboarding/status", { headers: { Authorization: `Bearer ${localStorage.getItem("rasokart_token")}` } })
+    fetch("/api/onboarding/status", { headers: { Authorization: auth() } })
       .then((r) => r.json())
       .then((data) => {
-        if (!data.onboardingEnabled) { setPageLoading(false); return; }
+        setOnboardingEnabled(data.onboardingEnabled ?? false);
         if (data.session) {
           const s = data.session;
-          if (s.status === "SUBMITTED" || s.status === "APPROVED" || s.status === "REJECTED" || s.status === "RE_UPLOAD_REQUIRED") {
-            setCurrentStep(6);
+          const terminal = ["SUBMITTED", "APPROVED", "REJECTED", "RE_UPLOAD_REQUIRED"];
+          if (terminal.includes(s.status)) {
+            setSubmitResult(s.status as any);
+            setStep(6);
           } else if (s.status === "KYC_PENDING") {
-            setCurrentStep(3);
+            setStep(2); // jump to PAN step
+          }
+          // Try to restore verificationId from session for in-progress state
+          if (s.verificationId && !terminal.includes(s.status)) {
+            setSession({ verificationId: s.verificationId, sessionToken: "", dataAvailable: s.dataAvailable ?? false, mode: "sandbox" });
           }
         }
         if (data.kyc) {
           const k = data.kyc;
-          setKycData({ fullName: k.fullName, panMasked: k.panMasked, businessName: k.businessName, city: k.city, state: k.stateName });
-          setVerifyStatus({ panStatus: k.panStatus, gstStatus: k.gstStatus, cinStatus: k.cinStatus, bankStatus: k.bankStatus });
-          if (k.fullName) setPanName(k.fullName);
+          setKycState({
+            fullName: k.fullName, panMasked: k.panMasked,
+            aadhaarLast4: k.aadhaarLast4, aadhaarStatus: k.aadhaarStatus,
+            businessName: k.businessName, city: k.city, stateName: k.stateName,
+          } as any);
+          setVerifyStatus({
+            panStatus: k.panStatus ?? "PENDING",
+            aadhaarStatus: k.aadhaarStatus ?? "PENDING",
+            bankStatus: k.bankStatus ?? "PENDING",
+            gstStatus: k.gstStatus ?? "SKIPPED",
+            cinStatus: k.cinStatus ?? "SKIPPED",
+            udyamStatus: k.udyamStatus ?? "SKIPPED",
+          });
+          if (k.fullName) { setPanName(k.fullName); setBankHolder(k.fullName); }
           if (k.businessName) setBusinessName(k.businessName);
+          if (data.kyc.rejectionReason) setRejectionReason(data.kyc.rejectionReason);
         }
-        setPageLoading(false);
       })
-      .catch(() => setPageLoading(false));
+      .catch(() => {})
+      .finally(() => setPageLoading(false));
   }, []);
 
+  async function apiPost(path: string, body: object) {
+    const r = await fetch(`/api/onboarding/${path}`, {
+      method: "POST",
+      headers: { Authorization: auth(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error ?? "Request failed");
+    return data;
+  }
+
+  // Step 0 — initiate
   async function handleInitiate() {
     setError(null);
     const digits = mobile.replace(/\D/g, "");
     if (digits.length !== 10) { setError("Enter a valid 10-digit mobile number"); return; }
     setLoading(true);
     try {
-      const r = await fetch("/api/onboarding/initiate", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("rasokart_token")}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile: digits }),
-      });
-      const data = await r.json();
-      if (!r.ok) { setError(data.error ?? "Failed to initiate onboarding"); return; }
+      const data = await apiPost("initiate", { mobile: digits });
       setSession(data);
-      setCurrentStep(1);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+      setStep(1);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   }
 
+  // Step 1 — SDK consent
   function launchSdk() {
-    if (!session) return;
+    if (!session?.sessionToken) { setError("Session token missing. Please restart."); return; }
     setError(null);
-    const loadAndOpen = () => {
+    const open = () => {
       try {
         const sdk = new window.CfSecureId({ session_id: session.sessionToken, mode: session.mode });
-        sdk.on("success", async (data: any) => {
-          const authCode: string = data?.auth_code ?? data?.code;
+        sdk.on("success", async (sdkData: any) => {
+          const authCode: string = sdkData?.auth_code ?? sdkData?.code;
           if (!authCode) { setError("Consent incomplete — no auth code received."); return; }
           setLoading(true);
           try {
-            const r = await fetch("/api/onboarding/consent", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${localStorage.getItem("rasokart_token")}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ verificationId: session.verificationId, authCode }),
-            });
-            const cData = await r.json();
-            if (!r.ok) { setError(cData.error ?? "Consent exchange failed. Please retry."); return; }
-            if (cData.kycData) {
-              setKycData(cData.kycData);
-              if (cData.kycData.fullName) setPanName(cData.kycData.fullName);
-              if (cData.kycData.businessName) setBusinessName(cData.kycData.businessName);
-            }
+            const cData = await apiPost("consent", { verificationId: session.verificationId, authCode });
+            const k = cData.kycData ?? {};
+            setKycState((prev) => ({ ...prev, fullName: k.fullName, panMasked: k.panMasked, aadhaarLast4: k.aadhaarLast4, aadhaarStatus: k.aadhaarStatus }));
+            if (k.fullName) { setPanName(k.fullName); setBankHolder(k.fullName); }
+            if (k.aadhaarStatus === "VERIFIED") setVerifyStatus((p) => ({ ...p, aadhaarStatus: "VERIFIED" }));
             toast.success("Secure consent completed!");
-            setCurrentStep(2);
-          } finally {
-            setLoading(false);
-          }
+            setStep(2);
+          } catch (e: any) { setError(e.message); }
+          finally { setLoading(false); }
         });
         sdk.on("failure", async (err: any) => {
-          await fetch("/api/onboarding/consent-denied", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${localStorage.getItem("rasokart_token")}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ verificationId: session.verificationId }),
-          }).catch(() => {});
-          setError(err?.message ?? "Consent was denied or failed. You can try again or fill details manually.");
+          await apiPost("consent-denied", { verificationId: session.verificationId }).catch(() => {});
+          setError(err?.message ?? "Consent was denied or failed. You can skip and fill details manually.");
         });
         sdk.open();
-      } catch (e: any) {
-        setError("Could not launch secure consent. Please try again.");
-      }
+      } catch { setError("Could not launch secure consent. Please try again."); }
     };
-
-    if (window.CfSecureId) { loadAndOpen(); return; }
+    if (window.CfSecureId) { open(); return; }
     const script = document.createElement("script");
     script.src = "https://sdk.cashfree.com/js/secureid/latest/secureid.js";
-    script.onload = loadAndOpen;
-    script.onerror = () => setError("Secure consent SDK failed to load. Check your network and retry.");
+    script.onload = open;
+    script.onerror = () => setError("Secure consent failed to load. Check your network and retry.");
     document.body.appendChild(script);
   }
 
-  async function handleVerify(type: string) {
-    if (!session) return;
+  async function handleVerify(type: string, extra: Record<string, string> = {}) {
+    if (!session?.verificationId) { setError("No active session. Please restart."); return; }
     setError(null);
     setLoading(true);
-    const body: Record<string, string> = { type, verificationId: session.verificationId };
-    if (type === "PAN") { body["pan"] = panInput.toUpperCase(); body["name"] = panName; }
-    if (type === "GST") { body["gstin"] = gstinInput.toUpperCase(); }
-    if (type === "CIN") { body["cin"] = cinInput.toUpperCase(); }
-    if (type === "BANK") { body["accountNumber"] = bankAccount; body["ifsc"] = bankIfsc.toUpperCase(); }
     try {
-      const r = await fetch("/api/onboarding/verify", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("rasokart_token")}`, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await r.json();
-      if (!r.ok) { setError(data.error ?? "Verification failed"); return; }
-      setVerifyStatus((prev) => ({ ...prev, [`${type.toLowerCase()}Status`]: data.status }));
-      if (data.status === "VERIFIED") toast.success(`${type} verified successfully`);
-      else if (data.status === "SKIPPED") toast.info(`${type} verification skipped`);
+      const data = await apiPost("verify", { type, verificationId: session.verificationId, ...extra });
+      setVerifyStatus((p) => ({ ...p, [`${type.toLowerCase()}Status`]: data.status }));
+      if (data.status === "VERIFIED") toast.success(`${type} verified`);
+      else if (data.status === "SKIPPED") toast.info(`${type} skipped`);
+      else if (data.status === "PENDING") toast.info("Submitted for review");
       else toast.warning(`${type} verification ${data.status.toLowerCase()}`);
-    } catch {
-      setError("Network error during verification");
-    } finally {
-      setLoading(false);
-    }
+      return data.status as string;
+    } catch (e: any) { setError(e.message); return undefined; }
+    finally { setLoading(false); }
   }
 
   async function handleSubmit() {
-    if (!session) return;
+    if (!session?.verificationId) return;
     setError(null);
     setLoading(true);
     try {
-      const r = await fetch("/api/onboarding/submit", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("rasokart_token")}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ verificationId: session.verificationId, businessName, gstin }),
+      await apiPost("submit", {
+        verificationId: session.verificationId,
+        businessName: businessName || undefined,
+        gstin: gstinInput || undefined,
+        cin: cinInput || undefined,
+        udyamNumber: udyamInput || undefined,
       });
-      const data = await r.json();
-      if (!r.ok) { setError(data.error ?? "Submission failed"); return; }
       toast.success("Application submitted for review!");
-      setCurrentStep(6);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+      setSubmitResult("SUBMITTED");
+      setStep(6);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   }
 
-  if (pageLoading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-        </div>
-      </DashboardLayout>
-    );
-  }
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  if (pageLoading) return (
+    <DashboardLayout>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
+      </div>
+    </DashboardLayout>
+  );
+
+  if (!onboardingEnabled && step === 0) return (
+    <DashboardLayout>
+      <div className="max-w-2xl mx-auto p-6 space-y-4">
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <ShieldCheck className="w-7 h-7 text-indigo-400" /> Secure Business Onboarding
+        </h1>
+        <Alert className="border-amber-700 bg-amber-950/30">
+          <Info className="h-4 w-4 text-amber-400" />
+          <AlertDescription className="text-amber-300 text-sm">
+            Secure onboarding is currently unavailable. Please complete KYC via the{" "}
+            <a href="/merchant/verification" className="underline text-amber-200">Verification</a> section, or contact support.
+          </AlertDescription>
+        </Alert>
+      </div>
+    </DashboardLayout>
+  );
+
+  const panVerified  = verifyStatus["panStatus"]    === "VERIFIED";
+  const aadhaarVerified = verifyStatus["aadhaarStatus"] === "VERIFIED" || verifyStatus["aadhaarStatus"] === "PENDING";
+  const bankVerified = verifyStatus["bankStatus"]   === "VERIFIED";
+  const mandatoryMet = panVerified && aadhaarVerified && bankVerified;
 
   return (
     <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-6 p-4">
+      <div className="max-w-2xl mx-auto space-y-5 p-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <ShieldCheck className="w-7 h-7 text-indigo-400" />
             Secure Business Onboarding
           </h1>
-          <p className="text-neutral-400 text-sm mt-1">
-            Complete identity verification to unlock full account features.
-          </p>
+          <p className="text-neutral-400 text-sm mt-1">Complete identity verification to unlock your full account.</p>
         </div>
 
-        {/* Step indicator */}
         <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="py-5 px-4">
-            <div className="flex items-start justify-between overflow-x-auto gap-1">
-              {STEPS.map((step, i) => (
-                <div key={step.id} className="flex items-center flex-shrink-0">
-                  <StepIndicator step={step} index={i} current={currentStep} done={false} />
-                  {i < STEPS.length - 1 && (
-                    <ChevronRight className={`w-4 h-4 mx-0.5 flex-shrink-0 ${i < currentStep ? "text-emerald-500" : "text-neutral-700"}`} />
-                  )}
-                </div>
-              ))}
-            </div>
+          <CardContent className="py-4 px-4">
+            <StepBar current={step} />
+            <p className="text-xs text-neutral-500 mt-2.5">★ = optional step &nbsp;·&nbsp; Steps 1–5 are required</p>
           </CardContent>
         </Card>
 
@@ -309,25 +335,26 @@ export default function MerchantOnboarding() {
           </Alert>
         )}
 
-        {/* Step 0 — Mobile Verification */}
-        {currentStep === 0 && (
+        {/* ── Step 0 — Mobile ───────────────────────────────────────── */}
+        {step === 0 && (
           <Card className="bg-neutral-900 border-neutral-800">
             <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2"><Smartphone className="w-5 h-5 text-indigo-400" />Verify Your Mobile Number</CardTitle>
-              <CardDescription>We'll check if your registered mobile is eligible for 1-click onboarding.</CardDescription>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-indigo-400" />Verify Your Mobile
+              </CardTitle>
+              <CardDescription>We'll check if your mobile is linked to verified identity records.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Mobile Number</Label>
+                <Label>Mobile Number <MandatoryTag /></Label>
                 <div className="flex gap-2">
                   <span className="flex items-center px-3 bg-neutral-800 border border-neutral-700 rounded-md text-neutral-400 text-sm">+91</span>
-                  <Input
-                    type="tel" placeholder="9876543210" maxLength={10}
+                  <Input type="tel" placeholder="9876543210" maxLength={10}
                     value={mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
                     className="bg-neutral-800 border-neutral-700 text-white font-mono"
                   />
                 </div>
-                <p className="text-xs text-neutral-500">Enter the mobile number registered with your business Aadhaar / PAN.</p>
+                <p className="text-xs text-neutral-500">Enter the mobile number linked to your Aadhaar / PAN.</p>
               </div>
               <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={handleInitiate} disabled={loading || mobile.length < 10}>
                 {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Checking…</> : "Continue →"}
@@ -336,243 +363,463 @@ export default function MerchantOnboarding() {
           </Card>
         )}
 
-        {/* Step 1 — Secure Consent */}
-        {currentStep === 1 && session && (
+        {/* ── Step 1 — Consent ─────────────────────────────────────── */}
+        {step === 1 && session && (
           <Card className="bg-neutral-900 border-neutral-800">
             <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2"><Lock className="w-5 h-5 text-indigo-400" />Secure Data Consent</CardTitle>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Lock className="w-5 h-5 text-indigo-400" />Secure Data Consent
+              </CardTitle>
               <CardDescription>
-                Authorise RasoKart to fetch your verified identity data securely. Your data is encrypted end-to-end.
+                Authorise RasoKart to fetch your verified identity details (name, Aadhaar, PAN, address).
+                Your data is encrypted and never shared.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              {session.dataAvailable && (
+            <CardContent className="space-y-4">
+              {session.dataAvailable ? (
                 <Alert className="border-emerald-700 bg-emerald-950/40">
                   <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                   <AlertDescription className="text-emerald-300 text-sm">
-                    Verified identity data is available for this mobile. 1-click onboarding will auto-fill your details.
+                    Verified records found for this mobile — 1-click onboarding will auto-fill your details.
                   </AlertDescription>
                 </Alert>
-              )}
-              {!session.dataAvailable && (
+              ) : (
                 <Alert className="border-amber-700 bg-amber-950/40">
                   <Info className="h-4 w-4 text-amber-400" />
                   <AlertDescription className="text-amber-300 text-sm">
-                    Data is not yet available for this mobile. You'll fill details manually after consent.
+                    No pre-filled records found — you'll enter details manually in the next steps.
                   </AlertDescription>
                 </Alert>
               )}
-              <div className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-4 space-y-2">
-                <p className="text-sm font-medium text-white">What we'll access (with your consent):</p>
-                <ul className="text-xs text-neutral-400 space-y-1 list-disc list-inside">
-                  <li>Name, date of birth, gender</li>
+              <div className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-4 space-y-1.5">
+                <p className="text-xs font-medium text-neutral-300">Data accessed with your consent:</p>
+                <ul className="text-xs text-neutral-400 space-y-0.5 list-disc list-inside">
+                  <li>Name, date of birth, gender from Aadhaar</li>
+                  <li>PAN number (masked — last 4 digits only)</li>
                   <li>Aadhaar-linked address</li>
-                  <li>PAN number (masked)</li>
-                  <li>Business name (if available)</li>
+                  <li>Business details (if available)</li>
                 </ul>
               </div>
               <div ref={sdkContainerRef} id="secureid-container" />
               <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={launchSdk} disabled={loading}>
                 {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing…</> : <><ShieldCheck className="w-4 h-4 mr-2" />Authorise Secure Access</>}
               </Button>
-              <Button variant="ghost" className="w-full text-neutral-400 text-sm" onClick={() => { setCurrentStep(2); setKycData(null); }}>
-                Skip — I'll fill details manually
+              <Button variant="ghost" className="w-full text-neutral-400 text-sm" onClick={() => setStep(2)}>
+                Skip — I'll enter details manually
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Step 2 — Business Details */}
-        {currentStep === 2 && (
+        {/* ── Step 2 — PAN ─────────────────────────────────────────── */}
+        {step === 2 && (
           <Card className="bg-neutral-900 border-neutral-800">
             <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2"><Building2 className="w-5 h-5 text-indigo-400" />Business Details</CardTitle>
-              <CardDescription>Review and complete your business information.</CardDescription>
+              <CardTitle className="text-white flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-indigo-400" />PAN Verification
+                <MandatoryTag />
+              </CardTitle>
+              <CardDescription>
+                Verify your Permanent Account Number (PAN). This is required for all merchants.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {kycData?.mismatchFlags && kycData.mismatchFlags.length > 0 && (
-                <Alert className="border-amber-700 bg-amber-950/40">
-                  <AlertTriangle className="h-4 w-4 text-amber-400" />
-                  <AlertDescription className="text-amber-300 text-sm">
-                    Some details may not match your registered account. Please review carefully.
+              {panVerified && kycState.panMasked ? (
+                <div className="flex items-center justify-between rounded-lg border border-emerald-700 bg-emerald-950/30 p-4">
+                  <div>
+                    <p className="text-xs text-emerald-400 font-medium">PAN Verified</p>
+                    <p className="text-white font-mono text-sm mt-0.5">{kycState.panMasked}</p>
+                    {kycState.fullName && <p className="text-neutral-400 text-xs mt-0.5">{kycState.fullName}</p>}
+                  </div>
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">PAN Number</Label>
+                      <Input value={panInput} onChange={(e) => setPanInput(e.target.value.toUpperCase())}
+                        placeholder="ABCDE1234F" maxLength={10}
+                        className="bg-neutral-800 border-neutral-700 text-white font-mono" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Name on PAN</Label>
+                      <Input value={panName} onChange={(e) => setPanName(e.target.value)}
+                        placeholder="Full name as on PAN"
+                        className="bg-neutral-800 border-neutral-700 text-white" />
+                    </div>
+                  </div>
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={loading || panInput.length !== 10 || !panName.trim()}
+                    onClick={async () => {
+                      const s = await handleVerify("PAN", { pan: panInput, name: panName });
+                      if (s === "VERIFIED" || s === "MISMATCH") {
+                        setKycState((p) => ({ ...p, panMasked: panInput.slice(0, 2) + "****" + panInput.slice(-2) }));
+                      }
+                    }}>
+                    {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verifying…</> : "Verify PAN"}
+                  </Button>
+                  {verifyStatus["panStatus"] === "FAILED" && (
+                    <Alert variant="destructive" className="text-sm">
+                      <XCircle className="h-4 w-4" />
+                      <AlertDescription>PAN verification failed. Double-check the number and name, then retry.</AlertDescription>
+                    </Alert>
+                  )}
+                  {verifyStatus["panStatus"] === "MISMATCH" && (
+                    <Alert className="border-amber-700 bg-amber-950/30">
+                      <AlertTriangle className="h-4 w-4 text-amber-400" />
+                      <AlertDescription className="text-amber-300 text-sm">
+                        PAN name mismatch — our team will review during the admin approval stage.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
+              <Button className="w-full bg-emerald-700 hover:bg-emerald-600 mt-2" onClick={() => setStep(3)}
+                disabled={!panVerified}>
+                Continue to Aadhaar Verification →
+              </Button>
+              {!panVerified && (
+                <p className="text-xs text-center text-neutral-500">PAN verification is required to continue.</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Step 3 — Aadhaar ─────────────────────────────────────── */}
+        {step === 3 && (
+          <Card className="bg-neutral-900 border-neutral-800">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-indigo-400" />Aadhaar Verification
+                <MandatoryTag />
+              </CardTitle>
+              <CardDescription>
+                Confirm your Aadhaar-linked identity. We store only the last 4 digits — your full Aadhaar number is never saved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Auto-verified via SDK */}
+              {verifyStatus["aadhaarStatus"] === "VERIFIED" && kycState.aadhaarLast4 ? (
+                <div className="flex items-center justify-between rounded-lg border border-emerald-700 bg-emerald-950/30 p-4">
+                  <div>
+                    <p className="text-xs text-emerald-400 font-medium">Aadhaar Verified via Secure Consent</p>
+                    <p className="text-white font-mono text-sm mt-0.5">XXXX XXXX {kycState.aadhaarLast4}</p>
+                    {kycState.fullName && <p className="text-neutral-400 text-xs mt-0.5">{kycState.fullName}</p>}
+                  </div>
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <Alert className="border-indigo-700 bg-indigo-950/30">
+                    <Info className="h-4 w-4 text-indigo-400" />
+                    <AlertDescription className="text-indigo-300 text-sm">
+                      Enter only the last 4 digits of your Aadhaar. Full Aadhaar is never stored.
+                      Your document will be reviewed by our team.
+                    </AlertDescription>
+                  </Alert>
+                  <div className="space-y-1.5">
+                    <Label>Last 4 Digits of Aadhaar</Label>
+                    <div className="flex gap-2 items-center">
+                      <span className="text-neutral-500 font-mono text-sm">XXXX XXXX</span>
+                      <Input value={aadhaarLast4} onChange={(e) => setAadhaarLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                        placeholder="1234" maxLength={4}
+                        className="bg-neutral-800 border-neutral-700 text-white font-mono w-24" />
+                    </div>
+                  </div>
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={loading || aadhaarLast4.length !== 4}
+                    onClick={() => handleVerify("AADHAAR", { aadhaarLast4Input: aadhaarLast4 })}>
+                    {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</> : "Submit Aadhaar Details"}
+                  </Button>
+                  {verifyStatus["aadhaarStatus"] === "PENDING" && (
+                    <Alert className="border-amber-700 bg-amber-950/30">
+                      <Info className="h-4 w-4 text-amber-400" />
+                      <AlertDescription className="text-amber-300 text-sm">
+                        Aadhaar details submitted. Our team will verify your document during review.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
+              <Button className="w-full bg-emerald-700 hover:bg-emerald-600" onClick={() => setStep(4)}
+                disabled={!aadhaarVerified}>
+                Continue to Bank Verification →
+              </Button>
+              {!aadhaarVerified && (
+                <p className="text-xs text-center text-neutral-500">Aadhaar confirmation is required to continue.</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Step 4 — Bank ────────────────────────────────────────── */}
+        {step === 4 && (
+          <Card className="bg-neutral-900 border-neutral-800">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-indigo-400" />Bank Account Verification
+                <MandatoryTag />
+              </CardTitle>
+              <CardDescription>
+                Verify your settlement bank account. Payouts remain disabled until bank verification is approved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {bankVerified ? (
+                <div className="flex items-center justify-between rounded-lg border border-emerald-700 bg-emerald-950/30 p-4">
+                  <div>
+                    <p className="text-xs text-emerald-400 font-medium">Bank Account Verified</p>
+                    <p className="text-white font-mono text-sm mt-0.5">{bankHolder && `${bankHolder} · `}{bankIfsc}</p>
+                  </div>
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Account Holder Name</Label>
+                    <Input value={bankHolder} onChange={(e) => setBankHolder(e.target.value)}
+                      placeholder="As per bank records"
+                      className="bg-neutral-800 border-neutral-700 text-white" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Account Number</Label>
+                    <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value.replace(/\D/g, ""))}
+                      placeholder="Enter account number"
+                      className="bg-neutral-800 border-neutral-700 text-white font-mono" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>IFSC Code</Label>
+                    <Input value={bankIfsc} onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
+                      placeholder="SBIN0001234" maxLength={11}
+                      className="bg-neutral-800 border-neutral-700 text-white font-mono" />
+                  </div>
+                  <Alert className="border-amber-700 bg-amber-950/30 py-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                    <AlertDescription className="text-amber-300 text-xs">
+                      Payouts to this account will be enabled only after verification is approved.
+                    </AlertDescription>
+                  </Alert>
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700"
+                    disabled={loading || !bankAccount || bankIfsc.length !== 11 || !bankHolder.trim()}
+                    onClick={() => handleVerify("BANK", { accountNumber: bankAccount, ifsc: bankIfsc, holderName: bankHolder })}>
+                    {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verifying…</> : "Verify Bank Account"}
+                  </Button>
+                  {verifyStatus["bankStatus"] === "FAILED" && (
+                    <Alert variant="destructive" className="text-sm">
+                      <XCircle className="h-4 w-4" />
+                      <AlertDescription>Bank verification failed. Check account number and IFSC, then retry.</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
+              <Button className="w-full bg-emerald-700 hover:bg-emerald-600" onClick={() => setStep(5)}
+                disabled={!bankVerified}>
+                Continue to Optional Documents →
+              </Button>
+              {!bankVerified && (
+                <p className="text-xs text-center text-neutral-500">Bank verification is required to continue.</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Step 5 — Optional ────────────────────────────────────── */}
+        {step === 5 && (
+          <Card className="bg-neutral-900 border-neutral-800">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-indigo-400" />Optional Business Documents
+                <OptionalTag />
+              </CardTitle>
+              <CardDescription>
+                Adding GSTIN, CIN, or Udyam number is completely optional. You can approve without these.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <Alert className="border-emerald-700 bg-emerald-950/30 py-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                <AlertDescription className="text-emerald-300 text-sm">
+                  All mandatory verifications are complete. These fields are optional and will not block approval.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-1.5">
+                <Label>Business Name <OptionalTag /></Label>
+                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)}
+                  placeholder="Your registered business name"
+                  className="bg-neutral-800 border-neutral-700 text-white" />
+              </div>
+
+              <Separator className="bg-neutral-800" />
+
+              {/* GSTIN */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>GSTIN <OptionalTag /></Label>
+                  <VerifyBadge status={verifyStatus["gstStatus"]} />
+                </div>
+                <div className="flex gap-2">
+                  <Input value={gstinInput} onChange={(e) => setGstinInput(e.target.value.toUpperCase())}
+                    placeholder="22AAAAA0000A1Z5" maxLength={15}
+                    className="bg-neutral-800 border-neutral-700 text-white font-mono" />
+                  <Button variant="outline" className="border-neutral-600 shrink-0" disabled={loading || gstinInput.length !== 15}
+                    onClick={() => handleVerify("GST", { gstin: gstinInput })}>Verify</Button>
+                </div>
+              </div>
+
+              {/* CIN */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>CIN <OptionalTag /></Label>
+                  <VerifyBadge status={verifyStatus["cinStatus"]} />
+                </div>
+                <div className="flex gap-2">
+                  <Input value={cinInput} onChange={(e) => setCinInput(e.target.value.toUpperCase())}
+                    placeholder="U12345MH2020PTC123456"
+                    className="bg-neutral-800 border-neutral-700 text-white font-mono" />
+                  <Button variant="outline" className="border-neutral-600 shrink-0" disabled={loading || cinInput.length < 10}
+                    onClick={() => handleVerify("CIN", { cin: cinInput })}>Verify</Button>
+                </div>
+              </div>
+
+              {/* Udyam */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Udyam Registration <OptionalTag /></Label>
+                  <VerifyBadge status={verifyStatus["udyamStatus"]} />
+                </div>
+                <div className="flex gap-2">
+                  <Input value={udyamInput} onChange={(e) => setUdyamInput(e.target.value.toUpperCase())}
+                    placeholder="UDYAM-XX-00-0000000"
+                    className="bg-neutral-800 border-neutral-700 text-white font-mono" />
+                  <Button variant="outline" className="border-neutral-600 shrink-0" disabled={loading || udyamInput.length < 10}
+                    onClick={() => handleVerify("UDYAM", { udyamNumber: udyamInput })}>Submit</Button>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button variant="ghost" className="flex-1 text-neutral-400 border border-neutral-700" onClick={() => setStep(6)}>
+                  Skip → Go to Review
+                </Button>
+                <Button className="flex-1 bg-indigo-600 hover:bg-indigo-700" onClick={() => setStep(6)}>
+                  Continue to Review →
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Step 6 — Review & Submit ─────────────────────────────── */}
+        {step === 6 && (
+          <Card className="bg-neutral-900 border-neutral-800">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <ClipboardCheck className="w-5 h-5 text-indigo-400" />
+                {submitResult ? "Application Status" : "Review & Submit"}
+              </CardTitle>
+              <CardDescription>
+                {submitResult === "SUBMITTED" ? "Your application is under review." :
+                 submitResult === "APPROVED" ? "Your KYC has been approved!" :
+                 submitResult === "REJECTED" ? "Your application was rejected." :
+                 submitResult === "RE_UPLOAD_REQUIRED" ? "Re-upload requested by our team." :
+                 "Review your details before submitting."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Status banner */}
+              {submitResult === "APPROVED" && (
+                <Alert className="border-emerald-700 bg-emerald-950/30">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  <AlertDescription className="text-emerald-300">Your account is verified and fully active.</AlertDescription>
+                </Alert>
+              )}
+              {submitResult === "REJECTED" && (
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Application rejected.{rejectionReason ? ` Reason: ${rejectionReason}` : ""}{" "}
+                    Contact support if you believe this is an error.
                   </AlertDescription>
                 </Alert>
               )}
-              {kycData?.fullName && (
-                <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
-                  <div><p className="text-xs text-neutral-500">Name (from records)</p><p className="text-sm text-white font-medium">{kycData.fullName}</p></div>
-                  {kycData.aadhaarLast4 && <div><p className="text-xs text-neutral-500">Aadhaar</p><p className="text-sm text-white font-mono">{kycData.aadhaarLast4}</p></div>}
-                  {kycData.panMasked && <div><p className="text-xs text-neutral-500">PAN</p><p className="text-sm text-white font-mono">{kycData.panMasked}</p></div>}
-                  {kycData.city && <div><p className="text-xs text-neutral-500">City</p><p className="text-sm text-white">{kycData.city}{kycData.state ? `, ${kycData.state}` : ""}</p></div>}
-                </div>
+              {submitResult === "RE_UPLOAD_REQUIRED" && (
+                <Alert className="border-amber-700 bg-amber-950/30">
+                  <AlertTriangle className="h-4 w-4 text-amber-400" />
+                  <AlertDescription className="text-amber-300">
+                    Our team needs additional documents.{rejectionReason ? ` Reason: ${rejectionReason}` : ""}{" "}
+                    Please visit the <a href="/merchant/verification" className="underline">Verification</a> section to upload.
+                  </AlertDescription>
+                </Alert>
               )}
-              <div className="space-y-1.5">
-                <Label>Business Name</Label>
-                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Your registered business name" className="bg-neutral-800 border-neutral-700 text-white" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>GSTIN <span className="text-neutral-500">(optional)</span></Label>
-                <Input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="22AAAAA0000A1Z5" className="bg-neutral-800 border-neutral-700 text-white font-mono" />
-              </div>
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => setCurrentStep(3)} disabled={!businessName.trim()}>
-                Continue to Identity Verification →
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+              {submitResult === "SUBMITTED" && (
+                <Alert className="border-indigo-700 bg-indigo-950/30">
+                  <Info className="h-4 w-4 text-indigo-400" />
+                  <AlertDescription className="text-indigo-300">Under review — typically 1–2 business days.</AlertDescription>
+                </Alert>
+              )}
 
-        {/* Step 3 — Identity & Verification */}
-        {currentStep === 3 && (
-          <Card className="bg-neutral-900 border-neutral-800">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2"><FileCheck className="w-5 h-5 text-indigo-400" />Identity Verification</CardTitle>
-              <CardDescription>Verify your PAN, GSTIN, and CIN to complete KYC.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {/* PAN */}
-              <div className="space-y-3 p-4 rounded-lg border border-neutral-700 bg-neutral-800/50">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-white">PAN Verification</p>
-                  <StatusBadge status={verifyStatus.panStatus} />
-                </div>
-                {(!verifyStatus.panStatus || verifyStatus.panStatus === "PENDING" || verifyStatus.panStatus === "FAILED") && (
-                  <>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <Label className="text-xs">PAN Number</Label>
-                        <Input value={panInput} onChange={(e) => setPanInput(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="bg-neutral-900 border-neutral-700 text-white font-mono text-sm" />
+              {/* Mandatory check summary */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Mandatory Checks</p>
+                <div className="rounded-lg border border-neutral-700 bg-neutral-800/50 divide-y divide-neutral-700">
+                  {[
+                    { label: "PAN Verification",     key: "panStatus",     masked: kycState.panMasked },
+                    { label: "Aadhaar Verification",  key: "aadhaarStatus", masked: kycState.aadhaarLast4 ? `XXXX XXXX ${kycState.aadhaarLast4}` : null },
+                    { label: "Bank Account",          key: "bankStatus",    masked: null },
+                  ].map(({ label, key, masked }) => (
+                    <div key={key} className="flex items-center justify-between px-4 py-3">
+                      <div>
+                        <p className="text-sm text-white">{label}</p>
+                        {masked && <p className="text-xs text-neutral-400 font-mono">{masked}</p>}
                       </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Name (as on PAN)</Label>
-                        <Input value={panName} onChange={(e) => setPanName(e.target.value)} placeholder="Full name" className="bg-neutral-900 border-neutral-700 text-white text-sm" />
+                      <VerifyBadge status={verifyStatus[key]} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Optional summary */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Optional Details</p>
+                <div className="rounded-lg border border-neutral-700 bg-neutral-800/30 divide-y divide-neutral-800">
+                  {[
+                    { label: "GSTIN", value: kycState.gstinMasked ?? gstinInput, key: "gstStatus" },
+                    { label: "CIN",   value: cinInput,                            key: "cinStatus" },
+                    { label: "Udyam", value: udyamInput,                          key: "udyamStatus" },
+                  ].map(({ label, value, key }) => (
+                    <div key={key} className="flex items-center justify-between px-4 py-2.5">
+                      <div>
+                        <p className="text-sm text-neutral-300">{label}</p>
+                        {value ? <p className="text-xs text-neutral-400 font-mono">{value}</p>
+                               : <p className="text-xs text-neutral-600 italic">Not provided</p>}
                       </div>
+                      <Badge variant="outline" className="text-xs text-neutral-500">
+                        {value ? (verifyStatus[key] === "VERIFIED" ? "Verified" : "Provided") : "Optional"}
+                      </Badge>
                     </div>
-                    <Button size="sm" variant="outline" className="w-full border-neutral-600" onClick={() => handleVerify("PAN")} disabled={loading || panInput.length !== 10 || !panName.trim()}>
-                      {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : "Verify PAN"}
-                    </Button>
-                  </>
-                )}
-              </div>
-
-              {/* GST */}
-              <div className="space-y-3 p-4 rounded-lg border border-neutral-700 bg-neutral-800/50">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-white">GST Verification <span className="text-xs text-neutral-500">(optional)</span></p>
-                  <StatusBadge status={verifyStatus.gstStatus} />
+                  ))}
                 </div>
-                {(!verifyStatus.gstStatus || verifyStatus.gstStatus === "PENDING" || verifyStatus.gstStatus === "FAILED") && (
-                  <>
-                    <Input value={gstinInput} onChange={(e) => setGstinInput(e.target.value.toUpperCase())} placeholder="22AAAAA0000A1Z5" maxLength={15} className="bg-neutral-900 border-neutral-700 text-white font-mono text-sm" />
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="flex-1 border-neutral-600" onClick={() => handleVerify("GST")} disabled={loading || gstinInput.length !== 15}>
-                        {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : "Verify GSTIN"}
-                      </Button>
-                      <Button size="sm" variant="ghost" className="text-neutral-500 text-xs" onClick={() => setVerifyStatus((p) => ({ ...p, gstStatus: "SKIPPED" }))}>
-                        Skip
-                      </Button>
-                    </div>
-                  </>
-                )}
               </div>
 
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => setCurrentStep(4)}>
-                Continue to Bank Verification →
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 4 — Bank Verification */}
-        {currentStep === 4 && (
-          <Card className="bg-neutral-900 border-neutral-800">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2"><CreditCard className="w-5 h-5 text-indigo-400" />Bank Account Verification</CardTitle>
-              <CardDescription>Verify your settlement bank account.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-1.5">
-                <Label>Account Number</Label>
-                <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value.replace(/\D/g, ""))} placeholder="Enter account number" className="bg-neutral-800 border-neutral-700 text-white font-mono" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>IFSC Code</Label>
-                <Input value={bankIfsc} onChange={(e) => setBankIfsc(e.target.value.toUpperCase())} placeholder="SBIN0001234" maxLength={11} className="bg-neutral-800 border-neutral-700 text-white font-mono" />
-              </div>
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm text-neutral-400">Verification status</p>
-                <StatusBadge status={verifyStatus.bankStatus} />
-              </div>
-              {(!verifyStatus.bankStatus || verifyStatus.bankStatus === "PENDING" || verifyStatus.bankStatus === "FAILED") && (
-                <Button variant="outline" className="w-full border-neutral-600" onClick={() => handleVerify("BANK")} disabled={loading || !bankAccount || bankIfsc.length !== 11}>
-                  {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verifying…</> : "Verify Bank Account"}
-                </Button>
+              {!submitResult && (
+                <>
+                  {!mandatoryMet && (
+                    <Alert className="border-red-700 bg-red-950/30">
+                      <XCircle className="h-4 w-4 text-red-400" />
+                      <AlertDescription className="text-red-300 text-sm">
+                        Please complete mandatory verifications (PAN, Aadhaar, Bank) before submitting.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={handleSubmit}
+                    disabled={loading || !mandatoryMet || !session?.verificationId}>
+                    {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</> :
+                               <><CheckCircle2 className="w-4 h-4 mr-2" />Submit Application</>}
+                  </Button>
+                  <Button variant="ghost" className="w-full text-neutral-400 text-sm" onClick={() => setStep(5)}>
+                    ← Back to Optional Documents
+                  </Button>
+                </>
               )}
-              <Separator className="bg-neutral-800" />
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => setCurrentStep(5)}>
-                Continue to Documents →
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 5 — Documents */}
-        {currentStep === 5 && (
-          <Card className="bg-neutral-900 border-neutral-800">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2"><Upload className="w-5 h-5 text-indigo-400" />Supporting Documents</CardTitle>
-              <CardDescription>Upload any remaining documents for review (PAN card, GST certificate, cancelled cheque).</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Alert className="border-indigo-700 bg-indigo-950/30">
-                <Info className="h-4 w-4 text-indigo-400" />
-                <AlertDescription className="text-indigo-300 text-sm">
-                  Your identity has been verified digitally. Upload physical copies only if requested by our team.
-                </AlertDescription>
-              </Alert>
-              <div className="rounded-lg border border-dashed border-neutral-700 bg-neutral-800/30 p-6 text-center">
-                <Upload className="w-8 h-8 text-neutral-500 mx-auto mb-2" />
-                <p className="text-sm text-neutral-400">Document upload is handled in the <strong className="text-white">Verification</strong> section of your dashboard.</p>
-                <Button variant="link" className="text-indigo-400 mt-1" onClick={() => window.location.href = "/merchant/verification"}>
-                  Go to Verification →
-                </Button>
-              </div>
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => setCurrentStep(6)}>
-                Skip & Review →
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 6 — Review & Submit / Status */}
-        {currentStep === 6 && (
-          <Card className="bg-neutral-900 border-neutral-800">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-indigo-400" />Review & Submit</CardTitle>
-              <CardDescription>Review your details and submit for our team's review.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {kycData && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Verified Details</p>
-                  <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700 text-sm">
-                    {kycData.fullName && <div><p className="text-xs text-neutral-500">Name</p><p className="text-white">{kycData.fullName}</p></div>}
-                    {kycData.panMasked && <div><p className="text-xs text-neutral-500">PAN</p><p className="text-white font-mono">{kycData.panMasked}</p></div>}
-                    {businessName && <div><p className="text-xs text-neutral-500">Business</p><p className="text-white">{businessName}</p></div>}
-                    <div><p className="text-xs text-neutral-500">PAN Check</p><StatusBadge status={verifyStatus.panStatus} /></div>
-                    <div><p className="text-xs text-neutral-500">GST Check</p><StatusBadge status={verifyStatus.gstStatus} /></div>
-                    <div><p className="text-xs text-neutral-500">Bank Check</p><StatusBadge status={verifyStatus.bankStatus} /></div>
-                  </div>
-                </div>
-              )}
-              <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={handleSubmit} disabled={loading || !session}>
-                {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Submit Application</>}
-              </Button>
-              <Alert className="border-emerald-700 bg-emerald-950/30">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                <AlertDescription className="text-emerald-300 text-sm">
-                  Our team reviews applications within 1–2 business days. You'll be notified once approved.
-                </AlertDescription>
-              </Alert>
             </CardContent>
           </Card>
         )}

@@ -405,6 +405,16 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "merchant_tryit_presets" }, "schema_guard_table_created");
 
+  // ── merchant_kyc_data new columns (aadhaar_status, udyam, bank_holder_name) ─
+  await db.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS aadhaar_status TEXT DEFAULT 'PENDING'`);
+  await db.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS bank_holder_name TEXT`);
+  await db.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_number TEXT`);
+  await db.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_status TEXT DEFAULT 'SKIPPED'`);
+  // Fix defaults: gst/cin should default to SKIPPED (optional)
+  await db.execute(sql`UPDATE merchant_kyc_data SET gst_status = 'SKIPPED' WHERE gst_status = 'PENDING'`).catch(() => {});
+  await db.execute(sql`UPDATE merchant_kyc_data SET cin_status = 'SKIPPED' WHERE cin_status = 'PENDING'`).catch(() => {});
+  logger.info({ table: "merchant_kyc_data", migration: "add_aadhaar_udyam_cols" }, "schema_guard_column_added");
+
   // ── secure_id_settings (Cashfree Secure ID provider config) ──────────────
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS secure_id_settings (
