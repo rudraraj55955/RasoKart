@@ -885,6 +885,7 @@ export async function notifyAdminsOfCredentialRotation(opts: {
   gateway: string;
   changedFields: string[];
   actorEmail: string;
+  isTest?: boolean;
 }): Promise<CredentialRotationAlertResult> {
   try {
     if (opts.changedFields.length === 0) return { attempted: 0, sent: 0, failed: 0 };
@@ -902,7 +903,7 @@ export async function notifyAdminsOfCredentialRotation(opts: {
     const timestamp = new Date().toISOString();
     const html = buildCredentialRotationHtml({ ...opts, timestamp });
     const gatewayLabel = GATEWAY_LABELS[opts.gateway] ?? opts.gateway;
-    const subject = `[RasoKart] 🔐 ${gatewayLabel} credentials changed — action may be required`;
+    const subject = `[RasoKart] 🔐 ${gatewayLabel} credentials changed — action may be required${opts.isTest ? " (TEST)" : ""}`;
 
     const results = await Promise.allSettled(
       recipients.map(email => sendMail({ to: email, subject, html }))

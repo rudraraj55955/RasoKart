@@ -507,6 +507,7 @@ router.post("/credential-rotation-alert/send-sample", async (req, res, next) => 
       gateway: resolvedGateway,
       changedFields: ["Client ID (TEST — no real credential was changed)", "Client Secret (TEST)"],
       actorEmail: user.email,
+      isTest: true,
     });
 
     try {
