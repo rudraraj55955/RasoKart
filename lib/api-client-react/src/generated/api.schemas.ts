@@ -107,6 +107,17 @@ export interface KycReviewHistoryResponse {
   total: number;
 }
 
+/**
+ * What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded.
+ */
+export type GithubSyncConfigDivergeAction = typeof GithubSyncConfigDivergeAction[keyof typeof GithubSyncConfigDivergeAction];
+
+
+export const GithubSyncConfigDivergeAction = {
+  alert_only: 'alert_only',
+  alert_and_push: 'alert_and_push',
+} as const;
+
 export interface GithubSyncConfig {
   /** Whether the GitHub sync job is enabled */
   enabled: boolean;
@@ -122,6 +133,8 @@ export interface GithubSyncConfig {
      * @minimum 1
      */
   renotifyInterval: number;
+  /** What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded. */
+  divergeAction: GithubSyncConfigDivergeAction;
 }
 
 /**
@@ -7308,6 +7321,17 @@ export type ListMerchantSavedFilters200 = {
   data: MerchantSavedFilter[];
 };
 
+/**
+ * What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins.
+ */
+export type UpdateGithubSyncConfigBodyDivergeAction = typeof UpdateGithubSyncConfigBodyDivergeAction[keyof typeof UpdateGithubSyncConfigBodyDivergeAction];
+
+
+export const UpdateGithubSyncConfigBodyDivergeAction = {
+  alert_only: 'alert_only',
+  alert_and_push: 'alert_and_push',
+} as const;
+
 export type UpdateGithubSyncConfigBody = {
   /** Whether the GitHub sync job is enabled */
   enabled?: boolean;
@@ -7323,6 +7347,8 @@ export type UpdateGithubSyncConfigBody = {
      * @minimum 1
      */
   renotifyInterval?: number;
+  /** What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins. */
+  divergeAction?: UpdateGithubSyncConfigBodyDivergeAction;
 };
 
 export type RunGithubSyncBody = {

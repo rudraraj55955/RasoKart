@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateGithubSyncConfigBodyDivergeAction } from './updateGithubSyncConfigBodyDivergeAction';
 
 export type UpdateGithubSyncConfigBody = {
   /** Whether the GitHub sync job is enabled */
@@ -21,4 +22,6 @@ export type UpdateGithubSyncConfigBody = {
      * @minimum 1
      */
   renotifyInterval?: number;
+  /** What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins. */
+  divergeAction?: UpdateGithubSyncConfigBodyDivergeAction;
 };

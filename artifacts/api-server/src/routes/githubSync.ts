@@ -20,11 +20,13 @@ const GITHUB_SYNC_KEYS = [
   "github_sync_schedule",
   "github_sync_failure_threshold",
   "github_sync_renotify_interval",
+  "github_sync_diverge_action",
 ] as const;
 const REMOTE_NAME = "github";
 const GITHUB_REPO = process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
 const DEFAULT_FAILURE_THRESHOLD = 3;
 const DEFAULT_RENOTIFY_INTERVAL = 10;
+const DEFAULT_DIVERGE_ACTION = "alert_only";
 
 let syncRunInProgress = false;
 
@@ -53,8 +55,10 @@ router.get("/config", async (req, res, next) => {
     const schedule = map["github_sync_schedule"] ?? "0 2 * * *";
     const failureThreshold = parseInt(map["github_sync_failure_threshold"] ?? "", 10) || DEFAULT_FAILURE_THRESHOLD;
     const renotifyInterval = parseInt(map["github_sync_renotify_interval"] ?? "", 10) || DEFAULT_RENOTIFY_INTERVAL;
+    const rawDivergeAction = map["github_sync_diverge_action"];
+    const divergeAction = rawDivergeAction === "alert_and_push" ? "alert_and_push" : DEFAULT_DIVERGE_ACTION;
 
-    res.json({ enabled, schedule, failureThreshold, renotifyInterval });
+    res.json({ enabled, schedule, failureThreshold, renotifyInterval, divergeAction });
   } catch (err) {
     next(err);
   }
@@ -64,11 +68,12 @@ router.get("/config", async (req, res, next) => {
 router.put("/config", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { enabled, schedule, failureThreshold, renotifyInterval } = req.body as {
+    const { enabled, schedule, failureThreshold, renotifyInterval, divergeAction } = req.body as {
       enabled?: boolean;
       schedule?: string;
       failureThreshold?: number;
       renotifyInterval?: number;
+      divergeAction?: string;
     };
 
     if (enabled !== undefined && typeof enabled !== "boolean") {
@@ -105,6 +110,11 @@ router.put("/config", async (req, res, next) => {
       }
     }
 
+    if (divergeAction !== undefined && divergeAction !== "alert_only" && divergeAction !== "alert_and_push") {
+      res.status(400).json({ error: "divergeAction must be \"alert_only\" or \"alert_and_push\"" });
+      return;
+    }
+
     const now = new Date();
     const upserts: Array<{ key: string; value: string }> = [];
 
@@ -119,6 +129,9 @@ router.put("/config", async (req, res, next) => {
     }
     if (renotifyInterval !== undefined) {
       upserts.push({ key: "github_sync_renotify_interval", value: String(renotifyInterval) });
+    }
+    if (divergeAction !== undefined) {
+      upserts.push({ key: "github_sync_diverge_action", value: divergeAction });
     }
 
     for (const { key, value } of upserts) {
@@ -156,12 +169,15 @@ router.put("/config", async (req, res, next) => {
     const finalSchedule = map["github_sync_schedule"] ?? "0 2 * * *";
     const finalFailureThreshold = parseInt(map["github_sync_failure_threshold"] ?? "", 10) || DEFAULT_FAILURE_THRESHOLD;
     const finalRenotifyInterval = parseInt(map["github_sync_renotify_interval"] ?? "", 10) || DEFAULT_RENOTIFY_INTERVAL;
+    const rawFinalDivergeAction = map["github_sync_diverge_action"];
+    const finalDivergeAction = rawFinalDivergeAction === "alert_and_push" ? "alert_and_push" : DEFAULT_DIVERGE_ACTION;
 
     res.json({
       enabled: finalEnabled,
       schedule: finalSchedule,
       failureThreshold: finalFailureThreshold,
       renotifyInterval: finalRenotifyInterval,
+      divergeAction: finalDivergeAction,
     });
   } catch (err) {
     next(err);

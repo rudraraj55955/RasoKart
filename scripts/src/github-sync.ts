@@ -2,7 +2,7 @@ import { execSync } from "child_process";
 import { writeFileSync, readFileSync, mkdirSync, unlinkSync } from "fs";
 import { randomUUID } from "crypto";
 import { sendAdminAlert } from "./mailer.js";
-import { notifyAdminsOfGithubSyncFailing, notifyAdminsOfGithubSyncRecovered } from "./githubSyncAlertEmail.js";
+import { notifyAdminsOfGithubSyncFailing, notifyAdminsOfGithubSyncRecovered, notifyAdminsOfGithubSyncDiverged } from "./githubSyncAlertEmail.js";
 import { db, systemSettingsTable } from "@workspace/db";
 import { inArray } from "drizzle-orm";
 
@@ -238,6 +238,7 @@ async function readSyncConfig(): Promise<{
   schedule: string;
   failureThreshold: number;
   renotifyInterval: number;
+  divergeAction: "alert_only" | "alert_and_push";
 }> {
   try {
     const rows = await db
@@ -249,6 +250,7 @@ async function readSyncConfig(): Promise<{
           "github_sync_schedule",
           "github_sync_failure_threshold",
           "github_sync_renotify_interval",
+          "github_sync_diverge_action",
         ]),
       );
     const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
@@ -259,7 +261,9 @@ async function readSyncConfig(): Promise<{
     const failureThreshold = Number.isFinite(parsedThreshold) && parsedThreshold > 0 ? parsedThreshold : DEFAULT_FAILURE_ESCALATION_THRESHOLD;
     const parsedInterval = parseInt(map["github_sync_renotify_interval"] ?? "", 10);
     const renotifyInterval = Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : DEFAULT_FAILURE_ESCALATION_RENOTIFY_INTERVAL;
-    return { enabled, schedule, failureThreshold, renotifyInterval };
+    const rawDivergeAction = map["github_sync_diverge_action"];
+    const divergeAction: "alert_only" | "alert_and_push" = rawDivergeAction === "alert_and_push" ? "alert_and_push" : "alert_only";
+    return { enabled, schedule, failureThreshold, renotifyInterval, divergeAction };
   } catch (err) {
     console.warn("GITHUB_SYNC: Could not read sync config from DB — assuming enabled, default schedule and thresholds:", err);
     return {
@@ -267,6 +271,7 @@ async function readSyncConfig(): Promise<{
       schedule: "0 2 * * *",
       failureThreshold: DEFAULT_FAILURE_ESCALATION_THRESHOLD,
       renotifyInterval: DEFAULT_FAILURE_ESCALATION_RENOTIFY_INTERVAL,
+      divergeAction: "alert_only",
     };
   }
 }
@@ -345,12 +350,49 @@ async function main() {
 
   try {
     log(`GITHUB_SYNC: Pushing to ${GITHUB_REPO}...`);
+
+    // Divergence check — run fetch first, then count remote-only commits
+    let fetchSucceeded = false;
     try {
       runCaptured(`git fetch ${REMOTE_NAME} main`);
+      fetchSucceeded = true;
     } catch (fetchErr: unknown) {
       const fetchMessage = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
       logLines.push(redact(`git fetch warning: ${fetchMessage}`));
     }
+
+    if (fetchSucceeded) {
+      let remoteAheadBy = 0;
+      try {
+        const out = execSync(`git rev-list --count HEAD..${REMOTE_NAME}/main`, { stdio: "pipe" }).toString().trim();
+        remoteAheadBy = parseInt(out, 10) || 0;
+      } catch {
+        // Remote branch doesn't exist yet — first push, no divergence possible
+        remoteAheadBy = 0;
+      }
+
+      if (remoteAheadBy > 0) {
+        log(`GITHUB_SYNC: Remote is ahead by ${remoteAheadBy} commit(s) — history would be overwritten. divergeAction=${config.divergeAction}`);
+
+        // Always send the alert email regardless of divergeAction
+        await notifyAdminsOfGithubSyncDiverged({
+          repo: GITHUB_REPO,
+          remoteAheadBy,
+          divergeAction: config.divergeAction,
+        });
+
+        if (config.divergeAction === "alert_only") {
+          // Skip the push — record as a successful (skipped) run so it doesn't count as a failure
+          log("GITHUB_SYNC: Push skipped to protect remote history. Admins have been alerted.");
+          writeStatus("success", runId, logLines, undefined, retryOf);
+          return;
+        }
+
+        // divergeAction === "alert_and_push" — proceed with force-push after alerting
+        log("GITHUB_SYNC: Proceeding with force-push per divergeAction=alert_and_push setting.");
+      }
+    }
+
     runCaptured(`git push ${REMOTE_NAME} HEAD:main --force`);
     log("GITHUB_SYNC: Sync complete.");
 

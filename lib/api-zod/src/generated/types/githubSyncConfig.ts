@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { GithubSyncConfigDivergeAction } from './githubSyncConfigDivergeAction';
 
 export interface GithubSyncConfig {
   /** Whether the GitHub sync job is enabled */
@@ -21,4 +22,6 @@ export interface GithubSyncConfig {
      * @minimum 1
      */
   renotifyInterval: number;
+  /** What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded. */
+  divergeAction: GithubSyncConfigDivergeAction;
 }

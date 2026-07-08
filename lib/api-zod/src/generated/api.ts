@@ -7425,7 +7425,8 @@ export const GetGithubSyncConfigResponse = zod.object({
   "enabled": zod.boolean().describe('Whether the GitHub sync job is enabled'),
   "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
   "failureThreshold": zod.number().min(1).describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire. Defaults to 3.'),
-  "renotifyInterval": zod.number().min(1).describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.')
+  "renotifyInterval": zod.number().min(1).describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.'),
+  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).describe('What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded.')
 })
 
 
@@ -7440,7 +7441,8 @@ export const UpdateGithubSyncConfigBody = zod.object({
   "enabled": zod.boolean().optional().describe('Whether the GitHub sync job is enabled'),
   "schedule": zod.string().optional().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
   "failureThreshold": zod.number().min(1).optional().describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire.'),
-  "renotifyInterval": zod.number().min(1).optional().describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it.')
+  "renotifyInterval": zod.number().min(1).optional().describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it.'),
+  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).optional().describe('What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins.')
 })
 
 
@@ -7451,7 +7453,8 @@ export const UpdateGithubSyncConfigResponse = zod.object({
   "enabled": zod.boolean().describe('Whether the GitHub sync job is enabled'),
   "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
   "failureThreshold": zod.number().min(1).describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire. Defaults to 3.'),
-  "renotifyInterval": zod.number().min(1).describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.')
+  "renotifyInterval": zod.number().min(1).describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.'),
+  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).describe('What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded.')
 })
 
 

@@ -7706,6 +7706,10 @@ paths:
                   type: integer
                   minimum: 1
                   description: Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it.
+                divergeAction:
+                  type: string
+                  enum: [alert_only, alert_and_push]
+                  description: "What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins."
       responses:
         "200":
           description: Updated configuration
@@ -10527,7 +10531,7 @@ components:
 
     GithubSyncConfig:
       type: object
-      required: [enabled, schedule, failureThreshold, renotifyInterval]
+      required: [enabled, schedule, failureThreshold, renotifyInterval, divergeAction]
       properties:
         enabled:
           type: boolean
@@ -10543,6 +10547,10 @@ components:
           type: integer
           minimum: 1
           description: Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.
+        divergeAction:
+          type: string
+          enum: [alert_only, alert_and_push]
+          description: "What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded."
 
     GithubSyncStatus:
       type: object

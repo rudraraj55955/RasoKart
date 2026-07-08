@@ -248,6 +248,7 @@ export default function AdminSettings() {
   const [githubSyncSchedule, setGithubSyncSchedule] = useState<string>("0 2 * * *");
   const [githubSyncFailureThreshold, setGithubSyncFailureThreshold] = useState<number>(3);
   const [githubSyncRenotifyInterval, setGithubSyncRenotifyInterval] = useState<number>(10);
+  const [githubSyncDivergeAction, setGithubSyncDivergeAction] = useState<"alert_only" | "alert_and_push">("alert_only");
   const [githubSyncInitialized, setGithubSyncInitialized] = useState(false);
 
   const [quietHoursFlushInterval, setQuietHoursFlushInterval] = useState<number>(60);
@@ -891,6 +892,7 @@ export default function AdminSettings() {
       setGithubSyncSchedule(githubSyncConfig.schedule);
       setGithubSyncFailureThreshold(githubSyncConfig.failureThreshold);
       setGithubSyncRenotifyInterval(githubSyncConfig.renotifyInterval);
+      setGithubSyncDivergeAction(githubSyncConfig.divergeAction === "alert_and_push" ? "alert_and_push" : "alert_only");
       setGithubSyncInitialized(true);
     }
   }, [githubSyncInitialized, githubSyncConfig]);
@@ -899,16 +901,18 @@ export default function AdminSettings() {
   const currentGithubSyncSchedule = githubSyncConfig?.schedule ?? "0 2 * * *";
   const currentGithubSyncFailureThreshold = githubSyncConfig?.failureThreshold ?? 3;
   const currentGithubSyncRenotifyInterval = githubSyncConfig?.renotifyInterval ?? 10;
+  const currentGithubSyncDivergeAction: "alert_only" | "alert_and_push" = githubSyncConfig?.divergeAction === "alert_and_push" ? "alert_and_push" : "alert_only";
   const githubSyncUnchanged =
     githubSyncEnabled === currentGithubSyncEnabled &&
     githubSyncSchedule === currentGithubSyncSchedule &&
     githubSyncFailureThreshold === currentGithubSyncFailureThreshold &&
-    githubSyncRenotifyInterval === currentGithubSyncRenotifyInterval;
+    githubSyncRenotifyInterval === currentGithubSyncRenotifyInterval &&
+    githubSyncDivergeAction === currentGithubSyncDivergeAction;
   const githubSyncThresholdsValid = githubSyncFailureThreshold >= 1 && githubSyncRenotifyInterval >= 1;
 
   const { mutate: saveGithubSyncConfig, isPending: savingGithubSyncConfig } = useUpdateGithubSyncConfig({
     mutation: {
-      onSuccess: (updated: { enabled: boolean; schedule: string; failureThreshold: number; renotifyInterval: number }) => {
+      onSuccess: (updated) => {
         toast.success("GitHub sync settings saved");
         setGithubSyncInitialized(false);
         qc.invalidateQueries({ queryKey: getGetGithubSyncConfigQueryKey() });
@@ -916,6 +920,7 @@ export default function AdminSettings() {
         setGithubSyncSchedule(updated.schedule);
         setGithubSyncFailureThreshold(updated.failureThreshold);
         setGithubSyncRenotifyInterval(updated.renotifyInterval);
+        setGithubSyncDivergeAction(updated.divergeAction === "alert_and_push" ? "alert_and_push" : "alert_only");
         setGithubSyncInitialized(true);
       },
       onError: (err: Error) => toast.error(err.message),
@@ -3314,6 +3319,45 @@ export default function AdminSettings() {
             </div>
           </div>
 
+          <div className="space-y-3 rounded-lg border border-border/50 bg-muted/5 p-4">
+            <div>
+              <p className="text-sm font-medium text-foreground">On diverged remote</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                What the <em>scheduled</em> sync should do when the remote has commits not present locally. The manual &quot;Sync now&quot; button always shows a confirmation dialog instead.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+              <label className={`flex items-start gap-3 cursor-pointer rounded-md border px-3 py-2.5 flex-1 transition-colors ${githubSyncDivergeAction === "alert_only" ? "border-violet-500/50 bg-violet-500/10" : "border-border/40 hover:bg-muted/10"}`}>
+                <input
+                  type="radio"
+                  name="divergeAction"
+                  value="alert_only"
+                  checked={githubSyncDivergeAction === "alert_only"}
+                  onChange={() => setGithubSyncDivergeAction("alert_only")}
+                  className="mt-0.5 accent-violet-500"
+                />
+                <div>
+                  <p className="text-xs font-medium text-foreground">Alert only (skip push)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Skip the force-push and email all admins. Safe default — protects any commits pushed directly to GitHub.</p>
+                </div>
+              </label>
+              <label className={`flex items-start gap-3 cursor-pointer rounded-md border px-3 py-2.5 flex-1 transition-colors ${githubSyncDivergeAction === "alert_and_push" ? "border-amber-500/50 bg-amber-500/10" : "border-border/40 hover:bg-muted/10"}`}>
+                <input
+                  type="radio"
+                  name="divergeAction"
+                  value="alert_and_push"
+                  checked={githubSyncDivergeAction === "alert_and_push"}
+                  onChange={() => setGithubSyncDivergeAction("alert_and_push")}
+                  className="mt-0.5 accent-amber-500"
+                />
+                <div>
+                  <p className="text-xs font-medium text-foreground">Alert and push anyway</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Force-push even when diverged, but email all admins first so they know commits were discarded.</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -3323,6 +3367,7 @@ export default function AdminSettings() {
                   schedule: githubSyncSchedule,
                   failureThreshold: githubSyncFailureThreshold,
                   renotifyInterval: githubSyncRenotifyInterval,
+                  divergeAction: githubSyncDivergeAction,
                 },
               })}
               disabled={savingGithubSyncConfig || githubSyncLoading || githubSyncUnchanged || !githubSyncThresholdsValid}
@@ -3339,6 +3384,7 @@ export default function AdminSettings() {
                   setGithubSyncSchedule(currentGithubSyncSchedule);
                   setGithubSyncFailureThreshold(currentGithubSyncFailureThreshold);
                   setGithubSyncRenotifyInterval(currentGithubSyncRenotifyInterval);
+                  setGithubSyncDivergeAction(currentGithubSyncDivergeAction);
                 }}
                 disabled={savingGithubSyncConfig}
               >
