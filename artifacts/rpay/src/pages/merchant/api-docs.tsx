@@ -199,6 +199,12 @@ function walkJsonStrings(value: unknown, path: string, found: { path: string; va
   }
 }
 
+function truncateCredentialValue(value: string, maxLen = 24): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  return trimmed.slice(0, maxLen) + "…";
+}
+
 function collectCredentialWarnings(
   queryParams: { key: string; value: string }[],
   body: string,
@@ -212,7 +218,7 @@ function collectCredentialWarnings(
   }
   for (const [key, val] of Object.entries(pathValues)) {
     if (looksLikeCredential(val)) {
-      warnings.push(`path param "{${key}}"`);
+      warnings.push(`path param "{${key}}" = "${truncateCredentialValue(val)}"`);
     }
   }
   if (body.trim()) {
