@@ -28,6 +28,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, asc, ne } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { simulateRouting } from "../helpers/smartRouter";
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -360,6 +361,36 @@ router.get("/logs", async (req, res, next) => {
         createdAt: r.createdAt.toISOString(),
       })),
     });
+  } catch (err) { next(err); }
+});
+
+// ── Simulate (dry-run) ────────────────────────────────────────────────────────
+
+/**
+ * GET /api/smart-routing/simulate?amount=1000&paymentMode=upi
+ *
+ * Dry-runs the routing engine for the given amount + payment mode.
+ * Returns the ordered list of providers that would be attempted — no logs
+ * written, no external calls made.
+ */
+router.get("/simulate", async (req, res, next) => {
+  try {
+    const amount = parseFloat((req.query["amount"] as string) ?? "0");
+    if (!isFinite(amount) || amount <= 0) {
+      res.status(400).json({ error: "amount must be a positive number" });
+      return;
+    }
+    const paymentMode = (req.query["paymentMode"] as string | undefined) || undefined;
+    const configName = (req.query["configName"] as string | undefined) || undefined;
+
+    const result = await simulateRouting({ amount, paymentMode, configName });
+    if (!result) {
+      res.status(404).json({ error: "No enabled routing config found" });
+      return;
+    }
+
+    req.log.info({ amount, paymentMode, configName: result.configName, steps: result.steps.length }, "Smart routing simulated (dry-run)");
+    res.json(result);
   } catch (err) { next(err); }
 });
 

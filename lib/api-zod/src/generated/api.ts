@@ -9205,6 +9205,36 @@ export const GetRoutingLogsResponse = zod.object({
 
 
 /**
+ * @summary Dry-run the failover chain for a given amount and payment mode (admin)
+ */
+export const SimulateRoutingQueryParams = zod.object({
+  "amount": zod.coerce.number().describe('Payment amount to simulate routing for'),
+  "paymentMode": zod.coerce.string().optional().describe('Payment mode (upi, card, netbanking, wallet, bnpl, emi)'),
+  "configName": zod.coerce.string().optional().describe('Name of the routing config to simulate (defaults to first enabled config)')
+})
+
+export const SimulateRoutingResponse = zod.object({
+  "configName": zod.string(),
+  "strategy": zod.string(),
+  "amount": zod.number(),
+  "paymentMode": zod.string().nullish(),
+  "steps": zod.array(zod.object({
+  "step": zod.number(),
+  "providerKey": zod.string(),
+  "priority": zod.number(),
+  "isFallbackOnly": zod.boolean(),
+  "maxRetries": zod.number(),
+  "weightPercent": zod.number(),
+  "role": zod.enum(['primary', 'fallback']),
+  "notes": zod.string().nullish()
+})),
+  "totalProviders": zod.number(),
+  "isDeterministic": zod.boolean().optional().describe('True for priority\/success_rate (exact). False for percentage\/round_robin (representative ordering shown).'),
+  "warning": zod.string().nullish()
+})
+
+
+/**
  * @summary Smart routing health summary (admin)
  */
 export const GetRoutingStatusResponse = zod.object({

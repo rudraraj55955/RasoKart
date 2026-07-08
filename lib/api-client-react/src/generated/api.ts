@@ -382,6 +382,8 @@ import type {
   SettlementStats,
   SignatureFailureAlertHistoryResponse,
   SimulatePaymentInput,
+  SimulateRoutingParams,
+  SimulateRoutingResponse,
   SnoozeBadge200,
   SnoozeBadgeBody,
   SnoozeReportsBadge200,
@@ -28067,6 +28069,90 @@ export function useGetRoutingLogs<TData = Awaited<ReturnType<typeof getRoutingLo
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetRoutingLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSimulateRoutingUrl = (params: SimulateRoutingParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/smart-routing/simulate?${stringifiedParams}` : `/api/smart-routing/simulate`
+}
+
+/**
+ * @summary Dry-run the failover chain for a given amount and payment mode (admin)
+ */
+export const simulateRouting = async (params: SimulateRoutingParams, options?: RequestInit): Promise<SimulateRoutingResponse> => {
+
+  return customFetch<SimulateRoutingResponse>(getSimulateRoutingUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSimulateRoutingQueryKey = (params?: SimulateRoutingParams,) => {
+    return [
+    `/api/smart-routing/simulate`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSimulateRoutingQueryOptions = <TData = Awaited<ReturnType<typeof simulateRouting>>, TError = ErrorType<ErrorResponse>>(params: SimulateRoutingParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof simulateRouting>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSimulateRoutingQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof simulateRouting>>> = ({ signal }) => simulateRouting(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof simulateRouting>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SimulateRoutingQueryResult = NonNullable<Awaited<ReturnType<typeof simulateRouting>>>
+export type SimulateRoutingQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Dry-run the failover chain for a given amount and payment mode (admin)
+ */
+
+export function useSimulateRouting<TData = Awaited<ReturnType<typeof simulateRouting>>, TError = ErrorType<ErrorResponse>>(
+ params: SimulateRoutingParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof simulateRouting>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSimulateRoutingQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

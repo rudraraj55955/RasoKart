@@ -5404,6 +5404,37 @@ export interface RoutingLogsResponse {
   logs: RoutingLog[];
 }
 
+export type SimulateRoutingResponseStepsItemRole = typeof SimulateRoutingResponseStepsItemRole[keyof typeof SimulateRoutingResponseStepsItemRole];
+
+
+export const SimulateRoutingResponseStepsItemRole = {
+  primary: 'primary',
+  fallback: 'fallback',
+} as const;
+
+export type SimulateRoutingResponseStepsItem = {
+  step: number;
+  providerKey: string;
+  priority: number;
+  isFallbackOnly: boolean;
+  maxRetries: number;
+  weightPercent: number;
+  role: SimulateRoutingResponseStepsItemRole;
+  notes?: string | null;
+};
+
+export interface SimulateRoutingResponse {
+  configName: string;
+  strategy: string;
+  amount: number;
+  paymentMode?: string | null;
+  steps: SimulateRoutingResponseStepsItem[];
+  totalProviders: number;
+  /** True for priority/success_rate (exact). False for percentage/round_robin (representative ordering shown). */
+  isDeterministic?: boolean;
+  warning?: string | null;
+}
+
 export type RoutingStatusResponseProvidersItem = { [key: string]: unknown };
 
 export type RoutingStatusResponseMetrics24hItem = { [key: string]: unknown };
@@ -7732,6 +7763,21 @@ export const GetRoutingMetricsWindow = {
 export type GetRoutingLogsParams = {
 page?: number;
 limit?: number;
+};
+
+export type SimulateRoutingParams = {
+/**
+ * Payment amount to simulate routing for
+ */
+amount: number;
+/**
+ * Payment mode (upi, card, netbanking, wallet, bnpl, emi)
+ */
+paymentMode?: string;
+/**
+ * Name of the routing config to simulate (defaults to first enabled config)
+ */
+configName?: string;
 };
 
 export type ListKycDocumentsParams = {

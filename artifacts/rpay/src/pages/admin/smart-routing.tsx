@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import {
   GitMerge, Activity, BarChart2, ScrollText, Plus, Pencil, Trash2,
   RefreshCw, ArrowUpDown, CheckCircle2, XCircle, Clock, AlertTriangle,
-  ShieldCheck, Zap, Settings2, ChevronsDown, Shield,
+  ShieldCheck, Zap, Settings2, ChevronsDown, Shield, FlaskConical, Loader2,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 
@@ -94,6 +94,28 @@ type StatusData = {
   recentActivity: { successCount24h: number; failedCount24h: number };
 };
 
+type SimulateStep = {
+  step: number;
+  providerKey: string;
+  priority: number;
+  isFallbackOnly: boolean;
+  maxRetries: number;
+  weightPercent: number;
+  role: "primary" | "fallback";
+  notes: string | null;
+};
+
+type SimulateResult = {
+  configName: string;
+  strategy: string;
+  amount: number;
+  paymentMode: string | null;
+  steps: SimulateStep[];
+  totalProviders: number;
+  isDeterministic: boolean;
+  warning: string | null;
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -145,6 +167,15 @@ export default function AdminSmartRouting() {
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
   const [deleteRuleId, setDeleteRuleId] = useState<number | null>(null);
+
+  // Simulate
+  const [simulateOpen, setSimulateOpen] = useState(false);
+  const [simAmount, setSimAmount] = useState("");
+  const [simMode, setSimMode] = useState("any");
+  const [simConfigName, setSimConfigName] = useState<string>("");
+  const [simLoading, setSimLoading] = useState(false);
+  const [simResult, setSimResult] = useState<SimulateResult | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
 
   // Form state — config
   const [cfStrategy, setCfStrategy] = useState("priority");
@@ -296,6 +327,47 @@ export default function AdminSmartRouting() {
         r.id !== editingRule?.id
       ) ?? null
     : null;
+
+  async function runSimulate() {
+    const amount = parseFloat(simAmount);
+    if (!isFinite(amount) || amount <= 0) {
+      setSimError("Enter a valid positive amount.");
+      return;
+    }
+    setSimLoading(true);
+    setSimError(null);
+    setSimResult(null);
+    try {
+      const params = new URLSearchParams({ amount: String(amount) });
+      if (simMode && simMode !== "any") params.set("paymentMode", simMode);
+      if (simConfigName) params.set("configName", simConfigName);
+      const r = await fetch(`/api/smart-routing/simulate?${params}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? r.statusText);
+      setSimResult(data as SimulateResult);
+    } catch (e: unknown) {
+      setSimError(e instanceof Error ? e.message : "Simulation failed");
+    } finally {
+      setSimLoading(false);
+    }
+  }
+
+  function openSimulate() {
+    setSimAmount("");
+    setSimMode("any");
+    // Default to the currently viewed config (if enabled), else first enabled config
+    const enabledConfigs = configs.filter(c => c.isEnabled);
+    const viewedEnabled = selectedConfigId
+      ? configs.find(c => c.id === selectedConfigId && c.isEnabled)
+      : null;
+    const defaultCfg = viewedEnabled?.configName ?? enabledConfigs[0]?.configName ?? "";
+    setSimConfigName(defaultCfg);
+    setSimResult(null);
+    setSimError(null);
+    setSimulateOpen(true);
+  }
 
   const status = statusQ.data;
   const configs = configsQ.data ?? [];
@@ -469,11 +541,16 @@ export default function AdminSmartRouting() {
                     </SelectContent>
                   </Select>
                 </div>
-                {selectedConfigId && (
-                  <Button size="sm" onClick={openAddRule} className="bg-violet-600 hover:bg-violet-500 text-white">
-                    <Plus className="w-4 h-4 mr-1" /> Add Rule
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={openSimulate} className="border-violet-500/50 text-violet-400 hover:text-violet-300 hover:border-violet-400">
+                    <FlaskConical className="w-4 h-4 mr-1" /> Simulate
                   </Button>
-                )}
+                  {selectedConfigId && (
+                    <Button size="sm" onClick={openAddRule} className="bg-violet-600 hover:bg-violet-500 text-white">
+                      <Plus className="w-4 h-4 mr-1" /> Add Rule
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {!selectedConfigId ? (
@@ -1018,6 +1095,166 @@ export default function AdminSmartRouting() {
             <Button variant="ghost" onClick={() => setDeleteRuleId(null)} className="text-zinc-400">Cancel</Button>
             <Button variant="destructive" onClick={() => deleteRuleId && deleteRuleM.mutate(deleteRuleId)} disabled={deleteRuleM.isPending}>
               {deleteRuleM.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Simulate Failover Chain Dialog ── */}
+      <Dialog open={simulateOpen} onOpenChange={o => { if (!o) setSimulateOpen(false); }}>
+        <DialogContent className="bg-zinc-950 border-zinc-800 text-white max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="w-5 h-5 text-violet-400" />
+              Simulate Failover Chain
+            </DialogTitle>
+          </DialogHeader>
+
+          <p className="text-xs text-zinc-500 -mt-2 mb-1">
+            Dry-run the routing engine for any amount and payment mode. No real payment is created, no routing log is written — the result shows exactly which providers would be attempted in order.
+          </p>
+
+          {/* Inputs */}
+          <div className="space-y-3">
+            {/* Config selector */}
+            {configs.length > 1 && (
+              <div>
+                <Label className="text-zinc-400 text-sm mb-1.5 block">Routing Config</Label>
+                <Select value={simConfigName} onValueChange={setSimConfigName}>
+                  <SelectTrigger className="bg-zinc-900 border-zinc-700 text-white">
+                    <SelectValue placeholder="Select config" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border-zinc-700">
+                    {configs.filter(c => c.isEnabled).map(c => (
+                      <SelectItem key={c.id} value={c.configName}>{c.configName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-zinc-400 text-sm mb-1.5 block">Amount (₹)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 1000"
+                  value={simAmount}
+                  onChange={e => setSimAmount(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") runSimulate(); }}
+                  className="bg-zinc-900 border-zinc-700 text-white"
+                />
+              </div>
+              <div>
+                <Label className="text-zinc-400 text-sm mb-1.5 block">Payment Mode</Label>
+                <Select value={simMode} onValueChange={setSimMode}>
+                  <SelectTrigger className="bg-zinc-900 border-zinc-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border-zinc-700">
+                    <SelectItem value="any">Any mode</SelectItem>
+                    {PAYMENT_MODES.map(m => <SelectItem key={m} value={m} className="capitalize">{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {simError && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-300">
+              <XCircle className="w-4 h-4 shrink-0" />
+              {simError}
+            </div>
+          )}
+
+          {/* Results */}
+          {simResult && (
+            <div className="space-y-3 mt-1">
+              {/* Summary bar */}
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                <div className="flex items-center gap-3 text-xs text-zinc-400">
+                  <span>Config: <span className="text-white font-mono">{simResult.configName}</span></span>
+                  <span className="text-zinc-700">|</span>
+                  <span>Strategy: <span className="text-violet-300">{STRATEGY_LABELS[simResult.strategy] ?? simResult.strategy}</span></span>
+                  <span className="text-zinc-700">|</span>
+                  <span>₹{simResult.amount.toLocaleString("en-IN")}</span>
+                  {simResult.paymentMode && <><span className="text-zinc-700">|</span><span className="capitalize">{simResult.paymentMode}</span></>}
+                </div>
+                <Badge variant="outline" className="text-zinc-400 border-zinc-700 text-xs">
+                  {simResult.totalProviders} provider{simResult.totalProviders !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+
+              {/* Warning */}
+              {simResult.warning && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                  <p className="text-xs text-amber-300">{simResult.warning}</p>
+                </div>
+              )}
+
+              {/* Failover chain */}
+              {simResult.steps.length === 0 ? (
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-dashed border-red-500/40 bg-red-500/5">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 bg-red-500/20 text-red-400">✕</div>
+                  <p className="text-xs text-red-300/80">No providers match — payment would fail immediately</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {simResult.steps.map((step, idx) => (
+                    <div key={step.step}>
+                      <div className={`flex items-center gap-3 p-2.5 rounded-lg border ${step.isFallbackOnly ? "bg-amber-500/5 border-amber-500/20" : "bg-blue-500/5 border-blue-500/20"}`}>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.isFallbackOnly ? "bg-amber-500/20 text-amber-400" : "bg-blue-500/20 text-blue-400"}`}>
+                          {step.step}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-sm text-white">{step.providerKey}</span>
+                            {step.isFallbackOnly && (
+                              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs py-0">
+                                <Shield className="w-3 h-3 mr-1 inline" />Fallback Only
+                              </Badge>
+                            )}
+                            {step.maxRetries > 1 && (
+                              <Badge variant="outline" className="text-zinc-400 border-zinc-600 text-xs py-0">up to {step.maxRetries} attempts</Badge>
+                            )}
+                            {simResult.strategy === "percentage" && (
+                              <Badge variant="outline" className="text-zinc-500 border-zinc-700 text-xs py-0">{step.weightPercent}% weight</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-zinc-500 mt-0.5">
+                            Priority #{step.priority}{step.isFallbackOnly ? " — tried only after a primary attempt" : ""}
+                            {step.notes ? <span className="text-zinc-600"> · {step.notes}</span> : null}
+                          </p>
+                        </div>
+                        <div className="text-xs text-zinc-600 shrink-0">
+                          {idx < simResult.steps.length - 1 ? "→ fails" : "→ order fails"}
+                        </div>
+                      </div>
+                      {idx < simResult.steps.length - 1 && (
+                        <div className="flex items-center justify-center py-0.5">
+                          <div className="w-px h-3 bg-zinc-700" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-3 p-2.5 rounded-lg border border-dashed border-zinc-700 mt-1">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 bg-zinc-800 text-zinc-500">✕</div>
+                    <p className="text-xs text-zinc-500">No more providers — payment order fails</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="mt-2">
+            <Button variant="ghost" onClick={() => setSimulateOpen(false)} className="text-zinc-400">Close</Button>
+            <Button
+              onClick={runSimulate}
+              disabled={simLoading || !simAmount}
+              className="bg-violet-600 hover:bg-violet-500 text-white"
+            >
+              {simLoading ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Simulating…</> : <><FlaskConical className="w-4 h-4 mr-1.5" />Run Simulation</>}
             </Button>
           </DialogFooter>
         </DialogContent>

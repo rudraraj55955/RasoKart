@@ -9654,6 +9654,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/RoutingLogsResponse"
 
+  /smart-routing/simulate:
+    get:
+      summary: Dry-run the failover chain for a given amount and payment mode (admin)
+      operationId: simulateRouting
+      tags: [SmartRouting]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: amount
+          in: query
+          required: true
+          schema:
+            type: number
+          description: Payment amount to simulate routing for
+        - name: paymentMode
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Payment mode (upi, card, netbanking, wallet, bnpl, emi)
+        - name: configName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Name of the routing config to simulate (defaults to first enabled config)
+      responses:
+        "200":
+          description: Ordered list of providers that would be attempted (no real calls made)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulateRoutingResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No enabled routing config found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /smart-routing/status:
     get:
       summary: Smart routing health summary (admin)
@@ -17189,6 +17246,52 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RoutingLog"
+
+    SimulateRoutingResponse:
+      type: object
+      required: [configName, strategy, amount, steps, totalProviders]
+      properties:
+        configName:
+          type: string
+        strategy:
+          type: string
+        amount:
+          type: number
+        paymentMode:
+          type: string
+          nullable: true
+        steps:
+          type: array
+          items:
+            type: object
+            required: [step, providerKey, priority, isFallbackOnly, maxRetries, weightPercent, role]
+            properties:
+              step:
+                type: integer
+              providerKey:
+                type: string
+              priority:
+                type: integer
+              isFallbackOnly:
+                type: boolean
+              maxRetries:
+                type: integer
+              weightPercent:
+                type: integer
+              role:
+                type: string
+                enum: [primary, fallback]
+              notes:
+                type: string
+                nullable: true
+        totalProviders:
+          type: integer
+        isDeterministic:
+          type: boolean
+          description: True for priority/success_rate (exact). False for percentage/round_robin (representative ordering shown).
+        warning:
+          type: string
+          nullable: true
 
     RoutingStatusResponse:
       type: object

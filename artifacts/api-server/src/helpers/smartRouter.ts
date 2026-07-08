@@ -343,3 +343,220 @@ export async function getRoutingStatus(): Promise<{
 }
 
 import { asc } from "drizzle-orm";
+
+// ── Dry-run simulation ────────────────────────────────────────────────────────
+
+export interface SimulateStep {
+  step: number;
+  providerKey: string;
+  priority: number;
+  isFallbackOnly: boolean;
+  maxRetries: number;
+  weightPercent: number;
+  role: "primary" | "fallback";
+  notes: string | null;
+}
+
+export interface SimulateRoutingResult {
+  configName: string;
+  strategy: string;
+  amount: number;
+  paymentMode: string | null;
+  steps: SimulateStep[];
+  totalProviders: number;
+  /** True when strategy is deterministic (priority / success_rate).
+   *  False for percentage / round_robin where actual selection is random/counter-based. */
+  isDeterministic: boolean;
+  warning: string | null;
+}
+
+/**
+ * Dry-run the routing engine for a given amount + payment mode.
+ *
+ * Iterates through the same selection loop as `selectProvider` —
+ * including the `allowFallbackOnly` gate and the per-attempt exclude list —
+ * but without writing routing logs or calling any gateway.
+ *
+ * For deterministic strategies (priority, success_rate) the result is exact.
+ * For non-deterministic strategies (percentage, round_robin) the result
+ * shows the most likely/representative ordering and `isDeterministic` is false.
+ */
+export async function simulateRouting(params: {
+  amount: number;
+  paymentMode?: string;
+  configName?: string;
+}): Promise<SimulateRoutingResult | null> {
+  // If a specific config name is requested, load it; otherwise use the first enabled config.
+  const configQuery = params.configName
+    ? db.select().from(routingConfigsTable)
+        .where(and(
+          eq(routingConfigsTable.configName, params.configName),
+          eq(routingConfigsTable.isEnabled, true),
+        )).limit(1)
+    : db.select().from(routingConfigsTable)
+        .where(eq(routingConfigsTable.isEnabled, true))
+        .orderBy(asc(routingConfigsTable.id)).limit(1);
+
+  const [config] = await configQuery;
+  if (!config) return null;
+
+  // Load all enabled rules for this config
+  const allRules = await db.select().from(routingRulesTable)
+    .where(and(
+      eq(routingRulesTable.configId, config.id),
+      eq(routingRulesTable.isEnabled, true),
+    ));
+
+  // Apply the same amount/mode filters as selectProvider
+  const matchingRules = allRules.filter(r => {
+    if (r.minAmount != null && params.amount < Number(r.minAmount)) return false;
+    if (r.maxAmount != null && params.amount > Number(r.maxAmount)) return false;
+    if (r.allowedPaymentModes && params.paymentMode) {
+      try {
+        const modes: string[] = JSON.parse(r.allowedPaymentModes);
+        if (modes.length > 0 && !modes.includes("all") && !modes.includes(params.paymentMode)) return false;
+      } catch { /* ignore parse error */ }
+    }
+    return true;
+  });
+
+  const allFallbackOnly = matchingRules.length > 0 && matchingRules.every(r => r.isFallbackOnly);
+
+  if (matchingRules.length === 0) {
+    return {
+      configName: config.configName,
+      strategy: config.strategy,
+      amount: params.amount,
+      paymentMode: params.paymentMode ?? null,
+      steps: [],
+      totalProviders: 0,
+      isDeterministic: true,
+      warning: "No providers match the given amount and payment mode — this payment would fail immediately.",
+    };
+  }
+
+  // For success_rate strategy, pre-load metrics (same as selectProvider)
+  let rateMap = new Map<string, number>();
+  if (config.strategy === "success_rate") {
+    const providerKeys = matchingRules.map(r => r.providerKey);
+    const metrics = await db.select().from(providerMetricsTable)
+      .where(and(
+        inArray(providerMetricsTable.providerKey, providerKeys),
+        eq(providerMetricsTable.timeWindow, "1h"),
+      ));
+    rateMap = new Map(metrics.map(m => [m.providerKey, Number(m.successRate ?? 0)]));
+  }
+
+  const threshold = Number(config.minSuccessRateThreshold ?? 80);
+
+  /**
+   * Walk through the same attempt loop that the live engine executes.
+   *
+   * Key mechanics (matching selectProvider exactly):
+   *   - allowFallbackOnly starts false: fallback-only rules are excluded from
+   *     the first attempt, regardless of their priority number.
+   *   - After attempt 1 succeeds/fails, allowFallbackOnly = true: fallback-only
+   *     rules join the pool and can be selected before remaining primary rules
+   *     when their strategy rank (priority, success_rate, weight, etc.) is higher.
+   *   - exclude grows with each selected provider key (one entry per attempt).
+   *
+   * isDeterministic is false for percentage (weighted-random) and round_robin
+   * (counter-based) — we show the most representative ordering but label it so.
+   */
+  let allowFallbackOnly = false;
+  let isDeterministic = config.strategy === "priority" || config.strategy === "success_rate";
+  const excludeSet = new Set<string>();
+  const steps: SimulateStep[] = [];
+
+  // Safety cap: can never have more steps than matching rules
+  for (let attempt = 1; attempt <= matchingRules.length; attempt++) {
+    // Build eligible pool — same filter as selectProvider inner filter
+    const eligible = matchingRules.filter(r => {
+      if (excludeSet.has(r.providerKey)) return false;
+      if (r.isFallbackOnly && !allowFallbackOnly) return false;
+      return true;
+    });
+
+    if (eligible.length === 0) break;
+
+    let selected = eligible[0]; // default
+
+    switch (config.strategy) {
+      case "priority":
+        // Same as live: sort by priority ASC, pick lowest (highest priority)
+        eligible.sort((a, b) => a.priority - b.priority);
+        selected = eligible[0];
+        break;
+
+      case "success_rate": {
+        // Same sort as selectProvider: preferred (rate ≥ threshold) by rate desc,
+        // then degraded by priority. All of these are in the same pool now —
+        // no artificial primary/fallback split — so fallback-only rules with high
+        // success rates will rank above degraded primary rules, matching live behavior.
+        const preferred = eligible.filter(r => (rateMap.get(r.providerKey) ?? 100) >= threshold)
+          .sort((a, b) => (rateMap.get(b.providerKey) ?? 0) - (rateMap.get(a.providerKey) ?? 0));
+        const degraded = eligible.filter(r => (rateMap.get(r.providerKey) ?? 100) < threshold)
+          .sort((a, b) => a.priority - b.priority);
+        const sorted = [...preferred, ...degraded];
+        selected = sorted[0];
+        break;
+      }
+
+      case "percentage":
+        // Live: weighted-random. Simulation: highest-weight first as representative.
+        eligible.sort((a, b) => b.weightPercent - a.weightPercent);
+        selected = eligible[0];
+        isDeterministic = false;
+        break;
+
+      case "round_robin": {
+        // Live: rotating counter. Simulation: order by priority as canonical rotation.
+        eligible.sort((a, b) => a.priority - b.priority);
+        // Offset by attempt-1 to simulate rotation (counter starts where it was)
+        selected = eligible[(attempt - 1) % eligible.length];
+        isDeterministic = false;
+        break;
+      }
+
+      default:
+        eligible.sort((a, b) => a.priority - b.priority);
+        selected = eligible[0];
+    }
+
+    steps.push({
+      step: attempt,
+      providerKey: selected.providerKey,
+      priority: selected.priority,
+      isFallbackOnly: selected.isFallbackOnly,
+      maxRetries: selected.maxRetries,
+      weightPercent: selected.weightPercent,
+      role: selected.isFallbackOnly ? "fallback" : "primary",
+      notes: selected.notes ?? null,
+    });
+
+    excludeSet.add(selected.providerKey);
+
+    // After the first attempt, fallback-only rules become eligible (mirrors live engine)
+    if (attempt === 1) allowFallbackOnly = true;
+  }
+
+  let warning: string | null = null;
+  if (allFallbackOnly) {
+    warning = "All matching rules are Fallback Only — no primary attempt will ever be made, so this payment would fail immediately.";
+  } else if (!isDeterministic) {
+    warning = config.strategy === "percentage"
+      ? "Strategy is Percentage Split — actual provider selection is weighted-random each attempt. This simulation shows the highest-weight provider first, but real traffic is distributed across providers proportionally."
+      : "Strategy is Round Robin — actual provider selection depends on the live rotation counter. This simulation shows one representative rotation starting from the current counter position.";
+  }
+
+  return {
+    configName: config.configName,
+    strategy: config.strategy,
+    amount: params.amount,
+    paymentMode: params.paymentMode ?? null,
+    steps,
+    totalProviders: steps.length,
+    isDeterministic,
+    warning,
+  };
+}
