@@ -1279,6 +1279,8 @@ router.put("/cashfree", async (req, res, next) => {
       dailyLimit?: number;
     };
 
+    const oldConfig = await getCashfreeConfig();
+
     async function upsert(key: string, value: string) {
       await db.insert(systemConfigTable)
         .values({ key, value, updatedByEmail: user.email })
@@ -1316,10 +1318,23 @@ router.put("/cashfree", async (req, res, next) => {
     if (maxAmount !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT, String(maxAmount));
     if (dailyLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT, String(dailyLimit));
 
+    const auditDetails: Record<string, unknown> = { section: "cashfree" };
+    if (clientId !== undefined) auditDetails.clientIdUpdated = true;
+    if (clientSecret !== undefined) auditDetails.clientSecretUpdated = true;
+    if (webhookSecret !== undefined) auditDetails.webhookSecretUpdated = true;
+    if (enabled !== undefined) auditDetails.enabled = { from: oldConfig.enabled, to: enabled };
+    if (env !== undefined) auditDetails.env = { from: oldConfig.env, to: env };
+    if (baseUrl !== undefined) auditDetails.baseUrl = { from: oldConfig.baseUrl, to: baseUrl };
+    if (apiVersion !== undefined && apiVersion !== "") auditDetails.apiVersion = { from: oldConfig.apiVersion, to: apiVersion };
+    if (upiEnabled !== undefined) auditDetails.upiEnabled = { from: oldConfig.upiEnabled, to: upiEnabled };
+    if (qrEnabled !== undefined) auditDetails.qrEnabled = { from: oldConfig.qrEnabled, to: qrEnabled };
+    if (paymentLinksEnabled !== undefined) auditDetails.paymentLinksEnabled = { from: oldConfig.paymentLinksEnabled, to: paymentLinksEnabled };
+    if (merchantPayinEnabled !== undefined) auditDetails.merchantPayinEnabled = { from: oldConfig.merchantPayinEnabled, to: merchantPayinEnabled };
+
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
       action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify({ section: "cashfree", clientIdUpdated: clientId !== undefined, clientSecretUpdated: clientSecret !== undefined, webhookSecretUpdated: webhookSecret !== undefined, enabled, env, baseUrl, apiVersion, upiEnabled, qrEnabled, paymentLinksEnabled, merchantPayinEnabled }),
+      details: JSON.stringify(auditDetails),
       ipAddress: (req as any).ip ?? null,
     });
 
@@ -1492,6 +1507,8 @@ router.put("/cashfree-payout", async (req, res, next) => {
       minLimit?: number; maxLimit?: number; dailyLimit?: number;
     };
 
+    const oldPayoutConfig = await getCashfreePayoutConfig();
+
     async function upsert(key: string, value: string) {
       await db.insert(systemConfigTable)
         .values({ key, value, updatedByEmail: user.email })
@@ -1524,10 +1541,23 @@ router.put("/cashfree-payout", async (req, res, next) => {
     if (maxLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT, String(maxLimit));
     if (dailyLimit !== undefined) await upsert(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT, String(dailyLimit));
 
+    const auditPayoutDetails: Record<string, unknown> = { section: "cashfree_payout" };
+    if (clientId !== undefined) auditPayoutDetails.clientIdUpdated = true;
+    if (clientSecret !== undefined) auditPayoutDetails.clientSecretUpdated = true;
+    if (fundsourceId !== undefined) auditPayoutDetails.fundsourceIdUpdated = true;
+    if (webhookSecret !== undefined) auditPayoutDetails.webhookSecretUpdated = true;
+    if (enabled !== undefined) auditPayoutDetails.enabled = { from: oldPayoutConfig.enabled, to: enabled };
+    if (env !== undefined) auditPayoutDetails.env = { from: oldPayoutConfig.env, to: env };
+    if (baseUrl !== undefined) auditPayoutDetails.baseUrl = { from: oldPayoutConfig.baseUrl, to: baseUrl };
+    if (apiVersion !== undefined && apiVersion !== "") auditPayoutDetails.apiVersion = { from: oldPayoutConfig.apiVersion, to: apiVersion };
+    if (merchantEnabled !== undefined) auditPayoutDetails.merchantEnabled = { from: oldPayoutConfig.merchantEnabled, to: merchantEnabled };
+    if (bulkEnabled !== undefined) auditPayoutDetails.bulkEnabled = { from: oldPayoutConfig.bulkEnabled, to: bulkEnabled };
+    if (adminApprovalRequired !== undefined) auditPayoutDetails.adminApprovalRequired = { from: oldPayoutConfig.adminApprovalRequired, to: adminApprovalRequired };
+
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
       action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify({ section: "cashfree_payout", clientIdUpdated: clientId !== undefined, clientSecretUpdated: clientSecret !== undefined, fundsourceIdUpdated: fundsourceId !== undefined, enabled, env, merchantEnabled, adminApprovalRequired }),
+      details: JSON.stringify(auditPayoutDetails),
       ipAddress: (req as any).ip ?? null,
     });
 
@@ -1697,6 +1727,8 @@ router.put("/ekqr", async (req, res, next) => {
     const user = (req as any).user;
     const { apiKey, enabled, webhookSecret, env } = req.body as { apiKey?: string; enabled?: boolean; webhookSecret?: string; env?: "test" | "live" };
 
+    const oldEkqrConfig = await getEkqrConfig();
+
     if (apiKey !== undefined) {
       await db.insert(systemConfigTable)
         .values({ key: SYSTEM_CONFIG_KEYS.EKQR_API_KEY, value: apiKey, updatedByEmail: user.email })
@@ -1727,10 +1759,16 @@ router.put("/ekqr", async (req, res, next) => {
       }
     }
 
+    const auditEkqrDetails: Record<string, unknown> = { section: "ekqr" };
+    if (apiKey !== undefined) auditEkqrDetails.apiKeyUpdated = true;
+    if (webhookSecret !== undefined) auditEkqrDetails.webhookSecretUpdated = true;
+    if (enabled !== undefined) auditEkqrDetails.enabled = { from: oldEkqrConfig.enabled, to: enabled };
+    if (env !== undefined) auditEkqrDetails.env = { from: oldEkqrConfig.env, to: env };
+
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
       action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify({ section: "ekqr", apiKeyUpdated: apiKey !== undefined, webhookSecretUpdated: webhookSecret !== undefined, enabled, env }),
+      details: JSON.stringify(auditEkqrDetails),
       ipAddress: (req as any).ip ?? null,
     });
 

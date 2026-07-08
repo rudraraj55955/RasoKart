@@ -40,6 +40,10 @@ function formatValue(v: unknown): string {
   return String(v);
 }
 
+function isFromTo(v: unknown): v is { from: unknown; to: unknown } {
+  return typeof v === "object" && v !== null && "from" in v && "to" in v;
+}
+
 function formatDate(ts: string) {
   return new Date(ts).toLocaleString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
@@ -60,7 +64,7 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
   }
 
   const rotated: string[] = [];
-  const changed: { label: string; value: unknown }[] = [];
+  const changed: { label: string; from?: unknown; to?: unknown; value?: unknown; hasDiff: boolean }[] = [];
 
   for (const [key, value] of Object.entries(parsed)) {
     if (key === "section") continue;
@@ -68,7 +72,12 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
       if (value === true) rotated.push(ROTATED_FIELD_LABELS[key]!);
       continue;
     }
-    changed.push({ label: SETTING_LABELS[key] ?? key, value });
+    const label = SETTING_LABELS[key] ?? key;
+    if (isFromTo(value)) {
+      changed.push({ label, from: value.from, to: value.to, hasDiff: true });
+    } else {
+      changed.push({ label, value, hasDiff: false });
+    }
   }
 
   if (rotated.length === 0 && changed.length === 0) {
@@ -82,9 +91,12 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
           {label} rotated
         </Badge>
       ))}
-      {changed.map(({ label, value }) => (
-        <Badge key={label} variant="outline" className="text-muted-foreground text-[11px] font-normal">
-          {label}: {formatValue(value)}
+      {changed.map((item) => (
+        <Badge key={item.label} variant="outline" className="text-muted-foreground text-[11px] font-normal">
+          {item.hasDiff
+            ? <>{item.label}: <span className="text-red-400/80">{formatValue(item.from)}</span>{" → "}<span className="text-emerald-400/90">{formatValue(item.to)}</span></>
+            : <>{item.label}: {formatValue(item.value)}</>
+          }
         </Badge>
       ))}
     </div>
