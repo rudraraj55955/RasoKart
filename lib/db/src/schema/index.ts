@@ -76,4 +76,8 @@ export * from "./platformWalletLedger";
 export * from "./taxLiabilityLedger";
 export * from "./otpSmsSettings";
 export * from "./smsSendLogs";
+export * from "./secureIdSettings";
+export * from "./merchantOnboardingSessions";
+export * from "./merchantKycData";
+export * from "./verificationLogs";
 export * from "./tryItPresets";

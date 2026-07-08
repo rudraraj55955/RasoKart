@@ -50,6 +50,9 @@ import upiGatewaysRouter from "./upiGateways";
 import rasokartServicesRouter from "./rasokartServices";
 import otpSettingsRouter from "./otpSettings";
 import smsLogsRouter from "./smsLogs";
+import onboardingRouter from "./onboarding";
+import adminOnboardingRouter from "./adminOnboarding";
+import secureIdSettingsRouter from "./secureIdSettings";
 import smartRoutingRouter from "./smartRouting";
 import moduleControlRouter from "./moduleControl";
 import merchantModuleStatusRouter from "./merchantModuleStatus";
@@ -148,6 +151,10 @@ router.use("/merchant/tryit-presets", tryItPresetsRouter);
 // Admin OTP/SMS settings and SMS delivery logs
 router.use("/admin/otp-settings", otpSettingsRouter);
 router.use("/admin/sms-logs", smsLogsRouter);
+// Merchant automated onboarding (Secure ID flow)
+router.use("/onboarding", onboardingRouter);
+router.use("/admin/onboarding", adminOnboardingRouter);
+router.use("/admin/secure-id-settings", secureIdSettingsRouter);
 
 // Public payout slip — token-authenticated, no session required; mount last to avoid path conflicts
 router.use("/public/payout-slip", publicPayoutSlipRouter);

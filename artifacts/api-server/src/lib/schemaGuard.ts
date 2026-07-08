@@ -405,6 +405,121 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "merchant_tryit_presets" }, "schema_guard_table_created");
 
+  // ── secure_id_settings (Cashfree Secure ID provider config) ──────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS secure_id_settings (
+      id SERIAL PRIMARY KEY,
+      mode TEXT NOT NULL DEFAULT 'test',
+      client_id_encrypted TEXT,
+      client_id_iv TEXT,
+      client_id_tag TEXT,
+      client_secret_encrypted TEXT,
+      client_secret_iv TEXT,
+      client_secret_tag TEXT,
+      api_version TEXT NOT NULL DEFAULT '2023-08-01',
+      onboarding_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      pan_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      gst_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      cin_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      bank_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ocr_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_by_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "secure_id_settings" }, "schema_guard_table_created");
+
+  // ── merchant_onboarding_sessions ──────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS merchant_onboarding_sessions (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      mobile_last4 TEXT,
+      mobile_hash TEXT,
+      verification_id TEXT NOT NULL UNIQUE,
+      session_id_encrypted TEXT,
+      session_id_iv TEXT,
+      session_id_tag TEXT,
+      auth_code_encrypted TEXT,
+      auth_code_iv TEXT,
+      auth_code_tag TEXT,
+      access_token_encrypted TEXT,
+      access_token_iv TEXT,
+      access_token_tag TEXT,
+      status TEXT NOT NULL DEFAULT 'INITIATED',
+      consent_status TEXT NOT NULL DEFAULT 'PENDING',
+      data_available BOOLEAN DEFAULT FALSE,
+      expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS mos_merchant_id_idx ON merchant_onboarding_sessions(merchant_id)`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS mos_verification_id_uidx ON merchant_onboarding_sessions(verification_id)`);
+  logger.info({ table: "merchant_onboarding_sessions" }, "schema_guard_table_created");
+
+  // ── merchant_kyc_data ─────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS merchant_kyc_data (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL UNIQUE,
+      onboarding_session_id INTEGER,
+      full_name TEXT,
+      dob TEXT,
+      gender TEXT,
+      email TEXT,
+      pan_masked TEXT,
+      aadhaar_last4 TEXT,
+      address_line1 TEXT,
+      address_line2 TEXT,
+      city TEXT,
+      state_name TEXT,
+      pincode TEXT,
+      business_name TEXT,
+      gstin_masked TEXT,
+      cin_number TEXT,
+      bank_account_masked TEXT,
+      bank_ifsc TEXT,
+      bank_name TEXT,
+      pan_status TEXT DEFAULT 'PENDING',
+      gst_status TEXT DEFAULT 'PENDING',
+      cin_status TEXT DEFAULT 'SKIPPED',
+      bank_status TEXT DEFAULT 'PENDING',
+      risk_score INTEGER DEFAULT 0,
+      mismatch_flags JSONB,
+      admin_decision TEXT NOT NULL DEFAULT 'PENDING',
+      rejection_reason TEXT,
+      approved_by TEXT,
+      approved_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "merchant_kyc_data" }, "schema_guard_table_created");
+
+  // ── verification_logs (encrypted raw provider responses) ──────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS verification_logs (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      onboarding_session_id INTEGER,
+      verification_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      request_id TEXT,
+      raw_response_encrypted TEXT,
+      raw_response_iv TEXT,
+      raw_response_tag TEXT,
+      error_encrypted TEXT,
+      error_iv TEXT,
+      error_tag TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS vl_merchant_id_idx ON verification_logs(merchant_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS vl_created_at_idx ON verification_logs(created_at DESC)`);
+  logger.info({ table: "verification_logs" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 
