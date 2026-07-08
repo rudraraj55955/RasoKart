@@ -339,6 +339,57 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label TEXT`);
   logger.info({ table: "api_keys", column: "label" }, "schema_guard_column_added");
 
+  // ── otp_sms_settings (SMS OTP provider config) ────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS otp_sms_settings (
+      id SERIAL PRIMARY KEY,
+      provider TEXT NOT NULL DEFAULT 'msg91',
+      api_key_encrypted TEXT,
+      api_key_iv TEXT,
+      api_key_tag TEXT,
+      sender_id TEXT,
+      dlt_entity_id TEXT,
+      dlt_template_id TEXT,
+      otp_template_text TEXT DEFAULT 'Your login code is {otp}. Valid for 5 minutes. Do not share.',
+      otp_expiry_seconds INTEGER NOT NULL DEFAULT 300,
+      max_resend_count INTEGER NOT NULL DEFAULT 3,
+      max_verify_attempts INTEGER NOT NULL DEFAULT 5,
+      otp_login_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      sms_fallback_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      fallback_provider TEXT,
+      fallback_api_key_encrypted TEXT,
+      fallback_api_key_iv TEXT,
+      fallback_api_key_tag TEXT,
+      fallback_sender_id TEXT,
+      fallback_dlt_template_id TEXT,
+      updated_by_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "otp_sms_settings" }, "schema_guard_table_created");
+
+  // ── sms_send_logs (SMS delivery audit log) ────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS sms_send_logs (
+      id SERIAL PRIMARY KEY,
+      mobile_hash TEXT NOT NULL,
+      mobile_last4 TEXT,
+      otp_purpose TEXT,
+      provider_used TEXT NOT NULL,
+      status TEXT NOT NULL,
+      fallback_attempted BOOLEAN NOT NULL DEFAULT FALSE,
+      fallback_provider_used TEXT,
+      provider_msg_id TEXT,
+      error_reason TEXT,
+      merchant_id INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_created_at_idx ON sms_send_logs(created_at DESC)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_status_idx ON sms_send_logs(status)`);
+  logger.info({ table: "sms_send_logs" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

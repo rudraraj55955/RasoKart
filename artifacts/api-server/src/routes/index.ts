@@ -48,6 +48,8 @@ import adminPayinGatewayDebugRouter from "./adminPayinGatewayDebug";
 import providerIntegrationsRouter from "./providerIntegrations";
 import upiGatewaysRouter from "./upiGateways";
 import rasokartServicesRouter from "./rasokartServices";
+import otpSettingsRouter from "./otpSettings";
+import smsLogsRouter from "./smsLogs";
 import smartRoutingRouter from "./smartRouting";
 import moduleControlRouter from "./moduleControl";
 import merchantModuleStatusRouter from "./merchantModuleStatus";
@@ -141,6 +143,10 @@ router.use("/admin/payin-charges", payinChargesRouter);
 router.use("/admin/platform-profit", platformProfitRouter);
 // Account statement — merchant own + admin any-merchant
 router.use("/account-statement", accountStatementRouter);
+// Admin OTP/SMS settings and SMS delivery logs
+router.use("/admin/otp-settings", otpSettingsRouter);
+router.use("/admin/sms-logs", smsLogsRouter);
+
 // Public payout slip — token-authenticated, no session required; mount last to avoid path conflicts
 router.use("/public/payout-slip", publicPayoutSlipRouter);
 

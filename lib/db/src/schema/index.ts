@@ -74,3 +74,5 @@ export * from "./demoAccountRemovals";
 export * from "./payinChargeSettings";
 export * from "./platformWalletLedger";
 export * from "./taxLiabilityLedger";
+export * from "./otpSmsSettings";
+export * from "./smsSendLogs";

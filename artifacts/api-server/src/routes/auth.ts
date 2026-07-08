@@ -11,6 +11,7 @@ import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
 import { sendPrefChangeUnknownDeviceEmail } from "../helpers/prefChangeEmail";
 import { createNotification } from "../helpers/notifications";
 import { sendMerchantOtpEmail } from "../helpers/merchantOtpEmail";
+import { sendOtpSms } from "../helpers/sendOtpSms";
 import {
   generateOtp,
   hashOtp,
@@ -1325,12 +1326,26 @@ async function createAndSendOtp(opts: {
 
   req.log.info({ purpose, hasUser: true }, "merchant_otp_requested");
 
-  const sent = await sendMerchantOtpEmail({ to: user.email, otp, purpose }).catch((err: unknown) => {
-    req.log.warn({ err, purpose }, "merchant_otp_send_error");
-    return false;
-  });
+  const isPhone = !isEmailIdentifier(identifier);
 
-  req.log.info({ purpose, sent }, "merchant_otp_sent");
+  if (isPhone) {
+    const smsResult = await sendOtpSms({
+      mobile: identifier.replace(/\D/g, ""),
+      otp,
+      purpose,
+      merchantId: user.merchantId,
+    }).catch((err: unknown) => {
+      req.log.warn({ err, purpose }, "merchant_otp_sms_error");
+      return { sent: false, provider: null, fallbackUsed: false };
+    });
+    req.log.info({ purpose, smsSent: smsResult.sent, provider: smsResult.provider, fallback: smsResult.fallbackUsed }, "merchant_otp_sent");
+  } else {
+    const sent = await sendMerchantOtpEmail({ to: user.email, otp, purpose }).catch((err: unknown) => {
+      req.log.warn({ err, purpose }, "merchant_otp_send_error");
+      return false;
+    });
+    req.log.info({ purpose, sent }, "merchant_otp_sent");
+  }
 }
 
 // POST /api/auth/merchant/otp/request

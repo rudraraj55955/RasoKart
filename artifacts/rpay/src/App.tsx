@@ -60,6 +60,7 @@ import AdminReconciliation from "@/pages/admin/reconciliation";
 import AdminPaymentLinks from "@/pages/admin/payment-links";
 import AdminSettings from "@/pages/admin/settings";
 import AdminCompanyBranding from "@/pages/admin/company-branding";
+import AdminOtpSettings from "@/pages/admin/otp-settings";
 import AdminPaymentGateway from "@/pages/admin/payment-gateway";
 import AdminPayoutGateway from "@/pages/admin/payout-gateway";
 import AdminPaymentGateways from "@/pages/admin/payment-gateways";
@@ -312,6 +313,7 @@ function Router() {
       <Route path="/admin/payment-links"><AdminRoute component={AdminPaymentLinks} /></Route>
       <Route path="/admin/settings"><AdminRoute component={AdminSettings} /></Route>
       <Route path="/admin/company-branding"><AdminRoute component={AdminCompanyBranding} /></Route>
+      <Route path="/admin/otp-settings"><AdminRoute component={AdminOtpSettings} /></Route>
       <Route path="/admin/payment-gateways"><AdminRoute component={AdminPaymentGateways} /></Route>
       <Route path="/admin/upi-gateways"><AdminRoute component={AdminUpiGateways} /></Route>
       <Route path="/admin/payin-gateway"><AdminRoute component={AdminPaymentGateway} /></Route>
