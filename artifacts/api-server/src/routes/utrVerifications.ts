@@ -13,8 +13,8 @@
  */
 
 import { Router } from "express";
-import { db, transactionsTable, merchantsTable } from "@workspace/db";
-import { eq, and, desc, ilike, or } from "drizzle-orm";
+import { db, transactionsTable, merchantsTable, paymentLinksTable } from "@workspace/db";
+import { eq, and, desc, ilike, or, count } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { mutateWallet } from "./wallets";
 
@@ -139,6 +139,30 @@ router.post("/:id/approve", async (req, res, next) => {
       },
     );
 
+    // If this transaction was linked to a payment link, check if it should be marked completed
+    if (claimed.paymentLinkId) {
+      const linkRows = await db
+        .select({ maxPayments: paymentLinksTable.maxPayments, status: paymentLinksTable.status })
+        .from(paymentLinksTable)
+        .where(eq(paymentLinksTable.id, claimed.paymentLinkId))
+        .limit(1);
+      const link = linkRows[0];
+      if (link && link.maxPayments != null && link.status !== "completed") {
+        const [{ successCount }] = await db
+          .select({ successCount: count() })
+          .from(transactionsTable)
+          .where(and(
+            eq(transactionsTable.paymentLinkId, claimed.paymentLinkId),
+            eq(transactionsTable.status, "success") as any,
+          ));
+        if (successCount >= link.maxPayments) {
+          await db.update(paymentLinksTable)
+            .set({ status: "completed", updatedAt: new Date() })
+            .where(eq(paymentLinksTable.id, claimed.paymentLinkId));
+        }
+      }
+    }
+
     req.log.info({ txId: id, merchantId: claimed.merchantId, amount, utr: claimed.utr }, "utr_approved");
     res.json({ message: "Approved and wallet credited" });
   } catch (err) { next(err); }
@@ -182,6 +206,33 @@ router.post("/:id/reject", async (req, res, next) => {
       .update(transactionsTable)
       .set({ metadata: JSON.stringify(meta) })
       .where(eq(transactionsTable.id, id));
+
+    // If link was in pending_verification and no other pending txns remain, revert to active
+    if (claimed.paymentLinkId) {
+      const linkRows = await db
+        .select({ maxPayments: paymentLinksTable.maxPayments, status: paymentLinksTable.status })
+        .from(paymentLinksTable)
+        .where(eq(paymentLinksTable.id, claimed.paymentLinkId))
+        .limit(1);
+      const link = linkRows[0];
+      if (link && link.status === "pending_verification") {
+        const [{ pendingCount }] = await db
+          .select({ pendingCount: count() })
+          .from(transactionsTable)
+          .where(and(
+            eq(transactionsTable.paymentLinkId, claimed.paymentLinkId),
+            eq(transactionsTable.status, "pending_verification") as any,
+          ));
+        if (pendingCount === 0) {
+          await db.update(paymentLinksTable)
+            .set({ status: "active", updatedAt: new Date() })
+            .where(and(
+              eq(paymentLinksTable.id, claimed.paymentLinkId),
+              eq(paymentLinksTable.status, "pending_verification") as any,
+            ));
+        }
+      }
+    }
 
     req.log.info({ txId: id, merchantId: claimed.merchantId, utr: claimed.utr, reason }, "utr_rejected");
     res.json({ message: "Rejected" });

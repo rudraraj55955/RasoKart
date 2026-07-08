@@ -30,4 +30,6 @@ export interface PublicPaymentLink {
   status: PublicPaymentLinkStatus;
   /** @nullable */
   expiresAt?: string | null;
+  /** @nullable */
+  maxPayments?: number | null;
 }

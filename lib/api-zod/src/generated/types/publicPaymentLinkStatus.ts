@@ -13,4 +13,6 @@ export const PublicPaymentLinkStatus = {
   active: 'active',
   inactive: 'inactive',
   expired: 'expired',
+  completed: 'completed',
+  pending_verification: 'pending_verification',
 } as const;

@@ -30,6 +30,8 @@ function statusBadge(status: string) {
   if (status === "active") return <Badge className="text-xs bg-emerald-500/15 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20">Active</Badge>;
   if (status === "inactive") return <Badge className="text-xs bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/20">Inactive</Badge>;
   if (status === "expired") return <Badge className="text-xs bg-rose-500/15 text-rose-400 border-rose-500/20 hover:bg-rose-500/20">Expired</Badge>;
+  if (status === "completed") return <Badge className="text-xs bg-sky-500/15 text-sky-400 border-sky-500/20 hover:bg-sky-500/20">Completed</Badge>;
+  if (status === "pending_verification") return <Badge className="text-xs bg-amber-500/15 text-amber-400 border-amber-500/20 hover:bg-amber-500/20">Pending</Badge>;
   return <Badge variant="secondary" className="text-xs">{status}</Badge>;
 }
 

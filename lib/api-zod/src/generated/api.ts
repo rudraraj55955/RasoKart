@@ -5040,8 +5040,9 @@ export const GetPublicPaymentLinkResponse = zod.object({
   "merchantName": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
-  "status": zod.enum(['active', 'inactive', 'expired']),
-  "expiresAt": zod.string().nullish()
+  "status": zod.enum(['active', 'inactive', 'expired', 'completed', 'pending_verification']),
+  "expiresAt": zod.string().nullish(),
+  "maxPayments": zod.number().nullish()
 })
 
 

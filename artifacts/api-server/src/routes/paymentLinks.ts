@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, paymentLinksTable, merchantsTable, merchantConnectionsTable, transactionsTable, providerIntegrationsTable } from "@workspace/db";
-import { eq, and, ilike, count, desc, gte, lte, or, sql, isNull } from "drizzle-orm";
+import { eq, and, ilike, count, desc, gte, lte, or, sql, isNull, ne } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 import { deriveVpa, buildUpiPayload, deriveUpiPayloadFromConnections } from "../helpers/upiPayload";
@@ -39,14 +39,17 @@ function serializeLink(
 }
 
 async function expireOldLinks() {
+  // Time-based expiry → 'expired'
   await db.execute(sql`
     UPDATE payment_links SET status = 'expired'
     WHERE expires_at IS NOT NULL AND expires_at < NOW() AND status = 'active'
   `);
+  // Max-payments fulfilled → 'completed' (count only successful transactions)
   await db.execute(sql`
-    UPDATE payment_links SET status = 'expired'
-    WHERE max_payments IS NOT NULL AND status = 'active'
-      AND (SELECT COUNT(*) FROM transactions WHERE payment_link_id = payment_links.id) >= max_payments
+    UPDATE payment_links SET status = 'completed'
+    WHERE max_payments IS NOT NULL AND status IN ('active', 'pending_verification')
+      AND (SELECT COUNT(*) FROM transactions
+           WHERE payment_link_id = payment_links.id AND status = 'success') >= max_payments
   `);
 }
 
@@ -75,12 +78,20 @@ router.get("/public/:slug", async (req, res) => {
     link.status = "expired";
   }
 
-  if (link.maxPayments != null && link.status === "active") {
-    const [{ total }] = await db.select({ total: count() }).from(transactionsTable)
-      .where(eq(transactionsTable.paymentLinkId, link.id));
-    if (total >= link.maxPayments) {
-      await db.update(paymentLinksTable).set({ status: "expired" }).where(eq(paymentLinksTable.id, link.id));
-      link.status = "expired";
+  if (link.maxPayments != null && (link.status === "active" || link.status === "pending_verification")) {
+    const [{ successCount }] = await db.select({ successCount: count() }).from(transactionsTable)
+      .where(and(eq(transactionsTable.paymentLinkId, link.id), eq(transactionsTable.status, "success") as any));
+    if (successCount >= link.maxPayments) {
+      await db.update(paymentLinksTable).set({ status: "completed", updatedAt: new Date() }).where(eq(paymentLinksTable.id, link.id));
+      link.status = "completed";
+    } else if (link.status === "active") {
+      // Check if pending submissions fill all slots
+      const [{ pendingCount }] = await db.select({ pendingCount: count() }).from(transactionsTable)
+        .where(and(eq(transactionsTable.paymentLinkId, link.id), eq(transactionsTable.status, "pending_verification") as any));
+      if (successCount + pendingCount >= link.maxPayments) {
+        await db.update(paymentLinksTable).set({ status: "pending_verification", updatedAt: new Date() }).where(eq(paymentLinksTable.id, link.id));
+        link.status = "pending_verification";
+      }
     }
   }
 
@@ -168,6 +179,7 @@ router.get("/public/:slug", async (req, res) => {
     brandColor: brandColor ?? null,
     status: link.status,
     expiresAt: link.expiresAt instanceof Date ? link.expiresAt.toISOString() : link.expiresAt,
+    maxPayments: link.maxPayments ?? null,
   });
 });
 
@@ -185,7 +197,11 @@ router.post("/public/:slug/utr", async (req, res, next) => {
 
     if (!rows.length) { res.status(404).json({ error: "Payment link not found" }); return; }
     const { link } = rows[0];
-    if (link.status !== "active") { res.status(409).json({ error: "Payment link is not active" }); return; }
+    if (link.status === "completed") { res.status(409).json({ error: "This payment link has already been fulfilled." }); return; }
+    if (link.status === "expired") { res.status(409).json({ error: "This payment link has expired." }); return; }
+    if (link.status === "inactive") { res.status(409).json({ error: "This payment link is not active." }); return; }
+    if (link.status === "pending_verification") { res.status(409).json({ error: "A payment is already pending verification for this link." }); return; }
+    if (link.status !== "active") { res.status(409).json({ error: "Payment link is not active." }); return; }
 
     const { utr, payerName, payerUpi, screenshotUrl, amount: bodyAmount } = req.body as {
       utr?: string;
@@ -241,6 +257,20 @@ router.post("/public/:slug/utr", async (req, res, next) => {
         utr: utrClean,
         metadata,
       }).returning();
+
+      // If link has max_payments and all slots are now taken, move to pending_verification
+      if (link.maxPayments != null) {
+        const [{ total }] = await db.select({ total: count() }).from(transactionsTable)
+          .where(and(
+            eq(transactionsTable.paymentLinkId, link.id),
+            ne(transactionsTable.status, "failed"),
+          ));
+        if (total >= link.maxPayments) {
+          await db.update(paymentLinksTable)
+            .set({ status: "pending_verification", updatedAt: new Date() })
+            .where(and(eq(paymentLinksTable.id, link.id), eq(paymentLinksTable.status, "active") as any));
+        }
+      }
 
       res.json({ message: "Payment submitted for verification. You will be notified once confirmed.", transactionId: txn.id });
     } catch (err: any) {

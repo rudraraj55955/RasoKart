@@ -2903,6 +2903,8 @@ export const PublicPaymentLinkStatus = {
   active: 'active',
   inactive: 'inactive',
   expired: 'expired',
+  completed: 'completed',
+  pending_verification: 'pending_verification',
 } as const;
 
 export interface PublicPaymentLink {
@@ -2927,6 +2929,8 @@ export interface PublicPaymentLink {
   status: PublicPaymentLinkStatus;
   /** @nullable */
   expiresAt?: string | null;
+  /** @nullable */
+  maxPayments?: number | null;
 }
 
 export type VirtualAccountStatus = typeof VirtualAccountStatus[keyof typeof VirtualAccountStatus];

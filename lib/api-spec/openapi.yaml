@@ -13622,9 +13622,11 @@ components:
           type: ["string", "null"]
         status:
           type: string
-          enum: [active, inactive, expired]
+          enum: [active, inactive, expired, completed, pending_verification]
         expiresAt:
           type: ["string", "null"]
+        maxPayments:
+          type: ["integer", "null"]
 
     VirtualAccount:
       type: object
