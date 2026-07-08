@@ -36,8 +36,14 @@ export default function PayoutMerchantLogin() {
       {
         onSuccess: (res) => {
           const role = res.user.role as string;
+          const merchantType = (res.user as any).merchantType as string | undefined;
           if (role !== UserRole.payout_merchant && role !== UserRole.merchant) {
             toast.error("Unauthorized. Payout Merchant access required.");
+            return;
+          }
+          // Block NORMAL pay-in merchants — only PAYOUT_ONLY or BOTH allowed here
+          if (role === UserRole.merchant && merchantType !== "PAYOUT_ONLY" && merchantType !== "BOTH") {
+            toast.error("This portal is for Payout merchants only. Please use the regular merchant login.");
             return;
           }
           setAuthToken(res.token);

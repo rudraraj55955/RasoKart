@@ -486,6 +486,7 @@ function Router() {
       <Route path="/payout-admin/dashboard"><PayoutAdminRoute component={PayoutAdminDashboard} /></Route>
       <Route path="/payout-admin/payout-merchants"><PayoutAdminRoute component={PayoutAdminMerchants} /></Route>
       <Route path="/payout-admin/payouts"><PayoutAdminRoute component={PayoutAdminPayouts} /></Route>
+      <Route path="/payout-admin/wallet-loads"><PayoutAdminRoute component={AdminPayoutWalletLoads} /></Route>
       <Route path="/payout-admin/agents"><PayoutAdminRoute component={PayoutAdminAgents} /></Route>
       <Route path="/payout-admin/audit-logs"><PayoutAdminRoute component={PayoutAdminAuditLogs} /></Route>
       <Route path="/payout-admin/settings"><PayoutAdminRoute component={PayoutAdminSettings} /></Route>

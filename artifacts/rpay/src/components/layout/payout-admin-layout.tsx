@@ -9,7 +9,7 @@ import {
 import { Link, useLocation } from "wouter";
 import {
   LogOut, LayoutDashboard, Users, ArrowRightLeft, BookOpen, ShieldCheck,
-  Settings, Activity, Building2, UserCog,
+  Settings, Activity, Building2, UserCog, Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
@@ -27,6 +27,7 @@ const PAYOUT_ADMIN_NAV: NavItem[] = [
   { label: "Dashboard",        icon: LayoutDashboard,  href: "/payout-admin/dashboard" },
   { label: "Payout Merchants", icon: Users,             href: "/payout-admin/payout-merchants" },
   { label: "Payouts",          icon: ArrowRightLeft,    href: "/payout-admin/payouts" },
+  { label: "Wallet Loads",     icon: Wallet,            href: "/payout-admin/wallet-loads" },
   { label: "Agents",           icon: UserCog,           href: "/payout-admin/agents" },
   { label: "Audit Logs",       icon: Activity,          href: "/payout-admin/audit-logs" },
   { label: "Settings",         icon: Settings,          href: "/payout-admin/settings", superOnly: true },

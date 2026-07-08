@@ -166,9 +166,26 @@ The API server runs a second, in-process schema guard (`artifacts/api-server/src
 on every startup, before seeding — so even if this migration step is ever skipped
 or fails on a fresh/older DB, the server still self-heals the columns/tables it
 depends on (`users.is_super_admin`, `company_settings`, `merchant_auth_otps`,
-UPI gateway columns, routing tables, `quiet_hours_queue` delivery columns) instead
-of 502ing. Seed failures are logged but are **never fatal** — the server always
-starts and serves requests even if seeding hits an unexpected error.
+UPI gateway columns, routing tables, `quiet_hours_queue` delivery columns,
+`payout_wallet_load_orders` with all indexes) instead of 502ing. Seed failures
+are logged but are **never fatal** — the server always starts and serves requests
+even if seeding hits an unexpected error.
+
+### Permanent SQL migration files
+
+The file `artifacts/api-server/src/migrations/0002_payout_wallet_load_orders.sql`
+is a permanent, idempotent SQL migration that you can apply directly against the
+production database with `psql` when you need to explicitly pre-create the
+`payout_wallet_load_orders` table and its indexes before the first server start
+(e.g. zero-downtime blue-green deploys where you want schema changes applied
+before binary swap):
+
+```bash
+psql "$DATABASE_URL" -f artifacts/api-server/src/migrations/0002_payout_wallet_load_orders.sql
+```
+
+All statements use `IF NOT EXISTS` / `ON CONFLICT DO NOTHING` — safe to run on
+any existing DB and will never overwrite admin-configured `system_config` values.
 
 The API server seed runs automatically on startup — it creates the admin account
 (`admin@rasokart.com` / `Admin@123456`) and demo merchant data idempotently.
