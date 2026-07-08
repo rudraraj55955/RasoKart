@@ -75,6 +75,8 @@ tags:
     description: Merchant support ticket system
   - name: verification
     description: Merchant KYC/AML verification application system
+  - name: tryit-presets
+    description: Server-side storage for merchant Try It panel presets
 paths:
   /healthz:
     get:
@@ -7516,6 +7518,64 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /merchant/tryit-presets:
+    get:
+      operationId: getMerchantTryItPresets
+      tags: [tryit-presets]
+      summary: Get all server-side Try It presets for the current merchant
+      responses:
+        '200':
+          description: Presets blob.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: setMerchantTryItPresets
+      tags: [tryit-presets]
+      summary: Replace all server-side Try It presets for the current merchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetMerchantTryItPresetsInput'
+      responses:
+        '200':
+          description: Saved presets blob.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized.
           content:
             application/json:
               schema:
@@ -17967,4 +18027,13 @@ components:
           type: string
         merchantId:
           type: integer
+
+    SetMerchantTryItPresetsInput:
+      type: object
+      required: [presets]
+      properties:
+        presets:
+          type: object
+          additionalProperties: true
+          description: Full presets map keyed by "METHOD /path"
 

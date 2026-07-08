@@ -65,6 +65,7 @@ import payinChargesRouter from "./payinCharges";
 import platformProfitRouter from "./platformProfit";
 import publicPayoutSlipRouter from "./publicPayoutSlip";
 import accountStatementRouter from "./accountStatement";
+import tryItPresetsRouter from "./tryItPresets";
 
 const router: IRouter = Router();
 
@@ -143,6 +144,7 @@ router.use("/admin/payin-charges", payinChargesRouter);
 router.use("/admin/platform-profit", platformProfitRouter);
 // Account statement — merchant own + admin any-merchant
 router.use("/account-statement", accountStatementRouter);
+router.use("/merchant/tryit-presets", tryItPresetsRouter);
 // Admin OTP/SMS settings and SMS delivery logs
 router.use("/admin/otp-settings", otpSettingsRouter);
 router.use("/admin/sms-logs", smsLogsRouter);

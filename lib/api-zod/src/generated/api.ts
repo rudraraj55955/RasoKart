@@ -7416,6 +7416,26 @@ export const DeleteSavedFilterResponse = zod.object({
 
 
 /**
+ * @summary Get all server-side Try It presets for the current merchant
+ */
+export const GetMerchantTryItPresetsResponse = zod.object({
+  "data": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Replace all server-side Try It presets for the current merchant
+ */
+export const SetMerchantTryItPresetsBody = zod.object({
+  "presets": zod.record(zod.string(), zod.unknown()).describe('Full presets map keyed by \"METHOD \/path\"')
+})
+
+export const SetMerchantTryItPresetsResponse = zod.object({
+  "data": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
  * @summary List saved smart search filter presets for the current merchant
  */
 export const ListMerchantSavedFiltersQueryParams = zod.object({

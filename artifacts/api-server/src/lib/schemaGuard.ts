@@ -390,6 +390,21 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS sms_send_logs_status_idx ON sms_send_logs(status)`);
   logger.info({ table: "sms_send_logs" }, "schema_guard_table_created");
 
+  // ── merchant_tryit_presets (server-side Try It preset sync) ───────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS merchant_tryit_presets (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      presets JSONB NOT NULL DEFAULT '{}',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS merchant_tryit_presets_merchant_id_uidx
+    ON merchant_tryit_presets(merchant_id)
+  `);
+  logger.info({ table: "merchant_tryit_presets" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

@@ -139,6 +139,7 @@ import type {
   GetAdminReportDeliveryHistoryParams,
   GetCallbackSecretHistoryParams,
   GetLedgerBackfillLastRun200,
+  GetMerchantTryItPresets200,
   GetMerchantsWebhookFailureCountsParams,
   GetMyVerificationResponse,
   GetPayinChargePreviewParams,
@@ -373,6 +374,8 @@ import type {
   SendReportNow200,
   ServiceActivationRequestBody,
   ServiceActivationResponse,
+  SetMerchantTryItPresets200,
+  SetMerchantTryItPresetsInput,
   SetProductVisibilityBody,
   Settlement,
   SettlementActionInput,
@@ -22128,6 +22131,154 @@ export const useDeleteSavedFilter = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteSavedFilterMutationOptions(options));
+    }
+
+export const getGetMerchantTryItPresetsUrl = () => {
+
+
+
+
+  return `/api/merchant/tryit-presets`
+}
+
+/**
+ * @summary Get all server-side Try It presets for the current merchant
+ */
+export const getMerchantTryItPresets = async ( options?: RequestInit): Promise<GetMerchantTryItPresets200> => {
+
+  return customFetch<GetMerchantTryItPresets200>(getGetMerchantTryItPresetsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMerchantTryItPresetsQueryKey = () => {
+    return [
+    `/api/merchant/tryit-presets`
+    ] as const;
+    }
+
+
+export const getGetMerchantTryItPresetsQueryOptions = <TData = Awaited<ReturnType<typeof getMerchantTryItPresets>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantTryItPresets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMerchantTryItPresetsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMerchantTryItPresets>>> = ({ signal }) => getMerchantTryItPresets({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMerchantTryItPresets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMerchantTryItPresetsQueryResult = NonNullable<Awaited<ReturnType<typeof getMerchantTryItPresets>>>
+export type GetMerchantTryItPresetsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get all server-side Try It presets for the current merchant
+ */
+
+export function useGetMerchantTryItPresets<TData = Awaited<ReturnType<typeof getMerchantTryItPresets>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantTryItPresets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMerchantTryItPresetsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSetMerchantTryItPresetsUrl = () => {
+
+
+
+
+  return `/api/merchant/tryit-presets`
+}
+
+/**
+ * @summary Replace all server-side Try It presets for the current merchant
+ */
+export const setMerchantTryItPresets = async (setMerchantTryItPresetsInput: SetMerchantTryItPresetsInput, options?: RequestInit): Promise<SetMerchantTryItPresets200> => {
+
+  return customFetch<SetMerchantTryItPresets200>(getSetMerchantTryItPresetsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      setMerchantTryItPresetsInput,)
+  }
+);}
+
+
+
+
+export const getSetMerchantTryItPresetsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMerchantTryItPresets>>, TError,{data: BodyType<SetMerchantTryItPresetsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setMerchantTryItPresets>>, TError,{data: BodyType<SetMerchantTryItPresetsInput>}, TContext> => {
+
+const mutationKey = ['setMerchantTryItPresets'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setMerchantTryItPresets>>, {data: BodyType<SetMerchantTryItPresetsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setMerchantTryItPresets(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetMerchantTryItPresetsMutationResult = NonNullable<Awaited<ReturnType<typeof setMerchantTryItPresets>>>
+    export type SetMerchantTryItPresetsMutationBody = BodyType<SetMerchantTryItPresetsInput>
+    export type SetMerchantTryItPresetsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Replace all server-side Try It presets for the current merchant
+ */
+export const useSetMerchantTryItPresets = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMerchantTryItPresets>>, TError,{data: BodyType<SetMerchantTryItPresetsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setMerchantTryItPresets>>,
+        TError,
+        {data: BodyType<SetMerchantTryItPresetsInput>},
+        TContext
+      > => {
+      return useMutation(getSetMerchantTryItPresetsMutationOptions(options));
     }
 
 export const getListMerchantSavedFiltersUrl = (params?: ListMerchantSavedFiltersParams,) => {

@@ -5931,6 +5931,16 @@ export interface PlatformProfitAdjustmentInput {
   merchantId?: number;
 }
 
+/**
+ * Full presets map keyed by "METHOD /path"
+ */
+export type SetMerchantTryItPresetsInputPresets = { [key: string]: unknown };
+
+export interface SetMerchantTryItPresetsInput {
+  /** Full presets map keyed by "METHOD /path" */
+  presets: SetMerchantTryItPresetsInputPresets;
+}
+
 export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
@@ -7551,6 +7561,18 @@ export type ClearSignatureFailureAlertHistory200 = {
 
 export type ListSavedFilters200 = {
   data: SavedFilter[];
+};
+
+export type GetMerchantTryItPresets200Data = { [key: string]: unknown };
+
+export type GetMerchantTryItPresets200 = {
+  data: GetMerchantTryItPresets200Data;
+};
+
+export type SetMerchantTryItPresets200Data = { [key: string]: unknown };
+
+export type SetMerchantTryItPresets200 = {
+  data: SetMerchantTryItPresets200Data;
 };
 
 export type ListMerchantSavedFiltersParams = {

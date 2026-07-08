@@ -355,12 +355,55 @@ function loadAllPresets(): Record<string, SavedQueryPreset[]> {
   }
 }
 
+/**
+ * Module-level callback registered by ApiDocs to forward every localStorage
+ * save to the server.  Set on mount, cleared on unmount.
+ */
+let _serverSyncFn: ((all: Record<string, SavedQueryPreset[]>) => void) | null = null;
+
 function saveAllPresets(all: Record<string, SavedQueryPreset[]>) {
   try {
     localStorage.setItem(TRY_IT_PRESETS_STORAGE_KEY, JSON.stringify(all));
     dispatchPresetsChanged();
   } catch {
     // localStorage may be unavailable (e.g. private browsing) — presets simply won't persist
+  }
+  _serverSyncFn?.(all);
+}
+
+async function fetchPresetsFromServer(token: string): Promise<Record<string, SavedQueryPreset[]> | null> {
+  try {
+    if (!token) return null;
+    const res = await fetch("/api/merchant/tryit-presets", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data: unknown };
+    if (json?.data && typeof json.data === "object" && !Array.isArray(json.data)) {
+      return json.data as Record<string, SavedQueryPreset[]>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function pushPresetsToServer(
+  all: Record<string, SavedQueryPreset[]>,
+  token: string
+): Promise<void> {
+  try {
+    if (!token) return;
+    await fetch("/api/merchant/tryit-presets", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ presets: all }),
+    });
+  } catch {
+    // non-fatal — server sync failed, localStorage is the fallback
   }
 }
 
@@ -1697,6 +1740,52 @@ export default function ApiDocs() {
       stripSharedPresetFromUrl();
     }
   }, [sharedPreset, sharedLinkExpired]);
+
+  // Register the server sync callback so any saveAllPresets() call also syncs.
+  // Use a ref to always have the latest token without re-registering.
+  const tokenRef = useRef(globalToken);
+  useEffect(() => {
+    tokenRef.current = globalToken;
+  }, [globalToken]);
+
+  useEffect(() => {
+    _serverSyncFn = (all) => {
+      void pushPresetsToServer(all, tokenRef.current);
+    };
+    return () => {
+      _serverSyncFn = null;
+    };
+  }, []);
+
+  // On mount: fetch presets from server. If server has data, overwrite localStorage.
+  // If server is empty and localStorage has data, migrate to server (one-time).
+  useEffect(() => {
+    const token = tokenRef.current;
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      const serverPresets = await fetchPresetsFromServer(token);
+      if (cancelled) return;
+      if (serverPresets && Object.keys(serverPresets).length > 0) {
+        try {
+          localStorage.setItem(TRY_IT_PRESETS_STORAGE_KEY, JSON.stringify(serverPresets));
+          dispatchPresetsChanged();
+        } catch {
+          // ignore
+        }
+      } else {
+        // Server has no presets — migrate from localStorage if there's anything there
+        const local = loadAllPresets();
+        if (Object.keys(local).length > 0) {
+          void pushPresetsToServer(local, token);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleTokenChange = (val: string) => {
     setGlobalToken(val);
