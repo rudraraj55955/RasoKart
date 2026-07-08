@@ -4,7 +4,17 @@ import { eq, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendMail, getSmtpConfig } from "../helpers/mailer";
 import { buildEmailHtml, buildUnmatchedAlertHtml, buildSampleCsv } from "../helpers/reconcileEmail";
-import { buildCredentialRotationHtml, notifyAdminsOfCredentialRotation } from "../helpers/adminNotifyEmail";
+import {
+  buildCredentialRotationHtml,
+  notifyAdminsOfCredentialRotation,
+  buildPlanExpiryHtml,
+  buildSettlementStateHtml,
+  buildWebhookFailureHtml,
+  buildStuckEkqrHtml,
+  buildReportScheduleAutoPausedHtml,
+  buildReportScheduleResumedHtml,
+  getAdminEmails,
+} from "../helpers/adminNotifyEmail";
 
 const router = Router();
 router.use(requireAuth);
@@ -535,6 +545,402 @@ router.post("/credential-rotation-alert/send-sample", async (req, res, next) => 
     }
 
     res.json({ ok: true, gateway: resolvedGateway, stats });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Plan expiry alert — preview + send-sample
+// ---------------------------------------------------------------------------
+
+// GET /api/settings/plan-expiry-alert/preview
+router.get("/plan-expiry-alert/preview", (_req, res) => {
+  const html = buildPlanExpiryHtml({
+    merchantName: "Demo Merchant Ltd.",
+    planName: "Gold",
+    merchantId: 42,
+    daysUntilExpiry: 5,
+    expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
+  });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// POST /api/settings/plan-expiry-alert/send-sample
+router.post("/plan-expiry-alert/send-sample", async (req, res, next) => {
+  const user = (req as any).user;
+  try {
+    const cfg = await getSmtpConfig();
+    if (!cfg) {
+      res.status(502).json({ error: "SMTP is not configured — save valid SMTP credentials first" });
+      return;
+    }
+    const recipients = await getAdminEmails("planExpiryAlertEmails");
+    if (recipients.length === 0) {
+      res.status(502).json({ error: "No active admin recipients opted in to plan expiry alert emails" });
+      return;
+    }
+    const html = buildPlanExpiryHtml({
+      merchantName: "Demo Merchant Ltd. (TEST — no real plan is expiring)",
+      planName: "Gold",
+      merchantId: 42,
+      daysUntilExpiry: 5,
+      expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
+    });
+    const subject = "[RasoKart] ⚠️ Plan Expiry Alert — Demo Merchant Ltd. (TEST)";
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "test_email_sent", targetType: "system_config", targetId: null,
+        details: JSON.stringify({ type: "plan_expiry_alert", attempted: recipients.length, sent, failed }),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for plan expiry alert test email");
+    }
+    if (sent === 0) {
+      res.status(502).json({
+        error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
+        stats: { attempted: recipients.length, sent, failed },
+      });
+      return;
+    }
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Settlement state change alert — preview + send-sample
+// ---------------------------------------------------------------------------
+
+// GET /api/settings/settlement-state-alert/preview
+router.get("/settlement-state-alert/preview", (_req, res) => {
+  const html = buildSettlementStateHtml({
+    settlementId: 101,
+    merchantName: "Demo Merchant Ltd.",
+    referenceNumber: "REF-2026-0708",
+    newStatus: "approved",
+    amount: "25000.00",
+    note: "Verified and approved by admin.",
+  });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// POST /api/settings/settlement-state-alert/send-sample
+router.post("/settlement-state-alert/send-sample", async (req, res, next) => {
+  const user = (req as any).user;
+  try {
+    const cfg = await getSmtpConfig();
+    if (!cfg) {
+      res.status(502).json({ error: "SMTP is not configured — save valid SMTP credentials first" });
+      return;
+    }
+    const recipients = await getAdminEmails("settlementStateEmails");
+    if (recipients.length === 0) {
+      res.status(502).json({ error: "No active admin recipients opted in to settlement state change emails" });
+      return;
+    }
+    const html = buildSettlementStateHtml({
+      settlementId: 101,
+      merchantName: "Demo Merchant Ltd. (TEST — no real settlement changed)",
+      referenceNumber: "REF-TEST-0000",
+      newStatus: "approved",
+      amount: "25000.00",
+      note: "This is a test alert — no real settlement was modified.",
+    });
+    const subject = "[RasoKart] Settlement #101 — Status changed to approved (TEST)";
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "test_email_sent", targetType: "system_config", targetId: null,
+        details: JSON.stringify({ type: "settlement_state_alert", attempted: recipients.length, sent, failed }),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for settlement state alert test email");
+    }
+    if (sent === 0) {
+      res.status(502).json({
+        error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
+        stats: { attempted: recipients.length, sent, failed },
+      });
+      return;
+    }
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Webhook failure alert — preview + send-sample
+// ---------------------------------------------------------------------------
+
+// GET /api/settings/webhook-failure-alert/preview
+router.get("/webhook-failure-alert/preview", (_req, res) => {
+  const html = buildWebhookFailureHtml({
+    merchantId: 42,
+    url: "https://merchant.example.com/webhooks/rasokart",
+    attempts: 5,
+    qrCodeId: 7,
+  });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// POST /api/settings/webhook-failure-alert/send-sample
+router.post("/webhook-failure-alert/send-sample", async (req, res, next) => {
+  const user = (req as any).user;
+  try {
+    const cfg = await getSmtpConfig();
+    if (!cfg) {
+      res.status(502).json({ error: "SMTP is not configured — save valid SMTP credentials first" });
+      return;
+    }
+    const recipients = await getAdminEmails("webhookFailureEmails");
+    if (recipients.length === 0) {
+      res.status(502).json({ error: "No active admin recipients opted in to webhook failure emails" });
+      return;
+    }
+    const html = buildWebhookFailureHtml({
+      merchantId: 42,
+      url: "https://merchant.example.com/webhooks/rasokart (TEST — no real failure occurred)",
+      attempts: 5,
+      qrCodeId: 7,
+    });
+    const subject = "[RasoKart] 🔴 Webhook Permanently Failed — Merchant #42 (TEST)";
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "test_email_sent", targetType: "system_config", targetId: null,
+        details: JSON.stringify({ type: "webhook_failure_alert", attempted: recipients.length, sent, failed }),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for webhook failure alert test email");
+    }
+    if (sent === 0) {
+      res.status(502).json({
+        error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
+        stats: { attempted: recipients.length, sent, failed },
+      });
+      return;
+    }
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// EKQR stuck QR code alert — preview + send-sample
+// ---------------------------------------------------------------------------
+
+// GET /api/settings/ekqr-stuck-alert/preview
+router.get("/ekqr-stuck-alert/preview", (_req, res) => {
+  const html = buildStuckEkqrHtml({
+    stuck: 3,
+    threshold: 2,
+    staleMinutes: 30,
+  });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// POST /api/settings/ekqr-stuck-alert/send-sample
+router.post("/ekqr-stuck-alert/send-sample", async (req, res, next) => {
+  const user = (req as any).user;
+  try {
+    const cfg = await getSmtpConfig();
+    if (!cfg) {
+      res.status(502).json({ error: "SMTP is not configured — save valid SMTP credentials first" });
+      return;
+    }
+    const recipients = await getAdminEmails("ekqrSyncAlertEmails");
+    if (recipients.length === 0) {
+      res.status(502).json({ error: "No active admin recipients opted in to EKQR sync alert emails" });
+      return;
+    }
+    const html = buildStuckEkqrHtml({
+      stuck: 3,
+      threshold: 2,
+      staleMinutes: 30,
+    });
+    const subject = "[RasoKart] 🔴 3 EKQR QR Codes Stuck — Auto-retry Threshold Exceeded (TEST)";
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "test_email_sent", targetType: "system_config", targetId: null,
+        details: JSON.stringify({ type: "ekqr_stuck_alert", attempted: recipients.length, sent, failed }),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for EKQR stuck alert test email");
+    }
+    if (sent === 0) {
+      res.status(502).json({
+        error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
+        stats: { attempted: recipients.length, sent, failed },
+      });
+      return;
+    }
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Report schedule auto-pause alert — preview + send-sample
+// ---------------------------------------------------------------------------
+
+// GET /api/settings/report-autopause-alert/preview
+router.get("/report-autopause-alert/preview", (_req, res) => {
+  const html = buildReportScheduleAutoPausedHtml({
+    merchantName: "Demo Merchant Ltd.",
+    merchantId: 42,
+    frequency: "weekly",
+    consecutiveFailures: 3,
+    autoPauseAfterFailures: 3,
+  });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// POST /api/settings/report-autopause-alert/send-sample
+router.post("/report-autopause-alert/send-sample", async (req, res, next) => {
+  const user = (req as any).user;
+  try {
+    const cfg = await getSmtpConfig();
+    if (!cfg) {
+      res.status(502).json({ error: "SMTP is not configured — save valid SMTP credentials first" });
+      return;
+    }
+    const recipients = await getAdminEmails("reportFailureAlertEmails");
+    if (recipients.length === 0) {
+      res.status(502).json({ error: "No active admin recipients opted in to report failure alert emails" });
+      return;
+    }
+    const html = buildReportScheduleAutoPausedHtml({
+      merchantName: "Demo Merchant Ltd. (TEST — no real schedule was paused)",
+      merchantId: 42,
+      frequency: "weekly",
+      consecutiveFailures: 3,
+      autoPauseAfterFailures: 3,
+    });
+    const subject = "[RasoKart] ⚠️ Report Schedule Auto-Paused — Demo Merchant Ltd. (TEST)";
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "test_email_sent", targetType: "system_config", targetId: null,
+        details: JSON.stringify({ type: "report_autopause_alert", attempted: recipients.length, sent, failed }),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for report autopause alert test email");
+    }
+    if (sent === 0) {
+      res.status(502).json({
+        error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
+        stats: { attempted: recipients.length, sent, failed },
+      });
+      return;
+    }
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Report schedule resumed alert — preview + send-sample
+// ---------------------------------------------------------------------------
+
+// GET /api/settings/report-resumed-alert/preview
+router.get("/report-resumed-alert/preview", (_req, res) => {
+  const html = buildReportScheduleResumedHtml({
+    merchantName: "Demo Merchant Ltd.",
+    merchantId: 42,
+    frequency: "weekly",
+    previousFailures: 3,
+  });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// POST /api/settings/report-resumed-alert/send-sample
+router.post("/report-resumed-alert/send-sample", async (req, res, next) => {
+  const user = (req as any).user;
+  try {
+    const cfg = await getSmtpConfig();
+    if (!cfg) {
+      res.status(502).json({ error: "SMTP is not configured — save valid SMTP credentials first" });
+      return;
+    }
+    const recipients = await getAdminEmails("reportFailureAlertEmails");
+    if (recipients.length === 0) {
+      res.status(502).json({ error: "No active admin recipients opted in to report failure alert emails" });
+      return;
+    }
+    const html = buildReportScheduleResumedHtml({
+      merchantName: "Demo Merchant Ltd. (TEST — no real schedule resumed)",
+      merchantId: 42,
+      frequency: "weekly",
+      previousFailures: 3,
+    });
+    const subject = "[RasoKart] ✅ Report Schedule Resumed — Demo Merchant Ltd. (TEST)";
+    const results = await Promise.allSettled(
+      recipients.map(email => sendMail({ to: email, subject, html }))
+    );
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "test_email_sent", targetType: "system_config", targetId: null,
+        details: JSON.stringify({ type: "report_resumed_alert", attempted: recipients.length, sent, failed }),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for report resumed alert test email");
+    }
+    if (sent === 0) {
+      res.status(502).json({
+        error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
+        stats: { attempted: recipients.length, sent, failed },
+      });
+      return;
+    }
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
   } catch (err) {
     next(err);
   }

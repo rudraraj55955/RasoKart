@@ -10,7 +10,7 @@ function formatAmount(val: string | number | null | undefined): string {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "reportFailureAlertEmails"): Promise<string[]> {
+export async function getAdminEmails(preference: "planExpiryAlertEmails" | "settlementStateEmails" | "webhookFailureEmails" | "ekqrSyncAlertEmails" | "reportFailureAlertEmails"): Promise<string[]> {
   const admins = await db
     .select({ email: usersTable.email })
     .from(usersTable)
@@ -39,7 +39,7 @@ async function getAllActiveAdminEmails(): Promise<string[]> {
 // Plan expiry alert emails
 // ---------------------------------------------------------------------------
 
-function buildPlanExpiryHtml(opts: {
+export function buildPlanExpiryHtml(opts: {
   merchantName: string;
   planName: string;
   merchantId: number;
@@ -147,7 +147,7 @@ export async function notifyAdminsOfPlanExpiry(opts: {
 // Settlement state-change emails
 // ---------------------------------------------------------------------------
 
-function buildSettlementStateHtml(opts: {
+export function buildSettlementStateHtml(opts: {
   settlementId: number;
   merchantName: string;
   referenceNumber: string | null;
@@ -237,7 +237,7 @@ function buildSettlementStateHtml(opts: {
 // Webhook permanent failure emails
 // ---------------------------------------------------------------------------
 
-function buildWebhookFailureHtml(opts: {
+export function buildWebhookFailureHtml(opts: {
   merchantId: number;
   url: string;
   attempts: number;
@@ -423,7 +423,7 @@ export async function notifyAdminsOfSettlementStateChange(opts: {
 // Report schedule auto-pause emails
 // ---------------------------------------------------------------------------
 
-function buildReportScheduleAutoPausedHtml(opts: {
+export function buildReportScheduleAutoPausedHtml(opts: {
   merchantName: string;
   merchantId: number;
   frequency: string;
@@ -537,7 +537,7 @@ export async function notifyAdminsOfReportScheduleAutoPaused(opts: {
 // Report schedule resumed emails
 // ---------------------------------------------------------------------------
 
-function buildReportScheduleResumedHtml(opts: {
+export function buildReportScheduleResumedHtml(opts: {
   merchantName: string;
   merchantId: number;
   frequency: string;
@@ -644,7 +644,7 @@ export async function notifyAdminsOfReportScheduleResumed(opts: {
 // Stuck EKQR QR code alert emails
 // ---------------------------------------------------------------------------
 
-function buildStuckEkqrHtml(opts: {
+export function buildStuckEkqrHtml(opts: {
   stuck: number;
   threshold: number;
   staleMinutes: number;

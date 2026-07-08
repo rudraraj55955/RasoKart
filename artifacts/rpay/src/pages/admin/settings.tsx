@@ -240,6 +240,46 @@ export default function AdminSettings() {
   const [sendingCredRotationTest, setSendingCredRotationTest] = useState(false);
   const [previewingCredRotationEmail, setPreviewingCredRotationEmail] = useState(false);
 
+  type AlertTestState = { previewing: boolean; sending: boolean; result: "success" | "error" | null; message: string };
+  const [alertTestStates, setAlertTestStates] = useState<Record<string, AlertTestState>>({});
+  function getAlertState(key: string): AlertTestState {
+    return alertTestStates[key] ?? { previewing: false, sending: false, result: null, message: "" };
+  }
+  function patchAlertState(key: string, patch: Partial<AlertTestState>) {
+    setAlertTestStates(prev => ({ ...prev, [key]: { ...(prev[key] ?? { previewing: false, sending: false, result: null, message: "" }), ...patch } }));
+  }
+  async function previewAlertEmail(key: string, previewPath: string) {
+    patchAlertState(key, { previewing: true });
+    try {
+      const res = await fetch(`/api/settings/${previewPath}/preview`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!res.ok) throw new Error("Failed to load preview");
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const tab = window.open(url, "_blank");
+      if (tab) { tab.addEventListener("load", () => URL.revokeObjectURL(url), { once: true }); setTimeout(() => URL.revokeObjectURL(url), 30_000); }
+    } catch (err: any) {
+      toast.error(err.message ?? "Could not load email preview");
+    } finally {
+      patchAlertState(key, { previewing: false });
+    }
+  }
+  async function sendAlertTest(key: string, sendPath: string) {
+    patchAlertState(key, { sending: true, result: null, message: "" });
+    try {
+      const res = await apiPost(`/settings/${sendPath}/send-sample`);
+      const stats = res.stats as { attempted: number; sent: number; failed: number } | undefined;
+      if (stats && stats.failed > 0) {
+        patchAlertState(key, { sending: false, result: "error", message: `Partial delivery — ${stats.sent} of ${stats.attempted} sent (${stats.failed} failed). Check SMTP settings.` });
+      } else {
+        const count = stats?.sent ?? "all";
+        patchAlertState(key, { sending: false, result: "success", message: `Test alert sent to ${count} admin${stats?.sent === 1 ? "" : "s"} — check your inbox` });
+      }
+    } catch (err: any) {
+      patchAlertState(key, { sending: false, result: "error", message: err.message ?? "Send failed" });
+    }
+  }
+
   const [webhookAlertCooldownHours, setWebhookAlertCooldownHours] = useState<number>(1);
   const [webhookAlertCooldownInitialized, setWebhookAlertCooldownInitialized] = useState(false);
   const [webhookAlertMerchantFilter, setWebhookAlertMerchantFilter] = useState<number | null>(null);
@@ -274,6 +314,7 @@ export default function AdminSettings() {
   const signatureFailureEnabled = me?.signatureFailureAlertEmails ?? true;
   const webhookFailureEnabled = me?.webhookFailureEmails ?? true;
   const reportFailureEnabled = (me as any)?.reportFailureAlertEmails ?? true;
+  const ekqrSyncAlertEnabled = (me as any)?.ekqrSyncAlertEmails ?? true;
   const githubSyncFailureEnabled = (me as any)?.githubSyncFailureAlertEmails ?? true;
   const weeklyDigestEnabled = me?.weeklyDeliveryDigestEmails ?? true;
 
@@ -2817,20 +2858,40 @@ export default function AdminSettings() {
             </p>
           )}
 
-          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Plan expiry alert emails</p>
-              <p className="text-xs text-muted-foreground">
-                Receive an email when a merchant's subscription plan is about to expire.
-              </p>
+          <div className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Plan expiry alert emails</p>
+                <p className="text-xs text-muted-foreground">
+                  Receive an email when a merchant's subscription plan is about to expire.
+                </p>
+              </div>
+              <Switch
+                checked={planExpiryEnabled}
+                onCheckedChange={val =>
+                  updatePrefs({ data: { planExpiryAlertEmails: val } })
+                }
+                disabled={savingPrefs || me === undefined}
+              />
             </div>
-            <Switch
-              checked={planExpiryEnabled}
-              onCheckedChange={val =>
-                updatePrefs({ data: { planExpiryAlertEmails: val } })
-              }
-              disabled={savingPrefs || me === undefined}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => previewAlertEmail("planExpiry", "plan-expiry-alert")} disabled={getAlertState("planExpiry").previewing} title="Preview the plan expiry email template in a new tab">
+                <Eye className="w-3 h-3 mr-1" />{getAlertState("planExpiry").previewing ? "Loading…" : "Preview"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => sendAlertTest("planExpiry", "plan-expiry-alert")} disabled={getAlertState("planExpiry").sending || smtpConfigured === false} title={smtpConfigured === false ? "Save valid SMTP credentials first" : "Send a test plan expiry alert to opted-in admins"}>
+                <Send className="w-3 h-3 mr-1" />{getAlertState("planExpiry").sending ? "Sending…" : "Send test"}
+              </Button>
+            </div>
+            {getAlertState("planExpiry").result === "success" && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("planExpiry").message}</span>
+              </div>
+            )}
+            {getAlertState("planExpiry").result === "error" && (
+              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("planExpiry").message}</span>
+              </div>
+            )}
           </div>
           {!planExpiryEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
@@ -2839,20 +2900,40 @@ export default function AdminSettings() {
             </p>
           )}
 
-          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Settlement state change emails</p>
-              <p className="text-xs text-muted-foreground">
-                Receive an email when a merchant settlement changes status (e.g. approved, rejected, completed).
-              </p>
+          <div className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Settlement state change emails</p>
+                <p className="text-xs text-muted-foreground">
+                  Receive an email when a merchant settlement changes status (e.g. approved, rejected, completed).
+                </p>
+              </div>
+              <Switch
+                checked={settlementStateEnabled}
+                onCheckedChange={val =>
+                  updatePrefs({ data: { settlementStateEmails: val } })
+                }
+                disabled={savingPrefs || me === undefined}
+              />
             </div>
-            <Switch
-              checked={settlementStateEnabled}
-              onCheckedChange={val =>
-                updatePrefs({ data: { settlementStateEmails: val } })
-              }
-              disabled={savingPrefs || me === undefined}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => previewAlertEmail("settlementState", "settlement-state-alert")} disabled={getAlertState("settlementState").previewing} title="Preview the settlement state change email template in a new tab">
+                <Eye className="w-3 h-3 mr-1" />{getAlertState("settlementState").previewing ? "Loading…" : "Preview"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => sendAlertTest("settlementState", "settlement-state-alert")} disabled={getAlertState("settlementState").sending || smtpConfigured === false} title={smtpConfigured === false ? "Save valid SMTP credentials first" : "Send a test settlement state alert to opted-in admins"}>
+                <Send className="w-3 h-3 mr-1" />{getAlertState("settlementState").sending ? "Sending…" : "Send test"}
+              </Button>
+            </div>
+            {getAlertState("settlementState").result === "success" && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("settlementState").message}</span>
+              </div>
+            )}
+            {getAlertState("settlementState").result === "error" && (
+              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("settlementState").message}</span>
+              </div>
+            )}
           </div>
           {!settlementStateEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
@@ -2883,20 +2964,40 @@ export default function AdminSettings() {
             </p>
           )}
 
-          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Webhook failure emails</p>
-              <p className="text-xs text-muted-foreground">
-                Receive an email when a merchant's webhook permanently fails after all retry attempts are exhausted.
-              </p>
+          <div className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Webhook failure emails</p>
+                <p className="text-xs text-muted-foreground">
+                  Receive an email when a merchant's webhook permanently fails after all retry attempts are exhausted.
+                </p>
+              </div>
+              <Switch
+                checked={webhookFailureEnabled}
+                onCheckedChange={val =>
+                  updatePrefs({ data: { webhookFailureEmails: val } })
+                }
+                disabled={savingPrefs || me === undefined}
+              />
             </div>
-            <Switch
-              checked={webhookFailureEnabled}
-              onCheckedChange={val =>
-                updatePrefs({ data: { webhookFailureEmails: val } })
-              }
-              disabled={savingPrefs || me === undefined}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => previewAlertEmail("webhookFailure", "webhook-failure-alert")} disabled={getAlertState("webhookFailure").previewing} title="Preview the webhook failure email template in a new tab">
+                <Eye className="w-3 h-3 mr-1" />{getAlertState("webhookFailure").previewing ? "Loading…" : "Preview"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => sendAlertTest("webhookFailure", "webhook-failure-alert")} disabled={getAlertState("webhookFailure").sending || smtpConfigured === false} title={smtpConfigured === false ? "Save valid SMTP credentials first" : "Send a test webhook failure alert to opted-in admins"}>
+                <Send className="w-3 h-3 mr-1" />{getAlertState("webhookFailure").sending ? "Sending…" : "Send test"}
+              </Button>
+            </div>
+            {getAlertState("webhookFailure").result === "success" && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("webhookFailure").message}</span>
+              </div>
+            )}
+            {getAlertState("webhookFailure").result === "error" && (
+              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("webhookFailure").message}</span>
+              </div>
+            )}
           </div>
           {!webhookFailureEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
@@ -2905,25 +3006,105 @@ export default function AdminSettings() {
             </p>
           )}
 
-          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Report schedule auto-pause emails</p>
-              <p className="text-xs text-muted-foreground">
-                Receive an email when a merchant's scheduled report is automatically paused after repeated delivery failures.
-              </p>
+          <div className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Report schedule auto-pause / resumed emails</p>
+                <p className="text-xs text-muted-foreground">
+                  Receive an email when a merchant's scheduled report is automatically paused after repeated delivery failures, or resumes after a successful delivery.
+                </p>
+              </div>
+              <Switch
+                checked={reportFailureEnabled}
+                onCheckedChange={val =>
+                  updatePrefs({ data: { reportFailureAlertEmails: val } as any })
+                }
+                disabled={savingPrefs || me === undefined}
+              />
             </div>
-            <Switch
-              checked={reportFailureEnabled}
-              onCheckedChange={val =>
-                updatePrefs({ data: { reportFailureAlertEmails: val } as any })
-              }
-              disabled={savingPrefs || me === undefined}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">Auto-pause:</span>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => previewAlertEmail("reportAutopause", "report-autopause-alert")} disabled={getAlertState("reportAutopause").previewing} title="Preview the report auto-pause email template in a new tab">
+                <Eye className="w-3 h-3 mr-1" />{getAlertState("reportAutopause").previewing ? "Loading…" : "Preview"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => sendAlertTest("reportAutopause", "report-autopause-alert")} disabled={getAlertState("reportAutopause").sending || smtpConfigured === false} title={smtpConfigured === false ? "Save valid SMTP credentials first" : "Send a test report auto-pause alert to opted-in admins"}>
+                <Send className="w-3 h-3 mr-1" />{getAlertState("reportAutopause").sending ? "Sending…" : "Send test"}
+              </Button>
+              <span className="text-xs text-muted-foreground ml-2">Resumed:</span>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => previewAlertEmail("reportResumed", "report-resumed-alert")} disabled={getAlertState("reportResumed").previewing} title="Preview the report resumed email template in a new tab">
+                <Eye className="w-3 h-3 mr-1" />{getAlertState("reportResumed").previewing ? "Loading…" : "Preview"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => sendAlertTest("reportResumed", "report-resumed-alert")} disabled={getAlertState("reportResumed").sending || smtpConfigured === false} title={smtpConfigured === false ? "Save valid SMTP credentials first" : "Send a test report resumed alert to opted-in admins"}>
+                <Send className="w-3 h-3 mr-1" />{getAlertState("reportResumed").sending ? "Sending…" : "Send test"}
+              </Button>
+            </div>
+            {getAlertState("reportAutopause").result === "success" && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>Auto-pause: {getAlertState("reportAutopause").message}</span>
+              </div>
+            )}
+            {getAlertState("reportAutopause").result === "error" && (
+              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>Auto-pause: {getAlertState("reportAutopause").message}</span>
+              </div>
+            )}
+            {getAlertState("reportResumed").result === "success" && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>Resumed: {getAlertState("reportResumed").message}</span>
+              </div>
+            )}
+            {getAlertState("reportResumed").result === "error" && (
+              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>Resumed: {getAlertState("reportResumed").message}</span>
+              </div>
+            )}
           </div>
           {!reportFailureEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              You will not receive emails when merchant report schedules are auto-paused.
+              You will not receive emails when merchant report schedules are auto-paused or resumed.
+            </p>
+          )}
+
+          <div className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">EKQR stuck QR code alert emails</p>
+                <p className="text-xs text-muted-foreground">
+                  Receive an email when EKQR QR codes exceed the stuck-code threshold after automatic retries are exhausted.
+                </p>
+              </div>
+              <Switch
+                checked={ekqrSyncAlertEnabled}
+                onCheckedChange={val =>
+                  updatePrefs({ data: { ekqrSyncAlertEmails: val } as any })
+                }
+                disabled={savingPrefs || me === undefined}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => previewAlertEmail("ekqrStuck", "ekqr-stuck-alert")} disabled={getAlertState("ekqrStuck").previewing} title="Preview the EKQR stuck QR alert email template in a new tab">
+                <Eye className="w-3 h-3 mr-1" />{getAlertState("ekqrStuck").previewing ? "Loading…" : "Preview"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => sendAlertTest("ekqrStuck", "ekqr-stuck-alert")} disabled={getAlertState("ekqrStuck").sending || smtpConfigured === false} title={smtpConfigured === false ? "Save valid SMTP credentials first" : "Send a test EKQR stuck QR alert to opted-in admins"}>
+                <Send className="w-3 h-3 mr-1" />{getAlertState("ekqrStuck").sending ? "Sending…" : "Send test"}
+              </Button>
+            </div>
+            {getAlertState("ekqrStuck").result === "success" && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("ekqrStuck").message}</span>
+              </div>
+            )}
+            {getAlertState("ekqrStuck").result === "error" && (
+              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("ekqrStuck").message}</span>
+              </div>
+            )}
+          </div>
+          {!ekqrSyncAlertEnabled && (
+            <p className="text-xs text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              You will not receive alerts when EKQR QR codes are stuck beyond the threshold.
             </p>
           )}
 
