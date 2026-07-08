@@ -9856,3 +9856,88 @@ export const GetPayinChargePreviewResponse = zod.object({
 })
 
 
+/**
+ * @summary Get platform profit summary cards (Super Admin only)
+ */
+export const GetPlatformProfitSummaryQueryParams = zod.object({
+  "from": zod.coerce.string().optional(),
+  "to": zod.coerce.string().optional()
+})
+
+export const GetPlatformProfitSummaryResponse = zod.object({
+  "availableBalance": zod.number(),
+  "todayProfit": zod.number(),
+  "last7DaysProfit": zod.number(),
+  "last15DaysProfit": zod.number(),
+  "thisMonthProfit": zod.number(),
+  "gstLiabilityBalance": zod.number(),
+  "totalProviderCost": zod.number(),
+  "netMargin": zod.number()
+})
+
+
+/**
+ * @summary Get platform profit ledger (Super Admin only)
+ */
+export const GetPlatformProfitLedgerQueryParams = zod.object({
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional(),
+  "sourceType": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.number().optional(),
+  "search": zod.coerce.string().optional(),
+  "from": zod.coerce.string().optional(),
+  "to": zod.coerce.string().optional()
+})
+
+export const GetPlatformProfitLedgerResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "sourceType": zod.string(),
+  "sourceId": zod.number().nullish(),
+  "merchantId": zod.number().nullish(),
+  "merchantName": zod.string().nullish(),
+  "grossAmount": zod.number(),
+  "feeAmount": zod.number(),
+  "gstAmount": zod.number(),
+  "providerCost": zod.number(),
+  "profitAmount": zod.number(),
+  "balanceAfter": zod.number(),
+  "description": zod.string().nullish(),
+  "createdByAdminId": zod.number().nullish(),
+  "createdByAdminEmail": zod.string().nullish(),
+  "createdAt": zod.string()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Export platform profit ledger as CSV (Super Admin only)
+ */
+export const ExportPlatformProfitLedgerCsvQueryParams = zod.object({
+  "sourceType": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.number().optional(),
+  "search": zod.coerce.string().optional(),
+  "from": zod.coerce.string().optional(),
+  "to": zod.coerce.string().optional()
+})
+
+
+/**
+ * @summary Add manual credit/debit adjustment to platform wallet (Super Admin only)
+ */
+export const CreatePlatformProfitAdjustmentBody = zod.object({
+  "type": zod.enum(['manual_credit', 'manual_debit']),
+  "amount": zod.number(),
+  "reason": zod.string(),
+  "merchantId": zod.number().optional()
+})
+
+export const CreatePlatformProfitAdjustmentResponse = zod.object({
+  "ok": zod.boolean(),
+  "newBalance": zod.number()
+})
+
+

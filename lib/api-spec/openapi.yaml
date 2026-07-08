@@ -10412,6 +10412,139 @@ paths:
               schema:
                 $ref: "#/components/schemas/PayinChargePreview"
 
+  /admin/platform-profit/summary:
+    get:
+      operationId: getPlatformProfitSummary
+      tags: [admin]
+      summary: "Get platform profit summary cards (Super Admin only)"
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Platform profit summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformProfitSummary"
+
+  /admin/platform-profit/ledger:
+    get:
+      operationId: getPlatformProfitLedger
+      tags: [admin]
+      summary: "Get platform profit ledger (Super Admin only)"
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: sourceType
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated ledger
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformProfitLedgerPage"
+
+  /admin/platform-profit/ledger/export/csv:
+    get:
+      operationId: exportPlatformProfitLedgerCsv
+      tags: [admin]
+      summary: "Export platform profit ledger as CSV (Super Admin only)"
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sourceType
+          in: query
+          schema:
+            type: string
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /admin/platform-profit/adjustment:
+    post:
+      operationId: createPlatformProfitAdjustment
+      tags: [admin]
+      summary: "Add manual credit/debit adjustment to platform wallet (Super Admin only)"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformProfitAdjustmentInput"
+      responses:
+        "200":
+          description: Adjustment created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, newBalance]
+                properties:
+                  ok:
+                    type: boolean
+                  newBalance:
+                    type: number
+
 components:
   schemas:
     CompanySettingsPublic:
@@ -17578,4 +17711,89 @@ components:
           type: number
         chargesApplied:
           type: boolean
+
+    PlatformProfitSummary:
+      type: object
+      required: [availableBalance, todayProfit, last7DaysProfit, last15DaysProfit, thisMonthProfit, gstLiabilityBalance, totalProviderCost, netMargin]
+      properties:
+        availableBalance:
+          type: number
+        todayProfit:
+          type: number
+        last7DaysProfit:
+          type: number
+        last15DaysProfit:
+          type: number
+        thisMonthProfit:
+          type: number
+        gstLiabilityBalance:
+          type: number
+        totalProviderCost:
+          type: number
+        netMargin:
+          type: number
+
+    PlatformProfitLedgerItem:
+      type: object
+      required: [id, sourceType, grossAmount, feeAmount, gstAmount, providerCost, profitAmount, balanceAfter, createdAt]
+      properties:
+        id:
+          type: integer
+        sourceType:
+          type: string
+        sourceId:
+          type: ["integer", "null"]
+        merchantId:
+          type: ["integer", "null"]
+        merchantName:
+          type: ["string", "null"]
+        grossAmount:
+          type: number
+        feeAmount:
+          type: number
+        gstAmount:
+          type: number
+        providerCost:
+          type: number
+        profitAmount:
+          type: number
+        balanceAfter:
+          type: number
+        description:
+          type: ["string", "null"]
+        createdByAdminId:
+          type: ["integer", "null"]
+        createdByAdminEmail:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    PlatformProfitLedgerPage:
+      type: object
+      required: [items, total, page, limit]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlatformProfitLedgerItem"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    PlatformProfitAdjustmentInput:
+      type: object
+      required: [type, amount, reason]
+      properties:
+        type:
+          type: string
+          enum: [manual_credit, manual_debit]
+        amount:
+          type: number
+        reason:
+          type: string
+        merchantId:
+          type: integer
 

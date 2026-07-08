@@ -100,6 +100,7 @@ import type {
   CreateCashfreeOrderBody,
   CreateMerchantSavedFilterInput,
   CreatePayinOrderBody,
+  CreatePlatformProfitAdjustment200,
   CreateProviderIntegrationBody,
   CreateSavedFilterInput,
   CreateSettlementInput,
@@ -126,6 +127,7 @@ import type {
   ExportAdminPayinOrdersCsvParams,
   ExportMerchantBalanceHistoryParams,
   ExportMerchantsCsvParams,
+  ExportPlatformProfitLedgerCsvParams,
   ExportVaBalanceAuditCsvParams,
   FlushQuietHoursQueue200,
   GatewayUsage,
@@ -139,6 +141,8 @@ import type {
   GetMerchantsWebhookFailureCountsParams,
   GetMyVerificationResponse,
   GetPayinChargePreviewParams,
+  GetPlatformProfitLedgerParams,
+  GetPlatformProfitSummaryParams,
   GetQrCodeStatsParams,
   GetQuietHoursQueueCount200,
   GetReconciliationRunEmailLogs200,
@@ -288,6 +292,9 @@ import type {
   PlanInput,
   PlanNoteInput,
   PlanUsage,
+  PlatformProfitAdjustmentInput,
+  PlatformProfitLedgerPage,
+  PlatformProfitSummary,
   PreviewAdminMerchantReportScheduleEmail200,
   PreviewAdminMerchantReportScheduleEmailParams,
   PreviewAuditReportEmailParams,
@@ -30325,4 +30332,327 @@ export function useGetPayinChargePreview<TData = Awaited<ReturnType<typeof getPa
 
 
 
+
+export const getGetPlatformProfitSummaryUrl = (params?: GetPlatformProfitSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/platform-profit/summary?${stringifiedParams}` : `/api/admin/platform-profit/summary`
+}
+
+/**
+ * @summary Get platform profit summary cards (Super Admin only)
+ */
+export const getPlatformProfitSummary = async (params?: GetPlatformProfitSummaryParams, options?: RequestInit): Promise<PlatformProfitSummary> => {
+
+  return customFetch<PlatformProfitSummary>(getGetPlatformProfitSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPlatformProfitSummaryQueryKey = (params?: GetPlatformProfitSummaryParams,) => {
+    return [
+    `/api/admin/platform-profit/summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPlatformProfitSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getPlatformProfitSummary>>, TError = ErrorType<unknown>>(params?: GetPlatformProfitSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlatformProfitSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPlatformProfitSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlatformProfitSummary>>> = ({ signal }) => getPlatformProfitSummary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlatformProfitSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPlatformProfitSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getPlatformProfitSummary>>>
+export type GetPlatformProfitSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get platform profit summary cards (Super Admin only)
+ */
+
+export function useGetPlatformProfitSummary<TData = Awaited<ReturnType<typeof getPlatformProfitSummary>>, TError = ErrorType<unknown>>(
+ params?: GetPlatformProfitSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlatformProfitSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPlatformProfitSummaryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetPlatformProfitLedgerUrl = (params?: GetPlatformProfitLedgerParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/platform-profit/ledger?${stringifiedParams}` : `/api/admin/platform-profit/ledger`
+}
+
+/**
+ * @summary Get platform profit ledger (Super Admin only)
+ */
+export const getPlatformProfitLedger = async (params?: GetPlatformProfitLedgerParams, options?: RequestInit): Promise<PlatformProfitLedgerPage> => {
+
+  return customFetch<PlatformProfitLedgerPage>(getGetPlatformProfitLedgerUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPlatformProfitLedgerQueryKey = (params?: GetPlatformProfitLedgerParams,) => {
+    return [
+    `/api/admin/platform-profit/ledger`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPlatformProfitLedgerQueryOptions = <TData = Awaited<ReturnType<typeof getPlatformProfitLedger>>, TError = ErrorType<unknown>>(params?: GetPlatformProfitLedgerParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlatformProfitLedger>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPlatformProfitLedgerQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlatformProfitLedger>>> = ({ signal }) => getPlatformProfitLedger(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlatformProfitLedger>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPlatformProfitLedgerQueryResult = NonNullable<Awaited<ReturnType<typeof getPlatformProfitLedger>>>
+export type GetPlatformProfitLedgerQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get platform profit ledger (Super Admin only)
+ */
+
+export function useGetPlatformProfitLedger<TData = Awaited<ReturnType<typeof getPlatformProfitLedger>>, TError = ErrorType<unknown>>(
+ params?: GetPlatformProfitLedgerParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlatformProfitLedger>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPlatformProfitLedgerQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportPlatformProfitLedgerCsvUrl = (params?: ExportPlatformProfitLedgerCsvParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/platform-profit/ledger/export/csv?${stringifiedParams}` : `/api/admin/platform-profit/ledger/export/csv`
+}
+
+/**
+ * @summary Export platform profit ledger as CSV (Super Admin only)
+ */
+export const exportPlatformProfitLedgerCsv = async (params?: ExportPlatformProfitLedgerCsvParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportPlatformProfitLedgerCsvUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportPlatformProfitLedgerCsvQueryKey = (params?: ExportPlatformProfitLedgerCsvParams,) => {
+    return [
+    `/api/admin/platform-profit/ledger/export/csv`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportPlatformProfitLedgerCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportPlatformProfitLedgerCsv>>, TError = ErrorType<unknown>>(params?: ExportPlatformProfitLedgerCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportPlatformProfitLedgerCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportPlatformProfitLedgerCsvQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportPlatformProfitLedgerCsv>>> = ({ signal }) => exportPlatformProfitLedgerCsv(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportPlatformProfitLedgerCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportPlatformProfitLedgerCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportPlatformProfitLedgerCsv>>>
+export type ExportPlatformProfitLedgerCsvQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export platform profit ledger as CSV (Super Admin only)
+ */
+
+export function useExportPlatformProfitLedgerCsv<TData = Awaited<ReturnType<typeof exportPlatformProfitLedgerCsv>>, TError = ErrorType<unknown>>(
+ params?: ExportPlatformProfitLedgerCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportPlatformProfitLedgerCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportPlatformProfitLedgerCsvQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreatePlatformProfitAdjustmentUrl = () => {
+
+
+
+
+  return `/api/admin/platform-profit/adjustment`
+}
+
+/**
+ * @summary Add manual credit/debit adjustment to platform wallet (Super Admin only)
+ */
+export const createPlatformProfitAdjustment = async (platformProfitAdjustmentInput: PlatformProfitAdjustmentInput, options?: RequestInit): Promise<CreatePlatformProfitAdjustment200> => {
+
+  return customFetch<CreatePlatformProfitAdjustment200>(getCreatePlatformProfitAdjustmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      platformProfitAdjustmentInput,)
+  }
+);}
+
+
+
+
+export const getCreatePlatformProfitAdjustmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPlatformProfitAdjustment>>, TError,{data: BodyType<PlatformProfitAdjustmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPlatformProfitAdjustment>>, TError,{data: BodyType<PlatformProfitAdjustmentInput>}, TContext> => {
+
+const mutationKey = ['createPlatformProfitAdjustment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPlatformProfitAdjustment>>, {data: BodyType<PlatformProfitAdjustmentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPlatformProfitAdjustment(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePlatformProfitAdjustmentMutationResult = NonNullable<Awaited<ReturnType<typeof createPlatformProfitAdjustment>>>
+    export type CreatePlatformProfitAdjustmentMutationBody = BodyType<PlatformProfitAdjustmentInput>
+    export type CreatePlatformProfitAdjustmentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add manual credit/debit adjustment to platform wallet (Super Admin only)
+ */
+export const useCreatePlatformProfitAdjustment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPlatformProfitAdjustment>>, TError,{data: BodyType<PlatformProfitAdjustmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPlatformProfitAdjustment>>,
+        TError,
+        {data: BodyType<PlatformProfitAdjustmentInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePlatformProfitAdjustmentMutationOptions(options));
+    }
 

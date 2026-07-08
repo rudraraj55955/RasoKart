@@ -18,6 +18,7 @@ import { eq, and, desc, ilike, or, count } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { mutateWallet } from "./wallets";
 import { resolveChargeSettings, calculatePayinCharge } from "../lib/chargeCalculator";
+import { appendPlatformProfitEntry, appendTaxLiabilityEntry } from "./platformProfit";
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -169,6 +170,35 @@ router.post("/:id/approve", async (req, res, next) => {
           description: `Payin fee ₹${charge.payinFee.toFixed(2)}` + (charge.gstAmount > 0 ? ` + GST ₹${charge.gstAmount.toFixed(2)}` : ""),
         },
       );
+    }
+
+    // Record platform profit (payin fee only — not GST, which flows to tax_liability_ledger)
+    if (charge.chargesApplied && charge.payinFee > 0) {
+      const [merchantRow] = await db
+        .select({ name: merchantsTable.businessName })
+        .from(merchantsTable)
+        .where(eq(merchantsTable.id, claimed.merchantId))
+        .limit(1);
+      await appendPlatformProfitEntry({
+        sourceType:   "payin_fee",
+        sourceId:     claimed.id,
+        merchantId:   claimed.merchantId,
+        grossAmount:  grossAmount.toFixed(2),
+        feeAmount:    charge.payinFee.toFixed(2),
+        gstAmount:    charge.gstAmount.toFixed(2),
+        providerCost: "0",
+        profitAmount: charge.payinFee.toFixed(2), // GST is NOT platform profit
+        description:  `Payin fee · UTR ${claimed.utr} · ${merchantRow?.name ?? `merchant #${claimed.merchantId}`}`,
+      });
+      if (charge.gstAmount > 0) {
+        await appendTaxLiabilityEntry({
+          sourceType:  "payin_fee",
+          sourceId:    claimed.id,
+          merchantId:  claimed.merchantId,
+          gstAmount:   charge.gstAmount.toFixed(2),
+          description: `GST on payin fee · UTR ${claimed.utr}`,
+        });
+      }
     }
 
     // If this transaction was linked to a payment link, check if it should be marked completed

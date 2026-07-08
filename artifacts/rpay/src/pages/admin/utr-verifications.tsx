@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { Search, RefreshCw, CheckCircle, XCircle, ExternalLink, Copy, AlertCircle, Clock } from "lucide-react";
+import { Search, RefreshCw, CheckCircle, XCircle, ExternalLink, Copy, AlertCircle, Clock, IndianRupee } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -71,10 +71,17 @@ export default function AdminUtrVerifications() {
   // Detail sheet
   const [selected, setSelected] = useState<UtrVerification | null>(null);
 
-  // Approve
+  // Approve confirmation dialog
+  const [pendingApproval, setPendingApproval] = useState<UtrVerification | null>(null);
+
   const approveMut = useApproveUtrVerification({
     mutation: {
-      onSuccess: () => { toast.success("Approved — merchant wallet credited"); setSelected(null); invalidate(); },
+      onSuccess: () => {
+        toast.success("Approved — merchant wallet credited");
+        setSelected(null);
+        setPendingApproval(null);
+        invalidate();
+      },
       onError: (e: any) => toast.error(e?.response?.data?.error ?? "Failed to approve"),
     },
   });
@@ -90,8 +97,12 @@ export default function AdminUtrVerifications() {
   });
 
   function handleApprove(item: UtrVerification) {
-    if (!confirm(`Approve UTR ${item.utr} for ₹${parseFloat(item.amount).toLocaleString("en-IN")}? This will credit the merchant wallet.`)) return;
-    approveMut.mutate({ id: item.id });
+    setPendingApproval(item);
+  }
+
+  function confirmApprove() {
+    if (!pendingApproval) return;
+    approveMut.mutate({ id: pendingApproval.id });
   }
 
   function openReject(item: UtrVerification) {
@@ -309,6 +320,59 @@ export default function AdminUtrVerifications() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Approve confirmation dialog */}
+      <Dialog open={!!pendingApproval} onOpenChange={v => { if (!v) setPendingApproval(null); }}>
+        <DialogContent className="max-w-sm bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400" />
+              Approve UTR Payment
+            </DialogTitle>
+            <DialogDescription>
+              Approving will credit the merchant's wallet. Payin charges and GST (if applicable) will be deducted automatically per the merchant's plan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg bg-muted/30 border border-border px-3 py-3 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">UTR / Reference</span>
+              <span className="font-mono font-semibold">{pendingApproval?.utr}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Merchant</span>
+              <span className="font-medium">{pendingApproval?.merchantName ?? "—"}</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Gross Amount</span>
+              <span className="font-bold text-emerald-400 flex items-center gap-0.5">
+                <IndianRupee className="w-3.5 h-3.5" />
+                {pendingApproval ? parseFloat(pendingApproval.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 }) : ""}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground/70 pt-1">
+              Net credit = gross minus applicable fee + GST. Merchant receives the net amount.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingApproval(null)}
+              disabled={approveMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={confirmApprove}
+              disabled={approveMut.isPending}
+            >
+              <CheckCircle className="w-4 h-4 mr-1.5" />
+              {approveMut.isPending ? "Approving…" : "Confirm Approve"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Reject dialog */}
       <Dialog open={!!rejectTarget} onOpenChange={v => { if (!v) setRejectTarget(null); }}>

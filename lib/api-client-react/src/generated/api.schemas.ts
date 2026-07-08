@@ -5812,6 +5812,63 @@ export interface PayinChargePreview {
   chargesApplied: boolean;
 }
 
+export interface PlatformProfitSummary {
+  availableBalance: number;
+  todayProfit: number;
+  last7DaysProfit: number;
+  last15DaysProfit: number;
+  thisMonthProfit: number;
+  gstLiabilityBalance: number;
+  totalProviderCost: number;
+  netMargin: number;
+}
+
+export interface PlatformProfitLedgerItem {
+  id: number;
+  sourceType: string;
+  /** @nullable */
+  sourceId?: number | null;
+  /** @nullable */
+  merchantId?: number | null;
+  /** @nullable */
+  merchantName?: string | null;
+  grossAmount: number;
+  feeAmount: number;
+  gstAmount: number;
+  providerCost: number;
+  profitAmount: number;
+  balanceAfter: number;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  createdByAdminId?: number | null;
+  /** @nullable */
+  createdByAdminEmail?: string | null;
+  createdAt: string;
+}
+
+export interface PlatformProfitLedgerPage {
+  items: PlatformProfitLedgerItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type PlatformProfitAdjustmentInputType = typeof PlatformProfitAdjustmentInputType[keyof typeof PlatformProfitAdjustmentInputType];
+
+
+export const PlatformProfitAdjustmentInputType = {
+  manual_credit: 'manual_credit',
+  manual_debit: 'manual_debit',
+} as const;
+
+export interface PlatformProfitAdjustmentInput {
+  type: PlatformProfitAdjustmentInputType;
+  amount: number;
+  reason: string;
+  merchantId?: number;
+}
+
 export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
@@ -7684,5 +7741,33 @@ export const AdminListVerificationsStatus = {
 export type GetPayinChargePreviewParams = {
 amount: number;
 merchantId?: number;
+};
+
+export type GetPlatformProfitSummaryParams = {
+from?: string;
+to?: string;
+};
+
+export type GetPlatformProfitLedgerParams = {
+page?: number;
+limit?: number;
+sourceType?: string;
+merchantId?: number;
+search?: string;
+from?: string;
+to?: string;
+};
+
+export type ExportPlatformProfitLedgerCsvParams = {
+sourceType?: string;
+merchantId?: number;
+search?: string;
+from?: string;
+to?: string;
+};
+
+export type CreatePlatformProfitAdjustment200 = {
+  ok: boolean;
+  newBalance: number;
 };
 

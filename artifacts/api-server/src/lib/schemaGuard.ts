@@ -276,6 +276,48 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ tables: ["payin_charge_settings", "merchant_charge_overrides"] }, "schema_guard_table_created");
 
+  // ── platform_wallet_ledger: running balance of platform profit ───────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS platform_wallet_ledger (
+      id                  SERIAL PRIMARY KEY,
+      source_type         TEXT NOT NULL,
+      source_id           INTEGER,
+      merchant_id         INTEGER,
+      gross_amount        NUMERIC(12,2) NOT NULL DEFAULT 0,
+      fee_amount          NUMERIC(12,2) NOT NULL DEFAULT 0,
+      gst_amount          NUMERIC(12,2) NOT NULL DEFAULT 0,
+      provider_cost       NUMERIC(12,2) NOT NULL DEFAULT 0,
+      profit_amount       NUMERIC(12,2) NOT NULL DEFAULT 0,
+      balance_after       NUMERIC(12,2) NOT NULL DEFAULT 0,
+      description         TEXT,
+      created_by_admin_id INTEGER,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      metadata            TEXT
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS pwl_source_id_idx ON platform_wallet_ledger(source_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS pwl_merchant_id_idx ON platform_wallet_ledger(merchant_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS pwl_source_type_idx ON platform_wallet_ledger(source_type)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS pwl_created_at_idx ON platform_wallet_ledger(created_at DESC)`);
+
+  // ── tax_liability_ledger: running balance of GST collected ───────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS tax_liability_ledger (
+      id           SERIAL PRIMARY KEY,
+      source_type  TEXT NOT NULL,
+      source_id    INTEGER,
+      merchant_id  INTEGER,
+      gst_amount   NUMERIC(12,2) NOT NULL DEFAULT 0,
+      balance_after NUMERIC(12,2) NOT NULL DEFAULT 0,
+      description  TEXT,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      metadata     TEXT
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS tll_source_id_idx ON tax_liability_ledger(source_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS tll_created_at_idx ON tax_liability_ledger(created_at DESC)`);
+  logger.info({ tables: ["platform_wallet_ledger", "tax_liability_ledger"] }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

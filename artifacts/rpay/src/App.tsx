@@ -101,6 +101,7 @@ import MerchantWallet from "@/pages/merchant/wallet";
 import AdminKycReview from "@/pages/admin/kyc-review";
 import MerchantReports from "@/pages/merchant/reports";
 import AdminReports from "@/pages/admin/reports";
+import AdminPlatformProfit from "@/pages/admin/platform-profit";
 import MerchantSupport from "@/pages/merchant/support";
 
 const queryClient = new QueryClient({
@@ -292,6 +293,7 @@ function Router() {
       <Route path="/admin/kyc-review"><AdminRoute component={AdminKycReview} /></Route>
       <Route path="/admin/merchant-verifications"><AdminRoute component={AdminMerchantVerifications} /></Route>
       <Route path="/admin/reports"><AdminRoute component={AdminReports} /></Route>
+      <Route path="/admin/platform-profit"><AdminRoute component={AdminPlatformProfit} /></Route>
       <Route path="/admin/support-tickets"><AdminRoute component={AdminSupportTickets} /></Route>
       <Route path="/admin/support"><AdminRoute component={AdminSupportTickets} /></Route>
 
