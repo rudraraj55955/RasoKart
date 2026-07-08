@@ -23,12 +23,12 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, and, desc, count, inArray, ilike, or, sql } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAnyAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import crypto from "crypto";
 
 const router = Router();
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth, requireAnyAdmin);
 
 function numStr(v: string | number | null | undefined): number {
   return v == null ? 0 : Number(v);
@@ -125,6 +125,81 @@ router.get("/", async (req, res, next) => {
       limit,
       offset,
     });
+  } catch (err) { next(err); }
+});
+
+// ─── GET /api/admin/payout-wallet-loads/settings ─────────────────────────────
+router.get("/settings", async (_req, res, next) => {
+  try {
+    const keys = [
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ENABLED,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ONLINE_ENABLED,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MANUAL_UTR_ENABLED,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ADMIN_TOPUP_ENABLED,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MIN_AMOUNT,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MAX_AMOUNT,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_FEE_TYPE,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_FEE_VALUE,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_GST_ON_FEE,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_REQUIRE_SCREENSHOT,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_BANK_NAME,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_NUMBER,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_IFSC,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_HOLDER,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_UPI_ID,
+    ];
+    const rows = await db
+      .select({ key: systemConfigTable.key, value: systemConfigTable.value })
+      .from(systemConfigTable)
+      .where(inArray(systemConfigTable.key, keys));
+    const cfg = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    res.json(cfg);
+  } catch (err) { next(err); }
+});
+
+// ─── PUT /api/admin/payout-wallet-loads/settings ─────────────────────────────
+router.put("/settings", async (req: any, res, next) => {
+  try {
+    const updates: Record<string, string> = req.body ?? {};
+    const adminEmail: string = req.user.email;
+    const allowedKeys = new Set([
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ENABLED,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ONLINE_ENABLED,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MANUAL_UTR_ENABLED,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ADMIN_TOPUP_ENABLED,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MIN_AMOUNT,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MAX_AMOUNT,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_FEE_TYPE,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_FEE_VALUE,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_GST_ON_FEE,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_REQUIRE_SCREENSHOT,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_BANK_NAME,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_NUMBER,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_IFSC,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_HOLDER,
+      SYSTEM_CONFIG_KEYS.WALLET_LOAD_UPI_ID,
+    ]);
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (!allowedKeys.has(key as any)) continue;
+      await db
+        .insert(systemConfigTable)
+        .values({ key, value: String(value), updatedByEmail: adminEmail })
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: String(value), updatedByEmail: adminEmail, updatedAt: new Date() },
+        });
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId:    req.user.id,
+      adminEmail: req.user.email ?? "admin@rasokart.com",
+      action:     "WALLET_LOAD_SETTINGS_UPDATED",
+      targetType: "system_config",
+      details:    JSON.stringify(updates),
+    }).catch(() => {});
+
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
@@ -411,79 +486,6 @@ router.post("/topup", async (req: any, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ─── GET /api/admin/payout-wallet-loads/settings ─────────────────────────────
-router.get("/settings", async (_req, res, next) => {
-  try {
-    const keys = [
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ENABLED,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ONLINE_ENABLED,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MANUAL_UTR_ENABLED,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ADMIN_TOPUP_ENABLED,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MIN_AMOUNT,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MAX_AMOUNT,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_FEE_TYPE,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_FEE_VALUE,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_GST_ON_FEE,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_REQUIRE_SCREENSHOT,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_BANK_NAME,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_NUMBER,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_IFSC,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_HOLDER,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_UPI_ID,
-    ];
-    const rows = await db
-      .select({ key: systemConfigTable.key, value: systemConfigTable.value })
-      .from(systemConfigTable)
-      .where(inArray(systemConfigTable.key, keys));
-    const cfg = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-    res.json(cfg);
-  } catch (err) { next(err); }
-});
-
-// ─── PUT /api/admin/payout-wallet-loads/settings ─────────────────────────────
-router.put("/settings", async (req: any, res, next) => {
-  try {
-    const updates: Record<string, string> = req.body ?? {};
-    const adminEmail: string = req.user.email;
-    const allowedKeys = new Set([
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ENABLED,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ONLINE_ENABLED,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MANUAL_UTR_ENABLED,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ADMIN_TOPUP_ENABLED,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MIN_AMOUNT,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_MAX_AMOUNT,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_FEE_TYPE,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_FEE_VALUE,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_GST_ON_FEE,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_REQUIRE_SCREENSHOT,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_BANK_NAME,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_NUMBER,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_IFSC,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_HOLDER,
-      SYSTEM_CONFIG_KEYS.WALLET_LOAD_UPI_ID,
-    ]);
-
-    for (const [key, value] of Object.entries(updates)) {
-      if (!allowedKeys.has(key as any)) continue;
-      await db
-        .insert(systemConfigTable)
-        .values({ key, value: String(value), updatedByEmail: adminEmail })
-        .onConflictDoUpdate({
-          target: systemConfigTable.key,
-          set: { value: String(value), updatedByEmail: adminEmail, updatedAt: new Date() },
-        });
-    }
-
-    await db.insert(auditLogsTable).values({
-      adminId:    req.user.id,
-      adminEmail: req.user.email ?? "admin@rasokart.com",
-      action:     "WALLET_LOAD_SETTINGS_UPDATED",
-      targetType: "system_config",
-      details:    JSON.stringify(updates),
-    }).catch(() => {});
-
-    res.json({ success: true });
-  } catch (err) { next(err); }
-});
+// (settings GET and PUT are registered before /:id — see top of this section)
 
 export default router;
