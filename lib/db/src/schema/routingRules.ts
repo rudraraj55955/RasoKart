@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, varchar, numeric, boolean, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, numeric, boolean, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { routingConfigsTable } from "./routingConfigs";
 
 export const routingRulesTable = pgTable("routing_rules", {
@@ -16,7 +17,11 @@ export const routingRulesTable = pgTable("routing_rules", {
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (table) => [
+  uniqueIndex("routing_rules_enabled_priority_uniq")
+    .on(table.configId, table.priority)
+    .where(sql`is_enabled = true`),
+]);
 
 export type RoutingRule = typeof routingRulesTable.$inferSelect;
 export type RoutingRuleInsert = typeof routingRulesTable.$inferInsert;

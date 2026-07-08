@@ -122,7 +122,7 @@ describe(
     after(async () => {
       (db as any).select = originalSelect;
       (db as any).insert = originalInsert;
-      await new Promise<void>((resolve) => server.close(resolve));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     });
 
     afterEach(() => {
@@ -174,9 +174,10 @@ describe(
                   return [INSERTED_RULE];
                 }
                 // Second INSERT loses — simulates the DB unique constraint
-                // (routing_rules_config_id_priority_unique) firing.
+                // (routing_rules_enabled_priority_uniq) firing.
                 const err = new Error("duplicate key value violates unique constraint");
                 (err as any).code = "23505";
+                (err as any).constraint = "routing_rules_enabled_priority_uniq";
                 throw err;
               }
               return [{}];
@@ -197,24 +198,19 @@ describe(
           `Expected exactly one 200 and one 409 but got ${a.status} and ${b.status}`,
         );
 
-        // The 409 comes from the global mapDbError(23505) handler.
+        // The 409 comes from the route-level 23505 catch handler.
         const rejected = a.status === 409 ? a : b;
         assert.equal(rejected.status, 409, "Losing request must receive HTTP 409");
-        // mapDbError maps Postgres 23505 → { ok: false, code: "DUPLICATE_RECORD", ... }
-        assert.equal(
-          (rejected.body as any)["ok"],
-          false,
-          "409 body must have ok: false",
-        );
-        assert.equal(
-          (rejected.body as any)["code"],
-          "DUPLICATE_RECORD",
-          "409 body code must be DUPLICATE_RECORD (the safe mapping for 23505 unique violations)",
-        );
+        // Route-level 23505 handler returns { error: "<friendly message>" }
         assert.ok(
-          typeof (rejected.body as any)["message"] === "string" &&
-            (rejected.body as any)["message"].length > 0,
-          "409 body must include a human-readable message",
+          typeof (rejected.body as any)["error"] === "string" &&
+            (rejected.body as any)["error"].length > 0,
+          "409 body must include a human-readable error string",
+        );
+        assert.match(
+          (rejected.body as any)["error"] as string,
+          /Priority 5 is already used/,
+          "409 body must cite the conflicting priority number",
         );
       },
     );

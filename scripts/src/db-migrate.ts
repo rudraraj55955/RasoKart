@@ -452,6 +452,23 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS is_fallback_only BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 1;
+    -- Resolve pre-existing enabled priority collisions before creating the unique
+    -- index. For each (config_id, priority) group that has multiple enabled rows,
+    -- keep the oldest (lowest id) and disable the rest. No-op when there are none.
+    UPDATE routing_rules SET is_enabled = false
+    WHERE is_enabled = true
+      AND id NOT IN (
+        SELECT MIN(id) FROM routing_rules
+        WHERE is_enabled = true
+        GROUP BY config_id, priority
+      );
+    -- Partial unique index: only one enabled rule per (config, priority).
+    -- Disabled rules are excluded so they can freely share a priority number.
+    CREATE UNIQUE INDEX IF NOT EXISTS routing_rules_enabled_priority_uniq
+      ON routing_rules(config_id, priority)
+      WHERE is_enabled = true;
 
     -- ── demo_account_removals ────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS demo_account_removals (

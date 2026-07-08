@@ -187,6 +187,23 @@ async function runGuard(): Promise<void> {
   `);
   await db.execute(sql`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS is_fallback_only BOOLEAN NOT NULL DEFAULT FALSE`);
   await db.execute(sql`ALTER TABLE routing_rules ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 1`);
+  // De-duplicate before creating the unique index — keeps the oldest (lowest id)
+  // enabled rule per (config_id, priority) and disables the rest. This is a no-op
+  // when no collisions exist, so it is always safe to run.
+  await db.execute(sql`
+    UPDATE routing_rules SET is_enabled = false
+    WHERE is_enabled = true
+      AND id NOT IN (
+        SELECT MIN(id) FROM routing_rules
+        WHERE is_enabled = true
+        GROUP BY config_id, priority
+      )
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS routing_rules_enabled_priority_uniq
+    ON routing_rules(config_id, priority)
+    WHERE is_enabled = true
+  `);
   logger.info({ tables: ["providers", "provider_integrations", "provider_visibility", "routing_configs", "routing_rules"] }, "schema_guard_column_added");
 
   // ── quiet_hours_queue: columns required by helpers/quietHours.ts ───────

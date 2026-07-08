@@ -167,7 +167,29 @@ router.post("/configs/:id/rules", async (req, res, next) => {
 
     req.log.info({ configId, providerKey, priority, isFallbackOnly, maxRetries }, "Routing rule created");
     res.json({ ...row!, createdAt: row!.createdAt.toISOString(), updatedAt: row!.updatedAt.toISOString() });
-  } catch (err) { next(err); }
+  } catch (err) {
+    const isRoutingPriorityConflict = (err as any)?.code === "23505" &&
+      (!(err as any)?.constraint || (err as any)?.constraint === "routing_rules_enabled_priority_uniq");
+    if (isRoutingPriorityConflict) {
+      try {
+        const p: number = (req.body as any).priority ?? 1;
+        const cid = parseInt(req.params["id"] as string);
+        const [conflict] = await db.select({ providerKey: routingRulesTable.providerKey })
+          .from(routingRulesTable)
+          .where(and(eq(routingRulesTable.configId, cid), eq(routingRulesTable.priority, p), eq(routingRulesTable.isEnabled, true)))
+          .limit(1);
+        res.status(409).json({
+          error: conflict
+            ? `Priority ${p} is already used by rule for "${conflict.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so your new rule would be silently ignored. Use a different priority number.`
+            : `Priority ${p} is already used by an enabled rule in this config. Use a different priority number.`,
+        });
+      } catch {
+        res.status(409).json({ error: "A priority conflict was detected. Use a different priority number." });
+      }
+      return;
+    }
+    next(err);
+  }
 });
 
 /** PUT /api/smart-routing/rules/:id */
@@ -219,7 +241,39 @@ router.put("/rules/:id", async (req, res, next) => {
 
     req.log.info({ id, ...updateSet }, "Routing rule updated");
     res.json({ ...updated!, createdAt: updated!.createdAt.toISOString(), updatedAt: updated!.updatedAt.toISOString() });
-  } catch (err) { next(err); }
+  } catch (err) {
+    const isRoutingPriorityConflict = (err as any)?.code === "23505" &&
+      (!(err as any)?.constraint || (err as any)?.constraint === "routing_rules_enabled_priority_uniq");
+    if (isRoutingPriorityConflict) {
+      try {
+        const ruleId = parseInt(req.params["id"] as string);
+        const [rule] = await db.select({ configId: routingRulesTable.configId, priority: routingRulesTable.priority })
+          .from(routingRulesTable).where(eq(routingRulesTable.id, ruleId)).limit(1);
+        const effectivePriority: number = (req.body as any).priority ?? rule?.priority;
+        let conflict: { providerKey: string } | undefined;
+        if (rule) {
+          const [c] = await db.select({ providerKey: routingRulesTable.providerKey })
+            .from(routingRulesTable)
+            .where(and(
+              eq(routingRulesTable.configId, rule.configId),
+              eq(routingRulesTable.priority, effectivePriority),
+              eq(routingRulesTable.isEnabled, true),
+              ne(routingRulesTable.id, ruleId),
+            )).limit(1);
+          conflict = c;
+        }
+        res.status(409).json({
+          error: conflict
+            ? `Priority ${effectivePriority} is already used by rule for "${conflict.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`
+            : `Priority ${effectivePriority} is already used by another enabled rule in this config. Use a different priority number.`,
+        });
+      } catch {
+        res.status(409).json({ error: "A priority conflict was detected. Use a different priority number." });
+      }
+      return;
+    }
+    next(err);
+  }
 });
 
 /** DELETE /api/smart-routing/rules/:id */
