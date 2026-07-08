@@ -56,6 +56,8 @@ async function expireOldLinks() {
 // Public endpoint — no auth required — must be registered before requireAuth middleware
 // GET /api/payment-links/public/:slug
 router.get("/public/:slug", async (req, res) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.set("Pragma", "no-cache");
   const slug = req.params["slug"] as string;
 
   const rows = await db.select({
@@ -180,6 +182,49 @@ router.get("/public/:slug", async (req, res) => {
     status: link.status,
     expiresAt: link.expiresAt instanceof Date ? link.expiresAt.toISOString() : link.expiresAt,
     maxPayments: link.maxPayments ?? null,
+  });
+});
+
+// ── GET /api/payment-links/public/:slug/txn/:txnId (no auth) ─────────────────
+// Returns the real-time status of a specific transaction for this payment link.
+// Used by the public pay page to detect when a pending submission has been
+// approved or rejected without relying solely on link.status.
+router.get("/public/:slug/txn/:txnId", async (req, res) => {
+  const slug   = req.params["slug"] as string;
+  const txnId  = parseInt(req.params["txnId"] as string);
+
+  if (isNaN(txnId)) { res.status(400).json({ error: "Invalid transaction ID" }); return; }
+
+  const rows = await db
+    .select({
+      txStatus:       transactionsTable.status,
+      txAmount:       transactionsTable.amount,
+      txUtr:          transactionsTable.utr,
+      txUpdatedAt:    transactionsTable.updatedAt,
+      linkStatus:     paymentLinksTable.status,
+      linkMaxPayments: paymentLinksTable.maxPayments,
+    })
+    .from(transactionsTable)
+    .innerJoin(paymentLinksTable, and(
+      eq(paymentLinksTable.id, transactionsTable.paymentLinkId!),
+      eq(paymentLinksTable.slug, slug),
+    ))
+    .where(eq(transactionsTable.id, txnId))
+    .limit(1);
+
+  if (!rows.length) { res.status(404).json({ error: "Transaction not found" }); return; }
+
+  const row = rows[0];
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.set("Pragma", "no-cache");
+  res.json({
+    txnId,
+    status:          row.txStatus,
+    amount:          row.txAmount,
+    utr:             row.txUtr,
+    updatedAt:       row.txUpdatedAt instanceof Date ? row.txUpdatedAt.toISOString() : row.txUpdatedAt,
+    linkStatus:      row.linkStatus,
+    linkMaxPayments: row.linkMaxPayments ?? null,
   });
 });
 
