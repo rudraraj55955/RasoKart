@@ -156,26 +156,58 @@ router.get("/", async (req, res, next) => {
       .offset(offset)
       .orderBy(sql`${transactionsTable.createdAt} DESC`);
 
-    // Build a white-label gateway label (e.g. "Payment Gateway A") for each
-    // unique provider across the FULL filtered dataset (not just the current
-    // page) so the mapping stays stable regardless of which page the merchant
-    // is viewing. The raw providerKey is never surfaced to merchant-facing
-    // screens — only the opaque letter suffix reaches the client.
-    const allProviderRows = await db
-      .selectDistinct({ connectionProvider: merchantConnectionsTable.provider })
-      .from(transactionsTable)
-      .leftJoin(merchantConnectionsTable, eq(transactionsTable.connectionId, merchantConnectionsTable.id))
-      .where(and(where, sql`${merchantConnectionsTable.provider} IS NOT NULL`));
-
-    const uniqueProviders = allProviderRows
-      .map(r => r.connectionProvider)
-      .filter((p): p is string => Boolean(p))
-      .sort();
-    const providerToLabel = new Map<string, string>(
-      uniqueProviders.map((p, i) => [p, `Payment Gateway ${String.fromCharCode(65 + i)}`])
-    );
-
     const isMerchantUser = user.role !== "admin";
+
+    // Build a white-label gateway label ("Payment Gateway A", "B", …) for
+    // each unique provider.
+    //
+    // For merchant users the label order is based on when each provider was
+    // FIRST used by that merchant across ALL their transactions — completely
+    // independent of the current date range, status filter, or page number.
+    // This guarantees the same deposit always shows the same letter label
+    // regardless of how the merchant navigates or what filters are active.
+    //
+    // For admin views the raw provider key is returned instead, so the label
+    // is less critical; we keep the simpler per-filter computation there.
+    let providerToLabel: Map<string, string>;
+
+    if (isMerchantUser) {
+      // Stable: first-ever usage date per provider, merchant-scoped, no other filters
+      const stableRows = await db
+        .select({
+          connectionProvider: merchantConnectionsTable.provider,
+          firstUsed: sql<string>`MIN(${transactionsTable.createdAt})`,
+        })
+        .from(transactionsTable)
+        .leftJoin(merchantConnectionsTable, eq(transactionsTable.connectionId, merchantConnectionsTable.id))
+        .where(
+          and(
+            eq(transactionsTable.merchantId, user.merchantId!),
+            sql`${merchantConnectionsTable.provider} IS NOT NULL`
+          )
+        )
+        .groupBy(merchantConnectionsTable.provider)
+        .orderBy(sql`MIN(${transactionsTable.createdAt}) ASC, ${merchantConnectionsTable.provider} ASC`);
+
+      providerToLabel = new Map<string, string>(
+        stableRows.map((r, i) => [r.connectionProvider!, `Payment Gateway ${String.fromCharCode(65 + i)}`])
+      );
+    } else {
+      // Admin: derive labels from the current filtered set (admins see raw provider names anyway)
+      const allProviderRows = await db
+        .selectDistinct({ connectionProvider: merchantConnectionsTable.provider })
+        .from(transactionsTable)
+        .leftJoin(merchantConnectionsTable, eq(transactionsTable.connectionId, merchantConnectionsTable.id))
+        .where(and(where, sql`${merchantConnectionsTable.provider} IS NOT NULL`));
+
+      const uniqueProviders = allProviderRows
+        .map(r => r.connectionProvider)
+        .filter((p): p is string => Boolean(p))
+        .sort();
+      providerToLabel = new Map<string, string>(
+        uniqueProviders.map((p, i) => [p, `Payment Gateway ${String.fromCharCode(65 + i)}`])
+      );
+    }
 
     res.json({
       data: rows.map(r => ({
