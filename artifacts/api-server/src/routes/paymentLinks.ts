@@ -242,8 +242,12 @@ router.post("/public/:slug/utr", async (req, res, next) => {
 
     if (!rows.length) { res.status(404).json({ error: "Payment link not found" }); return; }
     const { link } = rows[0];
-    if (link.status === "completed") { res.status(409).json({ error: "This payment link has already been fulfilled." }); return; }
-    if (link.status === "expired") { res.status(409).json({ error: "This payment link has expired." }); return; }
+    if (link.status === "completed") {
+      res.status(409).json({ ok: false, code: "PAYMENT_LINK_COMPLETED", title: "Payment Link Completed", message: "This payment link has already been completed.", error: "This payment link has already been completed." }); return;
+    }
+    if (link.status === "expired") {
+      res.status(409).json({ ok: false, code: "PAYMENT_LINK_EXPIRED", title: "Payment Link Expired", message: "This payment link has expired.", error: "This payment link has expired." }); return;
+    }
     if (link.status === "inactive") { res.status(409).json({ error: "This payment link is not active." }); return; }
     if (link.status === "pending_verification") { res.status(409).json({ error: "A payment is already pending verification for this link." }); return; }
     if (link.status !== "active") { res.status(409).json({ error: "Payment link is not active." }); return; }
@@ -266,7 +270,7 @@ router.post("/public/:slug/utr", async (req, res, next) => {
     } else if (bodyAmount && parseFloat(bodyAmount) > 0) {
       finalAmount = parseFloat(bodyAmount).toFixed(2);
     } else {
-      res.status(400).json({ error: "Amount is required for open-amount payment links" }); return;
+      res.status(400).json({ ok: false, code: "INVALID_AMOUNT", title: "Invalid Amount", message: "Please enter the actual amount paid.", error: "Please enter the actual amount paid." }); return;
     }
 
     // Verify own_static_upi gateway is active
@@ -281,7 +285,9 @@ router.post("/public/:slug/utr", async (req, res, next) => {
       )
       .limit(1);
 
-    if (!staticGateway) { res.status(409).json({ error: "Manual UPI collection is not currently available" }); return; }
+    if (!staticGateway) {
+      res.status(503).json({ ok: false, code: "PAYMENT_UNAVAILABLE", title: "Payment Unavailable", message: "Payment is currently unavailable. Please contact the merchant.", error: "Payment is currently unavailable. Please contact the merchant." }); return;
+    }
 
     const metadata = JSON.stringify({
       payerName: payerName?.trim() || null,
@@ -321,6 +327,7 @@ router.post("/public/:slug/utr", async (req, res, next) => {
     } catch (err: any) {
       if (err?.code === "23505") {
         const msg = "This UTR/reference number has already been submitted. Please enter a new UTR or contact support.";
+        req.log.warn({ requestId: req.id, utr: utrClean, code: "DUPLICATE_UTR" }, "Duplicate UTR submission rejected");
         res.status(409).json({
           ok: false,
           code: "DUPLICATE_UTR",

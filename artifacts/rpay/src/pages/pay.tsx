@@ -145,6 +145,7 @@ export default function PayPage() {
   const [payerUpi, setPayerUpi] = useState("");
   const [utrState, setUtrState] = useState<UtrState>("idle");
   const [utrError, setUtrError] = useState<string | null>(null);
+  const [utrErrorTitle, setUtrErrorTitle] = useState<string | null>(null);
   const utrInputRef = useRef<HTMLInputElement>(null);
 
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -269,16 +270,30 @@ export default function PayPage() {
       });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) {
-        // Prefer field-level UTR error, then structured message, then error field
+        const code = body?.code as string | undefined;
+        const title = body?.title as string | undefined;
         const fieldUtrError = body?.fieldErrors?.utr as string | undefined;
         const structuredMsg = body?.message as string | undefined;
         const legacyError = body?.error as string | undefined;
-        const raw = fieldUtrError ?? structuredMsg ?? legacyError ?? "Submission failed";
-        // Defence: never surface raw SQL or stack traces to the customer
-        const safe = looksLikeSql(raw)
-          ? "Payment could not be submitted right now. Please try again or contact support."
-          : raw;
-        throw new Error(safe);
+
+        const KNOWN_CODES = new Set([
+          "DUPLICATE_UTR", "PAYMENT_LINK_EXPIRED", "PAYMENT_LINK_COMPLETED",
+          "PAYMENT_UNAVAILABLE", "INVALID_AMOUNT",
+        ]);
+
+        if (code && KNOWN_CODES.has(code) && structuredMsg) {
+          setUtrErrorTitle(title ?? null);
+          setUtrError(structuredMsg);
+        } else {
+          const raw = fieldUtrError ?? structuredMsg ?? legacyError ?? "We could not submit your payment right now. Please try again.";
+          const safe = looksLikeSql(raw)
+            ? "We could not submit your payment right now. Please try again."
+            : raw;
+          setUtrErrorTitle(null);
+          setUtrError(safe);
+        }
+        setUtrState("error");
+        return;
       }
 
       const finalAmount = link.amount ?? customAmount.trim();
@@ -297,7 +312,8 @@ export default function PayPage() {
       // Begin polling for this new submission
       startPolling(slug, saved.txnId);
     } catch (err: any) {
-      setUtrError(err.message);
+      setUtrErrorTitle(null);
+      setUtrError(err.message ?? "We could not submit your payment right now. Please try again.");
       setUtrState("error");
     }
   }
@@ -625,7 +641,7 @@ export default function PayPage() {
                   <div>
                     <Label className="text-xs text-muted-foreground mb-1 block">UTR / Reference Number <span className="text-rose-400">*</span></Label>
                     <Input ref={utrInputRef} placeholder="e.g. 417810123456" value={utr}
-                      onChange={e => { setUtr(e.target.value); setUtrError(null); }} className="font-mono" />
+                      onChange={e => { setUtr(e.target.value); setUtrError(null); setUtrErrorTitle(null); }} className="font-mono" />
                     <p className="text-[11px] text-muted-foreground/70 mt-0.5">Find this in your UPI app under payment history</p>
                   </div>
                   <div>
@@ -639,9 +655,12 @@ export default function PayPage() {
                   </div>
 
                   {utrError && (
-                    <div className="flex items-start gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-3 py-2">
+                    <div className="flex items-start gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-3 py-2.5">
                       <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                      <p className="text-xs text-rose-300">{utrError}</p>
+                      <div className="text-xs text-rose-300 space-y-0.5">
+                        {utrErrorTitle && <p className="font-semibold">{utrErrorTitle}</p>}
+                        <p>{utrError}</p>
+                      </div>
                     </div>
                   )}
 
