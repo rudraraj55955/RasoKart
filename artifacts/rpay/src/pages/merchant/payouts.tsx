@@ -19,7 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Plus, AlertTriangle, TrendingUp, Wallet, Lock, CheckCircle2, Clock, XCircle, RotateCcw, BadgeCheck } from "lucide-react";
+import { Plus, AlertTriangle, TrendingUp, Wallet, Lock, CheckCircle2, Clock, XCircle, RotateCcw, BadgeCheck, FileText, Download, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -51,10 +51,60 @@ function getDisplayStatus(status: PayoutStatus, transferStatus: TransferStatus) 
 
 const PAYOUT_MODES = ["IMPS", "NEFT", "RTGS", "UPI"] as const;
 
+type SlipData = {
+  id: number;
+  receiptId: string;
+  generatedAt: string;
+  merchant: { businessName: string };
+  amount: number;
+  currency: string;
+  payoutMode: string;
+  displayStatus: "SUCCESS" | "FAILED" | "REJECTED" | "PROCESSING";
+  statusLabel: string;
+  utr: string | null;
+  safeFailureReason: string | null;
+  rejectionReason: string | null;
+  requestedAt: string;
+  processedAt: string | null;
+  beneficiary: {
+    name: string | null;
+    bankName: string | null;
+    maskedAccount: string | null;
+    ifscCode: string | null;
+    maskedUpi: string | null;
+  };
+  remarks: string | null;
+  isNotFinal: boolean;
+  walletRefunded: boolean;
+};
+
+function slipStatusStyle(s: SlipData["displayStatus"]) {
+  switch (s) {
+    case "SUCCESS":    return { bg: "bg-emerald-500/10", text: "text-emerald-400" };
+    case "FAILED":     return { bg: "bg-rose-500/10",    text: "text-rose-400" };
+    case "REJECTED":   return { bg: "bg-amber-500/10",   text: "text-amber-400" };
+    case "PROCESSING": return { bg: "bg-sky-500/10",     text: "text-sky-400" };
+  }
+}
+
+function SlipRow({ label, value, mono = false }: { label: string; value: string | null | undefined; mono?: boolean }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`text-sm font-medium mt-0.5 break-all ${mono ? "font-mono" : ""}`}>{value ?? "—"}</p>
+    </div>
+  );
+}
+
 export default function MerchantPayouts() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
+  const [slipPayoutId, setSlipPayoutId] = useState<number | null>(null);
+  const [slipData, setSlipData] = useState<SlipData | null>(null);
+  const [slipLoading, setSlipLoading] = useState(false);
+  const [slipError, setSlipError] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [beneficiaryMode, setBeneficiaryMode] = useState<"saved" | "new">("saved");
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string>("");
   const [form, setForm] = useState({
@@ -184,6 +234,50 @@ export default function MerchantPayouts() {
     a.href = URL.createObjectURL(new Blob([csv]));
     a.download = "payouts.csv";
     a.click();
+  };
+
+  const openSlip = async (id: number) => {
+    setSlipPayoutId(id);
+    setSlipData(null);
+    setSlipError(null);
+    setSlipLoading(true);
+    try {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const res = await fetch(`/api/withdrawals/${id}/slip`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Failed");
+      setSlipData(await res.json());
+    } catch {
+      setSlipError("Unable to load payout slip. Please try again.");
+    } finally {
+      setSlipLoading(false);
+    }
+  };
+
+  const downloadPdf = async (id: number) => {
+    setDownloadingId(id);
+    try {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const res = await fetch(`/api/withdrawals/${id}/slip.pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `rasokart-payout-slip-${id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Payout slip downloaded");
+    } catch {
+      toast.error("Unable to generate payout slip right now. Please try again.");
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   return (
@@ -382,19 +476,41 @@ export default function MerchantPayouts() {
                               {format(new Date(w.createdAt), "MMM d, yyyy")}
                             </TableCell>
                             <TableCell className="text-right">
-                              {w.beneficiaryId ? (
+                              <div className="flex justify-end items-center gap-1">
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => openRepeatPayout(w.beneficiaryId!)}
-                                  title="Repeat this payout with a new request"
+                                  className="text-muted-foreground"
+                                  onClick={() => openSlip(w.id)}
+                                  title="View payout slip"
                                 >
-                                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                                  Repeat
+                                  <FileText className="w-3.5 h-3.5 mr-1" />
+                                  Slip
                                 </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-muted-foreground px-2"
+                                  onClick={() => downloadPdf(w.id)}
+                                  disabled={downloadingId === w.id}
+                                  title="Download PDF slip"
+                                >
+                                  {downloadingId === w.id
+                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    : <Download className="w-3.5 h-3.5" />}
+                                </Button>
+                                {w.beneficiaryId ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-muted-foreground px-2"
+                                    onClick={() => openRepeatPayout(w.beneficiaryId!)}
+                                    title="Repeat this payout with a new request"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </Button>
+                                ) : null}
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -429,6 +545,113 @@ export default function MerchantPayouts() {
           </div>
         </div>
       )}
+
+      {/* Payout Slip Modal */}
+      <Dialog
+        open={slipPayoutId !== null}
+        onOpenChange={open => { if (!open) { setSlipPayoutId(null); setSlipData(null); setSlipError(null); } }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between gap-3">
+              <span>Payout Receipt</span>
+              {slipData && (
+                <span className="text-xs font-mono font-normal text-muted-foreground">{slipData.receiptId}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {slipLoading && (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {slipError && (
+            <div className="text-center py-8">
+              <p className="text-sm text-destructive">{slipError}</p>
+            </div>
+          )}
+
+          {slipData && (() => {
+            const sc = slipStatusStyle(slipData.displayStatus);
+            return (
+              <div className="space-y-4">
+                <div className={`flex items-center gap-2 rounded-lg px-4 py-2.5 ${sc.bg}`}>
+                  <span className={`text-sm font-semibold ${sc.text}`}>{slipData.statusLabel}</span>
+                  {slipData.isNotFinal && (
+                    <Badge variant="outline" className="ml-auto text-amber-400 border-amber-400/40 text-[10px]">NOT FINAL</Badge>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Payout Details</p>
+                    <SlipRow label="Amount" value={`₹${slipData.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`} />
+                    <SlipRow label="Mode" value={slipData.payoutMode} />
+                    <SlipRow label="Requested" value={slipData.requestedAt} />
+                    {slipData.processedAt && <SlipRow label="Processed" value={slipData.processedAt} />}
+                    {slipData.utr && <SlipRow label="UTR" value={slipData.utr} mono />}
+                    {slipData.remarks && <SlipRow label="Remarks" value={slipData.remarks} />}
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Beneficiary</p>
+                    {slipData.beneficiary.name && <SlipRow label="Name" value={slipData.beneficiary.name} />}
+                    {slipData.beneficiary.maskedUpi
+                      ? <SlipRow label="UPI ID" value={slipData.beneficiary.maskedUpi} mono />
+                      : <>
+                          {slipData.beneficiary.bankName && <SlipRow label="Bank" value={slipData.beneficiary.bankName} />}
+                          {slipData.beneficiary.maskedAccount && <SlipRow label="Account" value={slipData.beneficiary.maskedAccount} mono />}
+                          {slipData.beneficiary.ifscCode && <SlipRow label="IFSC" value={slipData.beneficiary.ifscCode} mono />}
+                        </>
+                    }
+                  </div>
+                </div>
+
+                {slipData.safeFailureReason && (
+                  <div className="rounded-md bg-rose-500/10 border border-rose-500/20 px-3 py-2 text-xs">
+                    <span className="font-semibold text-rose-400">Failure reason: </span>
+                    <span className="text-rose-300">{slipData.safeFailureReason}</span>
+                    {slipData.walletRefunded && (
+                      <p className="mt-1 text-emerald-400">Amount has been released back to your wallet.</p>
+                    )}
+                  </div>
+                )}
+
+                {slipData.rejectionReason && (
+                  <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs">
+                    <span className="font-semibold text-amber-400">Rejection reason: </span>
+                    <span className="text-amber-300">{slipData.rejectionReason}</span>
+                  </div>
+                )}
+
+                <div className="rounded-md bg-muted/30 px-4 py-2.5 flex justify-between text-sm border border-border/40">
+                  <span className="text-muted-foreground">Net Debit</span>
+                  <span className="font-semibold font-mono">₹{slipData.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                </div>
+
+                <p className="text-[10px] text-muted-foreground text-center border-t border-border/50 pt-3">
+                  System-generated RasoKart payout receipt · {slipData.generatedAt}
+                </p>
+              </div>
+            );
+          })()}
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { setSlipPayoutId(null); setSlipData(null); }}>
+              Close
+            </Button>
+            {slipPayoutId !== null && (
+              <Button size="sm" onClick={() => downloadPdf(slipPayoutId!)} disabled={downloadingId === slipPayoutId}>
+                {downloadingId === slipPayoutId
+                  ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  : <Download className="w-4 h-4 mr-2" />}
+                Download PDF
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New Payout Request Dialog */}
       <Dialog open={open} onOpenChange={v => { setOpen(v); if (!v) resetForm(); }}>

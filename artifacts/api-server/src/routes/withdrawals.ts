@@ -10,6 +10,8 @@ import {
   payoutBeneficiariesTable,
   SYSTEM_CONFIG_KEYS,
 } from "@workspace/db";
+import { buildPayoutSlipPdf } from "../helpers/payoutSlipPdf";
+import type { PayoutSlipData, PayoutDisplayStatus } from "../helpers/payoutSlipPdf";
 import { eq, and, count, sum, sql, inArray, ne, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { requireModule } from "../middlewares/checkModule";
@@ -1482,6 +1484,163 @@ router.post("/:id/beneficiary-status", requireAdmin, async (req, res) => {
     beneficiaryStatus: status.beneficiaryStatus,
     checkedAt: new Date().toISOString(),
   });
+});
+
+// ── Payout slip helpers ────────────────────────────────────────────────────────
+function maskAccount(acct: string | null | undefined): string | null {
+  if (!acct || acct.length === 0) return null;
+  return acct.length <= 4 ? "****" : "****" + acct.slice(-4);
+}
+
+function maskUpi(upi: string | null | undefined): string | null {
+  if (!upi) return null;
+  const at = upi.indexOf("@");
+  if (at < 0) return upi.slice(0, 2) + "***";
+  const user = upi.slice(0, at);
+  const domain = upi.slice(at);
+  return (user.length <= 2 ? user : user.slice(0, 2)) + "***" + domain;
+}
+
+function getSlipDisplayStatus(w: typeof withdrawalsTable.$inferSelect): {
+  displayStatus: PayoutDisplayStatus;
+  statusLabel: string;
+  isNotFinal: boolean;
+} {
+  if (w.status === "rejected")
+    return { displayStatus: "REJECTED", statusLabel: "Payout Rejected", isNotFinal: false };
+  if (w.status === "pending")
+    return { displayStatus: "PROCESSING", statusLabel: "Payout Processing", isNotFinal: true };
+  if (w.transferStatus === "SUCCESS")
+    return { displayStatus: "SUCCESS", statusLabel: "Payout Sent", isNotFinal: false };
+  if (w.transferStatus === "FAILED" || w.transferStatus === "REVERSED")
+    return { displayStatus: "FAILED", statusLabel: "Payout Failed", isNotFinal: false };
+  return { displayStatus: "PROCESSING", statusLabel: "Payout Processing", isNotFinal: true };
+}
+
+function buildSlipData(
+  w: typeof withdrawalsTable.$inferSelect,
+  merchantName: string | null,
+): PayoutSlipData {
+  const { displayStatus, statusLabel, isNotFinal } = getSlipDisplayStatus(w);
+  const walletRefunded = w.transferStatus === "FAILED" || w.transferStatus === "REVERSED";
+
+  const rawFailure = w.failureReason ?? null;
+  const safeFailureReason = walletRefunded
+    ? (rawFailure?.startsWith("PAYOUT_CREDENTIAL_ERROR")
+        ? "Payout credentials invalid. Please contact support."
+        : (rawFailure ?? "Transfer could not be completed. Please contact support."))
+    : null;
+
+  const fmt = (d: Date | null | undefined): string | null =>
+    d ? d.toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          dateStyle: "medium",
+          timeStyle: "short",
+        }) + " IST"
+      : null;
+
+  const processedAt = w.completedAt ?? w.approvedAt ?? w.rejectedAt ?? null;
+
+  return {
+    id: w.id,
+    receiptId: `RK-PO-${String(w.id).padStart(6, "0")}`,
+    generatedAt: fmt(new Date()) ?? new Date().toISOString(),
+    merchant: { businessName: merchantName ?? `Merchant #${w.merchantId}` },
+    amount: Number(w.amount),
+    currency: w.currency ?? "INR",
+    payoutMode: w.payoutMode,
+    displayStatus,
+    statusLabel,
+    utr: displayStatus === "SUCCESS" ? (w.utr ?? null) : null,
+    safeFailureReason,
+    rejectionReason: w.rejectionReason ?? null,
+    requestedAt: fmt(w.createdAt) ?? "—",
+    processedAt: fmt(processedAt),
+    beneficiary: {
+      name: w.accountHolder ?? null,
+      bankName: w.bankName ?? null,
+      maskedAccount: maskAccount(w.bankAccount),
+      ifscCode: w.ifscCode ?? null,
+      maskedUpi: maskUpi(w.upiId),
+    },
+    remarks: w.remarks ?? null,
+    isNotFinal,
+    walletRefunded,
+  };
+}
+
+// GET /api/withdrawals/:id/slip — JSON slip data for modal preview
+router.get("/:id/slip", async (req, res, next) => {
+  try {
+    const user = (req as any).user as { id: number; email: string; role: string; merchantId?: number };
+    const id   = parseInt(req.params["id"] as string);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const isAdmin = user.role === "admin";
+    const conditions: ReturnType<typeof eq>[] = [eq(withdrawalsTable.id, id)];
+    if (!isAdmin && user.merchantId) conditions.push(eq(withdrawalsTable.merchantId, user.merchantId));
+
+    const [row] = await db
+      .select({ withdrawal: withdrawalsTable, merchantName: merchantsTable.businessName })
+      .from(withdrawalsTable)
+      .leftJoin(merchantsTable, eq(withdrawalsTable.merchantId, merchantsTable.id))
+      .where(and(...conditions))
+      .limit(1);
+
+    if (!row) { res.status(404).json({ error: "Payout not found" }); return; }
+
+    await db.insert(auditLogsTable).values({
+      adminId:     user.id,
+      adminEmail:  user.email,
+      action:      "payout_slip_viewed",
+      targetType:  "withdrawal",
+      targetId:    id,
+      details:     JSON.stringify({ payoutId: id, role: user.role }),
+      ipAddress:   req.ip ?? null,
+    }).catch(err => req.log.warn({ err }, "audit_log_insert_failed"));
+
+    res.json(buildSlipData(row.withdrawal, row.merchantName ?? null));
+  } catch (err) { next(err); }
+});
+
+// GET /api/withdrawals/:id/slip.pdf — PDF download
+router.get("/:id/slip.pdf", async (req, res, next) => {
+  try {
+    const user = (req as any).user as { id: number; email: string; role: string; merchantId?: number };
+    const id   = parseInt(req.params["id"] as string);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const isAdmin = user.role === "admin";
+    const conditions: ReturnType<typeof eq>[] = [eq(withdrawalsTable.id, id)];
+    if (!isAdmin && user.merchantId) conditions.push(eq(withdrawalsTable.merchantId, user.merchantId));
+
+    const [row] = await db
+      .select({ withdrawal: withdrawalsTable, merchantName: merchantsTable.businessName })
+      .from(withdrawalsTable)
+      .leftJoin(merchantsTable, eq(withdrawalsTable.merchantId, merchantsTable.id))
+      .where(and(...conditions))
+      .limit(1);
+
+    if (!row) { res.status(404).json({ error: "Payout not found" }); return; }
+
+    await db.insert(auditLogsTable).values({
+      adminId:     user.id,
+      adminEmail:  user.email,
+      action:      "payout_slip_downloaded",
+      targetType:  "withdrawal",
+      targetId:    id,
+      details:     JSON.stringify({ payoutId: id, role: user.role, format: "pdf" }),
+      ipAddress:   req.ip ?? null,
+    }).catch(err => req.log.warn({ err }, "audit_log_insert_failed"));
+
+    const slip   = buildSlipData(row.withdrawal, row.merchantName ?? null);
+    const pdfBuf = await buildPayoutSlipPdf(slip);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="rasokart-payout-slip-${id}.pdf"`);
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.send(pdfBuf);
+  } catch (err) { next(err); }
 });
 
 export default router;
