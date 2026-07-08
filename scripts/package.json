@@ -10,6 +10,8 @@
     "fix-credentials": "tsx ./src/fix-credentials.ts",
     "verify-demo-credentials": "tsx ./src/verify-demo-credentials.ts",
     "verify-settings-persistence": "tsx ./src/verify-settings-persistence.ts",
+    "verify-ekqr-disable-guard": "tsx ./src/verify-ekqr-disable-guard.ts",
+    "test:ekqr-disable-guard": "playwright test --config=playwright.config.ts e2e/ekqr-disable-guard.spec.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -18,6 +20,7 @@
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/node": "catalog:",
     "drizzle-orm": "catalog:",
