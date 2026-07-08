@@ -649,6 +649,10 @@ function TryItPanel({
     return () => window.removeEventListener(PRESETS_CHANGED_EVENT, handlePresetsChanged);
   }, [method, path]);
 
+  useEffect(() => {
+    setPresetCredentialWarnings([]);
+  }, [body, queryParams, pathValues]);
+
   const params = extractPathParams(path);
   const hasBody = method === "POST" || method === "PUT" || method === "PATCH";
   const supportsQueryParams = method === "GET" || method === "DELETE";
@@ -687,13 +691,18 @@ function TryItPanel({
   const handleSavePreset = useCallback(() => {
     const name = presetName.trim();
     if (!name) return;
+    const filteredParams = queryParams.filter((row) => row.key.trim().length > 0);
+    const warnings = collectCredentialWarnings(
+      filteredParams.map((row) => ({ key: row.key, value: row.value })),
+      body,
+      pathValues
+    );
+    setPresetCredentialWarnings(warnings);
     const newPreset: SavedQueryPreset = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name,
       pathValues: { ...pathValues },
-      queryParams: queryParams
-        .filter((row) => row.key.trim().length > 0)
-        .map((row) => ({ key: row.key, value: row.value })),
+      queryParams: filteredParams.map((row) => ({ key: row.key, value: row.value })),
       body,
     };
     setPresets((prev) => {
@@ -762,6 +771,7 @@ function TryItPanel({
   const [showShareWarning, setShowShareWarning] = useState(false);
   const [pendingShareExpiry, setPendingShareExpiry] = useState<number | null>(null);
   const [shareCredentialWarnings, setShareCredentialWarnings] = useState<string[]>([]);
+  const [presetCredentialWarnings, setPresetCredentialWarnings] = useState<string[]>([]);
   // Checked by default — omits the per-panel bearer token from the encoded URL to prevent
   // accidental credential leakage. The page-level "Shared Bearer Token" field is never
   // included in share links regardless of this setting.
@@ -954,7 +964,10 @@ function TryItPanel({
             <div className="flex items-center gap-1.5">
               <Input
                 value={presetName}
-                onChange={(e) => setPresetName(e.target.value)}
+                onChange={(e) => {
+                  setPresetName(e.target.value);
+                  setPresetCredentialWarnings([]);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -975,6 +988,24 @@ function TryItPanel({
                 Save
               </Button>
             </div>
+            {presetCredentialWarnings.length > 0 && (
+              <p className="text-[10px] text-amber-500/80 pl-0.5 flex items-start gap-1">
+                <AlertTriangle className="w-2.5 h-2.5 shrink-0 mt-px" />
+                <span>
+                  Preset saved — but {presetCredentialWarnings.length === 1 ? (
+                    <span className="font-mono">{presetCredentialWarnings[0]}</span>
+                  ) : (
+                    presetCredentialWarnings.map((w, i) => (
+                      <span key={w}>
+                        {i > 0 && (i === presetCredentialWarnings.length - 1 ? " and " : ", ")}
+                        <span className="font-mono">{w}</span>
+                      </span>
+                    ))
+                  )}{" "}
+                  look{presetCredentialWarnings.length === 1 ? "s" : ""} like a token or API key. Presets are stored in localStorage and visible to any script on this origin.
+                </span>
+              </p>
+            )}
           </div>
 
           {requiresAuth && (
