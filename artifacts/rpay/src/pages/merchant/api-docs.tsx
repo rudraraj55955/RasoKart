@@ -30,6 +30,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   ChevronDown,
   ChevronRight,
   Copy,
@@ -1204,19 +1210,35 @@ function TryItPanel({
           )}
 
           <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              size="sm"
-              className="h-7 text-xs gap-1.5"
-              onClick={fire}
-              disabled={loading}
-            >
-              {loading ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <Play className="w-3 h-3 fill-current" />
-              )}
-              {loading ? "Sending…" : "Send Request"}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs gap-1.5"
+                    onClick={fire}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Play className="w-3 h-3 fill-current" />
+                    )}
+                    {loading ? "Sending…" : "Send Request"}
+                    {typeMismatches.length > 0 && !loading && (
+                      <AlertTriangle className="w-3 h-3 text-amber-400 ml-0.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                {typeMismatches.length > 0 && (
+                  <TooltipContent side="top">
+                    {typeMismatches.length === 1
+                      ? "1 type mismatch — request will still be sent"
+                      : `${typeMismatches.length} type mismatches — request will still be sent`}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
             <Button
               size="sm"
               variant="outline"
