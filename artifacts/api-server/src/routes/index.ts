@@ -58,6 +58,7 @@ import supportRouter from "./support";
 import verificationRouter from "./verification";
 import upigatewaySettingsRouter from "./upigatewaySettings";
 import upigatewayWebhookRouter from "./upigatewayWebhook";
+import utrVerificationsRouter from "./utrVerifications";
 
 const router: IRouter = Router();
 
@@ -131,5 +132,6 @@ router.use("/kyc", kycRouter);
 router.use("/reports", reportsRouter);
 router.use("/support", supportRouter);
 router.use("/verification", verificationRouter);
+router.use("/admin/utr-verifications", utrVerificationsRouter);
 
 export default router;

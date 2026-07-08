@@ -228,6 +228,8 @@ import type {
   ListUpiGateways200,
   ListUpiGatewaysParams,
   ListUsersParams,
+  ListUtrVerifications200,
+  ListUtrVerificationsParams,
   ListVaBalanceAuditParams,
   ListVirtualAccountsParams,
   ListWithdrawalsParams,
@@ -418,6 +420,9 @@ import type {
   UserInput,
   UserListResponse,
   UserUpdate,
+  UtrRejectBody,
+  UtrSubmitBody,
+  UtrSubmitResponse,
   VaBalanceAuditListResponse,
   VaBalanceHistoryListResponse,
   VaCleanupConfig,
@@ -13247,6 +13252,304 @@ export function useGetPublicPaymentLink<TData = Awaited<ReturnType<typeof getPub
 
 
 
+
+export const getSubmitUtrUrl = (slug: string,) => {
+
+
+
+
+  return `/api/payment-links/public/${slug}/utr`
+}
+
+/**
+ * @summary Submit UTR after paying via static UPI (no auth required)
+ */
+export const submitUtr = async (slug: string,
+    utrSubmitBody: UtrSubmitBody, options?: RequestInit): Promise<UtrSubmitResponse> => {
+
+  return customFetch<UtrSubmitResponse>(getSubmitUtrUrl(slug),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      utrSubmitBody,)
+  }
+);}
+
+
+
+
+export const getSubmitUtrMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitUtr>>, TError,{slug: string;data: BodyType<UtrSubmitBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitUtr>>, TError,{slug: string;data: BodyType<UtrSubmitBody>}, TContext> => {
+
+const mutationKey = ['submitUtr'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitUtr>>, {slug: string;data: BodyType<UtrSubmitBody>}> = (props) => {
+          const {slug,data} = props ?? {};
+
+          return  submitUtr(slug,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitUtrMutationResult = NonNullable<Awaited<ReturnType<typeof submitUtr>>>
+    export type SubmitUtrMutationBody = BodyType<UtrSubmitBody>
+    export type SubmitUtrMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Submit UTR after paying via static UPI (no auth required)
+ */
+export const useSubmitUtr = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitUtr>>, TError,{slug: string;data: BodyType<UtrSubmitBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitUtr>>,
+        TError,
+        {slug: string;data: BodyType<UtrSubmitBody>},
+        TContext
+      > => {
+      return useMutation(getSubmitUtrMutationOptions(options));
+    }
+
+export const getListUtrVerificationsUrl = (params?: ListUtrVerificationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/utr-verifications?${stringifiedParams}` : `/api/admin/utr-verifications`
+}
+
+/**
+ * @summary List UTR verification submissions (admin only)
+ */
+export const listUtrVerifications = async (params?: ListUtrVerificationsParams, options?: RequestInit): Promise<ListUtrVerifications200> => {
+
+  return customFetch<ListUtrVerifications200>(getListUtrVerificationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListUtrVerificationsQueryKey = (params?: ListUtrVerificationsParams,) => {
+    return [
+    `/api/admin/utr-verifications`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListUtrVerificationsQueryOptions = <TData = Awaited<ReturnType<typeof listUtrVerifications>>, TError = ErrorType<unknown>>(params?: ListUtrVerificationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listUtrVerifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListUtrVerificationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listUtrVerifications>>> = ({ signal }) => listUtrVerifications(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listUtrVerifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListUtrVerificationsQueryResult = NonNullable<Awaited<ReturnType<typeof listUtrVerifications>>>
+export type ListUtrVerificationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List UTR verification submissions (admin only)
+ */
+
+export function useListUtrVerifications<TData = Awaited<ReturnType<typeof listUtrVerifications>>, TError = ErrorType<unknown>>(
+ params?: ListUtrVerificationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listUtrVerifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListUtrVerificationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getApproveUtrVerificationUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/utr-verifications/${id}/approve`
+}
+
+/**
+ * @summary Approve a UTR and credit merchant wallet (admin only)
+ */
+export const approveUtrVerification = async (id: number, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getApproveUtrVerificationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getApproveUtrVerificationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveUtrVerification>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveUtrVerification>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['approveUtrVerification'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveUtrVerification>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  approveUtrVerification(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveUtrVerificationMutationResult = NonNullable<Awaited<ReturnType<typeof approveUtrVerification>>>
+
+    export type ApproveUtrVerificationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Approve a UTR and credit merchant wallet (admin only)
+ */
+export const useApproveUtrVerification = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveUtrVerification>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveUtrVerification>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getApproveUtrVerificationMutationOptions(options));
+    }
+
+export const getRejectUtrVerificationUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/utr-verifications/${id}/reject`
+}
+
+/**
+ * @summary Reject a UTR submission (admin only)
+ */
+export const rejectUtrVerification = async (id: number,
+    utrRejectBody?: UtrRejectBody, options?: RequestInit): Promise<MessageResponse> => {
+
+  return customFetch<MessageResponse>(getRejectUtrVerificationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      utrRejectBody,)
+  }
+);}
+
+
+
+
+export const getRejectUtrVerificationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectUtrVerification>>, TError,{id: number;data?: BodyType<UtrRejectBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectUtrVerification>>, TError,{id: number;data?: BodyType<UtrRejectBody>}, TContext> => {
+
+const mutationKey = ['rejectUtrVerification'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectUtrVerification>>, {id: number;data?: BodyType<UtrRejectBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  rejectUtrVerification(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectUtrVerificationMutationResult = NonNullable<Awaited<ReturnType<typeof rejectUtrVerification>>>
+    export type RejectUtrVerificationMutationBody = BodyType<UtrRejectBody> | undefined
+    export type RejectUtrVerificationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Reject a UTR submission (admin only)
+ */
+export const useRejectUtrVerification = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectUtrVerification>>, TError,{id: number;data?: BodyType<UtrRejectBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectUtrVerification>>,
+        TError,
+        {id: number;data?: BodyType<UtrRejectBody>},
+        TContext
+      > => {
+      return useMutation(getRejectUtrVerificationMutationOptions(options));
+    }
 
 export const getListVirtualAccountsUrl = (params?: ListVirtualAccountsParams,) => {
   const normalizedParams = new URLSearchParams();

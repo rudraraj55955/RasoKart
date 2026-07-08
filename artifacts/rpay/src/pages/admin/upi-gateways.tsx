@@ -38,11 +38,13 @@ type CreateForm = {
   name: string; category: string; status: string; mode: string;
   apiBaseUrl: string; apiKey: string; clientId: string; clientSecret: string; webhookSecret: string;
   minAmount: string; maxAmount: string; dailyLimit: string; priority: string; notes: string;
+  collectionType: string; ownUpiId: string; ownQrImageUrl: string; ownAccountHolder: string; ownInstructions: string;
 };
 const DEFAULT_CREATE: CreateForm = {
   name: "", category: "upi", status: "live", mode: "test",
   apiBaseUrl: "", apiKey: "", clientId: "", clientSecret: "", webhookSecret: "",
   minAmount: "", maxAmount: "", dailyLimit: "", priority: "0", notes: "",
+  collectionType: "api_gateway", ownUpiId: "", ownQrImageUrl: "", ownAccountHolder: "", ownInstructions: "",
 };
 
 export default function AdminUpiGateways() {
@@ -192,6 +194,11 @@ export default function AdminUpiGateways() {
       apiBaseUrl: g.apiBaseUrl ?? "", minAmount: g.minAmount ?? "", maxAmount: g.maxAmount ?? "",
       dailyLimit: g.dailyLimit ?? "", priority: String(g.sortOrder ?? 0), notes: g.notes ?? "",
       apiKey: "", clientId: "", clientSecret: "", webhookSecret: "",
+      collectionType: (g as any).collectionType ?? "api_gateway",
+      ownUpiId: (g as any).ownUpiId ?? "",
+      ownQrImageUrl: (g as any).ownQrImageUrl ?? "",
+      ownAccountHolder: (g as any).ownAccountHolder ?? "",
+      ownInstructions: (g as any).ownInstructions ?? "",
     });
   }
 
@@ -215,6 +222,11 @@ export default function AdminUpiGateways() {
         dailyLimit: f.dailyLimit?.trim() || undefined,
         priority: f.priority ? parseInt(f.priority) : undefined,
         notes: f.notes?.trim() || undefined,
+        collectionType: f.collectionType as any,
+        ownUpiId: f.ownUpiId?.trim() || undefined,
+        ownQrImageUrl: f.ownQrImageUrl?.trim() || undefined,
+        ownAccountHolder: f.ownAccountHolder?.trim() || undefined,
+        ownInstructions: f.ownInstructions?.trim() || undefined,
       },
     });
   }
@@ -549,6 +561,44 @@ export default function AdminUpiGateways() {
             <div>
               <Label className="text-xs text-muted-foreground mb-1 block">Notes</Label>
               <Textarea rows={2} value={editForm.notes ?? ""} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+
+            {/* Collection type selector */}
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-3">
+              <div>
+                <Label className="text-xs font-medium text-amber-400 uppercase tracking-wide mb-1 block">Collection Mode</Label>
+                <Select value={(editForm as any).collectionType ?? "api_gateway"} onValueChange={v => setEditForm(f => ({ ...f, collectionType: v }))}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="api_gateway">API Gateway (automatic)</SelectItem>
+                    <SelectItem value="own_static_upi">Own Static UPI (manual collection)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {(editForm as any).collectionType === "own_static_upi" && (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">When enabled, payment link checkouts will show your UPI ID/QR and ask customers to submit their UTR for manual approval.</p>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Receiving UPI ID / VPA <span className="text-rose-400">*</span></Label>
+                    <Input placeholder="merchant@upi" value={(editForm as any).ownUpiId ?? ""} onChange={e => setEditForm(f => ({ ...f, ownUpiId: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">QR Image URL (optional)</Label>
+                    <Input placeholder="https://example.com/qr.png" value={(editForm as any).ownQrImageUrl ?? ""} onChange={e => setEditForm(f => ({ ...f, ownQrImageUrl: e.target.value }))} />
+                    <p className="text-[11px] text-muted-foreground/70 mt-0.5">Direct URL to a pre-generated QR image. If blank, a QR code is generated from the UPI ID.</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Account Holder / Display Name</Label>
+                    <Input placeholder="RasoKart Payments" value={(editForm as any).ownAccountHolder ?? ""} onChange={e => setEditForm(f => ({ ...f, ownAccountHolder: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Customer Instructions</Label>
+                    <Textarea rows={2} placeholder="Pay to the UPI ID above and enter your UTR/reference number below." value={(editForm as any).ownInstructions ?? ""} onChange={e => setEditForm(f => ({ ...f, ownInstructions: e.target.value }))} />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

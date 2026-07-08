@@ -4898,6 +4898,143 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /payment-links/public/{slug}/utr:
+    post:
+      operationId: submitUtr
+      tags: [payment-links]
+      summary: Submit UTR after paying via static UPI (no auth required)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UtrSubmitBody"
+      responses:
+        "200":
+          description: UTR submitted for verification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UtrSubmitResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Duplicate UTR or link not active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/utr-verifications:
+    get:
+      operationId: listUtrVerifications
+      tags: [UtrVerifications]
+      summary: List UTR verification submissions (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: merchantId
+          schema: { type: integer }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: List of UTR verifications
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UtrVerification"
+                  total:
+                    type: integer
+
+  /admin/utr-verifications/{id}/approve:
+    post:
+      operationId: approveUtrVerification
+      tags: [UtrVerifications]
+      summary: Approve a UTR and credit merchant wallet (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "409":
+          description: Already processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/utr-verifications/{id}/reject:
+    post:
+      operationId: rejectUtrVerification
+      tags: [UtrVerifications]
+      summary: Reject a UTR submission (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UtrRejectBody"
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "409":
+          description: Already processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /virtual-accounts:
     get:
       operationId: listVirtualAccounts
@@ -13460,6 +13597,15 @@ components:
           type: string
         upiPayload:
           type: ["string", "null"]
+        staticUpi:
+          description: Set when an enabled own_static_upi gateway exists — instructs checkout to show UTR flow
+          nullable: true
+          type: object
+          properties:
+            upiId: { type: string }
+            qrImageUrl: { type: ["string", "null"] }
+            accountHolder: { type: ["string", "null"] }
+            instructions: { type: ["string", "null"] }
         merchantName:
           type: ["string", "null"]
         logoUrl:
@@ -16174,6 +16320,11 @@ components:
         updatedByEmail: { type: string, nullable: true }
         createdAt: { type: string }
         updatedAt: { type: string }
+        collectionType: { type: string, enum: [api_gateway, own_static_upi], nullable: true }
+        ownUpiId: { type: string, nullable: true }
+        ownQrImageUrl: { type: string, nullable: true }
+        ownAccountHolder: { type: string, nullable: true }
+        ownInstructions: { type: string, nullable: true }
 
     UpiGatewayCreateBody:
       type: object
@@ -16200,6 +16351,11 @@ components:
         dailyLimit: { type: string }
         priority: { type: integer }
         notes: { type: string }
+        collectionType: { type: string, enum: [api_gateway, own_static_upi] }
+        ownUpiId: { type: string }
+        ownQrImageUrl: { type: string }
+        ownAccountHolder: { type: string }
+        ownInstructions: { type: string }
 
     UpiGatewayUpdateBody:
       type: object
@@ -16231,6 +16387,11 @@ components:
         dailyLimit: { type: string }
         priority: { type: integer }
         notes: { type: string }
+        collectionType: { type: string, enum: [api_gateway, own_static_upi] }
+        ownUpiId: { type: string }
+        ownQrImageUrl: { type: string }
+        ownAccountHolder: { type: string }
+        ownInstructions: { type: string }
 
     UpiGatewayTestResult:
       type: object
@@ -16280,6 +16441,50 @@ components:
               maxAmount: { type: string }
               dailyLimit: { type: string }
               priorityOverride: { type: integer }
+
+    UtrSubmitBody:
+      type: object
+      required: [utr]
+      properties:
+        utr: { type: string, description: "Customer-provided UTR / transaction reference number" }
+        payerName: { type: string }
+        payerUpi: { type: string }
+        screenshotUrl: { type: string }
+        amount: { type: string, description: "Required for open-amount payment links" }
+
+    UtrSubmitResponse:
+      type: object
+      required: [message, transactionId]
+      properties:
+        message: { type: string }
+        transactionId: { type: integer }
+
+    UtrVerification:
+      type: object
+      required: [id, merchantId, amount, currency, utr, status, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        merchantId: { type: integer }
+        merchantName: { type: string, nullable: true }
+        merchantEmail: { type: string, nullable: true }
+        amount: { type: string }
+        currency: { type: string }
+        utr: { type: string }
+        status: { type: string, enum: [pending_verification, success, failed] }
+        paymentLinkId: { type: integer, nullable: true }
+        payerName: { type: string, nullable: true }
+        payerUpi: { type: string, nullable: true }
+        screenshotUrl: { type: string, nullable: true }
+        rejectionReason: { type: string, nullable: true }
+        reviewedAt: { type: string, nullable: true }
+        reviewedByEmail: { type: string, nullable: true }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    UtrRejectBody:
+      type: object
+      properties:
+        reason: { type: string }
 
     ProviderProduct:
       type: object

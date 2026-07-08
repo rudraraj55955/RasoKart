@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { PublicPaymentLinkStaticUpi } from './publicPaymentLinkStaticUpi';
 import type { PublicPaymentLinkStatus } from './publicPaymentLinkStatus';
 
 export interface PublicPaymentLink {
@@ -18,6 +19,8 @@ export interface PublicPaymentLink {
   slug: string;
   /** @nullable */
   upiPayload?: string | null;
+  /** Set when an enabled own_static_upi gateway exists — instructs checkout to show UTR flow */
+  staticUpi?: PublicPaymentLinkStaticUpi;
   /** @nullable */
   merchantName?: string | null;
   /** @nullable */

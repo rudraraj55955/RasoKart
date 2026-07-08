@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { UpiGatewayCreateBodyCategory } from './upiGatewayCreateBodyCategory';
+import type { UpiGatewayCreateBodyCollectionType } from './upiGatewayCreateBodyCollectionType';
 import type { UpiGatewayCreateBodyMode } from './upiGatewayCreateBodyMode';
 import type { UpiGatewayCreateBodyStatus } from './upiGatewayCreateBodyStatus';
 
@@ -30,4 +31,9 @@ export interface UpiGatewayCreateBody {
   dailyLimit?: string;
   priority?: number;
   notes?: string;
+  collectionType?: UpiGatewayCreateBodyCollectionType;
+  ownUpiId?: string;
+  ownQrImageUrl?: string;
+  ownAccountHolder?: string;
+  ownInstructions?: string;
 }

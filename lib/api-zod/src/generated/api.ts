@@ -5031,11 +5031,104 @@ export const GetPublicPaymentLinkResponse = zod.object({
   "currency": zod.string(),
   "slug": zod.string(),
   "upiPayload": zod.string().nullish(),
+  "staticUpi": zod.object({
+  "upiId": zod.string().optional(),
+  "qrImageUrl": zod.string().nullish(),
+  "accountHolder": zod.string().nullish(),
+  "instructions": zod.string().nullish()
+}).nullish().describe('Set when an enabled own_static_upi gateway exists — instructs checkout to show UTR flow'),
   "merchantName": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
   "brandColor": zod.string().nullish(),
   "status": zod.enum(['active', 'inactive', 'expired']),
   "expiresAt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Submit UTR after paying via static UPI (no auth required)
+ */
+export const SubmitUtrParams = zod.object({
+  "slug": zod.coerce.string()
+})
+
+export const SubmitUtrBody = zod.object({
+  "utr": zod.string().describe('Customer-provided UTR \/ transaction reference number'),
+  "payerName": zod.string().optional(),
+  "payerUpi": zod.string().optional(),
+  "screenshotUrl": zod.string().optional(),
+  "amount": zod.string().optional().describe('Required for open-amount payment links')
+})
+
+export const SubmitUtrResponse = zod.object({
+  "message": zod.string(),
+  "transactionId": zod.number()
+})
+
+
+/**
+ * @summary List UTR verification submissions (admin only)
+ */
+export const listUtrVerificationsQueryPageDefault = 1;
+export const listUtrVerificationsQueryLimitDefault = 50;
+
+export const ListUtrVerificationsQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional(),
+  "merchantId": zod.coerce.number().optional(),
+  "page": zod.coerce.number().default(listUtrVerificationsQueryPageDefault),
+  "limit": zod.coerce.number().default(listUtrVerificationsQueryLimitDefault)
+})
+
+export const ListUtrVerificationsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "merchantId": zod.number(),
+  "merchantName": zod.string().nullish(),
+  "merchantEmail": zod.string().nullish(),
+  "amount": zod.string(),
+  "currency": zod.string(),
+  "utr": zod.string(),
+  "status": zod.enum(['pending_verification', 'success', 'failed']),
+  "paymentLinkId": zod.number().nullish(),
+  "payerName": zod.string().nullish(),
+  "payerUpi": zod.string().nullish(),
+  "screenshotUrl": zod.string().nullish(),
+  "rejectionReason": zod.string().nullish(),
+  "reviewedAt": zod.string().nullish(),
+  "reviewedByEmail": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary Approve a UTR and credit merchant wallet (admin only)
+ */
+export const ApproveUtrVerificationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ApproveUtrVerificationResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Reject a UTR submission (admin only)
+ */
+export const RejectUtrVerificationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RejectUtrVerificationBody = zod.object({
+  "reason": zod.string().optional()
+})
+
+export const RejectUtrVerificationResponse = zod.object({
+  "message": zod.string()
 })
 
 
@@ -8520,7 +8613,12 @@ export const ListUpiGatewaysResponse = zod.object({
   "routingPriority": zod.number().nullish(),
   "updatedByEmail": zod.string().nullish(),
   "createdAt": zod.string(),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "collectionType": zod.enum(['api_gateway', 'own_static_upi']).nullish(),
+  "ownUpiId": zod.string().nullish(),
+  "ownQrImageUrl": zod.string().nullish(),
+  "ownAccountHolder": zod.string().nullish(),
+  "ownInstructions": zod.string().nullish()
 })),
   "total": zod.number()
 })
@@ -8552,7 +8650,12 @@ export const CreateUpiGatewayBody = zod.object({
   "maxAmount": zod.string().optional(),
   "dailyLimit": zod.string().optional(),
   "priority": zod.number().optional(),
-  "notes": zod.string().optional()
+  "notes": zod.string().optional(),
+  "collectionType": zod.enum(['api_gateway', 'own_static_upi']).optional(),
+  "ownUpiId": zod.string().optional(),
+  "ownQrImageUrl": zod.string().optional(),
+  "ownAccountHolder": zod.string().optional(),
+  "ownInstructions": zod.string().optional()
 })
 
 
@@ -8597,7 +8700,12 @@ export const GetUpiGatewayResponse = zod.object({
   "routingPriority": zod.number().nullish(),
   "updatedByEmail": zod.string().nullish(),
   "createdAt": zod.string(),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "collectionType": zod.enum(['api_gateway', 'own_static_upi']).nullish(),
+  "ownUpiId": zod.string().nullish(),
+  "ownQrImageUrl": zod.string().nullish(),
+  "ownAccountHolder": zod.string().nullish(),
+  "ownInstructions": zod.string().nullish()
 })
 
 
@@ -8627,7 +8735,12 @@ export const UpdateUpiGatewayBody = zod.object({
   "maxAmount": zod.string().optional(),
   "dailyLimit": zod.string().optional(),
   "priority": zod.number().optional(),
-  "notes": zod.string().optional()
+  "notes": zod.string().optional(),
+  "collectionType": zod.enum(['api_gateway', 'own_static_upi']).optional(),
+  "ownUpiId": zod.string().optional(),
+  "ownQrImageUrl": zod.string().optional(),
+  "ownAccountHolder": zod.string().optional(),
+  "ownInstructions": zod.string().optional()
 })
 
 export const UpdateUpiGatewayResponse = zod.object({
@@ -8664,7 +8777,12 @@ export const UpdateUpiGatewayResponse = zod.object({
   "routingPriority": zod.number().nullish(),
   "updatedByEmail": zod.string().nullish(),
   "createdAt": zod.string(),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "collectionType": zod.enum(['api_gateway', 'own_static_upi']).nullish(),
+  "ownUpiId": zod.string().nullish(),
+  "ownQrImageUrl": zod.string().nullish(),
+  "ownAccountHolder": zod.string().nullish(),
+  "ownInstructions": zod.string().nullish()
 })
 
 

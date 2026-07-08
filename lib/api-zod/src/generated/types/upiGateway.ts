@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { UpiGatewayCategory } from './upiGatewayCategory';
+import type { UpiGatewayCollectionType } from './upiGatewayCollectionType';
 import type { UpiGatewayMode } from './upiGatewayMode';
 import type { UpiGatewayStatus } from './upiGatewayStatus';
 
@@ -47,4 +48,9 @@ export interface UpiGateway {
   updatedByEmail?: string | null;
   createdAt: string;
   updatedAt: string;
+  collectionType?: UpiGatewayCollectionType;
+  ownUpiId?: string | null;
+  ownQrImageUrl?: string | null;
+  ownAccountHolder?: string | null;
+  ownInstructions?: string | null;
 }

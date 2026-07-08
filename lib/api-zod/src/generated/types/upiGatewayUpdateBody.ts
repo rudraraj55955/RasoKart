@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { UpiGatewayUpdateBodyCategory } from './upiGatewayUpdateBodyCategory';
+import type { UpiGatewayUpdateBodyCollectionType } from './upiGatewayUpdateBodyCollectionType';
 import type { UpiGatewayUpdateBodyMode } from './upiGatewayUpdateBodyMode';
 import type { UpiGatewayUpdateBodyStatus } from './upiGatewayUpdateBodyStatus';
 
@@ -33,4 +34,9 @@ export interface UpiGatewayUpdateBody {
   dailyLimit?: string;
   priority?: number;
   notes?: string;
+  collectionType?: UpiGatewayUpdateBodyCollectionType;
+  ownUpiId?: string;
+  ownQrImageUrl?: string;
+  ownAccountHolder?: string;
+  ownInstructions?: string;
 }

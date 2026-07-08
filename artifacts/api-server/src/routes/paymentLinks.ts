@@ -1,10 +1,14 @@
 import { Router } from "express";
-import { db, paymentLinksTable, merchantsTable, merchantConnectionsTable, transactionsTable } from "@workspace/db";
+import { db, paymentLinksTable, merchantsTable, merchantConnectionsTable, transactionsTable, providerIntegrationsTable } from "@workspace/db";
 import { eq, and, ilike, count, desc, gte, lte, or, sql, isNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
 import { deriveVpa, buildUpiPayload, deriveUpiPayloadFromConnections } from "../helpers/upiPayload";
 import { randomBytes } from "crypto";
+
+function generateUtr(): string {
+  return `MANUAL${Date.now()}${randomBytes(3).toString("hex").toUpperCase()}`;
+}
 
 const router = Router();
 
@@ -113,6 +117,43 @@ router.get("/public/:slug", async (req, res) => {
     }
   }
 
+  // Check for own_static_upi gateway (platform-managed UPI collection)
+  let staticUpi: {
+    upiId: string;
+    qrImageUrl: string | null;
+    accountHolder: string | null;
+    instructions: string | null;
+    providerKey: string;
+  } | null = null;
+
+  const staticUpiRows = await db
+    .select({
+      ownUpiId: providerIntegrationsTable.ownUpiId,
+      ownQrImageUrl: providerIntegrationsTable.ownQrImageUrl,
+      ownAccountHolder: providerIntegrationsTable.ownAccountHolder,
+      ownInstructions: providerIntegrationsTable.ownInstructions,
+      providerKey: providerIntegrationsTable.providerKey,
+    })
+    .from(providerIntegrationsTable)
+    .where(
+      and(
+        eq(providerIntegrationsTable.collectionType, "own_static_upi"),
+        eq(providerIntegrationsTable.isEnabled, true),
+      ),
+    )
+    .limit(1);
+
+  if (staticUpiRows.length > 0 && staticUpiRows[0].ownUpiId) {
+    const r = staticUpiRows[0];
+    staticUpi = {
+      upiId: r.ownUpiId!,
+      qrImageUrl: r.ownQrImageUrl ?? null,
+      accountHolder: r.ownAccountHolder ?? null,
+      instructions: r.ownInstructions ?? null,
+      providerKey: r.providerKey,
+    };
+  }
+
   res.json({
     id: link.id,
     title: link.title,
@@ -121,12 +162,95 @@ router.get("/public/:slug", async (req, res) => {
     currency: link.currency,
     slug: link.slug,
     upiPayload,
+    staticUpi,
     merchantName: merchantName ?? null,
     logoUrl: logoUrl ?? null,
     brandColor: brandColor ?? null,
     status: link.status,
     expiresAt: link.expiresAt instanceof Date ? link.expiresAt.toISOString() : link.expiresAt,
   });
+});
+
+// ── POST /api/payment-links/public/:slug/utr (no auth) ────────────────────────
+// Customer submits a UTR after paying to the platform's static UPI.
+router.post("/public/:slug/utr", async (req, res, next) => {
+  try {
+    const slug = req.params["slug"] as string;
+
+    const rows = await db
+      .select({ link: paymentLinksTable })
+      .from(paymentLinksTable)
+      .where(eq(paymentLinksTable.slug, slug))
+      .limit(1);
+
+    if (!rows.length) { res.status(404).json({ error: "Payment link not found" }); return; }
+    const { link } = rows[0];
+    if (link.status !== "active") { res.status(409).json({ error: "Payment link is not active" }); return; }
+
+    const { utr, payerName, payerUpi, screenshotUrl, amount: bodyAmount } = req.body as {
+      utr?: string;
+      payerName?: string;
+      payerUpi?: string;
+      screenshotUrl?: string;
+      amount?: string;
+    };
+
+    if (!utr || !utr.trim()) { res.status(400).json({ error: "UTR is required" }); return; }
+    const utrClean = utr.trim().toUpperCase();
+
+    // Determine amount: use link amount if fixed; require body amount otherwise
+    let finalAmount: string;
+    if (link.amount) {
+      finalAmount = link.amount;
+    } else if (bodyAmount && parseFloat(bodyAmount) > 0) {
+      finalAmount = parseFloat(bodyAmount).toFixed(2);
+    } else {
+      res.status(400).json({ error: "Amount is required for open-amount payment links" }); return;
+    }
+
+    // Verify own_static_upi gateway is active
+    const [staticGateway] = await db
+      .select({ providerKey: providerIntegrationsTable.providerKey })
+      .from(providerIntegrationsTable)
+      .where(
+        and(
+          eq(providerIntegrationsTable.collectionType, "own_static_upi"),
+          eq(providerIntegrationsTable.isEnabled, true),
+        ),
+      )
+      .limit(1);
+
+    if (!staticGateway) { res.status(409).json({ error: "Manual UPI collection is not currently available" }); return; }
+
+    const metadata = JSON.stringify({
+      payerName: payerName?.trim() || null,
+      payerUpi: payerUpi?.trim() || null,
+      screenshotUrl: screenshotUrl?.trim() || null,
+      providerKey: staticGateway.providerKey,
+    });
+
+    try {
+      const [txn] = await db.insert(transactionsTable).values({
+        merchantId: link.merchantId,
+        paymentLinkId: link.id,
+        type: "deposit",
+        status: "pending_verification",
+        provider: "own_static_upi",
+        amount: finalAmount,
+        currency: "INR",
+        utr: utrClean,
+        metadata,
+      }).returning();
+
+      res.json({ message: "Payment submitted for verification. You will be notified once confirmed.", transactionId: txn.id });
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        res.status(409).json({ error: "This UTR has already been submitted. Please check with support if it's taking long." });
+        return;
+      }
+      throw err;
+    }
+  } catch (err) { next(err); }
 });
 
 router.use(requireAuth);

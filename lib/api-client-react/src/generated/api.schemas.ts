@@ -2870,6 +2870,19 @@ export interface PaymentLinkListResponse {
   limit: number;
 }
 
+/**
+ * Set when an enabled own_static_upi gateway exists — instructs checkout to show UTR flow
+ */
+export type PublicPaymentLinkStaticUpi = {
+  upiId?: string;
+  /** @nullable */
+  qrImageUrl?: string | null;
+  /** @nullable */
+  accountHolder?: string | null;
+  /** @nullable */
+  instructions?: string | null;
+} | null;
+
 export type PublicPaymentLinkStatus = typeof PublicPaymentLinkStatus[keyof typeof PublicPaymentLinkStatus];
 
 
@@ -2890,6 +2903,8 @@ export interface PublicPaymentLink {
   slug: string;
   /** @nullable */
   upiPayload?: string | null;
+  /** Set when an enabled own_static_upi gateway exists — instructs checkout to show UTR flow */
+  staticUpi?: PublicPaymentLinkStaticUpi;
   /** @nullable */
   merchantName?: string | null;
   /** @nullable */
@@ -4846,6 +4861,14 @@ export const UpiGatewayMode = {
   test: 'test',
 } as const;
 
+export type UpiGatewayCollectionType = typeof UpiGatewayCollectionType[keyof typeof UpiGatewayCollectionType] | null;
+
+
+export const UpiGatewayCollectionType = {
+  api_gateway: 'api_gateway',
+  own_static_upi: 'own_static_upi',
+} as const;
+
 export interface UpiGateway {
   id: number;
   name: string;
@@ -4884,6 +4907,11 @@ export interface UpiGateway {
   updatedByEmail?: string | null;
   createdAt: string;
   updatedAt: string;
+  collectionType?: UpiGatewayCollectionType;
+  ownUpiId?: string | null;
+  ownQrImageUrl?: string | null;
+  ownAccountHolder?: string | null;
+  ownInstructions?: string | null;
 }
 
 export type UpiGatewayCreateBodyCategory = typeof UpiGatewayCreateBodyCategory[keyof typeof UpiGatewayCreateBodyCategory];
@@ -4914,6 +4942,14 @@ export const UpiGatewayCreateBodyMode = {
   test: 'test',
 } as const;
 
+export type UpiGatewayCreateBodyCollectionType = typeof UpiGatewayCreateBodyCollectionType[keyof typeof UpiGatewayCreateBodyCollectionType];
+
+
+export const UpiGatewayCreateBodyCollectionType = {
+  api_gateway: 'api_gateway',
+  own_static_upi: 'own_static_upi',
+} as const;
+
 export interface UpiGatewayCreateBody {
   name: string;
   /** Internal slug; auto-generated from name if omitted. */
@@ -4935,6 +4971,11 @@ export interface UpiGatewayCreateBody {
   dailyLimit?: string;
   priority?: number;
   notes?: string;
+  collectionType?: UpiGatewayCreateBodyCollectionType;
+  ownUpiId?: string;
+  ownQrImageUrl?: string;
+  ownAccountHolder?: string;
+  ownInstructions?: string;
 }
 
 export type UpiGatewayUpdateBodyCategory = typeof UpiGatewayUpdateBodyCategory[keyof typeof UpiGatewayUpdateBodyCategory];
@@ -4965,6 +5006,14 @@ export const UpiGatewayUpdateBodyMode = {
   test: 'test',
 } as const;
 
+export type UpiGatewayUpdateBodyCollectionType = typeof UpiGatewayUpdateBodyCollectionType[keyof typeof UpiGatewayUpdateBodyCollectionType];
+
+
+export const UpiGatewayUpdateBodyCollectionType = {
+  api_gateway: 'api_gateway',
+  own_static_upi: 'own_static_upi',
+} as const;
+
 export interface UpiGatewayUpdateBody {
   name?: string;
   category?: UpiGatewayUpdateBodyCategory;
@@ -4989,6 +5038,11 @@ export interface UpiGatewayUpdateBody {
   dailyLimit?: string;
   priority?: number;
   notes?: string;
+  collectionType?: UpiGatewayUpdateBodyCollectionType;
+  ownUpiId?: string;
+  ownQrImageUrl?: string;
+  ownAccountHolder?: string;
+  ownInstructions?: string;
 }
 
 export interface UpiGatewayTestResult {
@@ -5042,6 +5096,54 @@ export interface UpiGatewayAssignMerchantsBody {
   mode: UpiGatewayAssignMerchantsBodyMode;
   merchantIds?: number[];
   perMerchant?: UpiGatewayAssignMerchantsBodyPerMerchantItem[];
+}
+
+export interface UtrSubmitBody {
+  /** Customer-provided UTR / transaction reference number */
+  utr: string;
+  payerName?: string;
+  payerUpi?: string;
+  screenshotUrl?: string;
+  /** Required for open-amount payment links */
+  amount?: string;
+}
+
+export interface UtrSubmitResponse {
+  message: string;
+  transactionId: number;
+}
+
+export type UtrVerificationStatus = typeof UtrVerificationStatus[keyof typeof UtrVerificationStatus];
+
+
+export const UtrVerificationStatus = {
+  pending_verification: 'pending_verification',
+  success: 'success',
+  failed: 'failed',
+} as const;
+
+export interface UtrVerification {
+  id: number;
+  merchantId: number;
+  merchantName?: string | null;
+  merchantEmail?: string | null;
+  amount: string;
+  currency: string;
+  utr: string;
+  status: UtrVerificationStatus;
+  paymentLinkId?: number | null;
+  payerName?: string | null;
+  payerUpi?: string | null;
+  screenshotUrl?: string | null;
+  rejectionReason?: string | null;
+  reviewedAt?: string | null;
+  reviewedByEmail?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UtrRejectBody {
+  reason?: string;
 }
 
 export interface ProviderProduct {
@@ -6814,6 +6916,19 @@ export const ListPaymentLinksStatus = {
   expired: 'expired',
   all: 'all',
 } as const;
+
+export type ListUtrVerificationsParams = {
+status?: string;
+search?: string;
+merchantId?: number;
+page?: number;
+limit?: number;
+};
+
+export type ListUtrVerifications200 = {
+  items: UtrVerification[];
+  total: number;
+};
 
 export type ListVirtualAccountsParams = {
 status?: ListVirtualAccountsStatus;

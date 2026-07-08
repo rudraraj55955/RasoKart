@@ -1,12 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import { QRCodeCanvas } from "qrcode.react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, CheckCircle2, Clock, XCircle, Smartphone } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Copy, CheckCircle2, Clock, XCircle, Smartphone, Upload, Send, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useCompanySettings } from "@/lib/company-settings";
+
+type StaticUpi = {
+  upiId: string;
+  qrImageUrl: string | null;
+  accountHolder: string | null;
+  instructions: string | null;
+};
 
 type PublicLink = {
   id: number;
@@ -16,6 +26,7 @@ type PublicLink = {
   currency: string;
   slug: string;
   upiPayload?: string | null;
+  staticUpi?: StaticUpi | null;
   merchantName?: string | null;
   logoUrl?: string | null;
   brandColor?: string | null;
@@ -31,6 +42,8 @@ function isValidColor(color: string): boolean {
   return /^#[0-9a-f]{3,8}$/i.test(color) || /^(rgb|hsl)a?\(.+\)$/i.test(color);
 }
 
+type UtrState = "idle" | "submitting" | "success" | "error";
+
 export default function PayPage() {
   const { companyName, supportPhone } = useCompanySettings();
   const [, params] = useRoute("/pay/:slug");
@@ -39,6 +52,16 @@ export default function PayPage() {
   const [link, setLink] = useState<PublicLink | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // UTR form
+  const [utr, setUtr] = useState("");
+  const [customAmount, setCustomAmount] = useState("");
+  const [payerName, setPayerName] = useState("");
+  const [payerUpi, setPayerUpi] = useState("");
+  const [utrState, setUtrState] = useState<UtrState>("idle");
+  const [utrError, setUtrError] = useState<string | null>(null);
+  const [txnId, setTxnId] = useState<number | null>(null);
+  const utrInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -54,6 +77,34 @@ export default function PayPage() {
       .then(data => { setLink(data); setLoading(false); })
       .catch(err => { setError(err.message); setLoading(false); });
   }, [slug]);
+
+  async function submitUtr() {
+    if (!link || !slug) return;
+    if (!utr.trim()) { setUtrError("UTR / reference number is required"); utrInputRef.current?.focus(); return; }
+    if (!link.amount && !customAmount.trim()) { setUtrError("Please enter the amount you paid"); return; }
+    setUtrError(null);
+    setUtrState("submitting");
+    const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+    try {
+      const r = await fetch(`${base}/api/payment-links/public/${slug}/utr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          utr: utr.trim(),
+          amount: link.amount ? undefined : customAmount.trim(),
+          payerName: payerName.trim() || undefined,
+          payerUpi: payerUpi.trim() || undefined,
+        }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error ?? "Submission failed");
+      setTxnId(body.transactionId);
+      setUtrState("success");
+    } catch (err: any) {
+      setUtrError(err.message);
+      setUtrState("error");
+    }
+  }
 
   if (loading) {
     return (
@@ -86,7 +137,7 @@ export default function PayPage() {
   const isUnavailable = isInactive || isExpiredStatus;
 
   const upiDeepLink = link.upiPayload ?? "";
-
+  const staticUpi = link.staticUpi ?? null;
   const accent = link.brandColor && isValidColor(link.brandColor) ? link.brandColor : null;
 
   const accentStyle = accent
@@ -162,7 +213,12 @@ export default function PayPage() {
               </div>
             )}
 
-            {!link.amount && !isUnavailable && (
+            {!link.amount && !isUnavailable && staticUpi && (
+              <div className="mt-4">
+                <p className="text-sm text-muted-foreground">Open amount — enter the amount you wish to pay</p>
+              </div>
+            )}
+            {!link.amount && !isUnavailable && !staticUpi && (
               <div className="mt-4">
                 <p className="text-sm text-muted-foreground">Open amount — enter the amount in your UPI app</p>
               </div>
@@ -179,9 +235,124 @@ export default function PayPage() {
                     : "This payment link has been deactivated by the merchant."}
                 </p>
               </div>
+            ) : staticUpi ? (
+              /* ── Own Static UPI / Manual Collection flow ── */
+              utrState === "success" ? (
+                <div className="text-center space-y-4 py-4">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="font-semibold text-foreground">Payment Submitted</h3>
+                    <p className="text-sm text-muted-foreground">Your UTR has been submitted for verification. You'll be notified once confirmed.</p>
+                  </div>
+                  {txnId && <p className="text-xs text-muted-foreground/60">Reference: #{txnId}</p>}
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {/* Instructions */}
+                  {staticUpi.instructions && (
+                    <div className="rounded-lg bg-primary/5 border border-primary/15 px-3 py-2">
+                      <p className="text-xs text-muted-foreground">{staticUpi.instructions}</p>
+                    </div>
+                  )}
+
+                  {/* QR image or generated QR */}
+                  <div className="flex flex-col items-center gap-3">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                      {staticUpi.accountHolder ? `Pay to ${staticUpi.accountHolder}` : "Scan to Pay via UPI"}
+                    </p>
+                    {staticUpi.qrImageUrl ? (
+                      <img
+                        src={staticUpi.qrImageUrl}
+                        alt="UPI QR Code"
+                        className="w-52 h-52 object-contain bg-white rounded-xl shadow-sm p-2"
+                        onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : (
+                      <div className="bg-white p-4 rounded-xl shadow-sm">
+                        <QRCodeCanvas value={`upi://pay?pa=${encodeURIComponent(staticUpi.upiId)}${link.amount ? `&am=${link.amount}` : ""}${staticUpi.accountHolder ? `&pn=${encodeURIComponent(staticUpi.accountHolder)}` : ""}&cu=INR`} size={200} level="H" includeMargin />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* UPI ID copy */}
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">UPI ID</p>
+                      <p className="text-sm font-mono font-medium text-foreground truncate">{staticUpi.upiId}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="shrink-0 h-7 px-2" onClick={() => copyToClipboard(staticUpi.upiId, "UPI ID")}>
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-xs text-muted-foreground">After paying, enter UTR below</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+
+                  {/* UTR form */}
+                  <div className="space-y-3">
+                    {!link.amount && (
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1 block">Amount Paid (₹) <span className="text-rose-400">*</span></Label>
+                        <Input
+                          type="number"
+                          placeholder="Enter amount"
+                          value={customAmount}
+                          onChange={e => setCustomAmount(e.target.value)}
+                          min="1"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">UTR / Reference Number <span className="text-rose-400">*</span></Label>
+                      <Input
+                        ref={utrInputRef}
+                        placeholder="e.g. 417810123456"
+                        value={utr}
+                        onChange={e => { setUtr(e.target.value); setUtrError(null); }}
+                        className="font-mono"
+                      />
+                      <p className="text-[11px] text-muted-foreground/70 mt-0.5">Find this in your UPI app under payment history</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Your Name (optional)</Label>
+                      <Input placeholder="e.g. Rahul Sharma" value={payerName} onChange={e => setPayerName(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">Your UPI ID (optional)</Label>
+                      <Input placeholder="e.g. yourname@upi" value={payerUpi} onChange={e => setPayerUpi(e.target.value)} className="font-mono" />
+                    </div>
+
+                    {utrError && (
+                      <div className="flex items-start gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 px-3 py-2">
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <p className="text-xs text-rose-300">{utrError}</p>
+                      </div>
+                    )}
+
+                    <Button
+                      className="w-full"
+                      style={accent ? { background: accent, borderColor: accent, color: "#fff" } : {}}
+                      onClick={submitUtr}
+                      disabled={utrState === "submitting"}
+                    >
+                      {utrState === "submitting" ? (
+                        <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />Submitting…</>
+                      ) : (
+                        <><Send className="w-4 h-4 mr-2" />Submit Payment</>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )
             ) : upiDeepLink ? (
               <>
-                {/* QR Code */}
+                {/* QR Code from deep link */}
                 <div className="flex flex-col items-center gap-3">
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">Scan to Pay via UPI</p>
                   <div className="bg-white p-4 rounded-xl shadow-sm">

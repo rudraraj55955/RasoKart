@@ -213,6 +213,17 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`);
   logger.info({ table: "withdrawals" }, "schema_guard_column_added");
 
+  // provider_integrations: Own Static UPI collection fields
+  await db.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS collection_type TEXT NOT NULL DEFAULT 'api_gateway'`);
+  await db.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_upi_id TEXT`);
+  await db.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_qr_image_url TEXT`);
+  await db.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_account_holder TEXT`);
+  await db.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_instructions TEXT`);
+  logger.info({ table: "provider_integrations", columns: ["collection_type", "own_upi_id", "own_qr_image_url", "own_account_holder", "own_instructions"] }, "schema_guard_column_added");
+
+  // transactions: UTR verification review fields (stored in metadata JSON + description)
+  // No new columns needed — reuses existing status, utr, metadata, description columns.
+
   logger.info("schema_guard_completed");
 }
 

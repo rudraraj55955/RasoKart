@@ -27,6 +27,11 @@ export const providerIntegrationsTable = pgTable("provider_integrations", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   updatedByEmail: varchar("updated_by_email", { length: 255 }),
+  collectionType: text("collection_type").notNull().default("api_gateway"),
+  ownUpiId: text("own_upi_id"),
+  ownQrImageUrl: text("own_qr_image_url"),
+  ownAccountHolder: text("own_account_holder"),
+  ownInstructions: text("own_instructions"),
 });
 
 export type ProviderIntegration = typeof providerIntegrationsTable.$inferSelect;

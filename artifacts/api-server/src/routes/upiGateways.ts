@@ -103,6 +103,11 @@ function serializeGateway(
     updatedByEmail: integ?.updatedByEmail ?? null,
     createdAt: p.createdAt.toISOString(),
     updatedAt: (integ?.updatedAt ?? p.updatedAt).toISOString(),
+    collectionType: integ?.collectionType ?? "api_gateway",
+    ownUpiId: integ?.ownUpiId ?? null,
+    ownQrImageUrl: integ?.ownQrImageUrl ?? null,
+    ownAccountHolder: integ?.ownAccountHolder ?? null,
+    ownInstructions: integ?.ownInstructions ?? null,
   };
 }
 
@@ -328,6 +333,7 @@ router.patch("/:id", requireSuperAdmin, async (req, res, next) => {
       apiBaseUrl?: string; apiKey?: string; clientId?: string; clientSecret?: string; webhookSecret?: string;
       supportsDynamicQr?: boolean; supportsStaticQr?: boolean; supportsPaymentLinks?: boolean; supportsWebhooks?: boolean;
       minAmount?: string; maxAmount?: string; dailyLimit?: string; priority?: number; notes?: string;
+      collectionType?: string; ownUpiId?: string; ownQrImageUrl?: string; ownAccountHolder?: string; ownInstructions?: string;
     };
 
     const providerUpdate: Record<string, unknown> = { updatedAt: new Date() };
@@ -357,6 +363,11 @@ router.patch("/:id", requireSuperAdmin, async (req, res, next) => {
     if (body.clientId !== undefined) { integUpdate.clientIdEncrypted = body.clientId.trim() ? encryptSecret(body.clientId.trim()) : null; credentialsChanged = true; }
     if (body.clientSecret !== undefined) { integUpdate.clientSecretEncrypted = body.clientSecret.trim() ? encryptSecret(body.clientSecret.trim()) : null; credentialsChanged = true; }
     if (body.webhookSecret !== undefined) { integUpdate.webhookSecretEncrypted = body.webhookSecret.trim() ? encryptSecret(body.webhookSecret.trim()) : null; credentialsChanged = true; }
+    if (body.collectionType !== undefined) integUpdate.collectionType = body.collectionType;
+    if (body.ownUpiId !== undefined) integUpdate.ownUpiId = body.ownUpiId.trim() || null;
+    if (body.ownQrImageUrl !== undefined) integUpdate.ownQrImageUrl = body.ownQrImageUrl.trim() || null;
+    if (body.ownAccountHolder !== undefined) integUpdate.ownAccountHolder = body.ownAccountHolder.trim() || null;
+    if (body.ownInstructions !== undefined) integUpdate.ownInstructions = body.ownInstructions.trim() || null;
     integUpdate.updatedByEmail = (req as any).user.email;
 
     let savedInteg = integ;
