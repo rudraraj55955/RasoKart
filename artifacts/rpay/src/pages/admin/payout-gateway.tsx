@@ -150,7 +150,11 @@ function SettingsTab() {
 
   const missingCredentials = !isLoading && config && (!config.clientIdSet || !config.clientSecretSet);
 
-  const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard("cashfree-payout");
+  const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard("cashfree-payout", undefined, {
+    apiKeySet: config?.clientIdSet,
+    apiSecretSet: config?.clientSecretSet,
+    webhookSecretSet: config?.webhookSecretSet,
+  });
 
   const WEBHOOK_URL = "https://rasokart.com/api/cashfree-payout/webhook";
 

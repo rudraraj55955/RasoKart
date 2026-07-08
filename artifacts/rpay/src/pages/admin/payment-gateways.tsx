@@ -276,7 +276,10 @@ function EkqrConfigPanel() {
   const unchanged = ekqrApiKey === "" && ekqrWebhookSecret === ""
     && ekqrEnabled === null && ekqrEnv === null;
 
-  const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard("ekqr");
+  const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard("ekqr", undefined, {
+    apiKeySet: ekqrConfig?.apiKeySet,
+    webhookSecretSet: ekqrConfig?.webhookSecretSet,
+  });
 
   const { mutate: saveConfig, isPending: saving } = useUpdateEkqrConfig({
     mutation: {

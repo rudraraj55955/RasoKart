@@ -78,7 +78,11 @@ export default function AdminPaymentGateway() {
   const currentMaxAmount = maxAmount !== null ? maxAmount : String(config?.maxAmount ?? 100000);
   const currentDailyLimit = dailyLimit !== null ? dailyLimit : String(config?.dailyLimit ?? 500000);
 
-  const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard("cashfree");
+  const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard("cashfree", undefined, {
+    apiKeySet: config?.clientIdSet,
+    apiSecretSet: config?.clientSecretSet,
+    webhookSecretSet: config?.webhookSecretSet,
+  });
 
   async function doSave() {
     setSaving(true);
