@@ -328,7 +328,7 @@ router.get("/export", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
   const user = (req as any).user;
 
-  const { action, targetType, search, dateFrom, dateTo, performedBy, actorEmail, merchantId } = req.query as Record<string, string>;
+  const { action, targetType, search, dateFrom, dateTo, performedBy, actorEmail, merchantId, settingKey } = req.query as Record<string, string>;
 
   const conditions: any[] = [];
   if (action && action !== "all") conditions.push(eq(auditLogsTable.action, action));
@@ -379,6 +379,13 @@ router.get("/export", async (req, res) => {
           sql`${auditLogsTable.details}::jsonb -> 'merchantIds' @> ${JSON.stringify([merchantIdNum])}::jsonb`,
         )!
       );
+    }
+  }
+  if (settingKey) {
+    if (action === "setting_updated") {
+      conditions.push(sql`${auditLogsTable.details}::jsonb->>'key' = ${settingKey}`);
+    } else if (action === "system_config_updated") {
+      conditions.push(sql`${auditLogsTable.details}::jsonb->>'section' = ${settingKey}`);
     }
   }
 

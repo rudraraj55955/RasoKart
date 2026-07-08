@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { History, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { History, ChevronLeft, ChevronRight, Loader2, Download } from "lucide-react";
 
 const LIMIT = 10;
 
@@ -97,6 +97,26 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
  * filtered by section) — not just the single latest editor shown inline on
  * the config panel.
  */
+async function downloadGatewayHistoryCsv(section: string, label: string) {
+  const params = new URLSearchParams({
+    action: "system_config_updated",
+    settingKey: section,
+  });
+  const res = await fetch(`/api/audit-logs/export?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error("Export failed");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `gateway-history-${label.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function CredentialHistoryDialog({
   section, label, trigger,
 }: {
@@ -106,6 +126,7 @@ export function CredentialHistoryDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data, isLoading } = useListAdminAuditLogs(
     { action: "system_config_updated", settingKey: section, page, limit: LIMIT },
@@ -137,13 +158,38 @@ export function CredentialHistoryDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <History className="w-4 h-4 text-muted-foreground" />
-            {label} — Change History
-          </DialogTitle>
-          <DialogDescription>
-            Every credential and configuration change ever made to this gateway, most recent first.
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="w-4 h-4 text-muted-foreground" />
+                {label} — Change History
+              </DialogTitle>
+              <DialogDescription className="mt-1">
+                Every credential and configuration change ever made to this gateway, most recent first.
+              </DialogDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 shrink-0 text-xs"
+              disabled={isExporting}
+              onClick={async () => {
+                setIsExporting(true);
+                try {
+                  await downloadGatewayHistoryCsv(section, label);
+                } finally {
+                  setIsExporting(false);
+                }
+              }}
+            >
+              {isExporting ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              {isExporting ? "Exporting…" : "Download CSV"}
+            </Button>
+          </div>
         </DialogHeader>
 
         {isLoading ? (
