@@ -287,14 +287,10 @@ export default function AdminSmartRouting() {
     mutationFn: (data: Record<string, unknown>) => editingRule
       ? apiReq(`/rules/${editingRule.id}`, "PUT", data)
       : apiReq(`/configs/${selectedConfigId}/rules`, "POST", data),
-    onSuccess: (result: { warning?: string }) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["smart-routing-rules", selectedConfigId] });
       setRuleDialogOpen(false);
-      if (result?.warning) {
-        toast.warning(result.warning, { duration: 8000 });
-      } else {
-        toast.success(editingRule ? "Rule updated" : "Rule added");
-      }
+      toast.success(editingRule ? "Rule updated" : "Rule added");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -358,6 +354,12 @@ export default function AdminSmartRouting() {
         r.id !== editingRule?.id
       ) ?? null
     : null;
+
+  const wouldLeaveNoPrimaryRule = rfEnabled && rfFallbackOnly
+    ? (rulesQ.data ?? [])
+        .filter(r => r.isEnabled && r.id !== editingRule?.id)
+        .every(r => r.isFallbackOnly)
+    : false;
 
   async function runSimulate() {
     const amount = parseFloat(simAmount);
@@ -1197,12 +1199,22 @@ export default function AdminSmartRouting() {
               <p className="text-xs text-zinc-600 mt-1.5">Leave unchecked to allow all payment modes</p>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-zinc-300 text-sm">Fallback Only</Label>
-                <p className="text-xs text-zinc-500">Only tried after a primary provider has failed</p>
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-zinc-300 text-sm">Fallback Only</Label>
+                  <p className="text-xs text-zinc-500">Only tried after a primary provider has failed</p>
+                </div>
+                <Switch checked={rfFallbackOnly} onCheckedChange={setRfFallbackOnly} />
               </div>
-              <Switch checked={rfFallbackOnly} onCheckedChange={setRfFallbackOnly} />
+              {wouldLeaveNoPrimaryRule ? (
+                <div className="flex items-start gap-1.5 mt-1.5 p-2 rounded-md bg-red-500/10 border border-red-500/30">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+                  <p className="text-xs text-red-300">
+                    This would leave zero primary rules enabled in this config — every payment order would fail immediately. Add or enable a primary rule first, then set this one to fallback-only.
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <div>
@@ -1224,7 +1236,7 @@ export default function AdminSmartRouting() {
           </div>
           <DialogFooter className="mt-2">
             <Button variant="ghost" onClick={() => setRuleDialogOpen(false)} className="text-zinc-400">Cancel</Button>
-            <Button onClick={submitRule} disabled={saveRuleM.isPending} className="bg-violet-600 hover:bg-violet-500 text-white">
+            <Button onClick={submitRule} disabled={saveRuleM.isPending || wouldLeaveNoPrimaryRule} className="bg-violet-600 hover:bg-violet-500 text-white">
               {saveRuleM.isPending ? "Saving..." : editingRule ? "Update Rule" : "Add Rule"}
             </Button>
           </DialogFooter>
