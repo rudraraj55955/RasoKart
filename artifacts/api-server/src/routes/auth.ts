@@ -40,14 +40,28 @@ const MAX_TRUSTED_IPS = 20;
 // silently treat every payout merchant as NORMAL. Remove once all
 // environments are confirmed to have merchant_type.
 const LEGACY_SCHEMA_PAYOUT_ONLY_EMAILS = new Set(["pmtest@rasokart.com"]);
+const LEGACY_SCHEMA_PAYOUT_ONLY_MERCHANT_IDS = new Set([41382]);
 
-async function deriveMerchantTypeSafely(merchantId: number): Promise<string> {
+async function deriveMerchantTypeSafely(merchantId: number, userEmail?: string | null): Promise<string> {
+  // Explicit override takes priority over whatever the merchants row says —
+  // covers environments where merchant_type/payout_service_enabled exist as
+  // columns but haven't been backfilled correctly for this merchant yet.
+  if (userEmail && LEGACY_SCHEMA_PAYOUT_ONLY_EMAILS.has(userEmail.toLowerCase())) {
+    return "PAYOUT_ONLY";
+  }
+  if (LEGACY_SCHEMA_PAYOUT_ONLY_MERCHANT_IDS.has(merchantId)) {
+    return "PAYOUT_ONLY";
+  }
   try {
     const [mRow] = await db
-      .select({ merchantType: merchantsTable.merchantType })
+      .select({ merchantType: merchantsTable.merchantType, email: merchantsTable.email })
       .from(merchantsTable)
       .where(eq(merchantsTable.id, merchantId))
       .limit(1);
+    const merchantEmail: string | null = (mRow as any)?.email ?? null;
+    if (merchantEmail && LEGACY_SCHEMA_PAYOUT_ONLY_EMAILS.has(merchantEmail.toLowerCase())) {
+      return "PAYOUT_ONLY";
+    }
     return (mRow as any)?.merchantType ?? "NORMAL";
   } catch {
     try {
@@ -177,7 +191,7 @@ router.post(["/login", "/merchant/login"], loginLimiter, async (req, res, next) 
     // it — payout-merchant portal uses it to gate access at login time.
     let loginMerchantType: string | null = null;
     if (user.role === "merchant" && user.merchantId) {
-      loginMerchantType = await deriveMerchantTypeSafely(user.merchantId);
+      loginMerchantType = await deriveMerchantTypeSafely(user.merchantId, user.email);
     }
 
     if (user.role === "merchant" && user.merchantId) {
@@ -531,7 +545,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       } catch (err) {
         logger.warn({ err, merchantId: user.merchantId }, "Failed to fetch merchant status");
       }
-      merchantType = await deriveMerchantTypeSafely(user.merchantId);
+      merchantType = await deriveMerchantTypeSafely(user.merchantId, user.email);
       try {
         const [flagsRow] = await db
           .select({
