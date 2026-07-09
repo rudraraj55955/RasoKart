@@ -9,6 +9,7 @@ import {
   useListVirtualAccounts,
   useGetDashboardStats,
   useListMerchantConnections,
+  useListGatewayOptions,
   useListMerchantSavedFilters,
   useCreateMerchantSavedFilter,
   useDeleteMerchantSavedFilter,
@@ -1104,6 +1105,8 @@ export default function MerchantDeposits() {
   const { data: vaList } = useListVirtualAccounts({ status: "active", limit: 100 });
   const { data: connectionsRaw } = useListMerchantConnections();
   const activeConnections = Array.isArray(connectionsRaw) ? connectionsRaw.filter(c => c.isActive) : [];
+  const { data: gatewayOptionsData } = useListGatewayOptions();
+  const gatewayOptions = Array.isArray(gatewayOptionsData) ? gatewayOptionsData : [];
 
   const { mutate: simulate, isPending: simulating } = useSimulatePayment({
     mutation: {
@@ -1604,15 +1607,13 @@ export default function MerchantDeposits() {
                 <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
-            {activeConnections.length > 0 && (
+            {gatewayOptions.length > 0 && (
               <Select value={provider} onValueChange={v => { setProvider(v); setPage(1); }}>
-                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Provider" /></SelectTrigger>
+                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Gateway" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Providers</SelectItem>
-                  {activeConnections.map(c => (
-                    <SelectItem key={c.id} value={c.provider}>
-                      {c.provider.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
-                    </SelectItem>
+                  <SelectItem value="all">All Gateways</SelectItem>
+                  {gatewayOptions.map(g => (
+                    <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

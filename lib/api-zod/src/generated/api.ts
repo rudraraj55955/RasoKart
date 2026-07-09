@@ -2080,6 +2080,20 @@ export const SearchByUtrResponse = zod.object({
 
 
 /**
+ * @summary List available gateway filter options (value = raw provider key, label = white-label gateway name)
+ */
+export const ListGatewayOptionsQueryParams = zod.object({
+  "merchantId": zod.coerce.number().optional().describe('Admin only — scope options to a specific merchant')
+})
+
+export const ListGatewayOptionsResponseItem = zod.object({
+  "value": zod.string().describe('Raw provider key to pass as connectionProvider when filtering'),
+  "label": zod.string().describe('White-label gateway name to display (e.g. \"Payment Gateway A\")')
+})
+export const ListGatewayOptionsResponse = zod.array(ListGatewayOptionsResponseItem)
+
+
+/**
  * @summary Generate settlement report data (no pagination, up to 10,000 rows)
  */
 export const GetSettlementReportQueryParams = zod.object({

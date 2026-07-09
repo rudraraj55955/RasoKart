@@ -131,6 +131,7 @@ import type {
   ExportPlatformProfitLedgerCsvParams,
   ExportVaBalanceAuditCsvParams,
   FlushQuietHoursQueue200,
+  GatewayOption,
   GatewayUsage,
   GenerateApiKeyBody,
   GetAdminMerchantReportSchedule200,
@@ -204,6 +205,7 @@ import type {
   ListCashfreePayoutsParams,
   ListCredentialEventsParams,
   ListEkqrWebhookLogsParams,
+  ListGatewayOptionsParams,
   ListInvoicesParams,
   ListKycDocumentsParams,
   ListLedgerEntriesParams,
@@ -5395,6 +5397,90 @@ export function useSearchByUtr<TData = Awaited<ReturnType<typeof searchByUtr>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchByUtrQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListGatewayOptionsUrl = (params?: ListGatewayOptionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/transactions/gateway-options?${stringifiedParams}` : `/api/transactions/gateway-options`
+}
+
+/**
+ * @summary List available gateway filter options (value = raw provider key, label = white-label gateway name)
+ */
+export const listGatewayOptions = async (params?: ListGatewayOptionsParams, options?: RequestInit): Promise<GatewayOption[]> => {
+
+  return customFetch<GatewayOption[]>(getListGatewayOptionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListGatewayOptionsQueryKey = (params?: ListGatewayOptionsParams,) => {
+    return [
+    `/api/transactions/gateway-options`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListGatewayOptionsQueryOptions = <TData = Awaited<ReturnType<typeof listGatewayOptions>>, TError = ErrorType<unknown>>(params?: ListGatewayOptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listGatewayOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListGatewayOptionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listGatewayOptions>>> = ({ signal }) => listGatewayOptions(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listGatewayOptions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListGatewayOptionsQueryResult = NonNullable<Awaited<ReturnType<typeof listGatewayOptions>>>
+export type ListGatewayOptionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List available gateway filter options (value = raw provider key, label = white-label gateway name)
+ */
+
+export function useListGatewayOptions<TData = Awaited<ReturnType<typeof listGatewayOptions>>, TError = ErrorType<unknown>>(
+ params?: ListGatewayOptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listGatewayOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListGatewayOptionsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

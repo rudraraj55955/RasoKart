@@ -646,6 +646,60 @@ router.get("/search/utr", async (req, res, next) => {
   }
 });
 
+// GET /api/transactions/gateway-options
+// Returns the distinct set of gateways available to filter by, with labels
+// that match the white-label "Payment Gateway A/B/C" labels shown in the
+// Gateway column — so the filter dropdown never shows a raw provider name
+// that the merchant hasn't seen elsewhere in the UI.
+router.get("/gateway-options", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+
+    if (user.role === "admin") {
+      const { merchantId } = req.query as Record<string, string>;
+      const conditions = [sql`${merchantConnectionsTable.provider} IS NOT NULL`];
+      if (merchantId && !isNaN(parseInt(merchantId))) {
+        conditions.push(eq(merchantConnectionsTable.merchantId, parseInt(merchantId)));
+      }
+      const rows = await db
+        .selectDistinct({ provider: merchantConnectionsTable.provider })
+        .from(merchantConnectionsTable)
+        .where(and(...conditions))
+        .orderBy(merchantConnectionsTable.provider);
+      res.json(
+        rows.map(r => ({
+          value: r.provider,
+          label: r.provider.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+        }))
+      );
+      return;
+    }
+
+    const merchantId = user.merchantId!;
+    const [connections, labelMap] = await Promise.all([
+      db
+        .select({ provider: merchantConnectionsTable.provider })
+        .from(merchantConnectionsTable)
+        .where(and(eq(merchantConnectionsTable.merchantId, merchantId), eq(merchantConnectionsTable.isActive, true))),
+      getStableProviderToLabel(merchantId),
+    ]);
+
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    for (const c of connections) {
+      if (seen.has(c.provider)) continue;
+      seen.add(c.provider);
+      options.push({
+        value: c.provider,
+        label: labelMap.get(c.provider) ?? c.provider.replace(/_/g, " ").replace(/\b\w/g, ch => ch.toUpperCase()),
+      });
+    }
+    res.json(options);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/transactions/:id
 router.get("/:id", async (req, res, next) => {
   try {

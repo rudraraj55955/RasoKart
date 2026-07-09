@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearch } from "wouter";
-import { useListTransactions, useSearchByUtr, useGetTransaction, useGetPaymentLink, useListMerchantSavedFilters, useCreateMerchantSavedFilter, useDeleteMerchantSavedFilter, useRenameMerchantSavedFilter, useReorderMerchantSavedFilters } from "@workspace/api-client-react";
+import { useListTransactions, useSearchByUtr, useGetTransaction, useGetPaymentLink, useListMerchantSavedFilters, useCreateMerchantSavedFilter, useDeleteMerchantSavedFilter, useRenameMerchantSavedFilter, useReorderMerchantSavedFilters, useListGatewayOptions } from "@workspace/api-client-react";
 import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
 import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -700,6 +700,9 @@ export default function MerchantTransactions() {
   const activeType = smartFilter?.txType ?? type;
   const activeStatus = smartFilter?.txStatus ?? status;
   const activeProvider = smartFilter?.txProvider ?? (provider !== "all" ? provider : undefined);
+
+  const { data: gatewayOptionsData } = useListGatewayOptions();
+  const gatewayOptions = Array.isArray(gatewayOptionsData) ? gatewayOptionsData : [];
 
   const { data, isLoading, isError } = useListTransactions({
     type: activeType as any,
@@ -1618,15 +1621,17 @@ export default function MerchantTransactions() {
                   <SelectItem value="failed">Failed</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={provider} onValueChange={v => { setProvider(v); try { if (v === "all") localStorage.removeItem(LAST_PROVIDER_KEY_TX); else localStorage.setItem(LAST_PROVIDER_KEY_TX, v); } catch {} setPage(1); }}>
-                <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Providers" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Providers</SelectItem>
-                  {PROVIDERS.map(p => (
-                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {gatewayOptions.length > 0 && (
+                <Select value={provider} onValueChange={v => { setProvider(v); try { if (v === "all") localStorage.removeItem(LAST_PROVIDER_KEY_TX); else localStorage.setItem(LAST_PROVIDER_KEY_TX, v); } catch {} setPage(1); }}>
+                  <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Gateways" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Gateways</SelectItem>
+                    {gatewayOptions.map(g => (
+                      <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2 items-center">

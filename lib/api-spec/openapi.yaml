@@ -2011,6 +2011,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /transactions/gateway-options:
+    get:
+      operationId: listGatewayOptions
+      tags: [transactions]
+      summary: List available gateway filter options (value = raw provider key, label = white-label gateway name)
+      parameters:
+        - name: merchantId
+          in: query
+          schema:
+            type: integer
+          description: Admin only — scope options to a specific merchant
+      responses:
+        "200":
+          description: Available gateway options
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GatewayOption"
+
   /reports/settlements:
     get:
       operationId: getSettlementReport
@@ -11899,6 +11920,17 @@ components:
               type: integer
             pendingCount:
               type: integer
+
+    GatewayOption:
+      type: object
+      required: [value, label]
+      properties:
+        value:
+          type: string
+          description: Raw provider key to pass as connectionProvider when filtering
+        label:
+          type: string
+          description: White-label gateway name to display (e.g. "Payment Gateway A")
 
     ReportTransaction:
       type: object

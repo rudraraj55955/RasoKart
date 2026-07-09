@@ -890,6 +890,13 @@ export interface TransactionListResponse {
   stats: TransactionListResponseStats;
 }
 
+export interface GatewayOption {
+  /** Raw provider key to pass as connectionProvider when filtering */
+  value: string;
+  /** White-label gateway name to display (e.g. "Payment Gateway A") */
+  label: string;
+}
+
 export type ReportTransactionType = typeof ReportTransactionType[keyof typeof ReportTransactionType];
 
 
@@ -6373,6 +6380,13 @@ export const ListTransactionsConnectionProvider = {
 
 export type SearchByUtrParams = {
 utr: string;
+};
+
+export type ListGatewayOptionsParams = {
+/**
+ * Admin only — scope options to a specific merchant
+ */
+merchantId?: number;
 };
 
 export type GetSettlementReportParams = {
