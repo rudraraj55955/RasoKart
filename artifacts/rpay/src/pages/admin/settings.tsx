@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -995,6 +995,19 @@ export default function AdminSettings() {
   } as any);
 
   const githubSyncIsRunning = githubSyncTriggering || githubSyncStatus?.status === "running";
+
+  const consecutiveRetryFailures = useMemo(() => {
+    const entries = githubSyncHistory?.entries ?? [];
+    let count = 0;
+    for (const entry of entries) {
+      if (entry.status === "failure" && entry.retryOf != null) {
+        count++;
+      } else {
+        break;
+      }
+    }
+    return count;
+  }, [githubSyncHistory]);
 
   useEffect(() => {
     if (githubSyncTriggering && githubSyncStatus?.status && githubSyncStatus.status !== "running") {
@@ -3363,6 +3376,16 @@ export default function AdminSettings() {
                 <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${githubSyncIsRunning ? "animate-spin" : ""}`} />
                 {githubSyncIsRunning ? "Syncing…" : "Sync now"}
               </Button>
+            </div>
+          )}
+
+          {/* Consecutive retry-failure banner */}
+          {consecutiveRetryFailures >= 2 && (
+            <div className="flex items-start gap-2.5 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Retry also failed</strong> — {consecutiveRetryFailures} consecutive {consecutiveRetryFailures === 1 ? "retry has" : "retries have"} not resolved the issue. Check credentials or repository permissions.
+              </span>
             </div>
           )}
 
