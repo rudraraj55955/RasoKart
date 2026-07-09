@@ -83,7 +83,7 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
   }
 
   const rotated: string[] = [];
-  const changed: { label: string; from?: unknown; to?: unknown; value?: unknown; hasDiff: boolean }[] = [];
+  const changed: { label: string; from?: unknown; to?: unknown; value?: unknown; hasDiff: boolean; unchanged: boolean }[] = [];
 
   for (const [key, value] of Object.entries(parsed)) {
     if (SKIP_KEYS.has(key)) continue;
@@ -108,9 +108,12 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
 
     const label = SETTING_LABELS[key] ?? key;
     if (isFromTo(value)) {
-      changed.push({ label, from: value.from, to: value.to, hasDiff: true });
+      const fromStr = formatValue(value.from);
+      const toStr = formatValue(value.to);
+      const unchanged = fromStr === toStr;
+      changed.push({ label, from: value.from, to: value.to, hasDiff: true, unchanged });
     } else {
-      changed.push({ label, value, hasDiff: false });
+      changed.push({ label, value, hasDiff: false, unchanged: false });
     }
   }
 
@@ -126,9 +129,23 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
         </Badge>
       ))}
       {changed.map((item) => (
-        <Badge key={item.label} variant="outline" className="text-muted-foreground text-[11px] font-normal">
+        <Badge
+          key={item.label}
+          variant="outline"
+          className={
+            item.unchanged
+              ? "text-muted-foreground/40 border-border/30 text-[11px] font-normal italic"
+              : "text-muted-foreground text-[11px] font-normal"
+          }
+          title={item.unchanged ? "Value was saved without any change" : undefined}
+        >
           {item.hasDiff
-            ? <>{item.label}: <span className="text-red-400/80">{formatValue(item.from)}</span>{" → "}<span className="text-emerald-400/90">{formatValue(item.to)}</span></>
+            ? <>
+                {item.label}:{" "}
+                <span className={item.unchanged ? "text-muted-foreground/40" : "text-red-400/80"}>{formatValue(item.from)}</span>
+                {" → "}
+                <span className={item.unchanged ? "text-muted-foreground/40" : "text-emerald-400/90"}>{formatValue(item.to)}</span>
+              </>
             : <>{item.label}: {formatValue(item.value)}</>
           }
         </Badge>
