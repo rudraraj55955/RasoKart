@@ -1032,6 +1032,10 @@ export default function AdminSettings() {
     query: { enabled: githubSyncConfirmOpen },
   } as any);
 
+  const { data: githubSyncDivergenceBanner, isLoading: githubSyncDivergenceBannerLoading } = useGetGithubSyncDivergence({
+    query: { refetchInterval: 5 * 60 * 1000, staleTime: 4 * 60 * 1000 },
+  } as any);
+
   const handleConfirmGithubSync = () => {
     setGithubSyncConfirmOpen(false);
     runGithubSyncNow({});
@@ -3360,6 +3364,18 @@ export default function AdminSettings() {
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>GitHub sync is <strong>enabled</strong> — the sync script will run on schedule.</span>
+            </div>
+          )}
+
+          {!githubSyncDivergenceBannerLoading && githubSyncDivergenceBanner?.checked && githubSyncDivergenceBanner.diverged && (
+            <div className="flex items-start gap-2.5 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Remote has diverged</strong> — the remote has{" "}
+                <strong>{githubSyncDivergenceBanner.remoteAheadBy ?? "some"}</strong>{" "}
+                commit{githubSyncDivergenceBanner.remoteAheadBy === 1 ? "" : "s"} not present here (likely pushed directly on GitHub).
+                Resolve this before the next scheduled sync or the run will be skipped.
+              </span>
             </div>
           )}
 
