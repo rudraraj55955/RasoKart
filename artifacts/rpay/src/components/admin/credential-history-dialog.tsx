@@ -32,7 +32,17 @@ const SETTING_LABELS: Record<string, string> = {
   merchantPayinEnabled: "Merchant Payin",
   merchantEnabled: "Merchant Access",
   adminApprovalRequired: "Admin Approval Required",
+  // Provider integration fields
+  isEnabled: "Enabled",
+  environment: "Environment",
+  displayNamePublic: "Display Name",
+  productType: "Product Type",
+  webhookUrl: "Webhook URL",
+  notes: "Notes",
 };
+
+// Keys to skip when rendering provider_integration_updated details.
+const SKIP_KEYS = new Set(["providerKey", "updatedByEmail", "section", "key"]);
 
 function formatValue(v: unknown): string {
   if (typeof v === "boolean") return v ? "On" : "Off";
@@ -67,11 +77,26 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
   const changed: { label: string; from?: unknown; to?: unknown; value?: unknown; hasDiff: boolean }[] = [];
 
   for (const [key, value] of Object.entries(parsed)) {
-    if (key === "section") continue;
+    if (SKIP_KEYS.has(key)) continue;
+
+    // Boolean "*Updated" flags (built-in gateways)
     if (key in ROTATED_FIELD_LABELS) {
       if (value === true) rotated.push(ROTATED_FIELD_LABELS[key]!);
       continue;
     }
+
+    // "*Encrypted" fields from provider_integration_updated (value is "[redacted]")
+    if (key.endsWith("Encrypted") && value === "[redacted]") {
+      const baseName = key.replace(/Encrypted$/, "");
+      const labelMap: Record<string, string> = {
+        apiKey: "API Key",
+        apiSecret: "API Secret",
+        webhookSecret: "Webhook Secret",
+      };
+      rotated.push(labelMap[baseName] ?? baseName);
+      continue;
+    }
+
     const label = SETTING_LABELS[key] ?? key;
     if (isFromTo(value)) {
       changed.push({ label, from: value.from, to: value.to, hasDiff: true });
@@ -108,10 +133,13 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
  * sourced from the existing audit_logs trail (action=system_config_updated,
  * filtered by section) — not just the single latest editor shown inline on
  * the config panel.
+ *
+ * For custom provider integrations, pass action="provider_integration_updated"
+ * and section=providerKey.
  */
-async function downloadGatewayHistoryCsv(section: string, label: string) {
+async function downloadGatewayHistoryCsv(action: string, section: string, label: string) {
   const params = new URLSearchParams({
-    action: "system_config_updated",
+    action,
     settingKey: section,
   });
   const res = await fetch(`/api/audit-logs/export?${params.toString()}`, {
@@ -130,18 +158,19 @@ async function downloadGatewayHistoryCsv(section: string, label: string) {
 }
 
 export function CredentialHistoryDialog({
-  section, label, trigger,
+  section, label, trigger, action = "system_config_updated",
 }: {
   section: string;
   label: string;
   trigger?: ReactNode;
+  action?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
 
   const { data, isLoading } = useListAdminAuditLogs(
-    { action: "system_config_updated", settingKey: section, page, limit: LIMIT },
+    { action, settingKey: section, page, limit: LIMIT },
     {
       query: { enabled: open },
       request: { headers: { Authorization: `Bearer ${getToken()}` } },
@@ -188,7 +217,7 @@ export function CredentialHistoryDialog({
               onClick={async () => {
                 setIsExporting(true);
                 try {
-                  await downloadGatewayHistoryCsv(section, label);
+                  await downloadGatewayHistoryCsv(action, section, label);
                 } finally {
                   setIsExporting(false);
                 }

@@ -302,6 +302,8 @@ router.get("/", async (req, res) => {
       conditions.push(sql`${auditLogsTable.details}::jsonb->>'key' = ${settingKey}`);
     } else if (action === "system_config_updated") {
       conditions.push(sql`${auditLogsTable.details}::jsonb->>'section' = ${settingKey}`);
+    } else if (action === "provider_integration_updated") {
+      conditions.push(sql`${auditLogsTable.details}::jsonb->>'providerKey' = ${settingKey}`);
     }
   }
 
@@ -386,6 +388,8 @@ router.get("/export", async (req, res) => {
       conditions.push(sql`${auditLogsTable.details}::jsonb->>'key' = ${settingKey}`);
     } else if (action === "system_config_updated") {
       conditions.push(sql`${auditLogsTable.details}::jsonb->>'section' = ${settingKey}`);
+    } else if (action === "provider_integration_updated") {
+      conditions.push(sql`${auditLogsTable.details}::jsonb->>'providerKey' = ${settingKey}`);
     }
   }
 

@@ -1233,6 +1233,11 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
           <Save className="w-3.5 h-3.5 mr-1.5" />
           {saving ? "Saving…" : "Save Changes"}
         </Button>
+        <CredentialHistoryDialog
+          action="provider_integration_updated"
+          section={integration.providerKey}
+          label={integration.displayNamePublic}
+        />
       </div>
 
       <Separator className="opacity-30" />
