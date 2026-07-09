@@ -23,7 +23,10 @@ hand.
 
 **How to apply:** whenever you add, remove, or change a documented demo
 account in replit.md's Demo Credentials table, update `DEMO_CREDENTIALS`
-in both `seed.ts` and `verify-demo-credentials.ts` to match.
+in `lib/demo-credentials/src/index.ts` only — `seed.ts`,
+`routes/health.ts`, and `scripts/src/verify-demo-credentials.ts` all
+import from there, so one edit propagates everywhere automatically.
+Also update replit.md's Demo Credentials table to keep it in sync.
 
 Admins can also permanently remove a demo account via the admin-portal
 merchant detail action (`POST /merchants/:id/remove-demo-account`), which

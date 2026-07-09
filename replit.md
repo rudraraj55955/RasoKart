@@ -58,6 +58,7 @@ RasoKart is a premium dark-themed payment gateway SaaS platform — admins onboa
 | Admin | `admin@rasokart.com` | `Admin@123456` |
 | Merchant (Starter) | `merchant@demo.com` | `Merchant@123456` |
 | Merchant (Gold) | `merchant2@demo.com` | `Merchant@123456` |
+| Merchant (Starter) | `merchant3@demo.com` | `Merchant@123456` |
 
 ## User preferences
 

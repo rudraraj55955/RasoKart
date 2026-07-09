@@ -24,4 +24,5 @@ export const DEMO_CREDENTIALS: DemoCredential[] = [
   { email: "admin@rasokart.com", password: "Admin@123456", role: "admin" },
   { email: "merchant@demo.com", password: "Merchant@123456", role: "merchant" },
   { email: "merchant2@demo.com", password: "Merchant@123456", role: "merchant" },
+  { email: "merchant3@demo.com", password: "Merchant@123456", role: "merchant" },
 ];
