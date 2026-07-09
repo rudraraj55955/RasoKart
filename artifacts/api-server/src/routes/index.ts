@@ -77,6 +77,7 @@ import platformProfitRouter from "./platformProfit";
 import publicPayoutSlipRouter from "./publicPayoutSlip";
 import accountStatementRouter from "./accountStatement";
 import tryItPresetsRouter from "./tryItPresets";
+import adminTryItPresetsRouter from "./adminTryItPresets";
 
 const router: IRouter = Router();
 
@@ -156,6 +157,7 @@ router.use("/admin/platform-profit", platformProfitRouter);
 // Account statement — merchant own + admin any-merchant
 router.use("/account-statement", accountStatementRouter);
 router.use("/merchant/tryit-presets", tryItPresetsRouter);
+router.use("/admin/tryit-presets", adminTryItPresetsRouter);
 // Admin OTP/SMS settings and SMS delivery logs
 router.use("/admin/otp-settings", otpSettingsRouter);
 router.use("/admin/sms-logs", smsLogsRouter);

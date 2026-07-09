@@ -390,12 +390,64 @@ function loadAllPresets(): Record<string, SavedQueryPreset[]> {
   }
 }
 
+/**
+ * Module-level callback registered by ApiDocs to forward every localStorage
+ * save to the server.  Set on mount, cleared on unmount.
+ */
+let _serverSyncFn: ((all: Record<string, SavedQueryPreset[]>) => void) | null = null;
+
 function saveAllPresets(all: Record<string, SavedQueryPreset[]>) {
   try {
     localStorage.setItem(TRY_IT_PRESETS_STORAGE_KEY, JSON.stringify(all));
     dispatchPresetsChanged();
   } catch {
     // localStorage may be unavailable
+  }
+  _serverSyncFn?.(all);
+}
+
+async function fetchPresetsFromServer(token: string): Promise<Record<string, SavedQueryPreset[]> | null> {
+  try {
+    if (!token) return null;
+    const res = await fetch("/api/admin/tryit-presets", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data: unknown };
+    if (json?.data && typeof json.data === "object" && !Array.isArray(json.data)) {
+      return json.data as Record<string, SavedQueryPreset[]>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function applyServerPresets(serverPresets: Record<string, SavedQueryPreset[]>) {
+  try {
+    localStorage.setItem(TRY_IT_PRESETS_STORAGE_KEY, JSON.stringify(serverPresets));
+    dispatchPresetsChanged();
+  } catch {
+    // ignore — localStorage may be unavailable
+  }
+}
+
+async function pushPresetsToServer(
+  all: Record<string, SavedQueryPreset[]>,
+  token: string
+): Promise<void> {
+  try {
+    if (!token) return;
+    await fetch("/api/admin/tryit-presets", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ presets: all }),
+    });
+  } catch {
+    // non-fatal — server sync failed, localStorage is the fallback
   }
 }
 
@@ -1591,6 +1643,49 @@ export default function AdminApiDocs() {
       stripSharedPresetFromUrl();
     }
   }, [sharedPreset, sharedLinkExpired]);
+
+  // Server-side preset persistence uses the admin's own session token (not the
+  // "Try It" bearer token above, which may point at a different account/merchant).
+  // This mirrors the merchant portal's pattern in merchant/api-docs.tsx.
+  const adminSessionTokenRef = useRef<string>("");
+  try {
+    adminSessionTokenRef.current = localStorage.getItem("rasokart_token") ?? "";
+  } catch {
+    adminSessionTokenRef.current = "";
+  }
+
+  useEffect(() => {
+    _serverSyncFn = (all) => {
+      void pushPresetsToServer(all, adminSessionTokenRef.current);
+    };
+    return () => {
+      _serverSyncFn = null;
+    };
+  }, []);
+
+  // On mount: fetch presets from server. If server has data, overwrite localStorage.
+  // If server is empty and localStorage has data, migrate to server (one-time).
+  useEffect(() => {
+    const token = adminSessionTokenRef.current;
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      const serverPresets = await fetchPresetsFromServer(token);
+      if (cancelled) return;
+      if (serverPresets && Object.keys(serverPresets).length > 0) {
+        applyServerPresets(serverPresets);
+      } else {
+        const local = loadAllPresets();
+        if (Object.keys(local).length > 0) {
+          void pushPresetsToServer(local, token);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleTokenChange = (val: string) => {
     setGlobalToken(val);

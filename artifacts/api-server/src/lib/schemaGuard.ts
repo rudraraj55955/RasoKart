@@ -405,6 +405,21 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "merchant_tryit_presets" }, "schema_guard_table_created");
 
+  // ── admin_tryit_presets (server-side Try It preset sync for admin) ────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS admin_tryit_presets (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      presets JSONB NOT NULL DEFAULT '{}',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS admin_tryit_presets_user_id_uidx
+    ON admin_tryit_presets(user_id)
+  `);
+  logger.info({ table: "admin_tryit_presets" }, "schema_guard_table_created");
+
   // ── merchants: payout merchant type & service flags ──────────────────────────
   await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS merchant_type TEXT NOT NULL DEFAULT 'NORMAL'`);
   await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_service_enabled BOOLEAN NOT NULL DEFAULT false`);
