@@ -442,6 +442,59 @@ function parsePresetsKey(key: string): { method: string; path: string } {
   return { method: key.slice(0, spaceIdx), path: key.slice(spaceIdx + 1) };
 }
 
+/**
+ * Deep-scrubs any field that looks like a credential (via `looksLikeCredential`)
+ * out of a preset before it's ever serialized into an export file. Presets don't
+ * intentionally store bearer tokens today, but this is a defense-in-depth guard
+ * in case a token ever lands in pathValues/queryParams/body.
+ */
+function scrubCredentialsFromPreset(preset: SavedQueryPreset): SavedQueryPreset {
+  const pathValues: Record<string, string> = {};
+  for (const [key, val] of Object.entries(preset.pathValues)) {
+    pathValues[key] = looksLikeCredential(val) ? "[REDACTED]" : val;
+  }
+  const queryParams = preset.queryParams.map((row) => ({
+    key: row.key,
+    value: looksLikeCredential(row.value) ? "[REDACTED]" : row.value,
+  }));
+  let body = preset.body;
+  if (body.trim()) {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      const scrubJsonValue = (value: unknown): unknown => {
+        if (typeof value === "string") {
+          return looksLikeCredential(value) ? "[REDACTED]" : value;
+        } else if (Array.isArray(value)) {
+          return value.map(scrubJsonValue);
+        } else if (value !== null && typeof value === "object") {
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+            out[k] = scrubJsonValue(v);
+          }
+          return out;
+        }
+        return value;
+      };
+      body = JSON.stringify(scrubJsonValue(parsed), null, 2);
+    } catch {
+      if (looksLikeCredential(body)) {
+        body = "[REDACTED]";
+      }
+    }
+  }
+  return { ...preset, pathValues, queryParams, body };
+}
+
+function scrubCredentialsFromAllPresets(
+  all: Record<string, SavedQueryPreset[]>
+): Record<string, SavedQueryPreset[]> {
+  const scrubbed: Record<string, SavedQueryPreset[]> = {};
+  for (const [key, presets] of Object.entries(all)) {
+    scrubbed[key] = presets.map(scrubCredentialsFromPreset);
+  }
+  return scrubbed;
+}
+
 function loadAllPresetsFlat(): FlatPreset[] {
   const all = loadAllPresets();
   const flat: FlatPreset[] = [];
@@ -1590,10 +1643,12 @@ function ManagePresetsDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       toast.error("No presets to export.");
       return;
     }
+    // Defense-in-depth: scrub any credential-shaped values before they ever leave
+    // the browser in an exported file, even though presets don't intentionally store tokens today.
     const file: PresetsExportFile = {
       version: 1,
       exportedAt: new Date().toISOString(),
-      presets: all,
+      presets: scrubCredentialsFromAllPresets(all),
     };
     const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1618,6 +1673,8 @@ function ManagePresetsDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           toast.error("Could not read the file.");
           return;
         }
+        // Note: imported files are trusted as-is (no re-scrub) — exports are already
+        // scrubbed of credential-shaped values, so importing a foreign export is safe.
         const parsed = parsePresetsExportFile(raw);
         if (!parsed) {
           toast.error("Invalid presets file. Make sure you're importing a file exported from this page.");
