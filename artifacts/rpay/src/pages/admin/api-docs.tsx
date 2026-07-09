@@ -220,7 +220,7 @@ function collectCredentialWarnings(
   const warnings: string[] = [];
   for (const row of queryParams) {
     if (row.key.trim() && looksLikeCredential(row.value)) {
-      warnings.push(`query param "${row.key}"`);
+      warnings.push(`query param "${row.key}" = "${truncateCredentialValue(row.value)}"`);
     }
   }
   for (const [key, val] of Object.entries(pathValues)) {
