@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes, useGetGithubSyncStatus, useGetGithubSyncHistory, useGetDashboardWebhookHealth, useGetEkqrWebhookStats, useGetMerchantsEmailOptOutStats } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +35,19 @@ export default function AdminDashboard() {
   const { data: webhookHealth } = useGetDashboardWebhookHealth();
   const { data: ekqrStats } = useGetEkqrWebhookStats();
   const { data: emailOptOut } = useGetMerchantsEmailOptOutStats();
+
+  const consecutiveRetryFailures = useMemo(() => {
+    const entries = githubSyncHistory?.entries ?? [];
+    let count = 0;
+    for (const entry of entries) {
+      if (entry.status === "failure" && entry.retryOf != null) {
+        count++;
+      } else {
+        break;
+      }
+    }
+    return count;
+  }, [githubSyncHistory]);
 
   return (
     <div className="space-y-6">
@@ -392,6 +406,14 @@ export default function AdminDashboard() {
                         {!isNever && (
                           <span className={`rounded-full text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide ${isFailure ? "bg-rose-500/20 text-rose-400 border-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"}`}>
                             {isFailure ? "Failed" : "Success"}
+                          </span>
+                        )}
+                        {consecutiveRetryFailures >= 2 && (
+                          <span
+                            className="rounded-full text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide bg-amber-500/20 text-amber-400 border-amber-500/30"
+                            title={`${consecutiveRetryFailures} consecutive retries have not resolved the issue. Check credentials or repository permissions.`}
+                          >
+                            {consecutiveRetryFailures} Retries Failed
                           </span>
                         )}
                       </div>
