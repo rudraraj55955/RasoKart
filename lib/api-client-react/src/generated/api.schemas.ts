@@ -138,7 +138,7 @@ export interface GithubSyncConfig {
 }
 
 /**
- * Outcome of the last GitHub sync run, "never" if the script has not run yet, or "running" while a manually-triggered sync is in progress
+ * Outcome of the last GitHub sync run, "skipped" when a divergence was detected and divergeAction is alert_only, "never" if the script has not run yet, or "running" while a manually-triggered sync is in progress
  */
 export type GithubSyncStatusStatus = typeof GithubSyncStatusStatus[keyof typeof GithubSyncStatusStatus];
 
@@ -146,12 +146,13 @@ export type GithubSyncStatusStatus = typeof GithubSyncStatusStatus[keyof typeof 
 export const GithubSyncStatusStatus = {
   success: 'success',
   failure: 'failure',
+  skipped: 'skipped',
   never: 'never',
   running: 'running',
 } as const;
 
 export interface GithubSyncStatus {
-  /** Outcome of the last GitHub sync run, "never" if the script has not run yet, or "running" while a manually-triggered sync is in progress */
+  /** Outcome of the last GitHub sync run, "skipped" when a divergence was detected and divergeAction is alert_only, "never" if the script has not run yet, or "running" while a manually-triggered sync is in progress */
   status: GithubSyncStatusStatus;
   /** ISO timestamp of when the last sync completed */
   syncedAt?: string;
@@ -162,7 +163,7 @@ export interface GithubSyncStatus {
 }
 
 /**
- * Outcome of the sync run
+ * Outcome of the sync run — "skipped" means a divergence was detected and divergeAction was alert_only, so the push was intentionally skipped to protect remote history
  */
 export type GithubSyncHistoryEntryStatus = typeof GithubSyncHistoryEntryStatus[keyof typeof GithubSyncHistoryEntryStatus];
 
@@ -170,12 +171,13 @@ export type GithubSyncHistoryEntryStatus = typeof GithubSyncHistoryEntryStatus[k
 export const GithubSyncHistoryEntryStatus = {
   success: 'success',
   failure: 'failure',
+  skipped: 'skipped',
 } as const;
 
 export interface GithubSyncHistoryEntry {
   /** Unique identifier for this sync run, used to fetch its full captured log via /github-sync/history/{id}/log. Absent on entries recorded before this field was introduced. */
   id?: string;
-  /** Outcome of the sync run */
+  /** Outcome of the sync run — "skipped" means a divergence was detected and divergeAction was alert_only, so the push was intentionally skipped to protect remote history */
   status: GithubSyncHistoryEntryStatus;
   /** ISO timestamp of when the sync completed */
   syncedAt: string;

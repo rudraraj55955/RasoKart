@@ -22,7 +22,7 @@ const DEFAULT_FAILURE_ESCALATION_RENOTIFY_INTERVAL = 10;
 
 interface GithubSyncHistoryEntry {
   id: string;
-  status: "success" | "failure";
+  status: "success" | "failure" | "skipped";
   syncedAt: string;
   repo: string;
   errorMessage?: string;
@@ -38,6 +38,7 @@ function countConsecutiveFailures(): number {
 
     let streak = 0;
     for (const entry of parsed as GithubSyncHistoryEntry[]) {
+      if (entry?.status === "skipped") continue;
       if (entry?.status !== "failure") break;
       streak++;
     }
@@ -183,7 +184,7 @@ function writeLogFile(id: string, content: string): boolean {
   }
 }
 
-function writeStatus(status: "success" | "failure", id: string, logLines: string[], errorMessage?: string, retryOf?: string) {
+function writeStatus(status: "success" | "failure" | "skipped", id: string, logLines: string[], errorMessage?: string, retryOf?: string) {
   const syncedAt = new Date().toISOString();
   const payload: Record<string, string> = {
     id,
@@ -382,9 +383,10 @@ async function main() {
         });
 
         if (config.divergeAction === "alert_only") {
-          // Skip the push — record as a successful (skipped) run so it doesn't count as a failure
+          // Skip the push — record as "skipped" so it's visually distinct from a real success
+          // and does not increment the failure streak counter.
           log("GITHUB_SYNC: Push skipped to protect remote history. Admins have been alerted.");
-          writeStatus("success", runId, logLines, undefined, retryOf);
+          writeStatus("skipped", runId, logLines, undefined, retryOf);
           return;
         }
 

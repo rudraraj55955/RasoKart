@@ -10,7 +10,7 @@ import type { GithubSyncHistoryEntryStatus } from './githubSyncHistoryEntryStatu
 export interface GithubSyncHistoryEntry {
   /** Unique identifier for this sync run, used to fetch its full captured log via /github-sync/history/{id}/log. Absent on entries recorded before this field was introduced. */
   id?: string;
-  /** Outcome of the sync run */
+  /** Outcome of the sync run — "skipped" means a divergence was detected and divergeAction was alert_only, so the push was intentionally skipped to protect remote history */
   status: GithubSyncHistoryEntryStatus;
   /** ISO timestamp of when the sync completed */
   syncedAt: Date;

@@ -7582,7 +7582,7 @@ export const UpdateGithubSyncConfigResponse = zod.object({
  * @summary Get last GitHub sync status
  */
 export const GetGithubSyncStatusResponse = zod.object({
-  "status": zod.enum(['success', 'failure', 'never', 'running']).describe('Outcome of the last GitHub sync run, \"never\" if the script has not run yet, or \"running\" while a manually-triggered sync is in progress'),
+  "status": zod.enum(['success', 'failure', 'skipped', 'never', 'running']).describe('Outcome of the last GitHub sync run, \"skipped\" when a divergence was detected and divergeAction is alert_only, \"never\" if the script has not run yet, or \"running\" while a manually-triggered sync is in progress'),
   "syncedAt": zod.coerce.date().optional().describe('ISO timestamp of when the last sync completed'),
   "errorMessage": zod.string().optional().describe('Error detail when status is \"failure\"'),
   "repo": zod.string().optional().describe('GitHub repository that was synced')
@@ -7640,7 +7640,7 @@ export const GetGithubSyncDivergenceResponse = zod.object({
 export const GetGithubSyncHistoryResponse = zod.object({
   "entries": zod.array(zod.object({
   "id": zod.string().optional().describe('Unique identifier for this sync run, used to fetch its full captured log via \/github-sync\/history\/{id}\/log. Absent on entries recorded before this field was introduced.'),
-  "status": zod.enum(['success', 'failure']).describe('Outcome of the sync run'),
+  "status": zod.enum(['success', 'failure', 'skipped']).describe('Outcome of the sync run — \"skipped\" means a divergence was detected and divergeAction was alert_only, so the push was intentionally skipped to protect remote history'),
   "syncedAt": zod.coerce.date().describe('ISO timestamp of when the sync completed'),
   "repo": zod.string().describe('GitHub repository that was synced'),
   "errorMessage": zod.string().optional().describe('Error detail when status is \"failure\"'),

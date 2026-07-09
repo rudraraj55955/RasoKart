@@ -3380,14 +3380,15 @@ export default function AdminSettings() {
           )}
 
           {githubSyncStatus && (
-            <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-xs ${githubSyncIsRunning ? "border-violet-500/20 bg-violet-500/5" : githubSyncStatus.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : githubSyncStatus.status === "failure" ? "border-red-500/20 bg-red-500/5" : "border-border/50 bg-muted/5"}`}>
+            <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-xs ${githubSyncIsRunning ? "border-violet-500/20 bg-violet-500/5" : githubSyncStatus.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : githubSyncStatus.status === "failure" ? "border-red-500/20 bg-red-500/5" : githubSyncStatus.status === "skipped" ? "border-amber-500/20 bg-amber-500/5" : "border-border/50 bg-muted/5"}`}>
               {githubSyncIsRunning && <RefreshCw className="w-4 h-4 shrink-0 text-violet-400 animate-spin" />}
               {!githubSyncIsRunning && githubSyncStatus.status === "success" && <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />}
               {!githubSyncIsRunning && githubSyncStatus.status === "failure" && <XCircle className="w-4 h-4 shrink-0 text-red-400" />}
+              {!githubSyncIsRunning && githubSyncStatus.status === "skipped" && <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />}
               {!githubSyncIsRunning && githubSyncStatus.status === "never" && <History className="w-4 h-4 shrink-0 text-muted-foreground" />}
               <div className="flex flex-col gap-0.5">
-                <span className={`font-medium ${githubSyncIsRunning ? "text-violet-400" : githubSyncStatus.status === "success" ? "text-emerald-400" : githubSyncStatus.status === "failure" ? "text-red-400" : "text-muted-foreground"}`}>
-                  {githubSyncIsRunning ? "Sync in progress…" : `Last sync: ${githubSyncStatus.status === "never" ? "never run" : githubSyncStatus.status}`}
+                <span className={`font-medium ${githubSyncIsRunning ? "text-violet-400" : githubSyncStatus.status === "success" ? "text-emerald-400" : githubSyncStatus.status === "failure" ? "text-red-400" : githubSyncStatus.status === "skipped" ? "text-amber-400" : "text-muted-foreground"}`}>
+                  {githubSyncIsRunning ? "Sync in progress…" : githubSyncStatus.status === "skipped" ? "Last sync: skipped (diverged)" : `Last sync: ${githubSyncStatus.status === "never" ? "never run" : githubSyncStatus.status}`}
                 </span>
                 {!githubSyncIsRunning && githubSyncStatus.syncedAt && (
                   <span className="text-muted-foreground">
@@ -3450,7 +3451,9 @@ export default function AdminSettings() {
                         <td className="px-3 py-2">
                           {entry.status === "success"
                             ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                            : <XCircle className="w-3.5 h-3.5 text-red-400" />}
+                            : entry.status === "skipped"
+                              ? <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                              : <XCircle className="w-3.5 h-3.5 text-red-400" />}
                         </td>
                         <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
                           {new Date(entry.syncedAt).toLocaleString()}
@@ -3461,6 +3464,10 @@ export default function AdminSettings() {
                         <td className="px-3 py-2">
                           {entry.status === "success" ? (
                             <span className="text-emerald-400 font-medium">success</span>
+                          ) : entry.status === "skipped" ? (
+                            <span className="text-amber-400 font-medium" title="Push was skipped because the remote has commits not present locally. Resolve the divergence to resume syncing.">
+                              skipped (diverged)
+                            </span>
                           ) : (
                             <span className="text-red-400 font-medium underline decoration-dotted" title={entry.errorMessage ?? ""}>
                               failure{entry.errorMessage ? ` — ${entry.errorMessage.slice(0, 60)}${entry.errorMessage.length > 60 ? "…" : ""}` : ""}

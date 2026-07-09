@@ -8,7 +8,7 @@
 import type { GithubSyncStatusStatus } from './githubSyncStatusStatus';
 
 export interface GithubSyncStatus {
-  /** Outcome of the last GitHub sync run, "never" if the script has not run yet, or "running" while a manually-triggered sync is in progress */
+  /** Outcome of the last GitHub sync run, "skipped" when a divergence was detected and divergeAction is alert_only, "never" if the script has not run yet, or "running" while a manually-triggered sync is in progress */
   status: GithubSyncStatusStatus;
   /** ISO timestamp of when the last sync completed */
   syncedAt?: Date;

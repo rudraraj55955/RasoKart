@@ -7,7 +7,7 @@
  */
 
 /**
- * Outcome of the sync run
+ * Outcome of the sync run — "skipped" means a divergence was detected and divergeAction was alert_only, so the push was intentionally skipped to protect remote history
  */
 export type GithubSyncHistoryEntryStatus = typeof GithubSyncHistoryEntryStatus[keyof typeof GithubSyncHistoryEntryStatus];
 
@@ -15,4 +15,5 @@ export type GithubSyncHistoryEntryStatus = typeof GithubSyncHistoryEntryStatus[k
 export const GithubSyncHistoryEntryStatus = {
   success: 'success',
   failure: 'failure',
+  skipped: 'skipped',
 } as const;

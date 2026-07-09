@@ -10993,8 +10993,8 @@ components:
       properties:
         status:
           type: string
-          enum: [success, failure, never, running]
-          description: Outcome of the last GitHub sync run, "never" if the script has not run yet, or "running" while a manually-triggered sync is in progress
+          enum: [success, failure, skipped, never, running]
+          description: Outcome of the last GitHub sync run, "skipped" when a divergence was detected and divergeAction is alert_only, "never" if the script has not run yet, or "running" while a manually-triggered sync is in progress
         syncedAt:
           type: string
           format: date-time
@@ -11015,8 +11015,8 @@ components:
           description: Unique identifier for this sync run, used to fetch its full captured log via /github-sync/history/{id}/log. Absent on entries recorded before this field was introduced.
         status:
           type: string
-          enum: [success, failure]
-          description: Outcome of the sync run
+          enum: [success, failure, skipped]
+          description: Outcome of the sync run — "skipped" means a divergence was detected and divergeAction was alert_only, so the push was intentionally skipped to protect remote history
         syncedAt:
           type: string
           format: date-time
