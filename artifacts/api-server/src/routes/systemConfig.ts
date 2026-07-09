@@ -1330,6 +1330,9 @@ router.put("/cashfree", async (req, res, next) => {
     if (qrEnabled !== undefined) auditDetails.qrEnabled = { from: oldConfig.qrEnabled, to: qrEnabled };
     if (paymentLinksEnabled !== undefined) auditDetails.paymentLinksEnabled = { from: oldConfig.paymentLinksEnabled, to: paymentLinksEnabled };
     if (merchantPayinEnabled !== undefined) auditDetails.merchantPayinEnabled = { from: oldConfig.merchantPayinEnabled, to: merchantPayinEnabled };
+    if (minAmount !== undefined) auditDetails.minAmount = { from: oldConfig.minAmount, to: minAmount };
+    if (maxAmount !== undefined) auditDetails.maxAmount = { from: oldConfig.maxAmount, to: maxAmount };
+    if (dailyLimit !== undefined) auditDetails.dailyLimit = { from: oldConfig.dailyLimit, to: dailyLimit };
 
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
@@ -1553,6 +1556,9 @@ router.put("/cashfree-payout", async (req, res, next) => {
     if (merchantEnabled !== undefined) auditPayoutDetails.merchantEnabled = { from: oldPayoutConfig.merchantEnabled, to: merchantEnabled };
     if (bulkEnabled !== undefined) auditPayoutDetails.bulkEnabled = { from: oldPayoutConfig.bulkEnabled, to: bulkEnabled };
     if (adminApprovalRequired !== undefined) auditPayoutDetails.adminApprovalRequired = { from: oldPayoutConfig.adminApprovalRequired, to: adminApprovalRequired };
+    if (minLimit !== undefined) auditPayoutDetails.minLimit = { from: oldPayoutConfig.minLimit, to: minLimit };
+    if (maxLimit !== undefined) auditPayoutDetails.maxLimit = { from: oldPayoutConfig.maxLimit, to: maxLimit };
+    if (dailyLimit !== undefined) auditPayoutDetails.dailyLimit = { from: oldPayoutConfig.dailyLimit, to: dailyLimit };
 
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,

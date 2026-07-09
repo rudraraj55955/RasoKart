@@ -32,6 +32,15 @@ const SETTING_LABELS: Record<string, string> = {
   merchantPayinEnabled: "Merchant Payin",
   merchantEnabled: "Merchant Access",
   adminApprovalRequired: "Admin Approval Required",
+  bulkEnabled: "Bulk Payouts",
+  // Cashfree payin limit fields
+  minAmount: "Min Amount (₹)",
+  maxAmount: "Max Amount (₹)",
+  // Cashfree payout limit fields
+  minLimit: "Min Limit (₹)",
+  maxLimit: "Max Limit (₹)",
+  // Shared limit field (dailyLimit applies to both payin and payout)
+  dailyLimit: "Daily Limit (₹)",
   // Provider integration fields
   isEnabled: "Enabled",
   environment: "Environment",
