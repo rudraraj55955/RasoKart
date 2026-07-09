@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import {
   GitMerge, Activity, BarChart2, ScrollText, Plus, Pencil, Trash2,
   RefreshCw, ArrowUpDown, CheckCircle2, XCircle, Clock, AlertTriangle,
@@ -79,6 +80,23 @@ type RoutingLog = {
   publicReferenceId: string | null;
   errorMessage: string | null;
   createdAt: string;
+};
+
+type FailoverEvent = {
+  id: number;
+  createdAt: string;
+  failureCount: number;
+  windowMinutes: number;
+  triggerMerchantId: number | null;
+  providersInvolved: string[];
+};
+
+type FailureTrendPoint = {
+  day: string;
+  providerKey: string;
+  totalAttempts: number;
+  failedAttempts: number;
+  failureRate: number;
 };
 
 type StatusData = {
@@ -225,6 +243,19 @@ export default function AdminSmartRouting() {
     queryKey: ["smart-routing-logs", logsPage],
     queryFn: () => apiReq(`/logs?page=${logsPage}&limit=50`),
     refetchInterval: 30000,
+  });
+
+  const failoverEventsQ = useQuery<{ events: FailoverEvent[] }>({
+    queryKey: ["smart-routing-failover-events"],
+    queryFn: () => apiReq(`/failover-events?limit=20`),
+    refetchInterval: 30000,
+  });
+
+  const [trendDays, setTrendDays] = useState(7);
+  const failureTrendQ = useQuery<{ days: number; trend: FailureTrendPoint[] }>({
+    queryKey: ["smart-routing-failure-trend", trendDays],
+    queryFn: () => apiReq(`/failure-trend?days=${trendDays}`),
+    refetchInterval: 60000,
   });
 
   // Admin-added custom gateways — offered as provider key suggestions alongside the built-ins.
@@ -437,6 +468,9 @@ export default function AdminSmartRouting() {
             </TabsTrigger>
             <TabsTrigger value="metrics" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
               <BarChart2 className="w-4 h-4 mr-1.5" /> Success Metrics
+            </TabsTrigger>
+            <TabsTrigger value="failover" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
+              <AlertTriangle className="w-4 h-4 mr-1.5" /> Failover Events
             </TabsTrigger>
             <TabsTrigger value="logs" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
               <ScrollText className="w-4 h-4 mr-1.5" /> Routing Logs
@@ -820,6 +854,119 @@ export default function AdminSmartRouting() {
                   <p className="text-xs text-zinc-400">
                     <span className="text-white font-medium">Success Rate Based routing</span> uses these metrics to select the best provider. Providers below the configured threshold (default 80%) are deprioritized but remain as fallback. Metrics update on every routed payment attempt.
                   </p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* ── Tab: Failover Events ── */}
+          <TabsContent value="failover">
+            <div className="space-y-4">
+              <p className="text-sm text-zinc-400">
+                Chain-exhaustion events fire when all configured gateways fail repeatedly within a rolling window. Review recent outages and per-provider failure trends here.
+              </p>
+
+              {/* Recent chain-exhaustion events */}
+              <Card className="bg-zinc-900 border-zinc-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-white text-sm flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400" />
+                    Recent Chain-Exhaustion Events
+                  </CardTitle>
+                  <CardDescription className="text-zinc-500 text-xs">
+                    Fired when routing failures cross the alert threshold in a rolling window — all configured gateways failed and merchants may be unable to deposit.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {failoverEventsQ.isLoading ? (
+                    <p className="text-center text-zinc-500 py-6 text-sm">Loading...</p>
+                  ) : (failoverEventsQ.data?.events ?? []).length === 0 ? (
+                    <p className="text-center text-zinc-500 py-6 text-sm">No failover events recorded — the gateway chain hasn't been fully exhausted.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(failoverEventsQ.data?.events ?? []).map(ev => (
+                        <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20">
+                          <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-red-300">
+                                {ev.failureCount} failures in {ev.windowMinutes}m
+                              </span>
+                              <span className="text-xs text-zinc-500">
+                                {new Date(ev.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                              </span>
+                            </div>
+                            <p className="text-xs text-zinc-400 mt-1">
+                              Providers tried: {ev.providersInvolved.length > 0
+                                ? ev.providersInvolved.map(p => <span key={p} className="font-mono text-zinc-300">{p}</span>).reduce((a, b) => <>{a}, {b}</>)
+                                : <span className="text-zinc-600">unknown</span>}
+                              {ev.triggerMerchantId != null && <span className="text-zinc-600"> · triggered by merchant #{ev.triggerMerchantId}</span>}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Rolling failure-rate chart per provider */}
+              <Card className="bg-zinc-900 border-zinc-800">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-white text-sm flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-amber-400" />
+                        Failure Rate Trend
+                      </CardTitle>
+                      <CardDescription className="text-zinc-500 text-xs mt-1">Daily failure rate (%) per provider, computed from routing logs.</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {[7, 14, 30].map(d => (
+                        <Button key={d} variant={trendDays === d ? "default" : "outline"} size="sm"
+                          onClick={() => setTrendDays(d)}
+                          className={trendDays === d ? "bg-violet-600 hover:bg-violet-500 text-white" : "border-zinc-700 text-zinc-400 hover:text-white"}>
+                          {d}d
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {failureTrendQ.isLoading ? (
+                    <p className="text-center text-zinc-500 py-6 text-sm">Loading trend...</p>
+                  ) : (failureTrendQ.data?.trend ?? []).length === 0 ? (
+                    <p className="text-center text-zinc-500 py-6 text-sm">No routing activity in this window yet.</p>
+                  ) : (() => {
+                    const trend = failureTrendQ.data?.trend ?? [];
+                    const providerKeys = Array.from(new Set(trend.map(t => t.providerKey)));
+                    const days = Array.from(new Set(trend.map(t => t.day))).sort();
+                    const chartData = days.map(day => {
+                      const point: Record<string, string | number> = { day };
+                      for (const pk of providerKeys) {
+                        const match = trend.find(t => t.day === day && t.providerKey === pk);
+                        point[pk] = match?.failureRate ?? 0;
+                      }
+                      return point;
+                    });
+                    const colors = ["#f87171", "#fbbf24", "#60a5fa", "#a78bfa", "#34d399", "#f472b6"];
+                    return (
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                            <XAxis dataKey="day" stroke="#71717a" fontSize={11} />
+                            <YAxis stroke="#71717a" fontSize={11} unit="%" />
+                            <Tooltip contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: "#e4e4e7" }} />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            {providerKeys.map((pk, i) => (
+                              <Line key={pk} type="monotone" dataKey={pk} stroke={colors[i % colors.length]} strokeWidth={2} dot={{ r: 3 }} name={pk} />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </div>

@@ -25,8 +25,9 @@ import {
   routingLogsTable,
   providerMetricsTable,
   auditLogsTable,
+  notificationsTable,
 } from "@workspace/db";
-import { eq, and, desc, asc, ne } from "drizzle-orm";
+import { eq, and, desc, asc, ne, gte, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { simulateRouting } from "../helpers/smartRouter";
 
@@ -409,6 +410,104 @@ router.get("/simulate", async (req, res, next) => {
 
     req.log.info({ amount, paymentMode, configName: result.configName, steps: result.steps.length }, "Smart routing simulated (dry-run)");
     res.json(result);
+  } catch (err) { next(err); }
+});
+
+// ── Failover Events & Failure Trends ─────────────────────────────────────────
+
+/**
+ * GET /api/smart-routing/failover-events?limit=20
+ *
+ * Chain-exhaustion events: each admin gets a copy of the `gateway_failover_exhausted`
+ * notification, so events are deduplicated by (createdAt, failureCount, triggerMerchantId)
+ * before returning — one row per real outage alert, not one per admin recipient.
+ * Also includes, per event, the distinct provider keys attempted in the hour window
+ * leading up to the event (from routing_logs) so admins can see which providers were
+ * involved in the exhausted chain.
+ */
+router.get("/failover-events", async (req, res, next) => {
+  try {
+    const limit = Math.min(100, Math.max(1, parseInt((req.query["limit"] as string) ?? "20")));
+
+    const rows = await db.select({
+      id: notificationsTable.id,
+      title: notificationsTable.title,
+      body: notificationsTable.body,
+      metadata: notificationsTable.metadata,
+      createdAt: notificationsTable.createdAt,
+    })
+      .from(notificationsTable)
+      .where(eq(notificationsTable.type, "gateway_failover_exhausted"))
+      .orderBy(desc(notificationsTable.createdAt));
+
+    const seen = new Set<string>();
+    const events: { id: number; createdAt: string; failureCount: number; windowMinutes: number; triggerMerchantId: number | null; providersInvolved: string[] }[] = [];
+
+    for (const r of rows) {
+      const meta = (r.metadata ?? {}) as { failureCount?: number; windowMinutes?: number; triggerMerchantId?: number };
+      const dedupKey = `${r.createdAt.toISOString()}|${meta.failureCount ?? 0}|${meta.triggerMerchantId ?? ""}`;
+      if (seen.has(dedupKey)) continue;
+      seen.add(dedupKey);
+
+      const windowMinutes = meta.windowMinutes ?? 60;
+      const windowStart = new Date(r.createdAt.getTime() - windowMinutes * 60 * 1000);
+      const providerRows = await db.selectDistinct({ providerKey: routingLogsTable.providerKey })
+        .from(routingLogsTable)
+        .where(and(
+          gte(routingLogsTable.createdAt, windowStart),
+          sql`${routingLogsTable.createdAt} <= ${r.createdAt}`,
+          eq(routingLogsTable.result, "failed"),
+        ));
+
+      events.push({
+        id: r.id,
+        createdAt: r.createdAt.toISOString(),
+        failureCount: meta.failureCount ?? 0,
+        windowMinutes,
+        triggerMerchantId: meta.triggerMerchantId ?? null,
+        providersInvolved: providerRows.map(p => p.providerKey),
+      });
+
+      if (events.length >= limit) break;
+    }
+
+    res.json({ events });
+  } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/smart-routing/failure-trend?days=7
+ *
+ * Rolling per-day, per-provider failure-rate trend computed directly from
+ * routing_logs (not the aggregate providerMetricsTable, which only tracks
+ * rolling windows like 24h/7d without a daily breakdown).
+ */
+router.get("/failure-trend", async (req, res, next) => {
+  try {
+    const days = Math.min(30, Math.max(1, parseInt((req.query["days"] as string) ?? "7")));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const rows = await db.select({
+      day: sql<string>`to_char(${routingLogsTable.createdAt}, 'YYYY-MM-DD')`,
+      providerKey: routingLogsTable.providerKey,
+      total: sql<number>`COUNT(*)::int`,
+      failed: sql<number>`COUNT(*) FILTER (WHERE ${routingLogsTable.result} IN ('failed', 'timeout'))::int`,
+    })
+      .from(routingLogsTable)
+      .where(gte(routingLogsTable.createdAt, since))
+      .groupBy(sql`to_char(${routingLogsTable.createdAt}, 'YYYY-MM-DD')`, routingLogsTable.providerKey)
+      .orderBy(sql`to_char(${routingLogsTable.createdAt}, 'YYYY-MM-DD')`);
+
+    res.json({
+      days,
+      trend: rows.map(r => ({
+        day: r.day,
+        providerKey: r.providerKey,
+        totalAttempts: r.total,
+        failedAttempts: r.failed,
+        failureRate: r.total > 0 ? Number(((r.failed / r.total) * 100).toFixed(2)) : 0,
+      })),
+    });
   } catch (err) { next(err); }
 });
 
