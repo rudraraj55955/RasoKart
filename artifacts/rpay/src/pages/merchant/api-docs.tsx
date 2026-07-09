@@ -524,6 +524,14 @@ function findClosestExpiryOption(expiresAt: string): number | null {
   return closest.minutes ?? null;
 }
 
+function getRemainingMinutes(expiresAt: string): number | null {
+  const ts = new Date(expiresAt).getTime();
+  if (!Number.isFinite(ts)) return null;
+  const remainingMs = ts - Date.now();
+  if (remainingMs <= 0) return null;
+  return remainingMs / 60000;
+}
+
 function formatRemainingTime(expiresAt: string): string {
   const ts = new Date(expiresAt).getTime();
   if (!Number.isFinite(ts)) return "expired";
@@ -823,6 +831,7 @@ function TryItPanel({
   }, [buildCurlCommand]);
 
   const [sharePopoverOpen, setSharePopoverOpen] = useState(false);
+  const [hoveredExpiryMinutes, setHoveredExpiryMinutes] = useState<number | null | undefined>(undefined);
   const [showShareWarning, setShowShareWarning] = useState(false);
   const [pendingShareExpiry, setPendingShareExpiry] = useState<number | null>(null);
   const [shareCredentialWarnings, setShareCredentialWarnings] = useState<string[]>([]);
@@ -1297,24 +1306,43 @@ function TryItPanel({
                 {EXPIRY_OPTIONS.map((opt) => {
                   const isSuggested =
                     suggestedExpiryMinutes != null && opt.minutes === suggestedExpiryMinutes;
+                  const originalRemainingMinutes = sharedMatch?.expiresAt
+                    ? getRemainingMinutes(sharedMatch.expiresAt)
+                    : null;
+                  const wouldOutliveOriginal =
+                    opt.minutes != null &&
+                    originalRemainingMinutes != null &&
+                    opt.minutes > originalRemainingMinutes;
                   return (
-                    <button
-                      key={opt.label}
-                      className={`flex items-center gap-2 w-full rounded px-2 py-1.5 text-xs hover:bg-accent transition-colors text-left${isSuggested ? " bg-accent/50 font-medium" : ""}`}
-                      onClick={() => handleShare(opt.minutes)}
-                    >
-                      {opt.minutes == null ? (
-                        <LinkIcon className="w-3 h-3 text-muted-foreground shrink-0" />
-                      ) : (
-                        <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <div key={opt.label}>
+                      <button
+                        className={`flex items-center gap-2 w-full rounded px-2 py-1.5 text-xs hover:bg-accent transition-colors text-left${isSuggested ? " bg-accent/50 font-medium" : ""}`}
+                        onClick={() => handleShare(opt.minutes)}
+                        onMouseEnter={() => setHoveredExpiryMinutes(opt.minutes)}
+                        onMouseLeave={() =>
+                          setHoveredExpiryMinutes((current) => (current === opt.minutes ? undefined : current))
+                        }
+                      >
+                        {opt.minutes == null ? (
+                          <LinkIcon className="w-3 h-3 text-muted-foreground shrink-0" />
+                        ) : (
+                          <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+                        )}
+                        {opt.label}
+                        {isSuggested && (
+                          <span className="ml-auto text-[10px] text-amber-400/80 font-normal shrink-0">
+                            suggested
+                          </span>
+                        )}
+                      </button>
+                      {wouldOutliveOriginal && hoveredExpiryMinutes === opt.minutes && (
+                        <p className="text-[10px] text-amber-400/80 px-2 pb-1 pt-0.5 flex items-start gap-1">
+                          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                          This link will outlive the original (expires in{" "}
+                          {formatRemainingTime(sharedMatch!.expiresAt!)})
+                        </p>
                       )}
-                      {opt.label}
-                      {isSuggested && (
-                        <span className="ml-auto text-[10px] text-amber-400/80 font-normal shrink-0">
-                          suggested
-                        </span>
-                      )}
-                    </button>
+                    </div>
                   );
                 })}
               </PopoverContent>
