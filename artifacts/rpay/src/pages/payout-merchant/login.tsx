@@ -146,6 +146,9 @@ export default function PayoutMerchantLogin() {
           <div className="text-center text-sm text-muted-foreground">
             <Link href="/" className="text-primary hover:underline">← Back to RasoKart</Link>
           </div>
+          <div className="text-center text-xs text-muted-foreground/40 pt-2">
+            Login Build: payout-login-fix-v2
+          </div>
         </form>
       </Form>
     </AuthLayout>
