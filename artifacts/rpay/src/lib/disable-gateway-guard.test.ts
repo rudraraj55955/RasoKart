@@ -142,3 +142,56 @@ describe("CashfreeConfigPanel (Payin) — handleSave() guard invocation scenario
     });
   });
 });
+
+/**
+ * SettingsTab (Cashfree Payout panel in payout-gateway.tsx) — handleSave() guard scenarios
+ *
+ * handleSave() computes:
+ *   const willDisable = (config?.enabled ?? false) === true && currentEnabled === false;
+ *   guardSave(willDisable, doSave);
+ *
+ * This is the identical enable→disable-only predicate used by the Cashfree Payin
+ * panel and the shared computeWillDisable helper. These tests confirm the
+ * Cashfree Payout panel's disable guard never fires spuriously: re-enabling a
+ * previously-disabled payout gateway, or saving unrelated fields (env, limits,
+ * credentials, merchant/bulk toggles, admin approval) while it is already
+ * disabled, must never surface the "Disable Anyway" confirmation dialog.
+ */
+describe("CashfreeConfigPanel (Payout) — handleSave() guard invocation scenarios", () => {
+  describe("must NOT show the 'Disable Anyway' dialog", () => {
+    it("re-enable: server is disabled, user toggles ON — computeWillDisable(false, true) === false", () => {
+      const serverEnabled = false;
+      const currentEnabled = true;
+      const willDisable = computeWillDisable(serverEnabled, currentEnabled);
+      assert.equal(
+        willDisable,
+        false,
+        "Enabling a previously-disabled Cashfree Payout gateway must not trigger the Disable confirmation dialog",
+      );
+    });
+
+    it("save-while-disabled: server is disabled, user does not change toggle — computeWillDisable(false, false) === false", () => {
+      const serverEnabled = false;
+      const currentEnabled = false;
+      const willDisable = computeWillDisable(serverEnabled, currentEnabled);
+      assert.equal(
+        willDisable,
+        false,
+        "Saving other settings (env, limits, credentials, merchant/bulk toggles, admin approval) on an already-disabled Cashfree Payout gateway must not trigger the Disable confirmation dialog",
+      );
+    });
+  });
+
+  describe("SHOULD show the 'Disable Anyway' dialog (positive control)", () => {
+    it("disable: server is enabled, user toggles OFF — computeWillDisable(true, false) === true", () => {
+      const serverEnabled = true;
+      const currentEnabled = false;
+      const willDisable = computeWillDisable(serverEnabled, currentEnabled);
+      assert.equal(
+        willDisable,
+        true,
+        "Disabling an actively-enabled Cashfree Payout gateway MUST trigger the Disable confirmation dialog",
+      );
+    });
+  });
+});
