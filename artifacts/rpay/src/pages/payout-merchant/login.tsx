@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
+import { LoginDebugPanel, INITIAL_LOGIN_DEBUG_STATE, type LoginDebugState } from "@/components/login-debug-panel";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -21,6 +22,7 @@ export default function PayoutMerchantLogin() {
   const [_, setLocation] = useLocation();
   const [isPending, setIsPending] = useState(false);
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
+  const [debugState, setDebugState] = useState<LoginDebugState>(INITIAL_LOGIN_DEBUG_STATE);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -44,12 +46,28 @@ export default function PayoutMerchantLogin() {
           res.headers.get("RateLimit-Reset") ?? res.headers.get("ratelimit-reset");
         const seconds = resetHeader ? parseInt(resetHeader, 10) : 60;
         setRateLimitSeconds(Number.isFinite(seconds) && seconds > 0 ? seconds : 60);
+        setDebugState({
+          apiSuccess: false,
+          tokenExists: false,
+          role: "",
+          merchantType: "",
+          targetPath: "/payout-merchant/dashboard",
+          redirectCalled: false,
+        });
         return;
       }
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         const msg = (body as Record<string, unknown>)["message"] as string | undefined;
+        setDebugState({
+          apiSuccess: false,
+          tokenExists: false,
+          role: "",
+          merchantType: "",
+          targetPath: "/payout-merchant/dashboard",
+          redirectCalled: false,
+        });
         toast.error(msg || "Invalid credentials");
         return;
       }
@@ -80,26 +98,72 @@ export default function PayoutMerchantLogin() {
 
       const token = (body["token"] as string | undefined) ?? "";
 
+      const targetPath = "/payout-merchant/dashboard";
+
       if (!(role === "merchant" && merchantType === "PAYOUT_ONLY")) {
+        setDebugState({
+          apiSuccess: true,
+          tokenExists: !!token,
+          role: role || "",
+          merchantType: merchantType || "",
+          targetPath,
+          redirectCalled: false,
+        });
         toast.error("This portal is for Payout merchants only. Please use the regular merchant login.");
         return;
       }
 
       if (!token) {
+        setDebugState({
+          apiSuccess: true,
+          tokenExists: false,
+          role: role || "",
+          merchantType: merchantType || "",
+          targetPath,
+          redirectCalled: false,
+        });
         toast.error("Login failed. Please try again.");
         return;
       }
 
-      // marker: payout-active-login-hardredirect-v3
+      // marker: payout-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
       // Persist token/user to every storage key any guard could read, then
-      // perform a REAL full-page navigation (window.location.href, not
-      // .replace, not React/wouter navigate) directly in this success
-      // branch — before any return, not inside a useEffect, not gated on
-      // auth-context state resolving.
+      // force a REAL full-page navigation (assign + href + replace,
+      // staggered) directly in this success branch — before any return,
+      // not inside a useEffect, not gated on auth-context state resolving.
       toast.success("Welcome to your Payout Portal.");
-      saveAuthAndRedirect(token, { ...(rawUser ?? {}), role, merchantType }, "/payout-merchant/dashboard");
+      setDebugState({
+        apiSuccess: true,
+        tokenExists: true,
+        role: role || "",
+        merchantType: merchantType || "",
+        targetPath,
+        redirectCalled: false,
+      });
+      saveAuthAndRedirect(
+        token,
+        { ...(rawUser ?? {}), role, merchantType },
+        targetPath,
+        (d) =>
+          setDebugState({
+            apiSuccess: d.apiSuccess,
+            tokenExists: d.tokenPresent,
+            role: d.role,
+            merchantType: d.merchantType,
+            targetPath: d.targetPath,
+            redirectCalled: d.redirectCalled,
+          })
+      );
       return;
     } catch {
+      setDebugState({
+        apiSuccess: false,
+        tokenExists: false,
+        role: "",
+        merchantType: "",
+        targetPath: "/payout-merchant/dashboard",
+        redirectCalled: false,
+      });
       toast.error("Network error. Please try again.");
     } finally {
       setIsPending(false);
@@ -170,9 +234,10 @@ export default function PayoutMerchantLogin() {
             <Link href="/" className="text-primary hover:underline">← Back to RasoKart</Link>
           </div>
           <div className="text-center text-xs text-muted-foreground/40 pt-2">
-            Login Build: payout-active-login-hardredirect-v3
+            Login Build: payout-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
           </div>
         </form>
+        <LoginDebugPanel state={debugState} />
       </Form>
     </AuthLayout>
   );

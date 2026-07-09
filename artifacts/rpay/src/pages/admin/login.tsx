@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
+import { LoginDebugPanel, INITIAL_LOGIN_DEBUG_STATE, type LoginDebugState } from "@/components/login-debug-panel";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -20,6 +21,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
+  const [debugState, setDebugState] = useState<LoginDebugState>(INITIAL_LOGIN_DEBUG_STATE);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -41,20 +43,54 @@ export default function AdminLogin() {
       {
         onSuccess: (res) => {
           if (res.user.role !== UserRole.admin) {
+            setDebugState({
+              apiSuccess: true,
+              tokenExists: !!res.token,
+              role: res.user.role,
+              merchantType: (res.user as unknown as Record<string, unknown>)["merchantType"] as string || "",
+              targetPath: "/admin/dashboard",
+              redirectCalled: false,
+            });
             toast.error("Unauthorized. Admin access required.");
             return;
           }
-          // marker: admin-active-login-hardredirect-v3
+          // marker: admin-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
           // Persist token/user to every storage key any guard could read,
-          // then perform a REAL full-page navigation (window.location.href,
-          // not .replace, not React/wouter navigate) directly in this
-          // success branch — before any return, not inside a useEffect, not
-          // gated on auth-context state resolving.
+          // then force a REAL full-page navigation (assign + href + replace,
+          // staggered) directly in this success branch — before any return,
+          // not inside a useEffect, not gated on auth-context state resolving.
           toast.success("Welcome back, Admin.");
-          saveAuthAndRedirect(res.token, res.user as unknown as Record<string, unknown>, "/admin/dashboard");
+          const targetPath = "/admin/dashboard";
+          const userRecord = res.user as unknown as Record<string, unknown>;
+          setDebugState({
+            apiSuccess: true,
+            tokenExists: !!res.token,
+            role: res.user.role,
+            merchantType: (userRecord["merchantType"] as string) || "",
+            targetPath,
+            redirectCalled: false,
+          });
+          saveAuthAndRedirect(res.token, userRecord, targetPath, (d) =>
+            setDebugState({
+              apiSuccess: d.apiSuccess,
+              tokenExists: d.tokenPresent,
+              role: d.role,
+              merchantType: d.merchantType,
+              targetPath: d.targetPath,
+              redirectCalled: d.redirectCalled,
+            })
+          );
         },
         onError: (err) => {
           const e = err as unknown as Record<string, unknown>;
+          setDebugState({
+            apiSuccess: false,
+            tokenExists: false,
+            role: "",
+            merchantType: "",
+            targetPath: "/admin/dashboard",
+            redirectCalled: false,
+          });
           if (e["status"] === 429) {
             const headers = e["headers"] as Headers | undefined;
             const resetHeader = headers?.get("RateLimit-Reset") ?? headers?.get("ratelimit-reset");
@@ -115,10 +151,11 @@ export default function AdminLogin() {
             {loginMutation.isPending ? "Authenticating..." : "Sign in"}
           </Button>
           <div className="text-center text-xs text-muted-foreground/40 pt-2">
-            Login Build: admin-active-login-hardredirect-v3
+            Login Build: admin-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
           </div>
         </form>
       </Form>
+      <LoginDebugPanel state={debugState} />
     </AuthLayout>
   );
 }

@@ -22,6 +22,7 @@ import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert } from "lucide-react";
 import { SUPPORT_MAILTO } from "@/lib/support-config";
+import { LoginDebugPanel, INITIAL_LOGIN_DEBUG_STATE, type LoginDebugState } from "@/components/login-debug-panel";
 
 const ACCOUNT_SUSPENDED_MESSAGE = "Account suspended. Please contact support.";
 const SAFE_OTP_MESSAGE = "If an account matches that email or mobile number, a login code has been sent.";
@@ -52,9 +53,13 @@ type PasswordLoginValues = z.infer<typeof passwordLoginSchema>;
 function PasswordLoginTab({
   onRateLimited,
   onAccountSuspended,
+  debugState,
+  setDebugState,
 }: {
   onRateLimited: (seconds: number) => void;
   onAccountSuspended: (suspended: boolean) => void;
+  debugState: LoginDebugState;
+  setDebugState: (s: LoginDebugState) => void;
 }) {
   const [_, setLocation] = useLocation();
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
@@ -75,21 +80,55 @@ function PasswordLoginTab({
       { data },
       {
         onSuccess: (res) => {
+          const userRecord = res.user as unknown as Record<string, unknown>;
           if (res.user.role !== UserRole.merchant) {
+            setDebugState({
+              apiSuccess: true,
+              tokenExists: !!res.token,
+              role: res.user.role,
+              merchantType: (userRecord["merchantType"] as string) || "",
+              targetPath: "/merchant/dashboard",
+              redirectCalled: false,
+            });
             toast.error("Unauthorized. Merchant access required.");
             return;
           }
-          // marker: merchant-active-login-hardredirect-v3
+          // marker: merchant-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
           // Persist token/user to every storage key any guard could read,
-          // then perform a REAL full-page navigation (window.location.href,
-          // not .replace, not React/wouter navigate) directly in this
-          // success branch — before any return, not inside a useEffect, not
-          // gated on auth-context state resolving.
+          // then force a REAL full-page navigation (assign + href + replace,
+          // staggered) directly in this success branch — before any return,
+          // not inside a useEffect, not gated on auth-context state resolving.
           toast.success("Welcome back.");
-          saveAuthAndRedirect(res.token, res.user as unknown as Record<string, unknown>, "/merchant/dashboard");
+          const targetPath = "/merchant/dashboard";
+          setDebugState({
+            apiSuccess: true,
+            tokenExists: !!res.token,
+            role: res.user.role,
+            merchantType: (userRecord["merchantType"] as string) || "",
+            targetPath,
+            redirectCalled: false,
+          });
+          saveAuthAndRedirect(res.token, userRecord, targetPath, (d) =>
+            setDebugState({
+              apiSuccess: d.apiSuccess,
+              tokenExists: d.tokenPresent,
+              role: d.role,
+              merchantType: d.merchantType,
+              targetPath: d.targetPath,
+              redirectCalled: d.redirectCalled,
+            })
+          );
         },
         onError: (err) => {
           const { status, message, headers } = getErrorInfo(err);
+          setDebugState({
+            apiSuccess: false,
+            tokenExists: false,
+            role: "",
+            merchantType: "",
+            targetPath: "/merchant/dashboard",
+            redirectCalled: false,
+          });
           if (status === 429) {
             const seconds = extractRateLimitSeconds(headers);
             setRateLimitSeconds(seconds);
@@ -147,9 +186,10 @@ function PasswordLoginTab({
           {loginMutation.isPending ? "Authenticating..." : "Sign in"}
         </Button>
         <div className="text-center text-xs text-muted-foreground/40 pt-2">
-          Login Build: merchant-active-login-hardredirect-v3
+          Login Build: merchant-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
         </div>
       </form>
+      <LoginDebugPanel state={debugState} />
     </Form>
   );
 }
@@ -166,7 +206,15 @@ const otpCodeSchema = z.object({
 });
 type OtpCodeValues = z.infer<typeof otpCodeSchema>;
 
-function OtpLoginTab({ onRateLimited }: { onRateLimited: (seconds: number) => void }) {
+function OtpLoginTab({
+  onRateLimited,
+  debugState,
+  setDebugState,
+}: {
+  onRateLimited: (seconds: number) => void;
+  debugState: LoginDebugState;
+  setDebugState: (s: LoginDebugState) => void;
+}) {
   const [_, setLocation] = useLocation();
   const [stage, setStage] = useState<"identifier" | "otp">("identifier");
   const [identifier, setIdentifier] = useState("");
@@ -260,16 +308,51 @@ function OtpLoginTab({ onRateLimited }: { onRateLimited: (seconds: number) => vo
       { data: { identifier, otp: data.otp } },
       {
         onSuccess: (res) => {
+          const userRecord = res.user as unknown as Record<string, unknown>;
           if (res.user.role !== UserRole.merchant) {
+            setDebugState({
+              apiSuccess: true,
+              tokenExists: !!res.token,
+              role: res.user.role,
+              merchantType: (userRecord["merchantType"] as string) || "",
+              targetPath: "/merchant/dashboard",
+              redirectCalled: false,
+            });
             toast.error("Unauthorized. Merchant access required.");
             return;
           }
-          // marker: merchant-active-login-hardredirect-v3
+          // marker: merchant-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
           toast.success("Welcome back.");
-          saveAuthAndRedirect(res.token, res.user as unknown as Record<string, unknown>, "/merchant/dashboard");
+          const targetPath = "/merchant/dashboard";
+          setDebugState({
+            apiSuccess: true,
+            tokenExists: !!res.token,
+            role: res.user.role,
+            merchantType: (userRecord["merchantType"] as string) || "",
+            targetPath,
+            redirectCalled: false,
+          });
+          saveAuthAndRedirect(res.token, userRecord, targetPath, (d) =>
+            setDebugState({
+              apiSuccess: d.apiSuccess,
+              tokenExists: d.tokenPresent,
+              role: d.role,
+              merchantType: d.merchantType,
+              targetPath: d.targetPath,
+              redirectCalled: d.redirectCalled,
+            })
+          );
         },
         onError: (err) => {
           const { status, message, headers } = getErrorInfo(err);
+          setDebugState({
+            apiSuccess: false,
+            tokenExists: false,
+            role: "",
+            merchantType: "",
+            targetPath: "/merchant/dashboard",
+            redirectCalled: false,
+          });
           if (status === 429) {
             onRateLimited(extractRateLimitSeconds(headers));
             return;
@@ -352,6 +435,7 @@ function OtpLoginTab({ onRateLimited }: { onRateLimited: (seconds: number) => vo
           </button>
         </div>
       </form>
+      <LoginDebugPanel state={debugState} />
     </Form>
   );
 }
@@ -591,6 +675,7 @@ export default function MerchantLogin() {
   const [tab, setTab] = useState<"password" | "otp" | "forgot">("password");
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
   const [accountSuspended, setAccountSuspended] = useState(false);
+  const [debugState, setDebugState] = useState<LoginDebugState>(INITIAL_LOGIN_DEBUG_STATE);
 
   return (
     <AuthLayout title="Merchant Portal" subtitle="Sign in to your RasoKart dashboard">
@@ -633,11 +718,17 @@ export default function MerchantLogin() {
           <PasswordLoginTab
             onRateLimited={setRateLimitSeconds}
             onAccountSuspended={setAccountSuspended}
+            debugState={debugState}
+            setDebugState={setDebugState}
           />
         </TabsContent>
 
         <TabsContent value="otp">
-          <OtpLoginTab onRateLimited={setRateLimitSeconds} />
+          <OtpLoginTab
+            onRateLimited={setRateLimitSeconds}
+            debugState={debugState}
+            setDebugState={setDebugState}
+          />
         </TabsContent>
 
         <TabsContent value="forgot">

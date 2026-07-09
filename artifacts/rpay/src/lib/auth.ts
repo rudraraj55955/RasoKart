@@ -54,22 +54,49 @@ export function setLegacyAuthKeys(token: string, user: Record<string, unknown>) 
  * a useEffect, never gated on auth-context state). Persists the token/user
  * under every key any guard in the app might read (both the real
  * rasokart_* keys and the generic token/authToken/user/authUser aliases, in
- * both localStorage and sessionStorage), then performs a real full-page
- * navigation via `window.location.href`. A real navigation (not
- * `.replace`/pushState) guarantees the next page is served fresh from the
- * server and picks up the just-written storage with no SPA router state to
- * fight with.
+ * both localStorage and sessionStorage), then forces navigation using three
+ * independent methods staggered over time (marker: live-login-debug-hardredirect-v4):
+ *   1. window.location.assign(targetPath) — immediately
+ *   2. window.location.href = targetPath — after 100ms (in case assign was
+ *      intercepted/no-opped by an extension or proxy quirk)
+ *   3. window.location.replace(targetPath) — after 300ms (final fallback)
+ * Once the first navigation actually takes effect the page unloads and the
+ * later timeouts never fire, so this is safe to call unconditionally.
  */
 export function saveAuthAndRedirect(
   token: string,
   user: Record<string, unknown>,
-  targetPath: string
+  targetPath: string,
+  onDebug?: (state: {
+    apiSuccess: boolean;
+    tokenPresent: boolean;
+    role: string;
+    merchantType: string;
+    targetPath: string;
+    redirectCalled: boolean;
+  }) => void
 ) {
   if (typeof window === "undefined") return;
+  const tokenPresent = !!token;
+  const role = typeof user["role"] === "string" ? (user["role"] as string) : "";
+  const merchantType = typeof user["merchantType"] === "string" ? (user["merchantType"] as string) : "";
+
   setToken(token);
   setStoredUser(user);
   setLegacyAuthKeys(token, user);
-  window.location.href = targetPath;
+
+  // eslint-disable-next-line no-console
+  console.log("LOGIN_SUCCESS_DEBUG", { tokenPresent, user, targetPath });
+
+  onDebug?.({ apiSuccess: true, tokenPresent, role, merchantType, targetPath, redirectCalled: true });
+
+  window.location.assign(targetPath);
+  setTimeout(() => {
+    window.location.href = targetPath;
+  }, 100);
+  setTimeout(() => {
+    window.location.replace(targetPath);
+  }, 300);
 }
 
 export function getStoredUser(): Record<string, unknown> | null {

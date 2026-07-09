@@ -10,9 +10,11 @@ interface ProtectedRouteProps {
   allowedRoles?: string[];
 }
 
-function AuthRedirect({ to }: { to: string }) {
+function AuthRedirect({ to, reason }: { to: string; reason: string }) {
   const [, setLocation] = useLocation();
   useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("GUARD_REDIRECT_DEBUG", { to, reason, marker: "live-login-debug-hardredirect-v4" });
     setLocation(to, { replace: true } as Parameters<typeof setLocation>[1]);
   }, [to]);
   return (
@@ -56,6 +58,23 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   const effectiveUser = user ?? (fallbackToken && fallbackUser ? fallbackUser : null);
   const effectiveIsLoading = isLoading && !effectiveUser;
 
+  const allowedRoleResult = !allowedRoles || (!!effectiveUser && allowedRoles.includes(effectiveUser.role));
+
+  // eslint-disable-next-line no-console
+  console.log("PROTECTED_ROUTE_GUARD_DEBUG", {
+    marker: "live-login-debug-hardredirect-v4",
+    location,
+    tokenFound: !!fallbackToken,
+    userFound: !!fallbackUser,
+    contextUserPresent: !!user,
+    effectiveUserPresent: !!effectiveUser,
+    effectiveUserRole: effectiveUser?.role ?? null,
+    allowedRoles: allowedRoles ?? null,
+    allowedRoleResult,
+    isLoading,
+    effectiveIsLoading,
+  });
+
   if (effectiveIsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -65,11 +84,21 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   if (!effectiveUser) {
-    return <AuthRedirect to={getLoginPath(location)} />;
+    return (
+      <AuthRedirect
+        to={getLoginPath(location)}
+        reason={`no effective user (tokenFound=${!!fallbackToken}, userFound=${!!fallbackUser}, contextUser=${!!user})`}
+      />
+    );
   }
 
   if (allowedRoles && !allowedRoles.includes(effectiveUser.role)) {
-    return <AuthRedirect to={getHomePath(effectiveUser.role)} />;
+    return (
+      <AuthRedirect
+        to={getHomePath(effectiveUser.role)}
+        reason={`role "${effectiveUser.role}" not in allowedRoles [${(allowedRoles ?? []).join(", ")}]`}
+      />
+    );
   }
 
   return <>{children}</>;
