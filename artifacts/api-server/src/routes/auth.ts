@@ -116,7 +116,28 @@ router.post(["/login", "/merchant/login"], loginLimiter, async (req, res, next) 
       return;
     }
     const normalizedEmail = (email as string).toLowerCase().trim();
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
+    // Explicit column list (not select-all) so this route tolerates users
+    // schema drift — a users column added after a given deploy's schema
+    // snapshot must never break login on an environment that hasn't run
+    // that migration yet. Keep this list limited to what the handler below
+    // actually reads.
+    const [user] = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        passwordHash: usersTable.passwordHash,
+        name: usersTable.name,
+        role: usersTable.role,
+        isActive: usersTable.isActive,
+        merchantId: usersTable.merchantId,
+        createdAt: usersTable.createdAt,
+        lastLoginAt: usersTable.lastLoginAt,
+        lastSeenIp: usersTable.lastSeenIp,
+        loginAlertEmails: usersTable.loginAlertEmails,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.email, normalizedEmail))
+      .limit(1);
     if (!user) {
       req.log.warn({ email: normalizedEmail, reason: "user_not_found" }, "login_401");
       res.status(401).json({ error: "Invalid credentials" });
