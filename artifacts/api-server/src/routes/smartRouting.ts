@@ -239,6 +239,24 @@ router.put("/rules/:id", async (req, res, next) => {
           return;
         }
       }
+    } else if (isEnabled === true && existing.isEnabled === false) {
+      // Re-enabling a disabled rule without changing priority: the effective priority
+      // stays existing.priority, so it can still collide with another already-enabled rule.
+      const effectivePriority = priority !== undefined ? priority : existing.priority;
+      const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
+        .from(routingRulesTable)
+        .where(and(
+          eq(routingRulesTable.configId, existing.configId),
+          eq(routingRulesTable.priority, effectivePriority),
+          eq(routingRulesTable.isEnabled, true),
+          ne(routingRulesTable.id, id),
+        )).limit(1);
+      if (conflicting) {
+        res.status(409).json({
+          error: `Priority ${effectivePriority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`,
+        });
+        return;
+      }
     }
 
     const updateSet: Record<string, unknown> = {};
