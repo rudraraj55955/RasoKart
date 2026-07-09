@@ -981,6 +981,7 @@ export default function AdminSettings() {
   // retryingFromModal must be declared before the history hook so its value can control the refetch interval
   const [retryingFromModal, setRetryingFromModal] = useState(false);
   const [retryResult, setRetryResult] = useState<GithubSyncHistoryEntry | null>(null);
+  const [viewRetryRunLog, setViewRetryRunLog] = useState(false);
   // Timestamp recorded when a retry is triggered — used to distinguish a brand-new
   // retry entry from any older entries that already carry the same retryOf value.
   const retryStartedAtRef = useRef<Date | null>(null);
@@ -1027,6 +1028,11 @@ export default function AdminSettings() {
   const { data: selectedSyncRunLog, isLoading: selectedSyncRunLogLoading, isError: selectedSyncRunLogError } = useGetGithubSyncRunLog(
     selectedSyncRun?.id ?? "",
     { query: { enabled: !!selectedSyncRun?.id && !!selectedSyncRun?.hasLog } } as any,
+  );
+
+  const { data: retryRunLog, isLoading: retryRunLogLoading, isError: retryRunLogError } = useGetGithubSyncRunLog(
+    retryResult?.id ?? "",
+    { query: { enabled: !!retryResult?.id && !!retryResult?.hasLog && viewRetryRunLog } } as any,
   );
 
   // Watch history for the retry entry — do NOT depend on githubSyncIsRunning because
@@ -3711,6 +3717,16 @@ export default function AdminSettings() {
                             {retryResult.errorMessage}
                           </p>
                         )}
+                        {retryResult.hasLog && (
+                          <button
+                            type="button"
+                            className="text-[11px] text-violet-400 hover:underline flex items-center gap-1 mt-0.5"
+                            onClick={() => setViewRetryRunLog(true)}
+                          >
+                            <Eye className="w-3 h-3 shrink-0" />
+                            View full log
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -3765,6 +3781,60 @@ export default function AdminSettings() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Retry run full log modal */}
+      <Dialog open={viewRetryRunLog} onOpenChange={open => { if (!open) setViewRetryRunLog(false); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[calc(100dvh-4rem)] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {retryResult?.status === "success"
+                ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                : <XCircle className="w-4 h-4 text-red-400" />}
+              Retry Run Log{retryResult?.syncedAt ? ` — ${new Date(retryResult.syncedAt).toLocaleString()}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm overflow-y-auto">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg bg-muted/20 p-3">
+                <p className="text-xs text-muted-foreground mb-1">Repository</p>
+                <p className="text-xs font-mono">{retryResult?.repo ?? "—"}</p>
+              </div>
+              <div className="rounded-lg bg-muted/20 p-3">
+                <p className="text-xs text-muted-foreground mb-1">Status</p>
+                <p className={`text-xs font-medium ${retryResult?.status === "success" ? "text-emerald-400" : "text-red-400"}`}>
+                  {retryResult?.status ?? "—"}
+                </p>
+              </div>
+            </div>
+            {retryResult?.status === "failure" && retryResult.errorMessage && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">Error detail</p>
+                <pre className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300 whitespace-pre-wrap break-all">
+                  {retryResult.errorMessage}
+                </pre>
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">Full log</p>
+              {retryRunLogLoading && (
+                <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-muted/5 px-3 py-2.5">
+                  Loading log…
+                </p>
+              )}
+              {!retryRunLogLoading && retryRunLogError && (
+                <p className="text-xs text-muted-foreground rounded-lg border border-border/50 bg-muted/5 px-3 py-2.5">
+                  Could not load the full log for this run.
+                </p>
+              )}
+              {!retryRunLogLoading && !retryRunLogError && retryRunLog && (
+                <pre className="rounded-lg border border-border/50 bg-black/30 p-3 text-[11px] font-mono text-muted-foreground whitespace-pre-wrap break-all max-h-80 overflow-y-auto">
+                  {retryRunLog.log}
+                </pre>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
