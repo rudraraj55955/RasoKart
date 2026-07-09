@@ -355,6 +355,15 @@ function extractPathParams(path: string): string[] {
 
 let queryParamRowId = 0;
 
+const DESTRUCTIVE_PATH_KEYWORDS = [
+  "suspend",
+  "reinstate",
+  "reject",
+  "approve",
+  "retry",
+  "adjust",
+];
+
 interface SavedQueryPreset {
   id: string;
   name: string;
@@ -797,7 +806,17 @@ function TryItPanel({
     return lines.join(" \\\n");
   }, [method, buildUrl, requiresAuth, localToken, hasBody, body]);
 
-  const handleRun = useCallback(async () => {
+  const isDestructive = useMemo(() => {
+    if (method === "DELETE") return true;
+    if (method === "POST") {
+      return DESTRUCTIVE_PATH_KEYWORDS.some((keyword) => path.toLowerCase().includes(keyword));
+    }
+    return false;
+  }, [method, path]);
+
+  const [confirmingRun, setConfirmingRun] = useState(false);
+
+  const executeRun = useCallback(async () => {
     setLoading(true);
     setResponse(null);
     const url = buildUrl();
@@ -841,6 +860,19 @@ function TryItPanel({
       setLoading(false);
     }
   }, [buildUrl, method, requiresAuth, localToken, hasBody, body]);
+
+  const handleRun = useCallback(() => {
+    if (isDestructive && !confirmingRun) {
+      setConfirmingRun(true);
+      return;
+    }
+    setConfirmingRun(false);
+    void executeRun();
+  }, [isDestructive, confirmingRun, executeRun]);
+
+  const handleCancelConfirm = useCallback(() => {
+    setConfirmingRun(false);
+  }, []);
 
   const addQueryParam = useCallback((key = "", value = "") => {
     setQueryParams((prev) => [...prev, { id: ++queryParamRowId, key, value }]);
@@ -1282,12 +1314,39 @@ function TryItPanel({
             </div>
           )}
 
+          {confirmingRun && (
+            <div className="flex items-center gap-2 flex-wrap rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-300" />
+              <span className="font-medium">This will modify live data — confirm?</span>
+              <div className="flex items-center gap-2 ml-auto">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={handleRun}
+                >
+                  <Play className="w-3 h-3" />
+                  Confirm & Run
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={handleCancelConfirm}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               size="sm"
               className="h-8 gap-1.5 text-xs"
               onClick={handleRun}
               disabled={loading}
+              variant={isDestructive ? "destructive" : "default"}
             >
               {loading ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
