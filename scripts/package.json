@@ -13,18 +13,21 @@
     "verify-ekqr-disable-guard": "tsx ./src/verify-ekqr-disable-guard.ts",
     "test:ekqr-disable-guard": "playwright test --config=playwright.config.ts e2e/ekqr-disable-guard.spec.ts",
     "test:settings-persistence": "playwright test --config=playwright.config.ts e2e/settings-persistence.spec.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify-alert-email-samples": "tsx ./src/verify-alert-email-samples.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
     "@workspace/demo-credentials": "workspace:*",
     "@workspace/mailer": "workspace:*",
-    "bcryptjs": "^3.0.3"
+    "bcryptjs": "^3.0.3",
+    "nodemailer": "catalog:"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/node": "catalog:",
+    "@types/nodemailer": "catalog:",
     "drizzle-orm": "catalog:",
     "tsx": "catalog:"
   }
