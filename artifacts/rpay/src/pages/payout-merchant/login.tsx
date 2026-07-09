@@ -3,6 +3,7 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/lib/auth-context";
+import { setToken } from "@/lib/auth";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
@@ -90,9 +91,19 @@ export default function PayoutMerchantLogin() {
         return;
       }
 
+      if (!token) {
+        toast.error("Login failed. Please try again.");
+        return;
+      }
+
+      // Write the token to the same storage key/context the protected
+      // payout-merchant routes read from BEFORE navigating, so the route
+      // guard never sees a stale/empty auth state on the first render of
+      // the destination route.
+      setToken(token);
       setAuthToken(token);
       toast.success("Welcome to your Payout Portal.");
-      setLocation("/payout-merchant/dashboard");
+      setLocation("/payout-merchant/dashboard", { replace: true } as Parameters<typeof setLocation>[1]);
     } catch {
       toast.error("Network error. Please try again.");
     } finally {
@@ -164,7 +175,7 @@ export default function PayoutMerchantLogin() {
             <Link href="/" className="text-primary hover:underline">← Back to RasoKart</Link>
           </div>
           <div className="text-center text-xs text-muted-foreground/40 pt-2">
-            Login Build: payout-login-guard-fix-v1
+            Login Build: payout-login-redirect-fix-v1
           </div>
         </form>
       </Form>
