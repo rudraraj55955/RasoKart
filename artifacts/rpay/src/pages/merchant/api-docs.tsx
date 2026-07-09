@@ -394,6 +394,15 @@ async function fetchPresetsFromServer(token: string): Promise<Record<string, Sav
   }
 }
 
+function applyServerPresets(serverPresets: Record<string, SavedQueryPreset[]>) {
+  try {
+    localStorage.setItem(TRY_IT_PRESETS_STORAGE_KEY, JSON.stringify(serverPresets));
+    dispatchPresetsChanged();
+  } catch {
+    // ignore — localStorage may be unavailable
+  }
+}
+
 async function pushPresetsToServer(
   all: Record<string, SavedQueryPreset[]>,
   token: string
@@ -1784,10 +1793,19 @@ function parsePresetsExportFile(raw: string): PresetsExportFile | null {
   }
 }
 
-function ManagePresetsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+function ManagePresetsDialog({
+  open,
+  onOpenChange,
+  onManualSync,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onManualSync?: () => Promise<void>;
+}) {
   const [presets, setPresets] = useState<FlatPreset[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [syncing, setSyncing] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => {
@@ -1926,6 +1944,30 @@ function ManagePresetsDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         </DialogHeader>
 
         <div className="flex items-center gap-2 pt-1">
+          {onManualSync && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              disabled={syncing}
+              onClick={async () => {
+                setSyncing(true);
+                try {
+                  await onManualSync();
+                  toast.success("Checked server for the latest presets");
+                } finally {
+                  setSyncing(false);
+                }
+              }}
+            >
+              {syncing ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Terminal className="w-3 h-3" />
+              )}
+              Sync
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -2045,6 +2087,8 @@ export default function ApiDocs() {
     () => readSharedPresetFromLocation()
   );
   const [managePresetsOpen, setManagePresetsOpen] = useState(false);
+  const [presetUpdateAvailable, setPresetUpdateAvailable] = useState(false);
+  const pendingServerPresetsRef = useRef<Record<string, SavedQueryPreset[]> | null>(null);
 
   useEffect(() => {
     if (sharedPreset || sharedLinkExpired) {
@@ -2078,12 +2122,7 @@ export default function ApiDocs() {
       const serverPresets = await fetchPresetsFromServer(token);
       if (cancelled) return;
       if (serverPresets && Object.keys(serverPresets).length > 0) {
-        try {
-          localStorage.setItem(TRY_IT_PRESETS_STORAGE_KEY, JSON.stringify(serverPresets));
-          dispatchPresetsChanged();
-        } catch {
-          // ignore
-        }
+        applyServerPresets(serverPresets);
       } else {
         // Server has no presets — migrate from localStorage if there's anything there
         const local = loadAllPresets();
@@ -2096,6 +2135,50 @@ export default function ApiDocs() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Periodically poll the server for presets saved from another device/tab in this
+  // same session. We don't auto-overwrite local state (the user may be mid-edit) —
+  // instead we surface a subtle "newer presets available" indicator the user can
+  // act on, or dismiss by continuing to work locally (next save will push over it).
+  const checkForServerUpdate = useCallback(async () => {
+    const token = tokenRef.current;
+    if (!token) return;
+    const serverPresets = await fetchPresetsFromServer(token);
+    if (!serverPresets) return;
+    const serverJson = JSON.stringify(serverPresets);
+    const localJson = JSON.stringify(loadAllPresets());
+    if (serverJson !== localJson) {
+      pendingServerPresetsRef.current = serverPresets;
+      setPresetUpdateAvailable(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void checkForServerUpdate();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [checkForServerUpdate]);
+
+  const applyPendingServerUpdate = useCallback(() => {
+    const pending = pendingServerPresetsRef.current;
+    if (!pending) return;
+    applyServerPresets(pending);
+    pendingServerPresetsRef.current = null;
+    setPresetUpdateAvailable(false);
+    toast.success("Presets synced from server");
+  }, []);
+
+  // Clear the indicator whenever any save happens locally (that save just pushed to
+  // the server, so we're no longer behind it).
+  useEffect(() => {
+    const handler = () => {
+      pendingServerPresetsRef.current = null;
+      setPresetUpdateAvailable(false);
+    };
+    window.addEventListener(PRESETS_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(PRESETS_CHANGED_EVENT, handler);
   }, []);
 
   const handleTokenChange = (val: string) => {
@@ -2116,18 +2199,37 @@ export default function ApiDocs() {
             Reference for integrating RasoKart payment APIs into your application.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5 shrink-0"
-          onClick={() => setManagePresetsOpen(true)}
-        >
-          <Star className="w-3.5 h-3.5" />
-          Manage saved presets
-        </Button>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setManagePresetsOpen(true)}
+          >
+            <Star className="w-3.5 h-3.5" />
+            Manage saved presets
+          </Button>
+          {presetUpdateAvailable && (
+            <button
+              type="button"
+              onClick={applyPendingServerUpdate}
+              className="flex items-center gap-1.5 text-[11px] text-primary hover:text-primary/80 transition-colors"
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-75 animate-ping" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+              </span>
+              Newer presets available — sync now
+            </button>
+          )}
+        </div>
       </div>
 
-      <ManagePresetsDialog open={managePresetsOpen} onOpenChange={setManagePresetsOpen} />
+      <ManagePresetsDialog
+        open={managePresetsOpen}
+        onOpenChange={setManagePresetsOpen}
+        onManualSync={checkForServerUpdate}
+      />
 
       {sharedLinkExpired && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
