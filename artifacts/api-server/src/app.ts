@@ -51,6 +51,18 @@ app.get("/api/_deploy/rasokart-dist-only.tgz", (req: Request, res: Response) => 
   res.sendFile(path.resolve(filePath));
 });
 
+// TEMPORARY: api-server dist-only patch download — remove after VPS deploy
+app.get("/api/_deploy/rasokart-api-dist-only.tgz", (req: Request, res: Response) => {
+  const filePath = "/tmp/rasokart-api-dist-only.tgz";
+  if (!fs.existsSync(filePath)) {
+    res.status(404).json({ error: "patch file not found" });
+    return;
+  }
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", "attachment; filename=rasokart-api-dist-only.tgz");
+  res.sendFile(path.resolve(filePath));
+});
+
 // Global error handler — maps DB/unknown errors to safe structured JSON;
 // never forwards raw SQL, column names, stack traces, or secrets to clients.
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {

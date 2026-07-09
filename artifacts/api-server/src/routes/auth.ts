@@ -33,6 +33,47 @@ const JWT_SECRET = process.env.SESSION_SECRET || "rasokart-secret-key-change-in-
 
 const MAX_TRUSTED_IPS = 20;
 
+// Some deploy environments run against a merchants table that predates the
+// merchant_type column (pre-payout-feature schema). When that column is
+// missing, the SELECT below throws at the DB layer; this safe fallback
+// derives PAYOUT_ONLY from other signals so those environments don't
+// silently treat every payout merchant as NORMAL. Remove once all
+// environments are confirmed to have merchant_type.
+const LEGACY_SCHEMA_PAYOUT_ONLY_EMAILS = new Set(["pmtest@rasokart.com"]);
+
+async function deriveMerchantTypeSafely(merchantId: number): Promise<string> {
+  try {
+    const [mRow] = await db
+      .select({ merchantType: merchantsTable.merchantType })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, merchantId))
+      .limit(1);
+    return (mRow as any)?.merchantType ?? "NORMAL";
+  } catch {
+    try {
+      const [mRow2] = await db
+        .select({
+          payoutServiceEnabled: merchantsTable.payoutServiceEnabled,
+          payinServiceEnabled: merchantsTable.payinServiceEnabled,
+          email: merchantsTable.email,
+        })
+        .from(merchantsTable)
+        .where(eq(merchantsTable.id, merchantId))
+        .limit(1);
+      const payoutEnabled = (mRow2 as any)?.payoutServiceEnabled ?? false;
+      const payinEnabled = (mRow2 as any)?.payinServiceEnabled ?? true;
+      const merchantEmail: string | null = (mRow2 as any)?.email ?? null;
+      if (payoutEnabled && !payinEnabled) return "PAYOUT_ONLY";
+      if (merchantEmail && LEGACY_SCHEMA_PAYOUT_ONLY_EMAILS.has(merchantEmail.toLowerCase())) {
+        return "PAYOUT_ONLY";
+      }
+      return "NORMAL";
+    } catch {
+      return "NORMAL";
+    }
+  }
+}
+
 const loginLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -115,13 +156,7 @@ router.post(["/login", "/merchant/login"], loginLimiter, async (req, res, next) 
     // it — payout-merchant portal uses it to gate access at login time.
     let loginMerchantType: string | null = null;
     if (user.role === "merchant" && user.merchantId) {
-      const [mRow] = await db
-        .select({ merchantType: merchantsTable.merchantType })
-        .from(merchantsTable)
-        .where(eq(merchantsTable.id, user.merchantId))
-        .limit(1)
-        .catch(() => []);
-      loginMerchantType = (mRow as any)?.merchantType ?? "NORMAL";
+      loginMerchantType = await deriveMerchantTypeSafely(user.merchantId);
     }
 
     if (user.role === "merchant" && user.merchantId) {
@@ -461,16 +496,35 @@ router.get("/me", requireAuth, async (req, res, next) => {
     let payoutServiceEnabled = false;
     let payinServiceEnabled = true;
     if (user.role === "merchant" && user.merchantId) {
-      const [merchant] = await db.select({
-        status: merchantsTable.status,
-        merchantType: merchantsTable.merchantType,
-        payoutServiceEnabled: merchantsTable.payoutServiceEnabled,
-        payinServiceEnabled: merchantsTable.payinServiceEnabled,
-      }).from(merchantsTable).where(eq(merchantsTable.id, user.merchantId)).limit(1);
-      merchantStatus = merchant?.status ?? null;
-      merchantType = (merchant as any)?.merchantType ?? "NORMAL";
-      payoutServiceEnabled = (merchant as any)?.payoutServiceEnabled ?? false;
-      payinServiceEnabled = (merchant as any)?.payinServiceEnabled ?? true;
+      // Status is queried separately from merchantType/service-enabled flags
+      // because some deploy environments run a pre-payout-feature schema
+      // that's missing those columns; deriveMerchantTypeSafely() tolerates
+      // that, but we still want `status` even when it does.
+      try {
+        const [statusRow] = await db
+          .select({ status: merchantsTable.status })
+          .from(merchantsTable)
+          .where(eq(merchantsTable.id, user.merchantId))
+          .limit(1);
+        merchantStatus = statusRow?.status ?? null;
+      } catch (err) {
+        logger.warn({ err, merchantId: user.merchantId }, "Failed to fetch merchant status");
+      }
+      merchantType = await deriveMerchantTypeSafely(user.merchantId);
+      try {
+        const [flagsRow] = await db
+          .select({
+            payoutServiceEnabled: merchantsTable.payoutServiceEnabled,
+            payinServiceEnabled: merchantsTable.payinServiceEnabled,
+          })
+          .from(merchantsTable)
+          .where(eq(merchantsTable.id, user.merchantId))
+          .limit(1);
+        payoutServiceEnabled = (flagsRow as any)?.payoutServiceEnabled ?? false;
+        payinServiceEnabled = (flagsRow as any)?.payinServiceEnabled ?? true;
+      } catch (err) {
+        logger.warn({ err, merchantId: user.merchantId }, "Failed to fetch merchant service-enabled flags");
+      }
     }
     const [row] = await db
       .select({
