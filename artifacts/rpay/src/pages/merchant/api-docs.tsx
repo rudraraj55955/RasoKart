@@ -670,6 +670,8 @@ function TryItPanel({
   const [open, setOpen] = useState(() => !!sharedMatch);
   // If the sharer explicitly included their token (stripToken was unchecked), hydrate it.
   const [localToken, setLocalToken] = useState(() => sharedMatch?.localToken ?? token);
+  const [tokenWarningDismissed, setTokenWarningDismissed] = useState(false);
+  const showTokenWarning = !!sharedMatch?.localToken && !tokenWarningDismissed;
   const [body, setBody] = useState(() => sharedMatch?.body ?? defaultBody);
   const [pathValues, setPathValues] = useState<Record<string, string>>(
     () => sharedMatch?.pathValues ?? {}
@@ -996,6 +998,25 @@ function TryItPanel({
 
       {open && (
         <div className="px-3 pb-3 space-y-3 border-t border-border/30 pt-3">
+          {showTokenWarning && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-1">
+                <p className="text-xs text-amber-300">
+                  This shared link includes a live auth token. Whoever sent it to you shared a real credential —
+                  only use it if you trust the source, and consider asking them to rotate their API key.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTokenWarningDismissed(true)}
+                className="text-amber-400/70 hover:text-amber-300 transition-colors shrink-0"
+                aria-label="Dismiss auth token warning"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Saved Presets</Label>
             {presets.length > 0 && (
