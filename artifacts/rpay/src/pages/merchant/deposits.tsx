@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import {
   ArrowDownLeft,
@@ -342,6 +343,7 @@ export default function MerchantDeposits() {
   const [dateFrom, setDateFrom] = useState(() => _urlParams.get("from") ?? ((() => { try { return localStorage.getItem(LAST_DATE_FROM_KEY_DEPOSITS) ?? ""; } catch { return ""; } })()));
   const [dateTo, setDateTo] = useState(() => _urlParams.get("to") ?? ((() => { try { return localStorage.getItem(LAST_DATE_TO_KEY_DEPOSITS) ?? ""; } catch { return ""; } })()));
   const [page, setPage] = useState(1);
+  const [selectedDeposit, setSelectedDeposit] = useState<any>(null);
   const [provider, setProvider] = useState(() => _urlParams.get("provider") ?? "all");
   const [exporting, setExporting] = useState(false);
   const [lastExportCount, setLastExportCount] = useState<number | null>(null);
@@ -1872,7 +1874,7 @@ export default function MerchantDeposits() {
                   if (m.sourceType) sourceInfo = `${m.sourceType === "qr" ? "QR" : "VA"} #${m.sourceId}`;
                 } catch {}
                 return (
-                  <TableRow key={t.id}>
+                  <TableRow key={t.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setSelectedDeposit(t)}>
                     <TableCell className="font-mono text-xs text-muted-foreground">#{t.id}</TableCell>
                     <TableCell className="font-mono font-semibold text-emerald-400">
                       ₹{Number(t.amount).toLocaleString()}
@@ -2179,6 +2181,81 @@ export default function MerchantDeposits() {
         </DialogContent>
       </Dialog>
       <AllFiltersSheet open={showAllFilters} onOpenChange={setShowAllFilters} />
+
+      {/* Deposit Detail Panel */}
+      <Sheet open={!!selectedDeposit} onOpenChange={(v) => { if (!v) setSelectedDeposit(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <ArrowDownLeft className="w-4 h-4 text-primary" />
+              Deposit Details
+            </SheetTitle>
+          </SheetHeader>
+
+          {selectedDeposit && (
+            <div className="space-y-6">
+              <div className="rounded-xl border bg-card/60 p-5 flex items-center gap-5">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-primary/10">
+                  <ArrowDownLeft className="w-5 h-5 text-primary" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-2xl font-bold font-mono">₹{Number(selectedDeposit.amount).toLocaleString()}</p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <StatusBadge status={selectedDeposit.status} />
+                    <span className="text-xs text-muted-foreground font-mono">{selectedDeposit.currency ?? "INR"}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                  <Hash className="w-3.5 h-3.5" /> Deposit Info
+                </p>
+                <div className="space-y-0 rounded-lg border divide-y divide-border bg-card/40">
+                  <div className="flex items-start justify-between gap-4 px-4 py-3">
+                    <span className="text-sm text-muted-foreground shrink-0">ID</span>
+                    <span className="text-sm text-right break-all font-mono">#{selectedDeposit.id}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4 px-4 py-3">
+                    <span className="text-sm text-muted-foreground shrink-0">UTR</span>
+                    <span className="text-sm text-right break-all font-mono">{selectedDeposit.utr ?? "—"}</span>
+                  </div>
+                  {selectedDeposit.description && (
+                    <div className="flex items-start justify-between gap-4 px-4 py-3">
+                      <span className="text-sm text-muted-foreground shrink-0">Description</span>
+                      <span className="text-sm text-right break-all font-medium">{selectedDeposit.description}</span>
+                    </div>
+                  )}
+                  <div className="flex items-start justify-between gap-4 px-4 py-3">
+                    <span className="text-sm text-muted-foreground shrink-0">Date</span>
+                    <span className="text-sm text-right break-all font-medium">
+                      {format(new Date(selectedDeposit.createdAt), "MMM d, yyyy HH:mm")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gateway — only shown when a provider connection is linked */}
+              {selectedDeposit.payinGatewayLabel != null && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5" /> Payment Gateway
+                  </p>
+                  <div className="space-y-0 rounded-lg border divide-y divide-border bg-card/40">
+                    <div className="flex items-start justify-between gap-4 px-4 py-3">
+                      <span className="text-sm text-muted-foreground shrink-0">Gateway</span>
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-sky-300/80 bg-sky-500/10 border border-sky-500/20 rounded px-1.5 py-0.5">
+                        <CreditCard className="w-3 h-3 shrink-0" />
+                        {selectedDeposit.payinGatewayLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
