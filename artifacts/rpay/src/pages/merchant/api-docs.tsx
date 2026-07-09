@@ -542,6 +542,12 @@ interface SharedTryItPreset {
   expiresAt?: string;
   /** Per-panel bearer token — only present when the sharer explicitly unchecked "Strip auth token". */
   localToken?: string;
+  /**
+   * Human-readable labels of fields that were blanked to "[REDACTED]" before this link was
+   * encoded (e.g. `query param "key"`). Only present when the sharer left "Strip credentials
+   * from link" checked and a credential-shaped value was detected.
+   */
+  redactedFields?: string[];
 }
 
 interface SharedPresetReadResult {
@@ -641,12 +647,86 @@ function decodeSharedPreset(encoded: string): SharedTryItPreset | null {
         body: parsed.body,
         expiresAt: typeof parsed.expiresAt === "string" ? parsed.expiresAt : undefined,
         localToken: typeof parsed.localToken === "string" ? parsed.localToken : undefined,
+        redactedFields: Array.isArray(parsed.redactedFields)
+          ? parsed.redactedFields.filter((f: unknown): f is string => typeof f === "string")
+          : undefined,
       };
     }
     return null;
   } catch {
     return null;
   }
+}
+
+interface ScrubbedShareFields {
+  pathValues: Record<string, string>;
+  queryParams: { key: string; value: string }[];
+  body: string;
+  redactedFields: string[];
+}
+
+/**
+ * Blanks any credential-shaped value out of the fields that get encoded into a share link,
+ * replacing it with "[REDACTED]" and returning the human-readable labels of what was stripped
+ * so the sender can be shown a summary and the recipient can be shown a note.
+ */
+function scrubCredentialsForShare(
+  pathValues: Record<string, string>,
+  queryParams: { key: string; value: string }[],
+  body: string
+): ScrubbedShareFields {
+  const redactedFields: string[] = [];
+
+  const outPathValues: Record<string, string> = {};
+  for (const [key, val] of Object.entries(pathValues)) {
+    if (looksLikeCredential(val)) {
+      outPathValues[key] = "[REDACTED]";
+      redactedFields.push(`path param "{${key}}"`);
+    } else {
+      outPathValues[key] = val;
+    }
+  }
+
+  const outQueryParams = queryParams.map((row) => {
+    if (looksLikeCredential(row.value)) {
+      redactedFields.push(`query param "${row.key}"`);
+      return { key: row.key, value: "[REDACTED]" };
+    }
+    return row;
+  });
+
+  let outBody = body;
+  if (body.trim()) {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      const scrubJsonValue = (value: unknown, path: string): unknown => {
+        if (typeof value === "string") {
+          if (looksLikeCredential(value)) {
+            redactedFields.push(path ? `body field "${path}"` : "request body");
+            return "[REDACTED]";
+          }
+          return value;
+        } else if (Array.isArray(value)) {
+          return value.map((item, i) => scrubJsonValue(item, `${path}[${i}]`));
+        } else if (value !== null && typeof value === "object") {
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+            out[k] = scrubJsonValue(v, path ? `${path}.${k}` : k);
+          }
+          return out;
+        }
+        return value;
+      };
+      outBody = JSON.stringify(scrubJsonValue(parsed, ""), null, 2);
+    } catch {
+      if (looksLikeCredential(body)) {
+        redactedFields.push("request body");
+        outBody = "[REDACTED]";
+      }
+    }
+  }
+
+  return { pathValues: outPathValues, queryParams: outQueryParams, body: outBody, redactedFields };
 }
 
 function buildSharedPresetUrl(preset: SharedTryItPreset): string {
@@ -725,6 +805,8 @@ function TryItPanel({
   const [localToken, setLocalToken] = useState(() => sharedMatch?.localToken ?? token);
   const [tokenWarningDismissed, setTokenWarningDismissed] = useState(false);
   const showTokenWarning = !!sharedMatch?.localToken && !tokenWarningDismissed;
+  const [redactedNoteDismissed, setRedactedNoteDismissed] = useState(false);
+  const showRedactedNote = !!sharedMatch?.redactedFields?.length && !redactedNoteDismissed;
   const [body, setBody] = useState(() => sharedMatch?.body ?? defaultBody);
   const [pathValues, setPathValues] = useState<Record<string, string>>(
     () => sharedMatch?.pathValues ?? {}
@@ -899,23 +981,53 @@ function TryItPanel({
   // accidental credential leakage. The page-level "Shared Bearer Token" field is never
   // included in share links regardless of this setting.
   const [stripToken, setStripToken] = useState(true);
+  // Checked by default — blanks any credential-shaped value found in path params, query
+  // params, or the body to "[REDACTED]" before the link is encoded. Prevents API keys/JWTs
+  // from ending up in the URL (and therefore browser history, extensions, Referrer headers).
+  const [stripCredentials, setStripCredentials] = useState(true);
 
-  const doShare = useCallback((expiryMinutes: number | null, shouldStripToken: boolean) => {
+  const filteredQueryParams = useMemo(
+    () =>
+      queryParams
+        .filter((row) => row.key.trim().length > 0)
+        .map((row) => ({ key: row.key, value: row.value })),
+    [queryParams]
+  );
+
+  const detectedCredentialFields = useMemo(
+    () => collectCredentialWarnings(filteredQueryParams, body, pathValues),
+    [filteredQueryParams, body, pathValues]
+  );
+
+  const doShare = useCallback((expiryMinutes: number | null, shouldStripToken: boolean, shouldStripCredentials: boolean) => {
     const expiresAt =
       expiryMinutes != null
         ? new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString()
         : undefined;
+    const filteredParams = queryParams
+      .filter((row) => row.key.trim().length > 0)
+      .map((row) => ({ key: row.key, value: row.value }));
+    let finalPathValues = { ...pathValues };
+    let finalQueryParams = filteredParams;
+    let finalBody = body;
+    let redactedFields: string[] = [];
+    if (shouldStripCredentials) {
+      const scrubbed = scrubCredentialsForShare(pathValues, filteredParams, body);
+      finalPathValues = scrubbed.pathValues;
+      finalQueryParams = scrubbed.queryParams;
+      finalBody = scrubbed.body;
+      redactedFields = scrubbed.redactedFields;
+    }
     const shareUrl = buildSharedPresetUrl({
       method,
       path,
-      pathValues: { ...pathValues },
-      queryParams: queryParams
-        .filter((row) => row.key.trim().length > 0)
-        .map((row) => ({ key: row.key, value: row.value })),
-      body,
+      pathValues: finalPathValues,
+      queryParams: finalQueryParams,
+      body: finalBody,
       expiresAt,
       // Only embed the per-panel token when the user explicitly unchecked "Strip auth token".
       localToken: shouldStripToken ? undefined : (localToken || undefined),
+      redactedFields: redactedFields.length > 0 ? redactedFields : undefined,
     });
     navigator.clipboard.writeText(shareUrl);
     setShareCopied(true);
@@ -923,24 +1035,27 @@ function TryItPanel({
     const label = expiryMinutes != null
       ? EXPIRY_OPTIONS.find((o) => o.minutes === expiryMinutes)?.label ?? "custom expiry"
       : "no expiry";
-    toast.success(`Share link copied (${label}) — opening it pre-loads this exact request`);
+    const redactionNote = redactedFields.length > 0 ? ` — ${redactedFields.length} field${redactedFields.length > 1 ? "s" : ""} redacted` : "";
+    toast.success(`Share link copied (${label}) — opening it pre-loads this exact request${redactionNote}`);
     setTimeout(() => setShareCopied(false), 2000);
   }, [method, path, pathValues, queryParams, body, localToken]);
 
   const handleShare = useCallback((expiryMinutes: number | null) => {
-    const filteredParams = queryParams
-      .filter((row) => row.key.trim().length > 0)
-      .map((row) => ({ key: row.key, value: row.value }));
-    const warnings = collectCredentialWarnings(filteredParams, body, pathValues);
-    if (warnings.length > 0) {
-      setShareCredentialWarnings(warnings);
-      setPendingShareExpiry(expiryMinutes);
-      setSharePopoverOpen(false);
-      setShowShareWarning(true);
-      return;
+    if (!stripCredentials) {
+      const filteredParams = queryParams
+        .filter((row) => row.key.trim().length > 0)
+        .map((row) => ({ key: row.key, value: row.value }));
+      const warnings = collectCredentialWarnings(filteredParams, body, pathValues);
+      if (warnings.length > 0) {
+        setShareCredentialWarnings(warnings);
+        setPendingShareExpiry(expiryMinutes);
+        setSharePopoverOpen(false);
+        setShowShareWarning(true);
+        return;
+      }
     }
-    doShare(expiryMinutes, stripToken);
-  }, [queryParams, body, pathValues, doShare, stripToken]);
+    doShare(expiryMinutes, stripToken, stripCredentials);
+  }, [queryParams, body, pathValues, doShare, stripToken, stripCredentials]);
 
   const handleCopyAllHeaders = useCallback(() => {
     if (!response) return;
@@ -1069,6 +1184,33 @@ function TryItPanel({
                 onClick={() => setTokenWarningDismissed(true)}
                 className="text-amber-400/70 hover:text-amber-300 transition-colors shrink-0"
                 aria-label="Dismiss auth token warning"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          {showRedactedNote && (
+            <div className="flex items-start gap-2 rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-1">
+                <p className="text-xs text-sky-300">
+                  The sender stripped credential-like values from this link before sharing.
+                  Fields shown as "[REDACTED]" were removed and need to be filled in manually
+                  before this request will work.
+                </p>
+                <ul className="space-y-0.5">
+                  {sharedMatch!.redactedFields!.map((f) => (
+                    <li key={f} className="text-[11px] font-mono text-sky-300/80">
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRedactedNoteDismissed(true)}
+                className="text-sky-400/70 hover:text-sky-300 transition-colors shrink-0"
+                aria-label="Dismiss redacted fields note"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1390,6 +1532,24 @@ function TryItPanel({
                     Bearer token will be embedded in the URL — only share with trusted recipients.
                   </p>
                 )}
+                <label className="flex items-center gap-2 px-2 py-1.5 mb-1 rounded cursor-pointer hover:bg-accent/60 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={stripCredentials}
+                    onChange={(e) => setStripCredentials(e.target.checked)}
+                    className="accent-primary w-3.5 h-3.5 shrink-0"
+                  />
+                  <span className="text-xs font-medium">Strip credentials from link</span>
+                  <ShieldCheck className={`w-3 h-3 shrink-0 ml-auto ${stripCredentials ? "text-emerald-400" : "text-muted-foreground"}`} />
+                </label>
+                {detectedCredentialFields.length > 0 && (
+                  <p className={`text-[10px] px-2 pb-1.5 flex items-start gap-1 ${stripCredentials ? "text-muted-foreground" : "text-amber-400/80"}`}>
+                    <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                    {stripCredentials
+                      ? `Will blank before sharing: ${detectedCredentialFields.join(", ")}`
+                      : `Looks like a token — will be included as plaintext: ${detectedCredentialFields.join(", ")}`}
+                  </p>
+                )}
                 <div className="border-t border-border/30 my-1" />
                 <p className="text-xs font-medium text-muted-foreground px-2 py-1 mb-1">
                   Link expires in…
@@ -1560,7 +1720,7 @@ function TryItPanel({
               className="gap-1.5"
               onClick={() => {
                 setShowShareWarning(false);
-                doShare(pendingShareExpiry, stripToken);
+                doShare(pendingShareExpiry, stripToken, stripCredentials);
               }}
             >
               <Share2 className="w-3 h-3" />
