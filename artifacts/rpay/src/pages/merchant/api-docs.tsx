@@ -310,6 +310,34 @@ function getMismatchedBodyTypes(body: string, schema: BodyFieldSchema[]): BodyTy
   }
 }
 
+const BODY_EDITOR_LINE_HEIGHT_PX = 16;
+const BODY_EDITOR_PADDING_TOP_PX = 8;
+
+function getMismatchLineNumbers(
+  body: string,
+  mismatches: BodyTypeMismatch[]
+): Map<number, BodyTypeMismatch[]> {
+  const map = new Map<number, BodyTypeMismatch[]>();
+  if (mismatches.length === 0) return map;
+  const lines = body.split("\n");
+  const remaining = new Set(mismatches.map((m) => m.key));
+  for (let idx = 0; idx < lines.length; idx++) {
+    if (remaining.size === 0) break;
+    const line = lines[idx] ?? "";
+    for (const m of mismatches) {
+      if (!remaining.has(m.key)) continue;
+      const pattern = new RegExp(`^\\s*"${m.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:`);
+      if (pattern.test(line)) {
+        const arr = map.get(idx) ?? [];
+        arr.push(m);
+        map.set(idx, arr);
+        remaining.delete(m.key);
+      }
+    }
+  }
+  return map;
+}
+
 interface QueryParamRow {
   id: number;
   key: string;
@@ -891,6 +919,12 @@ function TryItPanel({
     () => getMismatchedBodyTypes(body, expectedBodyKeys),
     [body, expectedBodyKeys]
   );
+
+  const mismatchLines = useMemo(
+    () => getMismatchLineNumbers(body, typeMismatches),
+    [body, typeMismatches]
+  );
+  const [bodyScrollTop, setBodyScrollTop] = useState(0);
 
   const addQueryParam = useCallback((prefillKey = "") => {
     setQueryParams((prev) => [...prev, { id: ++queryParamRowId, key: prefillKey, value: "" }]);
@@ -1487,17 +1521,61 @@ function TryItPanel({
           {hasBody && (
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Request Body (JSON)</Label>
-              <Textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={6}
-                className={`text-xs font-mono bg-black/40 resize-y ${
-                  unknownBodyKeys.length > 0 || typeMismatches.length > 0
-                    ? "border-amber-500/50 focus-visible:ring-amber-500/30"
-                    : ""
-                }`}
-                spellCheck={false}
-              />
+              <div className="relative">
+                <Textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  onScroll={(e) => setBodyScrollTop(e.currentTarget.scrollTop)}
+                  wrap="off"
+                  rows={6}
+                  className={`text-xs font-mono bg-black/40 resize-y ${
+                    mismatchLines.size > 0 ? "pl-4" : ""
+                  } ${
+                    unknownBodyKeys.length > 0 || typeMismatches.length > 0
+                      ? "border-amber-500/50 focus-visible:ring-amber-500/30"
+                      : ""
+                  }`}
+                  spellCheck={false}
+                />
+                {mismatchLines.size > 0 && (
+                  <div
+                    className="absolute left-0 top-0 bottom-0 w-3 overflow-hidden rounded-l-md pointer-events-none"
+                    aria-hidden="false"
+                  >
+                    <div
+                      className="relative"
+                      style={{ transform: `translateY(-${bodyScrollTop}px)` }}
+                    >
+                      {Array.from(mismatchLines.entries()).map(([lineIdx, lineMismatches]) => (
+                        <TooltipProvider key={lineIdx}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Type mismatch on line ${lineIdx + 1}`}
+                                className="absolute left-0 w-3 bg-amber-500/70 hover:bg-amber-400 pointer-events-auto cursor-help"
+                                style={{
+                                  top: `${BODY_EDITOR_PADDING_TOP_PX + lineIdx * BODY_EDITOR_LINE_HEIGHT_PX}px`,
+                                  height: `${BODY_EDITOR_LINE_HEIGHT_PX}px`,
+                                }}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="text-[11px] space-y-1">
+                              {lineMismatches.map((m) => (
+                                <div key={m.key} className="font-mono">
+                                  "{m.key}": expected <span className="text-emerald-300">{m.expected}</span>, got{" "}
+                                  <span className="text-rose-300">{m.actual}</span>
+                                </div>
+                              ))}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               {unknownBodyKeys.length > 0 && (
                 <p className="text-[10px] text-amber-500/80 pl-0.5 flex items-center gap-1">
                   <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
