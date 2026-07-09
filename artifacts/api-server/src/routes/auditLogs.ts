@@ -455,15 +455,23 @@ router.get("/export", async (req, res) => {
       )!
     );
   }
+  let validatedFrom: Date | null = null;
+  let validatedTo: Date | null = null;
   if (dateFrom) {
     const from = new Date(dateFrom);
     from.setUTCHours(0, 0, 0, 0);
-    if (!isNaN(from.getTime())) conditions.push(gte(auditLogsTable.createdAt, from));
+    if (!isNaN(from.getTime())) {
+      conditions.push(gte(auditLogsTable.createdAt, from));
+      validatedFrom = from;
+    }
   }
   if (dateTo) {
     const to = new Date(dateTo);
     to.setUTCHours(23, 59, 59, 999);
-    if (!isNaN(to.getTime())) conditions.push(lte(auditLogsTable.createdAt, to));
+    if (!isNaN(to.getTime())) {
+      conditions.push(lte(auditLogsTable.createdAt, to));
+      validatedTo = to;
+    }
   }
   if (merchantId) {
     const merchantIdNum = parseInt(merchantId);
@@ -531,7 +539,16 @@ router.get("/export", async (req, res) => {
     ipAddress: req.ip ?? null,
   });
 
-  const filename = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+  // Build filename using the already-validated Date objects — never re-parse the raw string.
+  const today = new Date().toISOString().slice(0, 10);
+  let filename: string;
+  if (validatedFrom || validatedTo) {
+    const from = validatedFrom ? validatedFrom.toISOString().slice(0, 10) : "start";
+    const to   = validatedTo   ? validatedTo.toISOString().slice(0, 10)   : today;
+    filename = `audit-logs-${from}-to-${to}.csv`;
+  } else {
+    filename = `audit-logs-${today}.csv`;
+  }
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.send(csv);

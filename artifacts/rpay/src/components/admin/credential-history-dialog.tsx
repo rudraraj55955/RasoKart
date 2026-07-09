@@ -137,11 +137,17 @@ function ChangeSummary({ details }: { details: string | null | undefined }) {
  * For custom provider integrations, pass action="provider_integration_updated"
  * and section=providerKey.
  */
-async function downloadGatewayHistoryCsv(action: string, section: string, label: string) {
-  const params = new URLSearchParams({
-    action,
-    settingKey: section,
-  });
+async function downloadGatewayHistoryCsv(
+  action: string,
+  section: string,
+  label: string,
+  dateFrom?: string,
+  dateTo?: string,
+) {
+  const paramObj: Record<string, string> = { action, settingKey: section };
+  if (dateFrom) paramObj["dateFrom"] = dateFrom;
+  if (dateTo)   paramObj["dateTo"]   = dateTo;
+  const params = new URLSearchParams(paramObj);
   const res = await fetch(`/api/audit-logs/export?${params.toString()}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
@@ -150,7 +156,13 @@ async function downloadGatewayHistoryCsv(action: string, section: string, label:
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `gateway-history-${label.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
+  const slug = label.toLowerCase().replace(/\s+/g, "-");
+  const today = new Date().toISOString().slice(0, 10);
+  const from = dateFrom ? new Date(dateFrom).toISOString().slice(0, 10) : null;
+  const to   = dateTo   ? new Date(dateTo).toISOString().slice(0, 10)   : null;
+  a.download = (from || to)
+    ? `gateway-history-${slug}-${from ?? "start"}-to-${to ?? today}.csv`
+    : `gateway-history-${slug}-${today}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -158,19 +170,25 @@ async function downloadGatewayHistoryCsv(action: string, section: string, label:
 }
 
 export function CredentialHistoryDialog({
-  section, label, trigger, action = "system_config_updated",
+  section, label, trigger, action = "system_config_updated", dateFrom, dateTo,
 }: {
   section: string;
   label: string;
   trigger?: ReactNode;
   action?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
 
+  const queryParams: Record<string, unknown> = { action, settingKey: section, page, limit: LIMIT };
+  if (dateFrom) queryParams["dateFrom"] = dateFrom;
+  if (dateTo)   queryParams["dateTo"]   = dateTo;
+
   const { data, isLoading } = useListAdminAuditLogs(
-    { action, settingKey: section, page, limit: LIMIT },
+    queryParams as any,
     {
       query: { enabled: open },
       request: { headers: { Authorization: `Bearer ${getToken()}` } },
@@ -217,7 +235,7 @@ export function CredentialHistoryDialog({
               onClick={async () => {
                 setIsExporting(true);
                 try {
-                  await downloadGatewayHistoryCsv(action, section, label);
+                  await downloadGatewayHistoryCsv(action, section, label, dateFrom, dateTo);
                 } finally {
                   setIsExporting(false);
                 }
