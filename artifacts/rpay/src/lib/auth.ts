@@ -30,6 +30,25 @@ export function setStoredUser(user: Record<string, unknown>) {
   }
 }
 
+/**
+ * Writes the token/user to the legacy/alias key names ("token", "authToken",
+ * "user", "authUser") in BOTH localStorage and sessionStorage, in addition to
+ * the app's real rasokart_* keys above. Some older/duplicate guard code paths
+ * or third-party embeds may still probe these generic names — writing them
+ * defensively costs nothing and guarantees no guard reading a different key
+ * name ever sees an empty session right after login.
+ */
+export function setLegacyAuthKeys(token: string, user: Record<string, unknown>) {
+  if (typeof window === "undefined") return;
+  const json = JSON.stringify(user);
+  for (const store of [localStorage, sessionStorage]) {
+    store.setItem("token", token);
+    store.setItem("authToken", token);
+    store.setItem("user", json);
+    store.setItem("authUser", json);
+  }
+}
+
 export function getStoredUser(): Record<string, unknown> | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(USER_KEY) ?? sessionStorage.getItem(USER_KEY);

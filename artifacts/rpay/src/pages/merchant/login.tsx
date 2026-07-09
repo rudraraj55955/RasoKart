@@ -11,7 +11,7 @@ import {
   UserRole,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth-context";
-import { setToken, setStoredUser } from "@/lib/auth";
+import { setToken, setStoredUser, setLegacyAuthKeys } from "@/lib/auth";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
@@ -88,6 +88,7 @@ function PasswordLoginTab({
           // the destination route's very first render already sees valid auth.
           setToken(res.token);
           setStoredUser(res.user as unknown as Record<string, unknown>);
+          setLegacyAuthKeys(res.token, res.user as unknown as Record<string, unknown>);
           setAuthToken(res.token);
           toast.success("Welcome back.");
           window.location.replace("/merchant/dashboard");
@@ -268,6 +269,7 @@ function OtpLoginTab({ onRateLimited }: { onRateLimited: (seconds: number) => vo
           }
           setToken(res.token);
           setStoredUser(res.user as unknown as Record<string, unknown>);
+          setLegacyAuthKeys(res.token, res.user as unknown as Record<string, unknown>);
           setAuthToken(res.token);
           toast.success("Welcome back.");
           window.location.replace("/merchant/dashboard");
@@ -651,6 +653,9 @@ export default function MerchantLogin() {
           />
         </TabsContent>
       </Tabs>
+      <div className="text-center text-xs text-muted-foreground/40 pt-4">
+        Login Build: merchant-login-one-shot-fix-v2
+      </div>
 
       <div className="text-center mt-6 text-sm text-muted-foreground">
         Don't have an account?{" "}

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/lib/auth-context";
-import { setToken, setStoredUser } from "@/lib/auth";
+import { setToken, setStoredUser, setLegacyAuthKeys } from "@/lib/auth";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
@@ -99,6 +99,7 @@ export default function PayoutMerchantLogin() {
       // destination route's very first render already sees valid auth.
       setToken(token);
       setStoredUser({ ...(rawUser ?? {}), role, merchantType });
+      setLegacyAuthKeys(token, { ...(rawUser ?? {}), role, merchantType });
       setAuthToken(token);
       toast.success("Welcome to your Payout Portal.");
       window.location.replace("/payout-merchant/dashboard");
@@ -173,7 +174,7 @@ export default function PayoutMerchantLogin() {
             <Link href="/" className="text-primary hover:underline">← Back to RasoKart</Link>
           </div>
           <div className="text-center text-xs text-muted-foreground/40 pt-2">
-            Login Build: payout-login-final-redirect-fix-v1
+            Login Build: payout-login-one-shot-fix-v2
           </div>
         </form>
       </Form>

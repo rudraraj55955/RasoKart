@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useLogin, UserRole } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth-context";
-import { setToken, setStoredUser } from "@/lib/auth";
+import { setToken, setStoredUser, setLegacyAuthKeys } from "@/lib/auth";
 import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -53,6 +53,7 @@ export default function AdminLogin() {
           // the destination route's very first render already sees valid auth.
           setToken(res.token);
           setStoredUser(res.user as unknown as Record<string, unknown>);
+          setLegacyAuthKeys(res.token, res.user as unknown as Record<string, unknown>);
           setAuthToken(res.token);
           toast.success("Welcome back, Admin.");
           window.location.replace("/admin/dashboard");
@@ -119,7 +120,7 @@ export default function AdminLogin() {
             {loginMutation.isPending ? "Authenticating..." : "Sign in"}
           </Button>
           <div className="text-center text-xs text-muted-foreground/40 pt-2">
-            Login Build: admin-login-final-redirect-fix-v1
+            Login Build: admin-login-one-shot-fix-v2
           </div>
         </form>
       </Form>

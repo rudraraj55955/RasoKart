@@ -60,12 +60,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!error) return;
     // Only treat this as "logged out" when the server explicitly rejects the
-    // token (401 = invalid/expired). Any other failure (502/503 from a
-    // backend restart, network blip, timeout, etc.) is transient — keep the
-    // token and stored user in storage so ProtectedRoute's fallback keeps a
-    // valid session alive instead of bouncing the user back to login.
+    // token (401 = invalid/expired, 403 = forbidden/revoked). Any other
+    // failure (5xx from a backend restart, network blip, timeout, etc.) is
+    // transient — keep the token and stored user in storage so
+    // ProtectedRoute's fallback keeps a valid session alive instead of
+    // bouncing the user back to login.
     const status = (error as unknown as { status?: number })?.status;
-    if (status === 401) {
+    if (status === 401 || status === 403) {
       removeToken();
       setLocalToken(null);
     }
