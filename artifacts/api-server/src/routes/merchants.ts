@@ -787,29 +787,42 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const admin = (req as any).user;
 
-  const kyc = await checkKycApproved(id);
-  if (!kyc.passed) {
-    res.status(422).json({
-      error: "KYC verification incomplete. All required documents must be approved before the merchant can be activated.",
-      missingDocTypes: kyc.missing,
-    });
-    return;
-  }
+  try {
+    const [existing] = await db.select().from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Merchant not found" }); return; }
 
-  const [merchant] = await db.update(merchantsTable)
-    .set({ status: "approved", rejectionReason: null })
-    .where(eq(merchantsTable.id, id)).returning();
-  if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
-  await db.insert(auditLogsTable).values({
-    adminId: admin.id,
-    adminEmail: admin.email,
-    action: "merchant_approved",
-    targetType: "merchant",
-    targetId: merchant.id,
-    details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email }),
-    ipAddress: req.ip ?? null,
-  });
-  res.json(serializeMerchant(merchant));
+    const kyc = await checkKycApproved(id);
+    if (!kyc.passed) {
+      req.log.warn({ adminId: admin.id, merchantId: id, missingDocTypes: kyc.missing }, "Merchant approve blocked — KYC incomplete");
+      res.status(422).json({
+        error: "KYC verification incomplete. All required documents must be approved before the merchant can be activated.",
+        missingDocTypes: kyc.missing,
+      });
+      return;
+    }
+
+    const [merchant] = await db.update(merchantsTable)
+      .set({ status: "approved", verificationStatus: "approved", rejectionReason: null })
+      .where(eq(merchantsTable.id, id)).returning();
+    if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+    await db.update(usersTable).set({ isActive: true }).where(eq(usersTable.email, merchant.email));
+
+    await db.insert(auditLogsTable).values({
+      adminId: admin.id,
+      adminEmail: admin.email,
+      action: "merchant_approved",
+      targetType: "merchant",
+      targetId: merchant.id,
+      details: JSON.stringify({ businessName: merchant.businessName, email: merchant.email }),
+      ipAddress: req.ip ?? null,
+    });
+    res.json(serializeMerchant(merchant));
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    req.log.error({ adminId: admin?.id, merchantId: id, reason }, "Merchant approve failed");
+    res.status(500).json({ error: "Failed to approve merchant. Please try again or check server logs." });
+  }
 });
 
 // POST /api/merchants/:id/suspend

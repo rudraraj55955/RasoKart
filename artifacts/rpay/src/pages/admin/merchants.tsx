@@ -841,9 +841,10 @@ export default function AdminMerchants() {
     approveMutation.mutate({ id }, {
       onSuccess: (merchant) => {
         qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+        toast.success("Merchant approved successfully");
         setSingleActionResult({ open: true, title: "Merchant Approved", merchantName: merchant.businessName, newStatus: merchant.status, timestamp: new Date().toISOString() });
       },
-      onError: () => toast.error("Failed to approve merchant"),
+      onError: (err) => toast.error(getApiErrorMessage(err, "Failed to approve merchant")),
     });
   };
 
