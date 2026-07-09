@@ -8,7 +8,7 @@ import { loadPayinConfig } from "../helpers/payinConfig";
 import { ensurePayinOrdersSchemaGuard } from "../helpers/payinSchemaGuard";
 import { getMerchantDailyPaidTotal } from "../helpers/payinDailyLimit";
 import { insertPayinOrderWithFallback } from "../helpers/payinOrderInsert";
-import { selectProvider, recordRoutingResult } from "../helpers/smartRouter";
+import { selectProvider, recordRoutingResult, recordChainExhaustedStart, maybeNotifyGatewayRecovery } from "../helpers/smartRouter";
 import { createCustomGatewayOrder } from "../helpers/customGatewayClient";
 import { loadUpigatewayConfig, upigatewayCreateOrder } from "../helpers/upigatewayPayin";
 
@@ -240,6 +240,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
 
           await recordRoutingResult({ routingLogId: decision.routingLogId, providerKey: decision.providerKey, result: "success", responseTimeMs: ugResponseTimeMs, publicReferenceId: ugPublicOrderId, providerReferenceId: ugPublicOrderId });
           req.log.info({ event: "payin_deposit_order_created", merchantId, amount: depositAmount, routedVia: "upigateway", attempt }, "payin_deposit_order_created");
+          void maybeNotifyGatewayRecovery(req.log);
 
           res.json({
             publicOrderId: ugPublicOrderId,
@@ -328,6 +329,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         });
 
         req.log.info({ event: "payin_deposit_order_created", merchantId, amount: depositAmount, routedVia: "custom_gateway", providerKey: decision.providerKey, attempt }, "payin_deposit_order_created");
+        void maybeNotifyGatewayRecovery(req.log);
 
         const customCheckoutUrl =
           gatewayResult.paymentUrl && /^https?:\/\//i.test(gatewayResult.paymentUrl)
@@ -372,6 +374,14 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
     // admin never configured. This makes the failover chain authoritative.
     if (routingWasConfigured && cashfreeRoutingLogId === null) {
       req.log.warn({ event: "payin_routing_chain_exhausted", merchantId }, "payin_routing_chain_exhausted");
+
+      // Mark (once) the start of this outage so the next successful routing
+      // attempt — for any merchant — knows to fire a merchant-facing
+      // "gateways are back online" recovery notification (see
+      // maybeNotifyGatewayRecovery in smartRouter.ts). Best-effort.
+      recordChainExhaustedStart().catch(() => {
+        req.log.error({ event: "payin_chain_exhausted_marker_failed", merchantId }, "payin_chain_exhausted_marker_failed");
+      });
 
       // ── Admin alert: rolling-window failover exhaustion ───────────────────
       // Fire a notification to all active admins when routing failures in the
@@ -519,6 +529,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         providerReferenceId: parsed.order_id ?? publicOrderId,
       });
     }
+    void maybeNotifyGatewayRecovery(req.log);
 
     // checkoutUrl / paymentToken point to our own branded checkout — never expose provider internals.
     const checkoutEnv = cfg.env === "live" ? "prod" : "sandbox";

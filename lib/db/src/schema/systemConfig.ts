@@ -109,6 +109,11 @@ export const SYSTEM_CONFIG_KEYS = {
   WALLET_LOAD_IFSC:              "wallet_load_ifsc",
   WALLET_LOAD_ACCOUNT_HOLDER:    "wallet_load_account_holder",
   WALLET_LOAD_UPI_ID:            "wallet_load_upi_id",
+  // Set when the payin smart-routing chain becomes fully exhausted (all
+  // gateways failing); value is the ISO timestamp the outage started.
+  // Cleared as soon as a routing attempt succeeds again, which also
+  // triggers a "gateways are back online" notification to affected merchants.
+  PAYIN_CHAIN_EXHAUSTED_SINCE: "payin_chain_exhausted_since",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {

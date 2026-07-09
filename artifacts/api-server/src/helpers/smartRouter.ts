@@ -23,9 +23,11 @@ import {
   providerMetricsTable,
   systemConfigTable,
   SYSTEM_CONFIG_KEYS,
+  usersTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, sql, gte } from "drizzle-orm";
 import type { Logger } from "pino";
+import { createBulkNotifications } from "./notifications";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -279,6 +281,77 @@ export async function recordRoutingResult(params: {
           lastComputedAt: new Date(),
         },
       });
+  }
+}
+
+/**
+ * Mark the start of a payin routing chain exhaustion (all configured gateways
+ * failing). Only records the timestamp once per outage — onConflictDoNothing
+ * means the "since" value always reflects when the outage started, not the
+ * most recent failed attempt. Cleared by `maybeNotifyGatewayRecovery` once a
+ * routing attempt succeeds again.
+ */
+export async function recordChainExhaustedStart(): Promise<void> {
+  await db.insert(systemConfigTable).values({
+    key: SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE,
+    value: new Date().toISOString(),
+  }).onConflictDoNothing();
+}
+
+/**
+ * Called after every successful smart-routing dispatch. If a chain-exhaustion
+ * outage was in progress, this is the recovery: notify every merchant who had
+ * at least one failed routing attempt during the outage window, then clear
+ * the outage marker. Best-effort — failures here must never affect the
+ * caller's success response.
+ */
+export async function maybeNotifyGatewayRecovery(logger?: Logger): Promise<void> {
+  try {
+    const [row] = await db.select().from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE))
+      .limit(1);
+    if (!row) return; // no outage in progress — nothing to recover from
+
+    const exhaustedSince = new Date(row.value);
+    // Always clear the marker first so a single bad timestamp or a failure
+    // below can never wedge the app in a permanent "outage in progress" state.
+    await db.delete(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE));
+
+    if (isNaN(exhaustedSince.getTime())) return;
+
+    const affected = await db.selectDistinct({ merchantId: routingLogsTable.merchantId })
+      .from(routingLogsTable)
+      .where(and(
+        gte(routingLogsTable.createdAt, exhaustedSince),
+        eq(routingLogsTable.result, "failed"),
+      ));
+    const merchantIds = affected.map(r => r.merchantId);
+    if (merchantIds.length === 0) return;
+
+    const merchantUsers = await db.select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(
+        inArray(usersTable.merchantId, merchantIds),
+        eq(usersTable.role, "merchant"),
+        eq(usersTable.isActive, true),
+      ));
+    if (merchantUsers.length === 0) return;
+
+    await createBulkNotifications(merchantUsers.map(u => ({
+      userId: u.id,
+      type: "gateway_recovered" as const,
+      title: "Payment Gateways Are Back Online",
+      body: "Deposit gateways have recovered after a temporary outage. You can now retry your deposit.",
+      metadata: { recoveredAt: new Date().toISOString() },
+    })), { skipPrefCheck: true });
+
+    logger?.info({
+      event: "payin_gateway_recovery_notified",
+      merchantCount: merchantUsers.length,
+    }, "payin_gateway_recovery_notified");
+  } catch {
+    logger?.error({ event: "payin_gateway_recovery_notify_failed" }, "payin_gateway_recovery_notify_failed");
   }
 }
 

@@ -17,6 +17,8 @@ import {
   useGetPayinStatus,
   useCreatePayinOrder,
   useGetPayinOrderStatus,
+  useListNotifications,
+  getListNotificationsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -52,6 +54,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  AlertTriangle,
 } from "lucide-react";
 import { format, parseISO, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
@@ -887,6 +890,28 @@ export default function MerchantDeposits() {
   const { data: payinStatusData } = useGetPayinStatus();
   const cashfreeEnabled = payinStatusData?.enabled ?? false;
 
+  // "Gateways unavailable" banner — set when a deposit attempt hits the 503
+  // routing-chain-exhausted error, cleared automatically once a
+  // "gateway_recovered" notification (fired server-side the moment a payin
+  // routing attempt succeeds again) shows up newer than the outage started.
+  const [gatewayOutageSince, setGatewayOutageSince] = useState<Date | null>(null);
+  const recoveryNotifParams = { type: "gateway_recovered", limit: 5 };
+  const { data: recoveryNotifData } = useListNotifications(
+    recoveryNotifParams,
+    { query: { queryKey: getListNotificationsQueryKey(recoveryNotifParams), enabled: !!gatewayOutageSince, refetchInterval: 8000 } },
+  );
+
+  useEffect(() => {
+    if (!gatewayOutageSince) return;
+    const recovered = (recoveryNotifData?.data ?? []).some(
+      (n) => new Date(n.createdAt) >= gatewayOutageSince,
+    );
+    if (recovered) {
+      setGatewayOutageSince(null);
+      toast.success("Payment gateways are back online. You can retry your deposit now.");
+    }
+  }, [recoveryNotifData, gatewayOutageSince]);
+
   const createPayinOrder = useCreatePayinOrder();
   const { data: activeOrderStatus, refetch: refetchOrderStatus, isFetching: isRefreshingStatus } = useGetPayinOrderStatus(
     activePayinOrder?.publicOrderId ?? "",
@@ -999,6 +1024,7 @@ export default function MerchantDeposits() {
         err?.data?.error ?? err?.data?.message ?? undefined;
 
       if (status === 503) {
+        setGatewayOutageSince((prev) => prev ?? new Date());
         toast.error(
           serverError && !serverError.includes("temporarily unavailable")
             ? serverError
@@ -1153,6 +1179,14 @@ export default function MerchantDeposits() {
 
   return (
     <div className="space-y-6">
+      {gatewayOutageSince && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span className="flex-1">
+            Payment gateways are temporarily unavailable. We'll notify you here as soon as deposits are back online — no need to keep retrying.
+          </span>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

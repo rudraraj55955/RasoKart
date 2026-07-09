@@ -28,7 +28,8 @@ export type NotificationType =
   | "kyc_status_updated"
   | "report_delivery_low_success_rate"
   | "preference_change_unknown_device"
-  | "gateway_failover_exhausted";
+  | "gateway_failover_exhausted"
+  | "gateway_recovered";
 
 type InAppPrefField = keyof Pick<
   typeof usersTable.$inferSelect,
