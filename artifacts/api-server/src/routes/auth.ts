@@ -111,6 +111,19 @@ router.post(["/login", "/merchant/login"], loginLimiter, async (req, res, next) 
         logger.warn({ err, userId: user.id }, "Failed to update lastLoginAt");
       });
 
+    // Fetch merchantType for merchant users so the login response can carry
+    // it — payout-merchant portal uses it to gate access at login time.
+    let loginMerchantType: string | null = null;
+    if (user.role === "merchant" && user.merchantId) {
+      const [mRow] = await db
+        .select({ merchantType: merchantsTable.merchantType })
+        .from(merchantsTable)
+        .where(eq(merchantsTable.id, user.merchantId))
+        .limit(1)
+        .catch(() => []);
+      loginMerchantType = (mRow as any)?.merchantType ?? "NORMAL";
+    }
+
     if (user.role === "merchant" && user.merchantId) {
       db.insert(credentialEventsTable).values({
         merchantId: user.merchantId,
@@ -181,6 +194,7 @@ router.post(["/login", "/merchant/login"], loginLimiter, async (req, res, next) 
         name: user.name,
         isActive: user.isActive,
         merchantId: user.merchantId,
+        merchantType: loginMerchantType,
         createdAt: user.createdAt,
       },
     });
