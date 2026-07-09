@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,20 @@ async function apiPost(path: string, body?: object) {
     throw new Error(msg);
   }
   return res.json();
+}
+
+function SettingsFormSkeleton({ rows = 2, wide = false }: { rows?: number; wide?: boolean }) {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="space-y-1.5">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className={`h-9 ${wide ? "w-full" : "w-48"}`} />
+        </div>
+      ))}
+      <Skeleton className="h-8 w-16" />
+    </div>
+  );
 }
 
 type ScheduleMode = "daily" | "weekly" | "off";
@@ -1177,6 +1192,10 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {smtpConfigLoading ? (
+            <SettingsFormSkeleton rows={4} wide />
+          ) : (
+            <>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="smtp-host" className="text-sm">SMTP host</Label>
@@ -1186,7 +1205,6 @@ export default function AdminSettings() {
                 placeholder="smtp.example.com"
                 value={smtpHost}
                 onChange={e => setSmtpHost(e.target.value)}
-                disabled={smtpConfigLoading}
               />
             </div>
             <div className="space-y-1.5">
@@ -1199,7 +1217,6 @@ export default function AdminSettings() {
                 placeholder="587"
                 value={smtpPort}
                 onChange={e => setSmtpPort(e.target.value)}
-                disabled={smtpConfigLoading}
               />
             </div>
           </div>
@@ -1212,7 +1229,6 @@ export default function AdminSettings() {
               placeholder="user@example.com"
               value={smtpUser}
               onChange={e => setSmtpUser(e.target.value)}
-              disabled={smtpConfigLoading}
               autoComplete="username"
             />
           </div>
@@ -1233,7 +1249,6 @@ export default function AdminSettings() {
                 placeholder={smtpConfig?.passConfigured ? "••••••••" : "Enter password"}
                 value={smtpPass}
                 onChange={e => setSmtpPass(e.target.value)}
-                disabled={smtpConfigLoading}
                 autoComplete="current-password"
                 className="pr-10"
               />
@@ -1256,7 +1271,6 @@ export default function AdminSettings() {
               placeholder='RasoKart <noreply@rasokart.com>'
               value={smtpFrom}
               onChange={e => setSmtpFrom(e.target.value)}
-              disabled={smtpConfigLoading}
             />
             <p className="text-xs text-muted-foreground">
               Used as the sender on all outgoing emails. Accepts plain email or{" "}
@@ -1268,7 +1282,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveSmtp()}
-              disabled={savingSmtp || smtpConfigLoading || !smtpChanged}
+              disabled={savingSmtp || !smtpChanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingSmtp ? "Saving…" : "Save"}
@@ -1290,6 +1304,8 @@ export default function AdminSettings() {
               </Button>
             )}
           </div>
+            </>
+          )}
 
           {/* Test connection */}
           <div className="border-t border-border/50 pt-4 space-y-3">
@@ -1368,6 +1384,10 @@ export default function AdminSettings() {
               </p>
             </div>
 
+            {reportRetryLoading ? (
+              <SettingsFormSkeleton rows={2} wide />
+            ) : (
+              <>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="report-retry-max" className="text-sm">Max delivery retries</Label>
@@ -1378,7 +1398,6 @@ export default function AdminSettings() {
                   max={10}
                   value={reportRetryMaxAttempts}
                   onChange={e => setReportRetryMaxAttempts(parseInt(e.target.value, 10) || 1)}
-                  disabled={reportRetryLoading}
                 />
                 <p className="text-xs text-muted-foreground">Allowed: 1–10. Default: 3.</p>
               </div>
@@ -1392,7 +1411,6 @@ export default function AdminSettings() {
                   step={100}
                   value={reportRetryBackoffMs}
                   onChange={e => setReportRetryBackoffMs(parseInt(e.target.value, 10) || 100)}
-                  disabled={reportRetryLoading}
                 />
                 <p className="text-xs text-muted-foreground">Base delay for exponential backoff. Default: 1000 ms.</p>
               </div>
@@ -1402,7 +1420,7 @@ export default function AdminSettings() {
               <Button
                 size="sm"
                 onClick={() => saveReportRetry()}
-                disabled={savingReportRetry || reportRetryLoading || reportRetryUnchanged}
+                disabled={savingReportRetry || reportRetryUnchanged}
               >
                 <Save className="w-3.5 h-3.5 mr-1.5" />
                 {savingReportRetry ? "Saving…" : "Save"}
@@ -1421,6 +1439,8 @@ export default function AdminSettings() {
                 </Button>
               )}
             </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1438,13 +1458,17 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!isLoading && currentSchedule === "off" && (
+          {isLoading ? (
+            <SettingsFormSkeleton rows={3} wide />
+          ) : (
+            <>
+          {currentSchedule === "off" && (
             <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>Automatic reconciliation is currently <strong>disabled</strong>. Manual runs still work.</span>
             </div>
           )}
-          {!isLoading && currentSchedule !== "off" && (
+          {currentSchedule !== "off" && (
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>
@@ -1471,7 +1495,6 @@ export default function AdminSettings() {
                     value={opt.value}
                     checked={scheduleMode === opt.value}
                     onChange={() => setScheduleMode(opt.value)}
-                    disabled={isLoading}
                     className="mt-0.5 accent-violet-500"
                   />
                   <div>
@@ -1487,7 +1510,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveSchedule()}
-              disabled={savingSchedule || isLoading || scheduleUnchanged}
+              disabled={savingSchedule || scheduleUnchanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingSchedule ? "Saving…" : "Save"}
@@ -1503,6 +1526,8 @@ export default function AdminSettings() {
               </Button>
             )}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -1545,7 +1570,11 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!isLoading && currentEmail && (
+          {isLoading ? (
+            <SettingsFormSkeleton rows={1} wide />
+          ) : (
+            <>
+          {currentEmail && (
             <div className="flex items-start gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>
@@ -1558,7 +1587,7 @@ export default function AdminSettings() {
               </span>
             </div>
           )}
-          {!isLoading && !currentEmail && (
+          {!currentEmail && (
             <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>No finance email configured — automatic reports are disabled</span>
@@ -1574,7 +1603,6 @@ export default function AdminSettings() {
                 placeholder="cfo@company.com, controller@company.com, auditor@company.com"
                 value={financeEmail}
                 onChange={e => setFinanceEmail(e.target.value)}
-                disabled={isLoading}
                 className="max-w-lg"
               />
             </div>
@@ -1596,14 +1624,14 @@ export default function AdminSettings() {
                 placeholder={currentEmail ? `Leave blank to use ${currentEmail.split(",")[0]?.trim()}` : "Enter recipient address"}
                 value={testEmailTo}
                 onChange={e => setTestEmailTo(e.target.value)}
-                disabled={isLoading || sendingTest}
+                disabled={sendingTest}
                 className={`max-w-sm ${testEmailInvalid ? "border-red-500/70 focus-visible:ring-red-500/30" : ""}`}
               />
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => sendTestEmail()}
-                disabled={sendingTest || isLoading || smtpConfigured === false || (!testEmailTrimmed && !currentEmail) || testEmailInvalid}
+                disabled={sendingTest || smtpConfigured === false || (!testEmailTrimmed && !currentEmail) || testEmailInvalid}
                 title={
                   smtpConfigured === false
                     ? "SMTP is not configured — configure it in the Email / SMTP section above"
@@ -1650,7 +1678,7 @@ export default function AdminSettings() {
                   setSampleReportTo(e.target.value);
                   setSampleReportResult(null);
                 }}
-                disabled={isLoading || sendingSample}
+                disabled={sendingSample}
                 className={`max-w-sm ${sampleReportToInvalid ? "border-red-500/70 focus-visible:ring-red-500/30" : ""}`}
               />
               <Button
@@ -1662,7 +1690,6 @@ export default function AdminSettings() {
                 }}
                 disabled={
                   sendingSample ||
-                  isLoading ||
                   smtpConfigured === false ||
                   (!sampleReportToTrimmed && !currentEmail) ||
                   sampleReportToInvalid
@@ -1714,7 +1741,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveEmail()}
-              disabled={savingEmail || isLoading || emailUnchanged}
+              disabled={savingEmail || emailUnchanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingEmail ? "Saving…" : "Save"}
@@ -1730,6 +1757,8 @@ export default function AdminSettings() {
               </Button>
             )}
           </div>
+            </>
+          )}
 
           {/* Test-email send history */}
           <div className="border-t border-border/50 pt-4 space-y-3">
@@ -1851,13 +1880,17 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!testEmailRetentionLoading && currentTestEmailRetentionDays === 0 && (
+          {testEmailRetentionLoading ? (
+            <SettingsFormSkeleton rows={1} />
+          ) : (
+            <>
+          {currentTestEmailRetentionDays === 0 && (
             <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>Auto-cleanup is <strong>disabled</strong>. Test email history will never be deleted automatically.</span>
             </div>
           )}
-          {!testEmailRetentionLoading && currentTestEmailRetentionDays > 0 && (
+          {currentTestEmailRetentionDays > 0 && (
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>
@@ -1880,7 +1913,6 @@ export default function AdminSettings() {
                   const v = parseInt(e.target.value);
                   if (!isNaN(v)) setTestEmailRetentionDays(Math.max(0, Math.min(365, v)));
                 }}
-                disabled={testEmailRetentionLoading}
                 className="w-32"
               />
               <span className="text-sm text-muted-foreground">days since sent</span>
@@ -1894,7 +1926,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveTestEmailRetention()}
-              disabled={savingTestEmailRetention || testEmailRetentionLoading || testEmailRetentionUnchanged}
+              disabled={savingTestEmailRetention || testEmailRetentionUnchanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingTestEmailRetention ? "Saving…" : "Save"}
@@ -1920,6 +1952,8 @@ export default function AdminSettings() {
               </Button>
             )}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -1936,13 +1970,17 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!qrCleanupLoading && currentRetentionDays === 0 && (
+          {qrCleanupLoading ? (
+            <SettingsFormSkeleton rows={1} />
+          ) : (
+            <>
+          {currentRetentionDays === 0 && (
             <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>Auto-cleanup is <strong>disabled</strong>. Expired and used QR codes will never be deleted automatically.</span>
             </div>
           )}
-          {!qrCleanupLoading && currentRetentionDays > 0 && (
+          {currentRetentionDays > 0 && (
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>
@@ -1972,20 +2010,18 @@ export default function AdminSettings() {
             </div>
           ) : null}
 
-          {!qrCleanupLoading && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/40 rounded-md px-3 py-2">
-              <History className="w-3.5 h-3.5 shrink-0" />
-              {qrCleanupData?.lastRunAt == null ? (
-                <span>Last run: <strong>Never run</strong></span>
-              ) : (
-                <span>
-                  Last run: <strong>{new Date(qrCleanupData.lastRunAt).toLocaleString()}</strong>
-                  {" — "}
-                  <strong>{qrCleanupData.lastDeleted ?? 0}</strong> record{qrCleanupData.lastDeleted !== 1 ? "s" : ""} deleted
-                </span>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/40 rounded-md px-3 py-2">
+            <History className="w-3.5 h-3.5 shrink-0" />
+            {qrCleanupData?.lastRunAt == null ? (
+              <span>Last run: <strong>Never run</strong></span>
+            ) : (
+              <span>
+                Last run: <strong>{new Date(qrCleanupData.lastRunAt).toLocaleString()}</strong>
+                {" — "}
+                <strong>{qrCleanupData.lastDeleted ?? 0}</strong> record{qrCleanupData.lastDeleted !== 1 ? "s" : ""} deleted
+              </span>
+            )}
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="retention-days" className="text-sm">Retention period (days)</Label>
@@ -2000,7 +2036,6 @@ export default function AdminSettings() {
                   const v = parseInt(e.target.value);
                   if (!isNaN(v)) setRetentionDays(Math.max(0, Math.min(365, v)));
                 }}
-                disabled={qrCleanupLoading}
                 className="w-32"
               />
               <span className="text-sm text-muted-foreground">days after expiry/use</span>
@@ -2015,7 +2050,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveRetention()}
-              disabled={savingRetention || qrCleanupLoading || retentionUnchanged}
+              disabled={savingRetention || retentionUnchanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingRetention ? "Saving…" : "Save"}
@@ -2141,6 +2176,8 @@ export default function AdminSettings() {
               </div>
             )}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -2157,13 +2194,17 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!vaCleanupLoading && currentVaRetentionDays === 0 && (
+          {vaCleanupLoading ? (
+            <SettingsFormSkeleton rows={1} />
+          ) : (
+            <>
+          {currentVaRetentionDays === 0 && (
             <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>Auto-cleanup is <strong>disabled</strong>. Closed virtual accounts will never be deleted automatically.</span>
             </div>
           )}
-          {!vaCleanupLoading && currentVaRetentionDays > 0 && (
+          {currentVaRetentionDays > 0 && (
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>
@@ -2173,20 +2214,18 @@ export default function AdminSettings() {
             </div>
           )}
 
-          {!vaCleanupLoading && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/40 rounded-md px-3 py-2">
-              <History className="w-3.5 h-3.5 shrink-0" />
-              {vaCleanupData?.lastRunAt == null ? (
-                <span>Last run: <strong>Never run</strong></span>
-              ) : (
-                <span>
-                  Last run: <strong>{new Date(vaCleanupData.lastRunAt).toLocaleString()}</strong>
-                  {" — "}
-                  <strong>{vaCleanupData.lastDeleted ?? 0}</strong> record{vaCleanupData.lastDeleted !== 1 ? "s" : ""} deleted
-                </span>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/40 rounded-md px-3 py-2">
+            <History className="w-3.5 h-3.5 shrink-0" />
+            {vaCleanupData?.lastRunAt == null ? (
+              <span>Last run: <strong>Never run</strong></span>
+            ) : (
+              <span>
+                Last run: <strong>{new Date(vaCleanupData.lastRunAt).toLocaleString()}</strong>
+                {" — "}
+                <strong>{vaCleanupData.lastDeleted ?? 0}</strong> record{vaCleanupData.lastDeleted !== 1 ? "s" : ""} deleted
+              </span>
+            )}
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="va-retention-days" className="text-sm">Retention period (days)</Label>
@@ -2201,7 +2240,6 @@ export default function AdminSettings() {
                   const v = parseInt(e.target.value);
                   if (!isNaN(v)) setVaRetentionDays(Math.max(0, Math.min(365, v)));
                 }}
-                disabled={vaCleanupLoading}
                 className="w-32"
               />
               <span className="text-sm text-muted-foreground">days after closing</span>
@@ -2216,7 +2254,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveVaRetention()}
-              disabled={savingVaRetention || vaCleanupLoading || vaRetentionUnchanged}
+              disabled={savingVaRetention || vaRetentionUnchanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingVaRetention ? "Saving…" : "Save"}
@@ -2342,6 +2380,8 @@ export default function AdminSettings() {
               </div>
             )}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -2358,13 +2398,17 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!auditLogRetentionLoading && currentAuditLogRetentionDays === 0 && (
+          {auditLogRetentionLoading ? (
+            <SettingsFormSkeleton rows={1} />
+          ) : (
+            <>
+          {currentAuditLogRetentionDays === 0 && (
             <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>Log retention is <strong>disabled</strong>. Audit report delivery logs will never be deleted automatically.</span>
             </div>
           )}
-          {!auditLogRetentionLoading && currentAuditLogRetentionDays > 0 && (
+          {currentAuditLogRetentionDays > 0 && (
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>
@@ -2399,8 +2443,7 @@ export default function AdminSettings() {
             <Select
               value={String(auditLogRetentionDays)}
               onValueChange={v => setAuditLogRetentionDays(parseInt(v))}
-              disabled={auditLogRetentionLoading}
-            >
+              >
               <SelectTrigger id="audit-log-retention" className="w-48">
                 <SelectValue />
               </SelectTrigger>
@@ -2442,12 +2485,14 @@ export default function AdminSettings() {
               size="sm"
               variant="outline"
               onClick={() => runAuditReportRetentionCleanup()}
-              disabled={runningAuditReportCleanup || auditLogRetentionLoading}
+              disabled={runningAuditReportCleanup}
             >
               <Trash2 className="w-3.5 h-3.5 mr-1.5" />
               {runningAuditReportCleanup ? "Running…" : "Run cleanup now"}
             </Button>
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -2464,6 +2509,10 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {webhookRetriesLoading ? (
+            <SettingsFormSkeleton rows={4} wide />
+          ) : (
+            <>
           {retryOrderWarning && (
             <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -2486,7 +2535,6 @@ export default function AdminSettings() {
                 const v = parseInt(e.target.value);
                 if (!isNaN(v)) setRetryMaxAttempts(Math.min(10, Math.max(1, v)));
               }}
-              disabled={webhookRetriesLoading}
               className="max-w-[10rem]"
             />
             <p className="text-xs text-muted-foreground">
@@ -2513,7 +2561,6 @@ export default function AdminSettings() {
                     const v = parseInt(e.target.value);
                     if (!isNaN(v)) setRetryDelay1(Math.max(0, v));
                   }}
-                  disabled={webhookRetriesLoading}
                   className="w-full"
                 />
               </div>
@@ -2528,7 +2575,6 @@ export default function AdminSettings() {
                     const v = parseInt(e.target.value);
                     if (!isNaN(v)) setRetryDelay2(Math.max(0, v));
                   }}
-                  disabled={webhookRetriesLoading}
                   className="w-full"
                 />
               </div>
@@ -2543,7 +2589,6 @@ export default function AdminSettings() {
                     const v = parseInt(e.target.value);
                     if (!isNaN(v)) setRetryDelay3(Math.max(0, v));
                   }}
-                  disabled={webhookRetriesLoading}
                   className="w-full"
                 />
               </div>
@@ -2554,7 +2599,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveRetry()}
-              disabled={savingRetry || webhookRetriesLoading || retryUnchanged || retryOrderWarning}
+              disabled={savingRetry || retryUnchanged || retryOrderWarning}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingRetry ? "Saving…" : "Save"}
@@ -2575,6 +2620,8 @@ export default function AdminSettings() {
               </Button>
             )}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -2590,6 +2637,10 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {webhookAlertConfigLoading ? (
+            <SettingsFormSkeleton rows={1} />
+          ) : (
+            <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="webhook-alert-cooldown" className="text-sm">Cooldown window (hours)</Label>
@@ -2603,7 +2654,6 @@ export default function AdminSettings() {
                   const v = parseInt(e.target.value);
                   if (!isNaN(v)) setWebhookAlertCooldownHours(Math.min(168, Math.max(1, v)));
                 }}
-                disabled={webhookAlertConfigLoading}
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
@@ -2616,7 +2666,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveWebhookAlertCooldown({ data: { cooldownHours: webhookAlertCooldownHours } })}
-              disabled={savingWebhookAlertCooldown || webhookAlertConfigLoading || webhookAlertCooldownUnchanged}
+              disabled={savingWebhookAlertCooldown || webhookAlertCooldownUnchanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingWebhookAlertCooldown ? "Saving…" : "Save"}
@@ -2634,6 +2684,8 @@ export default function AdminSettings() {
               </Button>
             )}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -3207,6 +3259,10 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {credRotationLoading ? (
+            <SettingsFormSkeleton rows={1} wide />
+          ) : (
+            <>
           <div className="space-y-1.5">
             <Label htmlFor="cred-rotation-extra-recipients" className="text-sm">Additional recipients (comma-separated)</Label>
             <Input
@@ -3214,7 +3270,7 @@ export default function AdminSettings() {
               placeholder="e.g. security-team@yourcompany.com"
               value={credRotationRecipientsInput}
               onChange={(e) => setCredRotationRecipientsInput(e.target.value)}
-              disabled={credRotationLoading || savingCredRotationRecipients}
+              disabled={savingCredRotationRecipients}
             />
             <p className="text-xs text-muted-foreground">
               These addresses receive credential rotation alerts alongside all active admins. Leave blank to only notify admins (the default).
@@ -3229,11 +3285,13 @@ export default function AdminSettings() {
           <Button
             size="sm"
             onClick={() => saveCredRotationRecipients()}
-            disabled={savingCredRotationRecipients || credRotationLoading || credRotationUnchanged}
+            disabled={savingCredRotationRecipients || credRotationUnchanged}
           >
             <Save className="w-3.5 h-3.5 mr-1.5" />
             {savingCredRotationRecipients ? "Saving…" : "Save"}
           </Button>
+            </>
+          )}
 
           {/* Test credential rotation alert email */}
           <div className="border-t border-border/50 pt-4 space-y-3">
@@ -3354,13 +3412,17 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!githubSyncLoading && !currentGithubSyncEnabled && (
+          {githubSyncLoading ? (
+            <SettingsFormSkeleton rows={4} wide />
+          ) : (
+            <>
+          {!currentGithubSyncEnabled && (
             <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>GitHub sync is <strong>disabled</strong> — the sync script will skip automatically.</span>
             </div>
           )}
-          {!githubSyncLoading && currentGithubSyncEnabled && (
+          {currentGithubSyncEnabled && (
             <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>GitHub sync is <strong>enabled</strong> — the sync script will run on schedule.</span>
@@ -3529,7 +3591,6 @@ export default function AdminSettings() {
             <Switch
               checked={githubSyncEnabled}
               onCheckedChange={val => setGithubSyncEnabled(val)}
-              disabled={githubSyncLoading}
             />
           </div>
 
@@ -3541,7 +3602,7 @@ export default function AdminSettings() {
               placeholder="0 2 * * *"
               value={githubSyncSchedule}
               onChange={e => setGithubSyncSchedule(e.target.value)}
-              disabled={githubSyncLoading || !githubSyncEnabled}
+              disabled={!githubSyncEnabled}
               className="max-w-xs font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
@@ -3582,7 +3643,6 @@ export default function AdminSettings() {
                 step={1}
                 value={githubSyncFailureThreshold}
                 onChange={e => setGithubSyncFailureThreshold(parseInt(e.target.value, 10) || 0)}
-                disabled={githubSyncLoading}
                 className="max-w-xs"
               />
               <p className="text-xs text-muted-foreground">
@@ -3598,7 +3658,6 @@ export default function AdminSettings() {
                 step={1}
                 value={githubSyncRenotifyInterval}
                 onChange={e => setGithubSyncRenotifyInterval(parseInt(e.target.value, 10) || 0)}
-                disabled={githubSyncLoading}
                 className="max-w-xs"
               />
               <p className="text-xs text-muted-foreground">
@@ -3658,7 +3717,7 @@ export default function AdminSettings() {
                   divergeAction: githubSyncDivergeAction,
                 },
               })}
-              disabled={savingGithubSyncConfig || githubSyncLoading || githubSyncUnchanged || !githubSyncThresholdsValid}
+              disabled={savingGithubSyncConfig || githubSyncUnchanged || !githubSyncThresholdsValid}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingGithubSyncConfig ? "Saving…" : "Save"}
@@ -3683,6 +3742,8 @@ export default function AdminSettings() {
               <span className="text-xs text-red-400">Threshold and cadence must be at least 1.</span>
             )}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -4004,6 +4065,10 @@ export default function AdminSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {quietHoursFlushLoading ? (
+            <SettingsFormSkeleton rows={1} />
+          ) : (
+            <>
           <div className="space-y-1.5">
             <Label htmlFor="qh-flush-interval" className="text-sm">Flush interval (seconds)</Label>
             <Input
@@ -4014,7 +4079,6 @@ export default function AdminSettings() {
               step={1}
               value={quietHoursFlushInterval}
               onChange={e => setQuietHoursFlushInterval(parseInt(e.target.value, 10) || 60)}
-              disabled={quietHoursFlushLoading}
               className="max-w-xs"
             />
             <p className="text-xs text-muted-foreground">
@@ -4027,7 +4091,7 @@ export default function AdminSettings() {
             <Button
               size="sm"
               onClick={() => saveQuietHoursFlush({ data: { intervalSeconds: quietHoursFlushInterval } })}
-              disabled={savingQuietHoursFlush || quietHoursFlushLoading || quietHoursFlushUnchanged}
+              disabled={savingQuietHoursFlush || quietHoursFlushUnchanged}
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               {savingQuietHoursFlush ? "Saving…" : "Save"}
@@ -4043,6 +4107,8 @@ export default function AdminSettings() {
               </Button>
             )}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
