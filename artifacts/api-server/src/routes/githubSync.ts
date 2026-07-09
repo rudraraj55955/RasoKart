@@ -5,6 +5,7 @@ import { logger } from "../lib/logger";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { db, systemSettingsTable, auditLogsTable } from "@workspace/db";
 import { inArray } from "drizzle-orm";
+import { runGithubSyncLogCleanup } from "../helpers/githubSyncLogCleanupScheduler";
 
 const router = Router();
 router.use(requireAuth);
@@ -288,6 +289,32 @@ router.get("/divergence", (req, res) => {
     res.json({ checked: false, diverged: false, repo: GITHUB_REPO, reason: "Divergence check failed" });
   } finally {
     resetRemote();
+  }
+});
+
+// POST /api/github-sync/cleanup-logs
+router.post("/cleanup-logs", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const result = runGithubSyncLogCleanup();
+
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "github_sync_log_cleanup_triggered",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify(result),
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for github_sync log cleanup");
+    }
+
+    res.json(result);
+  } catch (err) {
+    next(err);
   }
 });
 

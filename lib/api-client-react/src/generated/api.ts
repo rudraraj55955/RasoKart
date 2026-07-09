@@ -359,6 +359,7 @@ import type {
   RoutingRuleInput,
   RoutingStatusResponse,
   RunGithubSyncBody,
+  RunGithubSyncLogCleanup200,
   RunLedgerBackfill200,
   SavedFilter,
   ScheduleRenewalInput,
@@ -23022,6 +23023,77 @@ export const useRunGithubSync = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRunGithubSyncMutationOptions(options));
+    }
+
+export const getRunGithubSyncLogCleanupUrl = () => {
+
+
+
+
+  return `/api/github-sync/cleanup-logs`
+}
+
+/**
+ * Runs the log-file cleanup immediately — removes any .log files in .github-sync-logs/ whose IDs are not present in the sync history. Normally runs nightly via the scheduler; this endpoint lets admins trigger it on-demand after a crash or manual history reset.
+ * @summary Delete orphaned GitHub sync log files
+ */
+export const runGithubSyncLogCleanup = async ( options?: RequestInit): Promise<RunGithubSyncLogCleanup200> => {
+
+  return customFetch<RunGithubSyncLogCleanup200>(getRunGithubSyncLogCleanupUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunGithubSyncLogCleanupMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runGithubSyncLogCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runGithubSyncLogCleanup>>, TError,void, TContext> => {
+
+const mutationKey = ['runGithubSyncLogCleanup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runGithubSyncLogCleanup>>, void> = () => {
+
+
+          return  runGithubSyncLogCleanup(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunGithubSyncLogCleanupMutationResult = NonNullable<Awaited<ReturnType<typeof runGithubSyncLogCleanup>>>
+
+    export type RunGithubSyncLogCleanupMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete orphaned GitHub sync log files
+ */
+export const useRunGithubSyncLogCleanup = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runGithubSyncLogCleanup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runGithubSyncLogCleanup>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunGithubSyncLogCleanupMutationOptions(options));
     }
 
 export const getGetGithubSyncDivergenceUrl = () => {

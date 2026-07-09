@@ -7631,6 +7631,13 @@ export type RunGithubSyncBody = {
   retryOf?: string;
 };
 
+export type RunGithubSyncLogCleanup200 = {
+  /** Number of orphaned log files deleted. */
+  deleted: number;
+  /** Number of files that could not be deleted due to filesystem errors. */
+  errors: number;
+};
+
 export type ListCashfreePaymentLogsParams = {
 page?: number;
 limit?: number;

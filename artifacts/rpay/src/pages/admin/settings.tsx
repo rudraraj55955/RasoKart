@@ -11,7 +11,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, useRunGithubSyncLogCleanup, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -1036,6 +1036,23 @@ export default function AdminSettings() {
     setGithubSyncConfirmOpen(false);
     runGithubSyncNow({});
   };
+
+  const [githubSyncLogCleanupResult, setGithubSyncLogCleanupResult] = useState<{ deleted: number; errors: number } | null>(null);
+  const { mutate: runLogCleanupNow, isPending: runningLogCleanup } = useRunGithubSyncLogCleanup({
+    mutation: {
+      onSuccess: (res) => {
+        setGithubSyncLogCleanupResult(res);
+        if (res.errors > 0) {
+          toast.warning(`Cleanup finished — deleted ${res.deleted} orphaned log file${res.deleted !== 1 ? "s" : ""}, ${res.errors} error${res.errors !== 1 ? "s" : ""}.`);
+        } else if (res.deleted === 0) {
+          toast.info("Cleanup complete — no orphaned log files found.");
+        } else {
+          toast.success(`Cleanup complete — deleted ${res.deleted} orphaned log file${res.deleted !== 1 ? "s" : ""}.`);
+        }
+      },
+      onError: (err: Error) => toast.error(`Log cleanup failed: ${err.message}`),
+    },
+  });
 
   const [selectedSyncRun, setSelectedSyncRun] = useState<GithubSyncHistoryEntry | null>(null);
   const { data: selectedSyncRunLog, isLoading: selectedSyncRunLogLoading, isError: selectedSyncRunLogError } = useGetGithubSyncRunLog(
@@ -3447,6 +3464,37 @@ export default function AdminSettings() {
               <span>No sync runs recorded yet. History is written after each sync script execution.</span>
             </div>
           )}
+
+          {/* Log file cleanup */}
+          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+            <div className="flex-1 min-w-0 mr-4">
+              <p className="text-sm font-medium text-foreground">Orphaned log file cleanup</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Remove <span className="font-mono">.github-sync-logs/</span> files whose IDs are no longer in the sync history. Runs automatically every night at 03:00; use this to trigger it immediately after a crash or manual history reset.
+              </p>
+              {githubSyncLogCleanupResult != null && (
+                <p className="text-xs mt-1.5 text-muted-foreground">
+                  Last run:{" "}
+                  {githubSyncLogCleanupResult.deleted === 0 && githubSyncLogCleanupResult.errors === 0
+                    ? "no orphaned files found"
+                    : [
+                        githubSyncLogCleanupResult.deleted > 0 && `${githubSyncLogCleanupResult.deleted} file${githubSyncLogCleanupResult.deleted !== 1 ? "s" : ""} deleted`,
+                        githubSyncLogCleanupResult.errors > 0 && `${githubSyncLogCleanupResult.errors} error${githubSyncLogCleanupResult.errors !== 1 ? "s" : ""}`,
+                      ].filter(Boolean).join(", ")}
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              onClick={() => runLogCleanupNow()}
+              disabled={runningLogCleanup}
+            >
+              <Trash2 className={`w-3.5 h-3.5 mr-1.5`} />
+              {runningLogCleanup ? "Cleaning…" : "Run cleanup"}
+            </Button>
+          </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
             <div>

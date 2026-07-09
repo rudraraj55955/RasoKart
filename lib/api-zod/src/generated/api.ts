@@ -7612,6 +7612,16 @@ export const RunGithubSyncBody = zod.object({
 
 
 /**
+ * Runs the log-file cleanup immediately — removes any .log files in .github-sync-logs/ whose IDs are not present in the sync history. Normally runs nightly via the scheduler; this endpoint lets admins trigger it on-demand after a crash or manual history reset.
+ * @summary Delete orphaned GitHub sync log files
+ */
+export const RunGithubSyncLogCleanupResponse = zod.object({
+  "deleted": zod.number().describe('Number of orphaned log files deleted.'),
+  "errors": zod.number().describe('Number of files that could not be deleted due to filesystem errors.')
+})
+
+
+/**
  * Performs a read-only fetch (no push) against the remote and reports whether it has diverged from the local history, so the UI can warn before a force-push discards those commits.
  * @summary Check whether the remote GitHub branch has commits not present locally
  */

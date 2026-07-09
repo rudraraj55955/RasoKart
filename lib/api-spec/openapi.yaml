@@ -7950,6 +7950,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /github-sync/cleanup-logs:
+    post:
+      operationId: runGithubSyncLogCleanup
+      tags: [github-sync]
+      summary: Delete orphaned GitHub sync log files
+      description: Runs the log-file cleanup immediately — removes any .log files in .github-sync-logs/ whose IDs are not present in the sync history. Normally runs nightly via the scheduler; this endpoint lets admins trigger it on-demand after a crash or manual history reset.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Cleanup complete
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, errors]
+                properties:
+                  deleted:
+                    type: integer
+                    description: Number of orphaned log files deleted.
+                  errors:
+                    type: integer
+                    description: Number of files that could not be deleted due to filesystem errors.
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /github-sync/divergence:
     get:
       operationId: getGithubSyncDivergence
