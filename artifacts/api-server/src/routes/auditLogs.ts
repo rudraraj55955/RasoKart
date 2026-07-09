@@ -219,6 +219,99 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// Keep in sync with ROTATED_FIELD_LABELS in credential-history-dialog.tsx
+const ROTATED_FIELD_LABELS: Record<string, string> = {
+  clientIdUpdated: "Client ID",
+  clientSecretUpdated: "Client Secret",
+  webhookSecretUpdated: "Webhook Secret",
+  apiKeyUpdated: "API Key",
+  fundsourceIdUpdated: "Fundsource ID",
+};
+
+// Keep in sync with SETTING_LABELS in credential-history-dialog.tsx
+const SETTING_LABELS: Record<string, string> = {
+  enabled: "Enabled",
+  env: "Environment",
+  baseUrl: "Base URL",
+  apiVersion: "API Version",
+  upiEnabled: "UPI",
+  qrEnabled: "QR Codes",
+  paymentLinksEnabled: "Payment Links",
+  merchantPayinEnabled: "Merchant Payin",
+  merchantEnabled: "Merchant Access",
+  adminApprovalRequired: "Admin Approval Required",
+  isEnabled: "Enabled",
+  environment: "Environment",
+  displayNamePublic: "Display Name",
+  productType: "Product Type",
+  webhookUrl: "Webhook URL",
+  notes: "Notes",
+};
+
+const SKIP_KEYS = new Set(["providerKey", "updatedByEmail", "section", "key"]);
+
+function formatCsvValue(v: unknown): string {
+  if (typeof v === "boolean") return v ? "On" : "Off";
+  if (v === null || v === undefined || v === "") return "—";
+  return String(v);
+}
+
+function isFromTo(v: unknown): v is { from: unknown; to: unknown } {
+  return typeof v === "object" && v !== null && "from" in v && "to" in v;
+}
+
+/**
+ * Produces a human-readable plain-text "Changes" string from an audit log
+ * details JSON blob — mirrors the ChangeSummary component in
+ * credential-history-dialog.tsx so the CSV column matches the on-screen view.
+ *
+ * Examples:
+ *   "Client Secret rotated; Environment: sandbox → production"
+ *   "API Key rotated; Enabled: Off → On"
+ */
+function buildChangeSummaryText(details: string | null): string {
+  if (!details) return "";
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(details) as Record<string, unknown>;
+  } catch {
+    return details;
+  }
+
+  const parts: string[] = [];
+
+  for (const [key, value] of Object.entries(parsed)) {
+    if (SKIP_KEYS.has(key)) continue;
+
+    // Boolean "*Updated" flags (built-in gateways)
+    if (key in ROTATED_FIELD_LABELS) {
+      if (value === true) parts.push(`${ROTATED_FIELD_LABELS[key]} rotated`);
+      continue;
+    }
+
+    // "*Encrypted" fields from provider_integration_updated
+    if (key.endsWith("Encrypted") && value === "[redacted]") {
+      const baseName = key.replace(/Encrypted$/, "");
+      const labelMap: Record<string, string> = {
+        apiKey: "API Key",
+        apiSecret: "API Secret",
+        webhookSecret: "Webhook Secret",
+      };
+      parts.push(`${labelMap[baseName] ?? baseName} rotated`);
+      continue;
+    }
+
+    const label = SETTING_LABELS[key] ?? key;
+    if (isFromTo(value)) {
+      parts.push(`${label}: ${formatCsvValue(value.from)} → ${formatCsvValue(value.to)}`);
+    } else {
+      parts.push(`${label}: ${formatCsvValue(value)}`);
+    }
+  }
+
+  return parts.join("; ");
+}
+
 router.get("/stats", async (req, res) => {
   if (!ensureAdmin(req, res)) return;
 
@@ -410,7 +503,7 @@ router.get("/export", async (req, res) => {
     return s;
   }
 
-  const header = ["ID", "Actor Email", "Admin ID", "Action", "Target Type", "Target ID", "IP Address", "Timestamp"];
+  const header = ["ID", "Actor Email", "Admin ID", "Action", "Target Type", "Target ID", "IP Address", "Timestamp", "Changes"];
   const csvRows = rows.map(r => [
     escapeCsv(String(r.id)),
     escapeCsv(r.adminEmail),
@@ -420,6 +513,7 @@ router.get("/export", async (req, res) => {
     escapeCsv(r.targetId != null ? String(r.targetId) : null),
     escapeCsv(r.ipAddress),
     escapeCsv(r.createdAt.toISOString()),
+    escapeCsv(buildChangeSummaryText(r.details)),
   ].join(","));
 
   const csv = [header.join(","), ...csvRows].join("\n");
