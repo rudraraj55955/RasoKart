@@ -50,11 +50,9 @@ Thumbs.db
 .github-sync-status.json
 .github-sync-history.json
 
-# GitHub Actions (Replit OAuth lacks workflow scope)
-.github/workflows/
-
 # Database backups — never commit dumps to VCS
 backups/
 *.dump
+*.dump.enc
 *.sql.gz
 scripts/test-results/

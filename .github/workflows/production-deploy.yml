@@ -1,0 +1,281 @@
+name: Production Deploy
+
+# Hybrid approval-gated CI/CD for RasoKart.
+#
+#   classify              - diffs the push, decides frontend_auto vs
+#                            sensitive_approval using scripts/classify-deployment.sh
+#                            (conservative allowlist, defaults to sensitive on
+#                            any uncertainty).
+#   validate              - install, typecheck, tests, API + frontend build.
+#                            Runs regardless of classification. Nothing
+#                            deploys if this fails.
+#   auto_frontend_deploy  - only for deployment_type == frontend_auto.
+#                            GitHub Environment "production-auto", no required
+#                            reviewer, restricted to main. Deploys ONLY the
+#                            static frontend build - never runs db-migrate,
+#                            never restarts the API.
+#   sensitive_production_deploy
+#                         - only for deployment_type == sensitive_approval.
+#                            GitHub Environment "production-sensitive",
+#                            required reviewer rudraraj55955, restricted to
+#                            main. Nothing touches the VPS until approved.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: rasokart-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      deployment_type: ${{ steps.classify.outputs.deployment_type }}
+    steps:
+      - name: Checkout (full history for diffing)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine base/head SHAs
+        id: shas
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            HEAD_SHA="${{ github.sha }}"
+            BASE_SHA="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || echo "$HEAD_SHA")"
+          else
+            HEAD_SHA="${{ github.event.after }}"
+            BASE_SHA="${{ github.event.before }}"
+            # First push to a new branch, or a force-push edge case: before
+            # may be all-zeros or unreachable - fall back to comparing
+            # against the immediate parent so we never crash and never
+            # silently skip classification.
+            if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+              BASE_SHA="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || echo "$HEAD_SHA")"
+            fi
+          fi
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Run classifier
+        id: classify
+        run: |
+          set -o pipefail
+          OUTPUT="$(bash scripts/classify-deployment.sh "${{ steps.shas.outputs.base_sha }}" "${{ steps.shas.outputs.head_sha }}" | tee /tmp/classify-stdout.txt)"
+          DEPLOYMENT_TYPE="$(echo "$OUTPUT" | grep '^DEPLOYMENT_TYPE=' | cut -d= -f2)"
+          REASON="$(echo "$OUTPUT" | grep '^REASON=' | cut -d= -f2-)"
+          if [ -z "$DEPLOYMENT_TYPE" ]; then
+            DEPLOYMENT_TYPE="sensitive_approval"
+            REASON="Classifier produced no output - defaulting to sensitive/manual approval."
+          fi
+          echo "deployment_type=$DEPLOYMENT_TYPE" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Deployment classification: \`$DEPLOYMENT_TYPE\`"
+            echo ""
+            echo "**Reason:** $REASON"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/classify-*.log >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - name: Print full classification detail to summary
+        run: |
+          bash scripts/classify-deployment.sh "${{ steps.shas.outputs.base_sha }}" "${{ steps.shas.outputs.head_sha }}" 2>> "$GITHUB_STEP_SUMMARY" 1>/dev/null || true
+
+  validate:
+    name: Validate (install, typecheck, build, test)
+    needs: classify
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rasokart_ci
+          POSTGRES_PASSWORD: rasokart_ci
+          POSTGRES_DB: rasokart_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rasokart_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://rasokart_ci:rasokart_ci@localhost:5432/rasokart_ci
+      SESSION_SECRET: ci-only-session-secret-not-used-in-production-0000000000000000
+      NODE_ENV: development
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (libs + artifacts + scripts)
+        run: pnpm run typecheck
+
+      - name: Build (libs + all artifacts - includes API + frontend build)
+        run: pnpm run build
+
+      - name: Run database migrations (throwaway CI database only)
+        run: pnpm --filter @workspace/scripts run db-migrate
+
+      - name: Start API server
+        run: |
+          nohup node --enable-source-maps artifacts/api-server/dist/index.mjs > /tmp/api-server.log 2>&1 &
+          echo $! > /tmp/api-server.pid
+        env:
+          PORT: "8080"
+          NODE_ENV: production
+          DATABASE_URL: postgres://rasokart_ci:rasokart_ci@localhost:5432/rasokart_ci
+          SESSION_SECRET: ci-only-session-secret-not-used-in-production-0000000000000000
+
+      - name: Serve built web frontend
+        run: |
+          nohup npx serve -l 3000 -s artifacts/rpay/dist/public > /tmp/rpay-web.log 2>&1 &
+          echo $! > /tmp/rpay-web.pid
+
+      - name: Install and configure nginx (path-based proxy, mirrors production routing)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y nginx
+          sudo tee /etc/nginx/sites-available/rasokart-ci.conf > /dev/null <<'EOF'
+          server {
+            listen 80;
+            location /api {
+              proxy_pass http://127.0.0.1:8080;
+              proxy_set_header Host $host;
+            }
+            location / {
+              proxy_pass http://127.0.0.1:3000;
+              proxy_set_header Host $host;
+            }
+          }
+          EOF
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo ln -sf /etc/nginx/sites-available/rasokart-ci.conf /etc/nginx/sites-enabled/rasokart-ci.conf
+          sudo systemctl restart nginx
+
+      - name: Wait for stack to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:80/api/healthz > /dev/null 2>&1; then
+              echo "API is up"; break
+            fi
+            echo "Waiting for API... ($i)"; sleep 2
+          done
+          curl -fsS http://localhost:80/api/healthz
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @workspace/scripts exec playwright install --with-deps chromium
+
+      - name: Run settings-persistence e2e suites
+        working-directory: scripts
+        run: npx playwright test --config=playwright.config.ts e2e/settings-persistence.spec.ts e2e/merchant-settings-persistence.spec.ts
+
+      - name: Dump server logs on failure
+        if: failure()
+        run: |
+          echo "--- api-server log ---"; cat /tmp/api-server.log || true
+          echo "--- rpay web log ---"; cat /tmp/rpay-web.log || true
+
+      - name: Stop background processes
+        if: always()
+        run: |
+          kill "$(cat /tmp/api-server.pid)" 2>/dev/null || true
+          kill "$(cat /tmp/rpay-web.pid)" 2>/dev/null || true
+
+  auto_frontend_deploy:
+    name: Auto-deploy frontend (no approval)
+    needs: [classify, validate]
+    if: needs.classify.outputs.deployment_type == 'frontend_auto' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-auto
+      url: https://rasokart.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy frontend only (runs scripts/deploy-frontend-production.sh on the VPS)
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o UserKnownHostsFile=~/.ssh/known_hosts -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "bash -lc 'cd /var/www/rasokart && bash scripts/deploy-frontend-production.sh'"
+
+      - name: Verify frontend health after deploy
+        run: curl -fsS https://rasokart.com/ > /dev/null
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  sensitive_production_deploy:
+    name: Deploy to production VPS (sensitive - approval required)
+    needs: [classify, validate]
+    if: needs.classify.outputs.deployment_type == 'sensitive_approval' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Nothing in this job runs, and the VPS is never contacted, until a human
+    # reviewer clicks "Approve and deploy" on this environment's gate. See
+    # docs/HYBRID_PRODUCTION_DEPLOYMENT.md for exact setup steps.
+    environment:
+      name: production-sensitive
+      url: https://rasokart.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy (runs scripts/deploy-sensitive-production.sh on the VPS)
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o UserKnownHostsFile=~/.ssh/known_hosts -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "bash -lc 'cd /var/www/rasokart && bash scripts/deploy-sensitive-production.sh'"
+
+      - name: Verify production deep health after deploy
+        run: curl -fsS https://rasokart.com/api/healthz/deep
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
