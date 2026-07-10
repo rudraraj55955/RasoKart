@@ -152,9 +152,13 @@ async function migrate() {
       aadhaar_reference_id_encrypted TEXT,
       aadhaar_reference_id_iv TEXT,
       aadhaar_reference_id_tag TEXT,
-      aadhaar_otp_session_encrypted TEXT,
-      aadhaar_otp_session_iv TEXT,
-      aadhaar_otp_session_tag TEXT,
+      aadhaar_digilocker_session_encrypted TEXT,
+      aadhaar_digilocker_session_iv TEXT,
+      aadhaar_digilocker_session_tag TEXT,
+      mobile_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      mobile_verified_at TIMESTAMPTZ,
+      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      email_verified_at TIMESTAMPTZ,
       name_match_score INTEGER,
       verification_status TEXT NOT NULL DEFAULT 'PENDING',
       failure_reason TEXT,
@@ -235,6 +239,18 @@ async function migrate() {
     ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS bank_holder_name TEXT;
     ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_number TEXT;
     ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_status TEXT DEFAULT 'SKIPPED';
+
+    -- ── merchant_kyc_verifications: DigiLocker Aadhaar + mobile/email contact verification (self-heals older DBs) ─
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_encrypted TEXT;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_iv TEXT;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_tag TEXT;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified_at TIMESTAMPTZ;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_encrypted;
+    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_iv;
+    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_tag;
 
     -- ── module_controls ────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS module_controls (
@@ -644,9 +660,13 @@ async function migrate() {
       aadhaar_reference_id_encrypted TEXT,
       aadhaar_reference_id_iv TEXT,
       aadhaar_reference_id_tag TEXT,
-      aadhaar_otp_session_encrypted TEXT,
-      aadhaar_otp_session_iv TEXT,
-      aadhaar_otp_session_tag TEXT,
+      aadhaar_digilocker_session_encrypted TEXT,
+      aadhaar_digilocker_session_iv TEXT,
+      aadhaar_digilocker_session_tag TEXT,
+      mobile_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      mobile_verified_at TIMESTAMPTZ,
+      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      email_verified_at TIMESTAMPTZ,
       name_match_score INTEGER,
       verification_status TEXT NOT NULL DEFAULT 'PENDING',
       failure_reason TEXT,

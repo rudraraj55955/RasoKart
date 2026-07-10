@@ -37,3 +37,4 @@
 - [Per-admin notification dedup for event feeds](notif-per-admin-dedup.md) — admin-alert notifications insert one row per admin recipient; dedupe by (createdAt, metadata keys) when building an events list/history view.
 - [VPS deploy needs user SSH secrets](vps-deploy-no-ssh-access.md) — agent has no SSH/VPS creds by default; ask user to add secrets or hand them manual deploy commands instead.
 - [Auto KYC no-creds failsafe](auto-kyc-no-creds-failsafe.md) — verify provider-backed KYC routes fail safe (generic error, zero DB writes) when no live credentials exist; that IS the verifiable contract in dev.
+- [Auto-KYC DigiLocker-only restriction](auto-kyc-digilocker-restriction.md) — only Secure ID PAN + DigiLocker Aadhaar allowed; approval needs PAN+Aadhaar+nameMatch+mobile+email all pass, not just PAN+Aadhaar.

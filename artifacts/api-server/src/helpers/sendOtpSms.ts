@@ -20,7 +20,7 @@ export async function loadOtpSmsSettings() {
 export async function sendOtpSms(opts: {
   mobile: string;
   otp: string;
-  purpose: "LOGIN" | "PASSWORD_RESET";
+  purpose: "LOGIN" | "PASSWORD_RESET" | "KYC_MOBILE";
   merchantId: number | null;
 }): Promise<SmsOtpResult> {
   const { mobile, otp, purpose, merchantId } = opts;
@@ -37,7 +37,9 @@ export async function sendOtpSms(opts: {
     return { sent: false, provider: settings.provider, fallbackUsed: false };
   }
 
-  const templateText = settings.otpTemplateText ?? "Your login code is {otp}. Valid for 5 minutes. Do not share.";
+  const templateText = purpose === "KYC_MOBILE"
+    ? "Your RasoKart KYC mobile verification code is {otp}. Valid for 5 minutes. Do not share."
+    : (settings.otpTemplateText ?? "Your login code is {otp}. Valid for 5 minutes. Do not share.");
   const mobileHash = hashIdentifier(mobile);
   const mobileLast4 = mobile.replace(/\D/g, "").slice(-4) || null;
 

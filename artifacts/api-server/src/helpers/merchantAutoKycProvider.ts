@@ -98,10 +98,17 @@ export interface PanVerifyResult {
   requestId?: string;
 }
 
+/**
+ * Verifies PAN via the Cashfree Secure ID PAN API (not PAN Lite / PAN 360).
+ * Passing the merchant's registered name lets the provider return a name-match
+ * signal alongside the raw registered name, which we still cross-check locally
+ * via computeNameMatchScore() for the final auto-approval decision.
+ */
 export async function verifyPanAuto(
   cfg: AutoKycConfig,
   pan: string,
   merchantId: number,
+  name?: string,
 ): Promise<PanVerifyResult> {
   const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
   if (!panRegex.test(pan.toUpperCase())) {
@@ -109,10 +116,10 @@ export async function verifyPanAuto(
     return { ok: false, status: "INVALID" };
   }
   try {
-    const resp = await fetch(`${cfg.baseUrl}/verification/v1/pan`, {
+    const resp = await fetch(`${cfg.baseUrl}/verification/v1/secure-id/pan`, {
       method: "POST",
       headers: authHeaders(cfg),
-      body: JSON.stringify({ pan: pan.toUpperCase() }),
+      body: JSON.stringify({ pan: pan.toUpperCase(), name }),
       signal: AbortSignal.timeout(10_000),
     });
     const raw = (await resp.json().catch(() => ({}))) as Record<string, any>;
@@ -141,38 +148,40 @@ export async function verifyPanAuto(
   }
 }
 
-export interface AadhaarStartResult {
+export interface AadhaarSessionStartResult {
   ok: boolean;
   sessionId?: string;
-  refId?: string;
+  authorizationUrl?: string;
+  mode?: string;
 }
 
-export async function startAadhaarOtp(
+/**
+ * Starts a Cashfree Secure ID DigiLocker session for Aadhaar verification.
+ * This is the DigiLocker-based flow (merchant consents via DigiLocker login),
+ * NOT Offline Aadhaar OTP and NOT Aadhaar Masking — those are intentionally
+ * unused for merchant auto-KYC.
+ */
+export async function startAadhaarDigilockerSession(
   cfg: AutoKycConfig,
-  aadhaarNumber: string,
   merchantId: number,
-): Promise<AadhaarStartResult> {
-  const digits = aadhaarNumber.replace(/\D/g, "");
-  if (digits.length !== 12) {
-    await logKyc(merchantId, "AADHAAR", "FAILED", `••••${digits.slice(-4)}`, null, null, "invalid_format");
-    return { ok: false };
-  }
+  mobile: string,
+): Promise<AadhaarSessionStartResult> {
   try {
-    const resp = await fetch(`${cfg.baseUrl}/verification/v1/offline-aadhaar/otp`, {
+    const resp = await fetch(`${cfg.baseUrl}/verification/v1/secure-id/sessions`, {
       method: "POST",
       headers: authHeaders(cfg),
-      body: JSON.stringify({ aadhaar_number: digits }),
+      body: JSON.stringify({ mobile, state: `merchant_kyc:${merchantId}` }),
       signal: AbortSignal.timeout(10_000),
     });
     const raw = (await resp.json().catch(() => ({}))) as Record<string, any>;
-    if (!resp.ok || !raw?.ref_id) {
-      await logKyc(merchantId, "AADHAAR", "PROVIDER_ERROR", `••••${digits.slice(-4)}`, raw?.ref_id ?? null, `http_${resp.status}`, null);
+    if (!resp.ok || !raw?.session_id) {
+      await logKyc(merchantId, "AADHAAR", "PROVIDER_ERROR", null, raw?.session_id ?? null, `http_${resp.status}`, null);
       return { ok: false };
     }
-    await logKyc(merchantId, "AADHAAR", "OTP_SENT", `••••${digits.slice(-4)}`, String(raw.ref_id), "otp_sent", null);
-    return { ok: true, sessionId: String(raw.ref_id), refId: String(raw.ref_id) };
+    await logKyc(merchantId, "AADHAAR", "DIGILOCKER_SESSION_CREATED", null, String(raw.session_id), "session_created", null);
+    return { ok: true, sessionId: String(raw.session_id), authorizationUrl: raw.authorization_url, mode: cfg.mode };
   } catch (err: any) {
-    logger.warn({ err: err?.message, merchantId }, "auto_kyc_aadhaar_start_exception");
+    logger.warn({ err: err?.message, merchantId }, "auto_kyc_aadhaar_digilocker_start_exception");
     await logKyc(merchantId, "AADHAAR", "PROVIDER_ERROR", null, null, "timeout_or_network", null);
     return { ok: false };
   }
@@ -186,47 +195,68 @@ export interface AadhaarStatusResult {
   requestId?: string;
 }
 
-export async function verifyAadhaarOtp(
+/**
+ * Completes the Cashfree Secure ID DigiLocker Aadhaar flow: exchanges the SDK's
+ * auth_code for an access token, then fetches the DigiLocker-verified profile
+ * (name + masked Aadhaar) via the Secure ID user endpoint.
+ */
+export async function completeAadhaarDigilockerSession(
   cfg: AutoKycConfig,
-  refId: string,
-  otp: string,
+  sessionId: string,
+  authCode: string,
   merchantId: number,
 ): Promise<AadhaarStatusResult> {
-  if (!otp || otp.trim().length === 0) {
-    await logKyc(merchantId, "AADHAAR", "CANCELLED", null, refId, "otp_cancelled", null);
+  if (!authCode || authCode.trim().length === 0) {
+    await logKyc(merchantId, "AADHAAR", "CANCELLED", null, sessionId, "consent_cancelled", null);
     return { ok: false, status: "CANCELLED" };
   }
   try {
-    const resp = await fetch(`${cfg.baseUrl}/verification/v1/offline-aadhaar/verify`, {
+    const tokenResp = await fetch(`${cfg.baseUrl}/verification/v1/secure-id/token`, {
       method: "POST",
       headers: authHeaders(cfg),
-      body: JSON.stringify({ ref_id: refId, otp }),
+      body: JSON.stringify({ grant_type: "authorization_code", code: authCode, session_id: sessionId }),
       signal: AbortSignal.timeout(10_000),
     });
-    const raw = (await resp.json().catch(() => ({}))) as Record<string, any>;
-    if (!resp.ok) {
-      await logKyc(merchantId, "AADHAAR", "PROVIDER_ERROR", null, refId, `http_${resp.status}`, null);
+    const tokenRaw = (await tokenResp.json().catch(() => ({}))) as Record<string, any>;
+    if (!tokenResp.ok || !tokenRaw?.access_token) {
+      await logKyc(merchantId, "AADHAAR", "PROVIDER_ERROR", null, sessionId, `http_${tokenResp.status}`, null);
       return { ok: false, status: "PROVIDER_ERROR" };
     }
-    const verified = raw?.status === "VALID" || raw?.verified === true;
-    if (!verified) {
-      await logKyc(merchantId, "AADHAAR", "FAILED", null, refId, "otp_invalid", null);
+
+    const userResp = await fetch(`${cfg.baseUrl}/verification/v1/secure-id/user`, {
+      method: "GET",
+      headers: { ...authHeaders(cfg), Authorization: `Bearer ${tokenRaw.access_token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const raw = (await userResp.json().catch(() => ({}))) as Record<string, any>;
+    if (!userResp.ok) {
+      await logKyc(merchantId, "AADHAAR", "PROVIDER_ERROR", null, sessionId, `http_${userResp.status}`, null);
+      return { ok: false, status: "PROVIDER_ERROR" };
+    }
+
+    const p = (raw.profile ?? raw.data?.profile ?? raw) as Record<string, any>;
+    const aadhaar = (raw.aadhaar ?? raw.data?.aadhaar) as Record<string, any> | undefined;
+    const name: string | undefined = p?.name ?? p?.full_name;
+    const aadhaarRaw: string | undefined = aadhaar?.masked_aadhaar ?? p?.aadhaar;
+    const last4: string | undefined = aadhaarRaw ? aadhaarRaw.toString().replace(/\D/g, "").slice(-4) : undefined;
+
+    if (!name || !last4) {
+      await logKyc(merchantId, "AADHAAR", "FAILED", null, sessionId, "digilocker_incomplete", null);
       return { ok: false, status: "FAILED" };
     }
-    const name: string | undefined = raw?.name ?? raw?.full_name;
-    const last4: string | undefined = (raw?.aadhaar_number ?? raw?.masked_aadhaar ?? "").toString().replace(/\D/g, "").slice(-4) || undefined;
-    await logKyc(merchantId, "AADHAAR", "VERIFIED", last4 ? `••••${last4}` : null, refId, "verified", null);
-    return { ok: true, status: "VERIFIED", name, last4, requestId: refId };
+
+    await logKyc(merchantId, "AADHAAR", "VERIFIED", `••••${last4}`, sessionId, "verified", null);
+    return { ok: true, status: "VERIFIED", name, last4, requestId: sessionId };
   } catch (err: any) {
-    logger.warn({ err: err?.message, merchantId }, "auto_kyc_aadhaar_verify_exception");
-    await logKyc(merchantId, "AADHAAR", "PROVIDER_ERROR", null, refId, "timeout_or_network", null);
+    logger.warn({ err: err?.message, merchantId }, "auto_kyc_aadhaar_digilocker_complete_exception");
+    await logKyc(merchantId, "AADHAAR", "PROVIDER_ERROR", null, sessionId, "timeout_or_network", null);
     return { ok: false, status: "PROVIDER_ERROR" };
   }
 }
 
 export async function testAutoKycConnection(cfg: AutoKycConfig): Promise<{ ok: boolean; message: string }> {
   try {
-    const resp = await fetch(`${cfg.baseUrl}/verification/v1/pan`, {
+    const resp = await fetch(`${cfg.baseUrl}/verification/v1/secure-id/pan`, {
       method: "POST",
       headers: authHeaders(cfg),
       body: JSON.stringify({ pan: "ABCDE1234F" }),

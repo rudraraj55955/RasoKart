@@ -69,23 +69,30 @@ function buildOtpEmailHtml(opts: { title: string; subtitle: string; otp: string;
 export async function sendMerchantOtpEmail(opts: {
   to: string;
   otp: string;
-  purpose: "LOGIN" | "PASSWORD_RESET";
+  purpose: "LOGIN" | "PASSWORD_RESET" | "KYC_EMAIL";
 }): Promise<boolean> {
   const { to, otp, purpose } = opts;
   const isReset = purpose === "PASSWORD_RESET";
+  const isKycEmail = purpose === "KYC_EMAIL";
+
+  const title = isReset ? "Password Reset Code" : isKycEmail ? "Email Verification Code" : "Your RasoKart Login Code";
+  const subtitle = isReset
+    ? "Use this code to verify your identity and reset your password."
+    : isKycEmail
+      ? "Use this code to verify your email address as part of KYC verification."
+      : "Use this code to sign in to your RasoKart merchant account.";
+  const subject = isReset ? "Your RasoKart Password Reset Code" : isKycEmail ? "Your RasoKart Email Verification Code" : "Your RasoKart Login Code";
 
   const html = buildOtpEmailHtml({
-    title: isReset ? "Password Reset Code" : "Your RasoKart Login Code",
-    subtitle: isReset
-      ? "Use this code to verify your identity and reset your password."
-      : "Use this code to sign in to your RasoKart merchant account.",
+    title,
+    subtitle,
     otp,
     expiryMinutes: 5,
   });
 
   const sent = await sendMail({
     to,
-    subject: isReset ? "Your RasoKart Password Reset Code" : "Your RasoKart Login Code",
+    subject,
     html,
   }).catch((err: unknown) => {
     logger.warn({ err }, "Failed to send merchant OTP email");
