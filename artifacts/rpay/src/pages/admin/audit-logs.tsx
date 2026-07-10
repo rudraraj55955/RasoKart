@@ -51,6 +51,7 @@ import { format, parseISO, formatDistanceToNow, subDays, eachDayOfInterval } fro
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 import { toast } from "sonner";
 import { getAuditSnoozeKey, AUDIT_SNOOZE_EVENT } from "@/components/layout/dashboard-layout";
+import { ChangeSummary } from "@/components/admin/credential-history-dialog";
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
   merchant_approved:        { label: "Merchant Approved",    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
@@ -4400,6 +4401,7 @@ export default function AdminAuditLogs() {
                 <TableHead>Target ID</TableHead>
                 <TableHead>IP Address</TableHead>
                 <TableHead>Timestamp</TableHead>
+                <TableHead>Changes</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -4407,14 +4409,14 @@ export default function AdminAuditLogs() {
               {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : !logs.length ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-16">
+                  <TableCell colSpan={8} className="text-center py-16">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <Activity className="w-8 h-8 opacity-30" />
                       <p className="text-sm">No audit events yet</p>
@@ -4472,6 +4474,13 @@ export default function AdminAuditLogs() {
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {format(new Date(log.createdAt), "MMM d, yyyy HH:mm:ss")}
+                  </TableCell>
+                  <TableCell className="max-w-[280px]">
+                    {["system_config_updated", "provider_integration_updated"].includes(log.action as string) ? (
+                      <ChangeSummary details={log.details} />
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {log.details && (

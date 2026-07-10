@@ -70,7 +70,7 @@ function formatDate(ts: string) {
   });
 }
 
-function ChangeSummary({ details }: { details: string | null | undefined }) {
+export function ChangeSummary({ details }: { details: string | null | undefined }) {
   if (!details) {
     return <span className="text-muted-foreground text-xs">No details recorded</span>;
   }
