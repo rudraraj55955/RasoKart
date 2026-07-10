@@ -35,27 +35,15 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { readCachedAdminToken } from "./token-cache";
 
 const BASE = "http://localhost:80";
 const API = `${BASE}/api`;
-const ADMIN_EMAIL = "admin@rasokart.com";
-const ADMIN_PASSWORD = "Admin@123456";
 
 /** localStorage key used by the RasoKart frontend to store the JWT. */
 const LS_TOKEN_KEY = "rasokart_token";
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
-
-async function getAdminToken(): Promise<string> {
-  const res = await fetch(`${API}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
-  });
-  if (!res.ok) throw new Error(`Admin login failed: ${res.status}`);
-  const data = (await res.json()) as { token: string };
-  return data.token;
-}
 
 function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -134,80 +122,52 @@ async function fillNumeric(page: Page, id: string, value: number): Promise<void>
   await input.fill(String(value));
 }
 
-// ── Saved originals (restored in afterAll) ────────────────────────────────────
+/**
+ * Click a Save button and wait for its underlying PUT request to actually
+ * complete (200) before continuing — not just for the success toast to
+ * render. Under `fullyParallel` load, four chromium workers hitting the API
+ * concurrently can make a toast render-and-fade faster than a slow test
+ * runner polls for it, or a reload can race a still-in-flight save. Anchoring
+ * on the network response instead of the toast text removes that timing
+ * flakiness while still asserting the toast as a UI-behavior check.
+ */
+async function saveAndConfirm(
+  page: Page,
+  saveButton: ReturnType<typeof cardSave>,
+  putUrlPattern: RegExp,
+  toastRegex: RegExp,
+): Promise<void> {
+  const [response] = await Promise.all([
+    page.waitForResponse((res) => putUrlPattern.test(res.url()) && res.request().method() === "PUT"),
+    saveButton.click(),
+  ]);
+  if (!response.ok()) {
+    throw new Error(`Save PUT to ${response.url()} failed with ${response.status()}`);
+  }
+  await expect(page.getByText(toastRegex)).toBeVisible({ timeout: 10_000 });
+}
+
+// ── Token ───────────────────────────────────────────────────────────────────
+//
+// Original-value snapshot/restore lives in global-setup.ts / global-teardown.ts
+// instead of a per-file beforeAll/afterAll. With `fullyParallel: true`,
+// `beforeAll`/`afterAll` declared in a spec file run once *per worker process*
+// that executes tests from that file — not once for the whole file. A worker
+// that finishes its share of this file's tests early would fire `afterAll`
+// and overwrite a setting that a *different* worker is still mid-test on,
+// corrupting that still-running test's expected value. globalSetup/
+// globalTeardown are each guaranteed to run exactly once for the whole
+// `playwright test` invocation regardless of worker count, so they're the
+// only safe place for a shared "capture once / restore once" step.
 
 let token: string;
 
-type Originals = {
-  smtp: { host: string | null; port: string | null; user: string | null; from: string | null };
-  qrRetention: number;
-  vaRetention: number;
-  webhookRetry: { maxAttempts: number; delay1: number; delay2: number; delay3: number };
-  reportRetry: { maxAttempts: number; backoffBaseMs: number };
-  quietHoursFlush: number;
-  auditLogRetention: number;
-  financeEmail: string | null;
-};
-
-let originals: Originals;
-
-test.beforeAll(async () => {
-  token = await getAdminToken();
-
-  const [smtp, qrCleanup, vaCleanup, webhookRetry, reportRetry, quietHoursFlush, auditLogRetention, settings] =
-    await Promise.all([
-      apiGet(token, "/settings/smtp"),
-      apiGet(token, "/system-config/qr-cleanup"),
-      apiGet(token, "/system-config/va-cleanup"),
-      apiGet(token, "/system-config/webhook-retries"),
-      apiGet(token, "/settings/report-delivery-retries"),
-      apiGet(token, "/system-config/quiet-hours-flush"),
-      apiGet(token, "/system-config/audit-report-retention"),
-      apiGet(token, "/settings"),
-    ]);
-
-  originals = {
-    smtp: {
-      host: smtp.host ?? null,
-      port: smtp.port ?? null,
-      user: smtp.user ?? null,
-      from: smtp.from ?? null,
-    },
-    qrRetention: qrCleanup.retentionDays ?? 30,
-    vaRetention: vaCleanup.retentionDays ?? 30,
-    webhookRetry: {
-      maxAttempts: webhookRetry.maxAttempts ?? 4,
-      delay1: webhookRetry.delay1 ?? 300,
-      delay2: webhookRetry.delay2 ?? 900,
-      delay3: webhookRetry.delay3 ?? 3600,
-    },
-    reportRetry: {
-      maxAttempts: reportRetry.maxAttempts ?? 3,
-      backoffBaseMs: reportRetry.backoffBaseMs ?? 1000,
-    },
-    quietHoursFlush: quietHoursFlush.intervalSeconds ?? 60,
-    auditLogRetention: auditLogRetention.retentionDays ?? 90,
-    financeEmail: settings.finance_report_email ?? null,
-  };
-});
-
-test.afterAll(async () => {
-  if (!originals) return;
-  await Promise.all([
-    apiPut(token, "/settings/smtp", {
-      host: originals.smtp.host,
-      port: originals.smtp.port,
-      smtpUser: originals.smtp.user,
-      from: originals.smtp.from,
-    }),
-    apiPut(token, "/system-config/qr-cleanup", { retentionDays: originals.qrRetention }),
-    apiPut(token, "/system-config/va-cleanup", { retentionDays: originals.vaRetention }),
-    apiPut(token, "/system-config/webhook-retries", originals.webhookRetry),
-    apiPut(token, "/settings/report-delivery-retries", originals.reportRetry),
-    apiPut(token, "/system-config/quiet-hours-flush", { intervalSeconds: originals.quietHoursFlush }),
-    apiPut(token, "/system-config/audit-report-retention", { retentionDays: originals.auditLogRetention }),
-    apiPut(token, "/settings/finance_report_email", { value: originals.financeEmail }),
-  ]);
+test.beforeAll(() => {
+  // Read the token cached once by global-setup.ts instead of calling
+  // /auth/login again here — with fullyParallel workers, every worker runs
+  // its own copy of this beforeAll, and repeated logins would exhaust the
+  // DB-backed login rate limiter (10 attempts / 15 min per IP).
+  token = readCachedAdminToken();
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -227,8 +187,7 @@ test("SMTP host persists after page reload", async ({ page }) => {
   const canary = "smtp.canary-reload-check.example.com";
   await page.locator("#smtp-host").fill(canary);
 
-  await cardSave(page, "smtp-host").click();
-  await expect(page.getByText(/smtp settings saved/i)).toBeVisible({ timeout: 6_000 });
+  await saveAndConfirm(page, cardSave(page, "smtp-host"), /\/settings\/smtp$/, /smtp settings saved/i);
 
   await page.reload();
   await page.waitForLoadState("networkidle");
@@ -246,8 +205,7 @@ test("QR cleanup retention days persists after page reload", async ({ page }) =>
   await expect(page.locator("#retention-days")).toHaveValue(String(baseline), { timeout: 8_000 });
 
   await fillNumeric(page, "retention-days", canary);
-  await cardSave(page, "retention-days").click();
-  await expect(page.getByText(/qr cleanup retention saved/i)).toBeVisible({ timeout: 6_000 });
+  await saveAndConfirm(page, cardSave(page, "retention-days"), /\/system-config\/qr-cleanup$/, /qr cleanup retention saved/i);
 
   await page.reload();
   await page.waitForLoadState("networkidle");
@@ -265,8 +223,7 @@ test("VA cleanup retention days persists after page reload", async ({ page }) =>
   await expect(page.locator("#va-retention-days")).toHaveValue(String(baseline), { timeout: 8_000 });
 
   await fillNumeric(page, "va-retention-days", canary);
-  await cardSave(page, "va-retention-days").click();
-  await expect(page.getByText(/va cleanup retention saved/i)).toBeVisible({ timeout: 6_000 });
+  await saveAndConfirm(page, cardSave(page, "va-retention-days"), /\/system-config\/va-cleanup$/, /va cleanup retention saved/i);
 
   await page.reload();
   await page.waitForLoadState("networkidle");
@@ -274,40 +231,47 @@ test("VA cleanup retention days persists after page reload", async ({ page }) =>
   await expect(page.locator("#va-retention-days")).toHaveValue(String(canary), { timeout: 8_000 });
 });
 
-test("Webhook retry max attempts persists after page reload", async ({ page }) => {
-  await apiPut(token, "/system-config/webhook-retries", { maxAttempts: 4, delay1: 300, delay2: 900, delay3: 3600 });
+// The two webhook-retry tests below both read-modify-write the same
+// `/system-config/webhook-retries` endpoint (it's a single row covering
+// maxAttempts + all three delays). Running them concurrently under
+// `fullyParallel: true` would race: one test's baseline PUT could stomp the
+// other's canary value mid-assertion. `test.describe.serial` keeps this pair
+// running in-order (and in the same worker) while still letting Playwright
+// parallelize the rest of the suite across workers.
+test.describe.serial("webhook retry schedule (shared endpoint)", () => {
+  test("Webhook retry max attempts persists after page reload", async ({ page }) => {
+    await apiPut(token, "/system-config/webhook-retries", { maxAttempts: 4, delay1: 300, delay2: 900, delay3: 3600 });
 
-  await goToSettings(page, token);
+    await goToSettings(page, token);
 
-  await expect(page.locator("#retry-max-attempts")).toHaveValue("4", { timeout: 8_000 });
+    await expect(page.locator("#retry-max-attempts")).toHaveValue("4", { timeout: 8_000 });
 
-  const canary = 3;
-  await fillNumeric(page, "retry-max-attempts", canary);
-  await cardSave(page, "retry-max-attempts").click();
-  await expect(page.getByText(/webhook retry schedule saved/i)).toBeVisible({ timeout: 6_000 });
+    const canary = 3;
+    await fillNumeric(page, "retry-max-attempts", canary);
+    await saveAndConfirm(page, cardSave(page, "retry-max-attempts"), /\/system-config\/webhook-retries$/, /webhook retry schedule saved/i);
 
-  await page.reload();
-  await page.waitForLoadState("networkidle");
+    await page.reload();
+    await page.waitForLoadState("networkidle");
 
-  await expect(page.locator("#retry-max-attempts")).toHaveValue(String(canary), { timeout: 8_000 });
-});
+    await expect(page.locator("#retry-max-attempts")).toHaveValue(String(canary), { timeout: 8_000 });
+  });
 
-test("Webhook retry delay 1 persists after page reload", async ({ page }) => {
-  await apiPut(token, "/system-config/webhook-retries", { maxAttempts: 4, delay1: 300, delay2: 900, delay3: 3600 });
+  test("Webhook retry delay 1 persists after page reload", async ({ page }) => {
+    await apiPut(token, "/system-config/webhook-retries", { maxAttempts: 4, delay1: 300, delay2: 900, delay3: 3600 });
 
-  await goToSettings(page, token);
+    await goToSettings(page, token);
 
-  await expect(page.locator("#retry-delay-1")).toHaveValue("300", { timeout: 8_000 });
+    await expect(page.locator("#retry-delay-1")).toHaveValue("300", { timeout: 8_000 });
 
-  const canary = 180;
-  await fillNumeric(page, "retry-delay-1", canary);
-  await cardSave(page, "retry-delay-1").click();
-  await expect(page.getByText(/webhook retry schedule saved/i)).toBeVisible({ timeout: 6_000 });
+    const canary = 180;
+    await fillNumeric(page, "retry-delay-1", canary);
+    await saveAndConfirm(page, cardSave(page, "retry-delay-1"), /\/system-config\/webhook-retries$/, /webhook retry schedule saved/i);
 
-  await page.reload();
-  await page.waitForLoadState("networkidle");
+    await page.reload();
+    await page.waitForLoadState("networkidle");
 
-  await expect(page.locator("#retry-delay-1")).toHaveValue(String(canary), { timeout: 8_000 });
+    await expect(page.locator("#retry-delay-1")).toHaveValue(String(canary), { timeout: 8_000 });
+  });
 });
 
 test("Report delivery retry max attempts persists after page reload", async ({ page }) => {
@@ -319,8 +283,7 @@ test("Report delivery retry max attempts persists after page reload", async ({ p
 
   const canary = 2;
   await fillNumeric(page, "report-retry-max", canary);
-  await cardSave(page, "report-retry-max").click();
-  await expect(page.getByText(/report delivery retry settings saved/i)).toBeVisible({ timeout: 6_000 });
+  await saveAndConfirm(page, cardSave(page, "report-retry-max"), /\/settings\/report-delivery-retries$/, /report delivery retry settings saved/i);
 
   await page.reload();
   await page.waitForLoadState("networkidle");
@@ -337,8 +300,7 @@ test("Quiet hours flush interval persists after page reload", async ({ page }) =
 
   const canary = 90;
   await fillNumeric(page, "qh-flush-interval", canary);
-  await cardSave(page, "qh-flush-interval").click();
-  await expect(page.getByText(/quiet hours flush interval saved/i)).toBeVisible({ timeout: 6_000 });
+  await saveAndConfirm(page, cardSave(page, "qh-flush-interval"), /\/system-config\/quiet-hours-flush$/, /quiet hours flush interval saved/i);
 
   await page.reload();
   await page.waitForLoadState("networkidle");
@@ -378,8 +340,7 @@ test("Finance report email persists after page reload", async ({ page }) => {
 
   const canary = "canary-reload-check@example.com";
   await page.locator("#finance-email").fill(canary);
-  await cardSave(page, "finance-email").click();
-  await expect(page.getByText(/finance report email saved/i)).toBeVisible({ timeout: 6_000 });
+  await saveAndConfirm(page, cardSave(page, "finance-email"), /\/settings\/finance_report_email$/, /finance report email saved/i);
 
   await page.reload();
   await page.waitForLoadState("networkidle");

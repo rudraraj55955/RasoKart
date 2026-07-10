@@ -10,6 +10,15 @@ const CHROMIUM_EXECUTABLE =
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
+  fullyParallel: true,
+  // This sandbox only has 2 CPU cores; oversubscribing chromium workers (e.g. 4)
+  // causes real resource contention that manifests as flaky UI timing (saves
+  // silently not landing, toasts not rendering) rather than a clean speedup.
+  // 2 workers matches the core count and was empirically far more stable while
+  // still finishing the 9-test suite well under the 90s target.
+  workers: 2,
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
   use: {
     baseURL: "http://localhost:80",
     headless: true,

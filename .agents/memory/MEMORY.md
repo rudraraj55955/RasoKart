@@ -42,3 +42,4 @@
 - [Dummy-data cleanup dual-implementation](dummy-data-cleanup.md) — cleanup logic must be duplicated in api-server route + scripts CLI (no cross-import between leaf packages); keep detection patterns in sync.
 - [Merchant /auth/me missing business fields](merchant-me-missing-business-fields.md) — silent-revert bugs can be an incomplete backend SELECT, not just a broken frontend useEffect; diff the actual JSON payload against every field read.
 - [GitHub sync repo target & workflows gitignore](github-repo-env-and-workflows-gitignore.md) — set GITHUB_REPO=rudraraj55955/RasoKart (defaults to old RPAY name); verify actual PAT scope before assuming .github/workflows/ can't be pushed.
+- [Playwright fullyParallel hook scope](playwright-fullyparallel-hooks.md) — file-level beforeAll/afterAll run once per worker, not once per file; global mutable-state snapshot/restore must live in globalSetup/globalTeardown instead.

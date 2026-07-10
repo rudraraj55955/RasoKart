@@ -32,27 +32,15 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { readCachedMerchantToken } from "./token-cache";
 
 const BASE = "http://localhost:80";
 const API = `${BASE}/api`;
-const MERCHANT_EMAIL = "merchant2@demo.com";
-const MERCHANT_PASSWORD = "Merchant@123456";
 
 /** localStorage key used by the RasoKart frontend to store the JWT. */
 const LS_TOKEN_KEY = "rasokart_token";
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
-
-async function getMerchantToken(): Promise<string> {
-  const res = await fetch(`${API}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: MERCHANT_EMAIL, password: MERCHANT_PASSWORD }),
-  });
-  if (!res.ok) throw new Error(`Merchant login failed: ${res.status}`);
-  const data = (await res.json()) as { token: string };
-  return data.token;
-}
 
 function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -108,71 +96,24 @@ async function goToMerchantPage(page: Page, token: string, path: string): Promis
   await page.waitForLoadState("networkidle");
 }
 
-// ── Saved originals (restored in afterAll) ────────────────────────────────────
+// ── Token ───────────────────────────────────────────────────────────────────
+//
+// Original-value snapshot/restore lives in global-setup.ts / global-teardown.ts
+// instead of a per-file beforeAll/afterAll — see the equivalent comment in
+// settings-persistence.spec.ts for why: under `fullyParallel: true`,
+// beforeAll/afterAll declared in a spec file run once *per worker process*
+// handling that file, not once for the whole file, so a per-file afterAll
+// restoring shared merchant state could clobber a value another worker's
+// test is still asserting on mid-run.
 
 let token: string;
 
-type Originals = {
-  webhookUrl: string;
-  webhookIsActive: boolean;
-  webhookEvents: string[];
-  apiKeyGeneratedEmails: boolean;
-  quietHoursStart: string | null;
-  quietHoursEnd: string | null;
-  quietHoursTimezone: string | null;
-  businessName: string;
-};
-
-let originals: Originals;
-
-test.beforeAll(async () => {
-  token = await getMerchantToken();
-
-  const [webhookConfig, me] = await Promise.all([
-    apiGet(token, "/webhooks"),
-    apiGet(token, "/auth/me"),
-  ]);
-
-  originals = {
-    webhookUrl: webhookConfig.url ?? "",
-    webhookIsActive: webhookConfig.isActive ?? true,
-    webhookEvents: webhookConfig.events ?? [],
-    apiKeyGeneratedEmails: me.apiKeyGeneratedEmails ?? true,
-    quietHoursStart: me.quietHoursStart ?? null,
-    quietHoursEnd: me.quietHoursEnd ?? null,
-    quietHoursTimezone: me.quietHoursTimezone ?? null,
-    businessName: me.businessName ?? "",
-  };
-});
-
-test.afterAll(async () => {
-  if (!originals) return;
-  // The webhook config PUT requires a non-empty url + events array. If the
-  // merchant had no webhook configured before this run (a fresh/never-set-up
-  // account), there is nothing valid to restore it to — skip rather than
-  // sending an invalid empty payload that would 400 and abort the other
-  // restores in the same Promise.all.
-  const restoreWebhook = originals.webhookUrl
-    ? apiPut(token, "/webhooks", {
-        url: originals.webhookUrl,
-        isActive: originals.webhookIsActive,
-        events: originals.webhookEvents.length ? originals.webhookEvents : ["payment.success"],
-        secret: null,
-      })
-    : Promise.resolve();
-
-  await Promise.all([
-    restoreWebhook,
-    apiPut(token, "/auth/preferences", {
-      apiKeyGeneratedEmails: originals.apiKeyGeneratedEmails,
-      quietHoursStart: originals.quietHoursStart,
-      quietHoursEnd: originals.quietHoursEnd,
-      quietHoursTimezone: originals.quietHoursTimezone,
-    }),
-    apiPatch(token, "/merchants/me", {
-      businessName: originals.businessName,
-    }),
-  ]);
+test.beforeAll(() => {
+  // Read the token cached once by global-setup.ts instead of calling
+  // /auth/login again here — with fullyParallel workers, every worker runs
+  // its own copy of this beforeAll, and repeated logins would exhaust the
+  // DB-backed login rate limiter (10 attempts / 15 min per IP).
+  token = readCachedMerchantToken();
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -182,7 +123,7 @@ test("Webhook URL persists after page reload", async ({ page }) => {
   await apiPut(token, "/webhooks", {
     url: baseline,
     isActive: true,
-    events: originals.webhookEvents.length ? originals.webhookEvents : ["payment.success"],
+    events: ["payment.success"],
     secret: null,
   });
 
