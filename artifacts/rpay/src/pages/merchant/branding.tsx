@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useUpdateMerchantBranding } from "@workspace/api-client-react";
+import { useUpdateMerchantBranding, useGetMerchant, getGetMerchantQueryKey } from "@workspace/api-client-react";
 import { useUpload } from "@workspace/object-storage-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Palette, ImageIcon, Save, Eye, RotateCcw, CheckCircle2, TriangleAlert, Upload, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const PRESET_COLORS = [
   { label: "Indigo", value: "#6366f1" },
@@ -57,21 +58,29 @@ export default function MerchantBranding() {
 
   const updateBranding = useUpdateMerchantBranding();
 
+  const {
+    data: merchantData,
+    isError: merchantLoadError,
+    refetch: refetchMerchant,
+  } = useGetMerchant(merchantId ?? 0, { query: { enabled: !!merchantId, queryKey: getGetMerchantQueryKey(merchantId ?? 0) } });
+
+  const [initialized, setInitialized] = useState(false);
+
   useEffect(() => {
-    if (!merchantId) return;
-    fetch(`${base}/api/merchants/${merchantId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("rasokart_token")}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const url = data.logoUrl ?? "";
-        setLogoUrl(url);
-        setSavedLogoUrl(url || null);
-        setBrandColor(data.brandColor ?? "");
-        setLogoError(false);
-      })
-      .catch(() => {});
-  }, [merchantId]);
+    if (!merchantData || initialized) return;
+    const url = (merchantData as any).logoUrl ?? "";
+    setLogoUrl(url);
+    setSavedLogoUrl(url || null);
+    setBrandColor((merchantData as any).brandColor ?? "");
+    setLogoError(false);
+    setInitialized(true);
+  }, [merchantData, initialized]);
+
+  useEffect(() => {
+    if (merchantLoadError) {
+      toast.error("Failed to load branding settings — please refresh the page");
+    }
+  }, [merchantLoadError]);
 
   function handleSave() {
     if (!merchantId) return;
@@ -84,16 +93,20 @@ export default function MerchantBranding() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: async (updated) => {
           toast.success("Branding saved");
-          qc.invalidateQueries({ queryKey: ["getMerchant"] });
-          const newSaved = logoUrl.trim() || null;
-          setSavedLogoUrl(newSaved);
+          qc.setQueryData(getGetMerchantQueryKey(merchantId), updated);
+          await qc.invalidateQueries({ queryKey: getGetMerchantQueryKey(merchantId) });
+          const refreshed = await refetchMerchant();
+          const confirmedUrl = (refreshed.data as any)?.logoUrl ?? updated.logoUrl ?? null;
+          setSavedLogoUrl(confirmedUrl || null);
           setSavedLogoError(false);
           setIsReplacing(false);
-          if (!newSaved) setLogoError(false);
+          if (!confirmedUrl) setLogoError(false);
         },
-        onError: () => toast.error("Failed to save branding"),
+        onError: (err: unknown) => {
+          toast.error(getApiErrorMessage(err, "Failed to save branding — your previous saved settings are unchanged"));
+        },
       }
     );
   }

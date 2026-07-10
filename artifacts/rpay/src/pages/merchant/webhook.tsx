@@ -754,7 +754,7 @@ function formatDelaySeconds(secs: number): string {
 
 export default function MerchantWebhook() {
   const qc = useQueryClient();
-  const { data: config, isLoading } = useGetWebhookConfig();
+  const { data: config, isLoading, refetch: refetchWebhookConfig } = useGetWebhookConfig();
   const { data: platformDefaults } = useGetWebhookPlatformDefaults();
   const { data: secretStatus, isLoading: secretLoading } = useGetCallbackSecret();
   const searchStr = useSearch();
@@ -837,22 +837,33 @@ export default function MerchantWebhook() {
     try { return localStorage.getItem("rasokart_breakdown_open") === "true"; } catch { return false; }
   });
 
+  const [configInitialized, setConfigInitialized] = useState(false);
+
+  const applyConfig = (cfg: NonNullable<typeof config>) => {
+    setUrl(cfg.url || "");
+    setSecret(cfg.secret || "");
+    setIsActive(cfg.isActive);
+    setEvents(cfg.events || []);
+    const cap = cfg.globalMaxRetries ?? 10;
+    setGlobalMaxRetries(cap);
+    setMaxRetries(Math.min(cfg.maxRetries ?? 3, cap));
+    setRetryDelay1(cfg.retryDelay1 ?? null);
+    setRetryDelay2(cfg.retryDelay2 ?? null);
+    setRetryDelay3(cfg.retryDelay3 ?? null);
+    setFailureAlertEnabled(cfg.failureAlertEnabled ?? true);
+    setFailureAlertThreshold(cfg.failureAlertThreshold ?? 3);
+  };
+
+  // Only sync from the server once on initial load. Re-syncing on every
+  // background refetch (e.g. window refocus, staleTime expiry) would
+  // silently overwrite any unsaved edits the merchant is mid-typing.
+  // Post-save re-sync is handled explicitly in handleSave's onSuccess.
   useEffect(() => {
-    if (config) {
-      setUrl(config.url || "");
-      setSecret(config.secret || "");
-      setIsActive(config.isActive);
-      setEvents(config.events || []);
-      const cap = config.globalMaxRetries ?? 10;
-      setGlobalMaxRetries(cap);
-      setMaxRetries(Math.min(config.maxRetries ?? 3, cap));
-      setRetryDelay1(config.retryDelay1 ?? null);
-      setRetryDelay2(config.retryDelay2 ?? null);
-      setRetryDelay3(config.retryDelay3 ?? null);
-      setFailureAlertEnabled(config.failureAlertEnabled ?? true);
-      setFailureAlertThreshold(config.failureAlertThreshold ?? 3);
+    if (config && !configInitialized) {
+      applyConfig(config);
+      setConfigInitialized(true);
     }
-  }, [config]);
+  }, [config, configInitialized]);
 
   const toggleEvent = (eventId: string) => {
     setEvents(prev => prev.includes(eventId) ? prev.filter(e => e !== eventId) : [...prev, eventId]);
@@ -862,16 +873,18 @@ export default function MerchantWebhook() {
     if (!url.trim()) { toast.error("Webhook URL is required"); return; }
     const hasSecret = !!secret.trim();
     updateMutation.mutate({ data: { url: url.trim(), isActive, events, secret: secret || null, maxRetries, retryDelay1, retryDelay2, retryDelay3, failureAlertEnabled, failureAlertThreshold } }, {
-      onSuccess: () => {
+      onSuccess: async () => {
         toast.success("Webhook configuration saved");
-        qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() });
+        await qc.invalidateQueries({ queryKey: getGetWebhookConfigQueryKey() });
+        const refreshed = await refetchWebhookConfig();
+        if (refreshed.data) applyConfig(refreshed.data);
         if (hasSecret) {
           setSecretSavedAt(Date.now());
           clearSigVerifiedDismissal();
           setSecretVerifiedDismissed(false);
         }
       },
-      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save configuration")),
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to save configuration — your previous saved settings are unchanged")),
     });
   };
 
