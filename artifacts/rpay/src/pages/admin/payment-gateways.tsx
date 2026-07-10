@@ -1109,6 +1109,18 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium">{integration.displayNamePublic}</p>
           <p className="text-xs text-muted-foreground">Custom provider integration · {integration.providerKey}</p>
+          {integration.updatedByEmail && integration.updatedAt && (
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+              <span>
+                Last changed by <span className="font-medium text-foreground">{integration.updatedByEmail}</span> on {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(integration.updatedAt))}
+              </span>
+              <CredentialHistoryDialog
+                action="provider_integration_updated"
+                section={integration.providerKey}
+                label={integration.displayNamePublic}
+              />
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge enabled={integration.isEnabled} />
@@ -1233,11 +1245,13 @@ function CustomGatewayConfigPanel({ integration }: { integration: ProviderIntegr
           <Save className="w-3.5 h-3.5 mr-1.5" />
           {saving ? "Saving…" : "Save Changes"}
         </Button>
-        <CredentialHistoryDialog
-          action="provider_integration_updated"
-          section={integration.providerKey}
-          label={integration.displayNamePublic}
-        />
+        {!(integration.updatedByEmail && integration.updatedAt) && (
+          <CredentialHistoryDialog
+            action="provider_integration_updated"
+            section={integration.providerKey}
+            label={integration.displayNamePublic}
+          />
+        )}
       </div>
 
       <Separator className="opacity-30" />
