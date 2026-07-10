@@ -36,6 +36,10 @@ export const withdrawalsTable = pgTable("withdrawals", {
   approvedBySystem: boolean("approved_by_system").notNull().default(false),
   autoApprovalRuleSnapshot: jsonb("auto_approval_rule_snapshot"),
   approvedBy: text("approved_by"), // admin email or "SYSTEM_AUTO"
+  // Client-supplied idempotency key (per merchant) to make double-submit /
+  // double-click of the "New Payout" form a no-op instead of creating a
+  // second payout request. Nullable — legacy/no-key requests still work.
+  idempotencyKey: text("idempotency_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

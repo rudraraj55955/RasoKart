@@ -741,6 +741,11 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS pwlo_status_idx ON payout_wallet_load_orders(status)`);
   logger.info({ table: "payout_wallet_load_orders" }, "schema_guard_table_created");
 
+  // ── withdrawals: idempotency key for double-submit protection ───────────
+  await db.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS idempotency_key TEXT`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_merchant_idempotency_key_uniq ON withdrawals(merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
+  logger.info({ table: "withdrawals", migration: "add_idempotency_key" }, "schema_guard_column_added");
+
   logger.info("schema_guard_completed");
 }
 

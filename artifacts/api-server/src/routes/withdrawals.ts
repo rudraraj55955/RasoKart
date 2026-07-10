@@ -511,13 +511,41 @@ router.post("/", requireModule("merchant_withdrawals"), async (req, res) => {
     // upiId aliases: upiId | upi_id
     upiId: _upiId, upi_id,
     remarks,
+    idempotencyKey: _idempotencyKey, idempotency_key,
   } = req.body;
 
   const requestedBeneficiaryId = _beneficiaryId ?? beneficiary_id ?? null;
+  const idempotencyKey: string | null =
+    typeof (_idempotencyKey ?? idempotency_key) === "string" && (_idempotencyKey ?? idempotency_key).trim()
+      ? (_idempotencyKey ?? idempotency_key).trim().slice(0, 128)
+      : null;
 
+  const MIN_PAYOUT_AMOUNT = 100;
   if (!amount || Number(amount) <= 0) {
     res.status(400).json({ error: "amount must be a positive number" });
     return;
+  }
+  if (Number(amount) < MIN_PAYOUT_AMOUNT) {
+    res.status(400).json({ error: `Minimum payout amount is ₹${MIN_PAYOUT_AMOUNT}` });
+    return;
+  }
+
+  const merchantId = user.merchantId!;
+
+  // ── Idempotency: if this merchant already submitted a payout with this
+  // exact key (e.g. a double-click / retried network request), return the
+  // existing payout instead of creating a second one.
+  if (idempotencyKey) {
+    const [existing] = await db
+      .select()
+      .from(withdrawalsTable)
+      .where(and(eq(withdrawalsTable.merchantId, merchantId), eq(withdrawalsTable.idempotencyKey, idempotencyKey)))
+      .limit(1);
+    if (existing) {
+      req.log.info({ merchantId, withdrawalId: existing.id, idempotencyKey }, "payout_idempotent_replay");
+      res.status(200).json(mapWithdrawal(existing, null, false));
+      return;
+    }
   }
 
   const limitCheck = await checkPlanLimit(user.merchantId!, "payout", user.id);
@@ -527,7 +555,6 @@ router.post("/", requireModule("merchant_withdrawals"), async (req, res) => {
   }
 
   const amt = Number(amount);
-  const merchantId = user.merchantId!;
 
   let payoutMode: string;
   let bankAccount: string | null;
@@ -551,6 +578,14 @@ router.post("/", requireModule("merchant_withdrawals"), async (req, res) => {
     }
     if (beneficiary.localStatus !== "active") {
       res.status(400).json({ error: "This beneficiary is disabled and cannot be used for new payouts" });
+      return;
+    }
+    if (beneficiary.providerStatus !== "created") {
+      // Beneficiary must be verified with the provider before it can be
+      // used for a new payout — never dispatch against an unverified/failed
+      // beneficiary and never re-run registration here (that's a separate,
+      // explicit Beneficiaries-page action).
+      res.status(400).json({ error: "Add and verify a beneficiary first." });
       return;
     }
 
@@ -623,6 +658,7 @@ router.post("/", requireModule("merchant_withdrawals"), async (req, res) => {
           remarks: remarks?.trim() ?? null,
           status: "pending",
           transferStatus: "NOT_STARTED",
+          idempotencyKey,
         })
         .returning();
 
@@ -658,6 +694,21 @@ router.post("/", requireModule("merchant_withdrawals"), async (req, res) => {
     if (e.statusCode === 400) {
       res.status(400).json({ error: e.message });
       return;
+    }
+    // Unique violation on (merchant_id, idempotency_key) — a concurrent
+    // double-click/retry raced us to the insert. Return the row it created
+    // instead of a 500, so the client still gets a single successful result.
+    if (idempotencyKey && (e?.code === "23505" || /idempotency_key/.test(String(e?.message ?? "")))) {
+      const [existing] = await db
+        .select()
+        .from(withdrawalsTable)
+        .where(and(eq(withdrawalsTable.merchantId, merchantId), eq(withdrawalsTable.idempotencyKey, idempotencyKey)))
+        .limit(1);
+      if (existing) {
+        req.log.info({ merchantId, withdrawalId: existing.id, idempotencyKey }, "payout_idempotent_replay_race");
+        res.status(200).json(mapWithdrawal(existing, null, false));
+        return;
+      }
     }
     throw e;
   }

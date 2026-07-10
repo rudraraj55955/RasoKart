@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +10,17 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowRightLeft, Plus, ChevronLeft, ChevronRight, Clock, CheckCircle2, XCircle, Zap, PauseCircle } from "lucide-react";
+import { ArrowRightLeft, Plus, ChevronLeft, ChevronRight, Clock, CheckCircle2, XCircle, Zap, PauseCircle, ShieldAlert } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+
+const MIN_PAYOUT_AMOUNT = 100;
+
+function maskAccountNumber(acct: string | null | undefined): string {
+  if (!acct) return "—";
+  if (acct.length <= 4) return "****";
+  return "*".repeat(Math.max(acct.length - 4, 4)) + acct.slice(-4);
+}
 
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const token = getToken();
@@ -45,16 +54,14 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function PayoutMerchantPayouts() {
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string>("");
+  const [idempotencyKey, setIdempotencyKey] = useState<string>("");
   const [form, setForm] = useState({
     amount: "",
     payoutMode: "IMPS",
-    accountHolder: "",
-    bankAccount: "",
-    ifscCode: "",
-    bankName: "",
-    upiId: "",
     remarks: "",
   });
 
@@ -74,13 +81,25 @@ export default function PayoutMerchantPayouts() {
     staleTime: 60_000,
   });
 
+  const allBeneficiaries: any[] = bens?.beneficiaries ?? [];
+  const verifiedBeneficiaries = allBeneficiaries.filter((b) => b.verificationStatus === "VERIFIED");
+  const selectedBeneficiary = allBeneficiaries.find((b) => String(b.id) === selectedBeneficiaryId) ?? null;
+
+  const openCreateDialog = () => {
+    setSelectedBeneficiaryId(verifiedBeneficiaries.length === 1 ? String(verifiedBeneficiaries[0].id) : "");
+    setForm({ amount: "", payoutMode: verifiedBeneficiaries.length === 1 ? verifiedBeneficiaries[0].payoutMode : "IMPS", remarks: "" });
+    setIdempotencyKey(crypto.randomUUID());
+    setShowCreate(true);
+  };
+
   const createMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) =>
       apiFetch<any>("/api/withdrawals", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
       toast.success("Payout submitted successfully");
       setShowCreate(false);
-      setForm({ amount: "", payoutMode: "IMPS", accountHolder: "", bankAccount: "", ifscCode: "", bankName: "", upiId: "", remarks: "" });
+      setSelectedBeneficiaryId("");
+      setForm({ amount: "", payoutMode: "IMPS", remarks: "" });
       qc.invalidateQueries({ queryKey: ["payout-merchant-payouts"] });
       qc.invalidateQueries({ queryKey: ["payout-merchant-stats"] });
       qc.invalidateQueries({ queryKey: ["payout-merchant-wallet"] });
@@ -89,21 +108,26 @@ export default function PayoutMerchantPayouts() {
   });
 
   const handleCreate = () => {
+    if (createMutation.isPending) return; // extra guard against double-click races
+    if (verifiedBeneficiaries.length === 0) {
+      toast.error("Add and verify a beneficiary first.");
+      setShowCreate(false);
+      setLocation("/payout-merchant/beneficiaries");
+      return;
+    }
+    if (!selectedBeneficiary || selectedBeneficiary.verificationStatus !== "VERIFIED") {
+      toast.error("Select a verified beneficiary to continue");
+      return;
+    }
     const amt = Number(form.amount);
     if (!amt || amt <= 0) { toast.error("Enter a valid amount"); return; }
-    if (form.payoutMode === "UPI" && !form.upiId) { toast.error("UPI ID is required"); return; }
-    if (form.payoutMode !== "UPI" && (!form.bankAccount || !form.ifscCode || !form.accountHolder)) {
-      toast.error("Account holder, bank account and IFSC are required"); return;
-    }
+    if (amt < MIN_PAYOUT_AMOUNT) { toast.error(`Minimum payout amount is ₹${MIN_PAYOUT_AMOUNT}`); return; }
     createMutation.mutate({
       amount: amt,
+      beneficiaryId: selectedBeneficiary.id,
       payoutMode: form.payoutMode,
-      accountHolder: form.accountHolder || undefined,
-      bankAccount: form.bankAccount || undefined,
-      ifscCode: form.ifscCode || undefined,
-      bankName: form.bankName || undefined,
-      upiId: form.upiId || undefined,
       remarks: form.remarks || undefined,
+      idempotencyKey,
     });
   };
 
@@ -117,7 +141,7 @@ export default function PayoutMerchantPayouts() {
           <h1 className="text-2xl font-bold text-foreground">Payouts</h1>
           <p className="text-sm text-muted-foreground mt-1">Send and track payout transfers</p>
         </div>
-        <Button onClick={() => setShowCreate(true)} className="gap-2">
+        <Button onClick={openCreateDialog} className="gap-2">
           <Plus className="w-4 h-4" /> New Payout
         </Button>
       </div>
@@ -149,7 +173,7 @@ export default function PayoutMerchantPayouts() {
             <div className="py-14 text-center">
               <ArrowRightLeft className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm text-muted-foreground">No payouts yet</p>
-              <Button className="mt-4" onClick={() => setShowCreate(true)}>Send First Payout</Button>
+              <Button className="mt-4" onClick={openCreateDialog}>Send First Payout</Button>
             </div>
           ) : (
             <>
@@ -196,60 +220,111 @@ export default function PayoutMerchantPayouts() {
           <DialogHeader>
             <DialogTitle>Send Payout</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5">Amount (₹)</Label>
-              <Input type="number" min="1" placeholder="e.g. 5000" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5">Payout Mode</Label>
-              <Select value={form.payoutMode} onValueChange={v => setForm(f => ({ ...f, payoutMode: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="IMPS">IMPS (Instant)</SelectItem>
-                  <SelectItem value="NEFT">NEFT</SelectItem>
-                  <SelectItem value="RTGS">RTGS</SelectItem>
-                  <SelectItem value="UPI">UPI</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {form.payoutMode === "UPI" ? (
-              <div>
-                <Label className="text-xs text-muted-foreground mb-1.5">UPI ID</Label>
-                <Input placeholder="e.g. user@upi" value={form.upiId} onChange={e => setForm(f => ({ ...f, upiId: e.target.value }))} />
+
+          {verifiedBeneficiaries.length === 0 ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-3 text-sm">
+                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-amber-400">Add and verify a beneficiary first.</p>
               </div>
-            ) : (
-              <>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5">Account Holder Name</Label>
-                  <Input placeholder="Full name as per bank" value={form.accountHolder} onChange={e => setForm(f => ({ ...f, accountHolder: e.target.value }))} />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5">Bank Account Number</Label>
-                  <Input placeholder="Account number" value={form.bankAccount} onChange={e => setForm(f => ({ ...f, bankAccount: e.target.value }))} />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5">IFSC Code</Label>
-                  <Input placeholder="e.g. HDFC0001234" value={form.ifscCode} onChange={e => setForm(f => ({ ...f, ifscCode: e.target.value.toUpperCase() }))} />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5">Bank Name (optional)</Label>
-                  <Input placeholder="e.g. HDFC Bank" value={form.bankName} onChange={e => setForm(f => ({ ...f, bankName: e.target.value }))} />
-                </div>
-              </>
-            )}
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1.5">Remarks (optional)</Label>
-              <Input placeholder="Internal note" value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+                <Button onClick={() => { setShowCreate(false); setLocation("/payout-merchant/beneficiaries"); }}>
+                  Go to Beneficiaries
+                </Button>
+              </DialogFooter>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? <Spinner className="w-4 h-4 mr-2" /> : null}
-              Submit Payout
-            </Button>
-          </DialogFooter>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1.5">Select Saved Beneficiary</Label>
+                <Select value={selectedBeneficiaryId} onValueChange={(v) => {
+                  setSelectedBeneficiaryId(v);
+                  const b = allBeneficiaries.find((x) => String(x.id) === v);
+                  if (b) setForm((f) => ({ ...f, payoutMode: b.payoutMode }));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Choose a verified beneficiary" /></SelectTrigger>
+                  <SelectContent>
+                    {allBeneficiaries.map((b) => (
+                      <SelectItem key={b.id} value={String(b.id)} disabled={b.verificationStatus !== "VERIFIED"}>
+                        {b.accountHolder ?? b.upiId ?? "Beneficiary"} — {b.payoutMode === "UPI" ? b.upiId : `${b.bankName ?? ""} ${b.bankAccountMasked ?? maskAccountNumber(b.bankAccount)}`}
+                        {" "}({b.verificationStatus === "VERIFIED" ? "Verified" : b.verificationStatus === "FAILED" ? "Failed" : "Pending"})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedBeneficiary && (
+                <div className="rounded-md border border-border/50 bg-muted/10 p-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">Account Holder</span>
+                    <span className="font-medium">{selectedBeneficiary.accountHolder ?? "—"}</span>
+                  </div>
+                  {selectedBeneficiary.payoutMode === "UPI" ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground text-xs">UPI ID</span>
+                      <span className="font-mono text-xs">{selectedBeneficiary.upiId}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs">Bank</span>
+                        <span>{selectedBeneficiary.bankName ?? "—"}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs">Account Number</span>
+                        <span className="font-mono text-xs">{selectedBeneficiary.bankAccountMasked ?? maskAccountNumber(selectedBeneficiary.bankAccount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs">IFSC</span>
+                        <span className="font-mono text-xs">{selectedBeneficiary.ifscCode ?? "—"}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">Status</span>
+                    <Badge variant="outline" className="text-[10px] border-emerald-500/30 bg-emerald-500/15 text-emerald-400">Verified</Badge>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1.5">Amount (₹)</Label>
+                <Input type="number" min={MIN_PAYOUT_AMOUNT} placeholder="e.g. 5000" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+                <p className="text-[10px] text-muted-foreground mt-1">Minimum payout amount is ₹{MIN_PAYOUT_AMOUNT}</p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1.5">Payout Mode</Label>
+                <Select value={form.payoutMode} onValueChange={v => setForm(f => ({ ...f, payoutMode: v }))} disabled={selectedBeneficiary?.payoutMode === "UPI"}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {selectedBeneficiary?.payoutMode === "UPI" ? (
+                      <SelectItem value="UPI">UPI</SelectItem>
+                    ) : (
+                      <>
+                        <SelectItem value="IMPS">IMPS (Instant)</SelectItem>
+                        <SelectItem value="NEFT">NEFT</SelectItem>
+                        <SelectItem value="RTGS">RTGS</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1.5">Remarks (optional)</Label>
+                <Input placeholder="Internal note" value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+                <Button onClick={handleCreate} disabled={createMutation.isPending || !selectedBeneficiary}>
+                  {createMutation.isPending ? <Spinner className="w-4 h-4 mr-2" /> : null}
+                  Submit Payout
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
