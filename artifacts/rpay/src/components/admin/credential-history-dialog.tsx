@@ -6,7 +6,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { History, ChevronLeft, ChevronRight, Loader2, Download } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { History, ChevronLeft, ChevronRight, Loader2, Download, X } from "lucide-react";
 
 const LIMIT = 10;
 
@@ -208,10 +210,16 @@ export function CredentialHistoryDialog({
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
+  const [fromDate, setFromDate] = useState(dateFrom ?? "");
+  const [toDate, setToDate] = useState(dateTo ?? "");
+
+  const effectiveFrom = fromDate || undefined;
+  const effectiveTo = toDate || undefined;
+  const hasDateFilter = Boolean(effectiveFrom || effectiveTo);
 
   const queryParams: Record<string, unknown> = { action, settingKey: section, page, limit: LIMIT };
-  if (dateFrom) queryParams["dateFrom"] = dateFrom;
-  if (dateTo)   queryParams["dateTo"]   = dateTo;
+  if (effectiveFrom) queryParams["dateFrom"] = effectiveFrom;
+  if (effectiveTo)   queryParams["dateTo"]   = effectiveTo;
 
   const { data, isLoading } = useListAdminAuditLogs(
     queryParams as any,
@@ -261,7 +269,7 @@ export function CredentialHistoryDialog({
               onClick={async () => {
                 setIsExporting(true);
                 try {
-                  await downloadGatewayHistoryCsv(action, section, label, dateFrom, dateTo);
+                  await downloadGatewayHistoryCsv(action, section, label, effectiveFrom, effectiveTo);
                 } finally {
                   setIsExporting(false);
                 }
@@ -276,6 +284,56 @@ export function CredentialHistoryDialog({
             </Button>
           </div>
         </DialogHeader>
+
+        <div className="flex items-end gap-2 flex-wrap">
+          <div className="space-y-1">
+            <Label htmlFor="gateway-history-from" className="text-xs text-muted-foreground">
+              From
+            </Label>
+            <Input
+              id="gateway-history-from"
+              type="date"
+              value={fromDate}
+              max={toDate || undefined}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                setPage(1);
+              }}
+              className="h-8 w-[150px] text-xs"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="gateway-history-to" className="text-xs text-muted-foreground">
+              To
+            </Label>
+            <Input
+              id="gateway-history-to"
+              type="date"
+              value={toDate}
+              min={fromDate || undefined}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                setPage(1);
+              }}
+              className="h-8 w-[150px] text-xs"
+            />
+          </div>
+          {hasDateFilter && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setFromDate("");
+                setToDate("");
+                setPage(1);
+              }}
+            >
+              <X className="w-3.5 h-3.5 mr-1" />
+              Clear
+            </Button>
+          )}
+        </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
