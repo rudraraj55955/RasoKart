@@ -558,7 +558,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
         merchantContactName = statusRow?.contactName ?? null;
         merchantPhone = statusRow?.phone ?? null;
         merchantWebsite = statusRow?.website ?? null;
-        merchantRejectionReason = (statusRow as any)?.rejectionReason ?? null;
+        merchantRejectionReason = statusRow?.rejectionReason ?? null;
       } catch (err) {
         logger.warn({ err, merchantId: user.merchantId }, "Failed to fetch merchant status");
       }
