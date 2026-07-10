@@ -11568,6 +11568,24 @@ components:
           type: ["integer", "null"]
         merchantStatus:
           type: ["string", "null"]
+        businessName:
+          type: ["string", "null"]
+          description: Merchant's business name. Only populated for merchant-role users.
+        contactName:
+          type: ["string", "null"]
+          description: Merchant's primary contact name. Only populated for merchant-role users.
+        phone:
+          type: ["string", "null"]
+          description: Merchant's contact phone number. Only populated for merchant-role users.
+        website:
+          type: ["string", "null"]
+          description: Merchant's website URL. Only populated for merchant-role users.
+        status:
+          type: ["string", "null"]
+          description: Alias of merchantStatus, kept for merchant-portal profile page consumers.
+        rejectionReason:
+          type: ["string", "null"]
+          description: Reason the merchant application was rejected, if applicable.
         reconciliationAlertEmails:
           type: boolean
         planExpiryAlertEmails:

@@ -984,8 +984,8 @@ onError: () => toast.error("Failed to send test event"),
         <CardHeader><CardTitle>Endpoint Configuration</CardTitle><CardDescription>RasoKart will send POST requests to this URL for the selected events</CardDescription></CardHeader>
         <CardContent className="space-y-5">
           <div>
-            <Label>Webhook URL</Label>
-            <Input className="mt-1.5 font-mono" placeholder="https://yourapp.com/webhook" value={url} onChange={e => setUrl(e.target.value)} />
+            <Label htmlFor="webhook-url">Webhook URL</Label>
+            <Input id="webhook-url" className="mt-1.5 font-mono" placeholder="https://yourapp.com/webhook" value={url} onChange={e => setUrl(e.target.value)} />
           </div>
           <div>
             <Label>Signing Secret <span className="text-muted-foreground font-normal">(optional)</span></Label>

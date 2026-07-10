@@ -40,3 +40,4 @@
 - [Auto-KYC DigiLocker-only restriction](auto-kyc-digilocker-restriction.md) — only Secure ID PAN + DigiLocker Aadhaar allowed; approval needs PAN+Aadhaar+nameMatch+mobile+email all pass, not just PAN+Aadhaar.
 - [RasoKart settings save/sync pattern](rasokart-settings-sync-pattern.md) — settings forms must use query hooks (not raw fetch), guard sync effects with an initialized/dirty flag, re-sync from server post-save, and never swallow save errors.
 - [Dummy-data cleanup dual-implementation](dummy-data-cleanup.md) — cleanup logic must be duplicated in api-server route + scripts CLI (no cross-import between leaf packages); keep detection patterns in sync.
+- [Merchant /auth/me missing business fields](merchant-me-missing-business-fields.md) — silent-revert bugs can be an incomplete backend SELECT, not just a broken frontend useEffect; diff the actual JSON payload against every field read.

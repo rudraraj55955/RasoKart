@@ -26,6 +26,36 @@ export interface User {
   merchantId?: number | null;
   /** @nullable */
   merchantStatus?: string | null;
+  /**
+     * Merchant's business name. Only populated for merchant-role users.
+     * @nullable
+     */
+  businessName?: string | null;
+  /**
+     * Merchant's primary contact name. Only populated for merchant-role users.
+     * @nullable
+     */
+  contactName?: string | null;
+  /**
+     * Merchant's contact phone number. Only populated for merchant-role users.
+     * @nullable
+     */
+  phone?: string | null;
+  /**
+     * Merchant's website URL. Only populated for merchant-role users.
+     * @nullable
+     */
+  website?: string | null;
+  /**
+     * Alias of merchantStatus, kept for merchant-portal profile page consumers.
+     * @nullable
+     */
+  status?: string | null;
+  /**
+     * Reason the merchant application was rejected, if applicable.
+     * @nullable
+     */
+  rejectionReason?: string | null;
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
   settlementStateEmails?: boolean;

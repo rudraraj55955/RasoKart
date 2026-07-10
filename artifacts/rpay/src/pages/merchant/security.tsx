@@ -2165,7 +2165,7 @@ export default function MerchantSecurity() {
             </div>
             <div className="flex items-center gap-1.5 sm:w-16 sm:justify-center">
               <Mail className="w-3.5 h-3.5 text-muted-foreground sm:hidden" />
-              <Switch checked={apiKeyGeneratedEnabled} onCheckedChange={val => updatePrefs({ data: { apiKeyGeneratedEmails: val } })} disabled={savingPrefs || me === undefined} />
+              <Switch id="api-key-generated-email-switch" checked={apiKeyGeneratedEnabled} onCheckedChange={val => updatePrefs({ data: { apiKeyGeneratedEmails: val } })} disabled={savingPrefs || me === undefined} />
             </div>
             <div className="flex items-center gap-1.5 sm:w-16 sm:justify-center">
               <Bell className="w-3.5 h-3.5 text-muted-foreground sm:hidden" />

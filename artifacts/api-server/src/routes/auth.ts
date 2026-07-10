@@ -530,6 +530,11 @@ router.get("/me", requireAuth, async (req, res, next) => {
     let merchantType = "NORMAL";
     let payoutServiceEnabled = false;
     let payinServiceEnabled = true;
+    let merchantBusinessName: string | null = null;
+    let merchantContactName: string | null = null;
+    let merchantPhone: string | null = null;
+    let merchantWebsite: string | null = null;
+    let merchantRejectionReason: string | null = null;
     if (user.role === "merchant" && user.merchantId) {
       // Status is queried separately from merchantType/service-enabled flags
       // because some deploy environments run a pre-payout-feature schema
@@ -537,11 +542,23 @@ router.get("/me", requireAuth, async (req, res, next) => {
       // that, but we still want `status` even when it does.
       try {
         const [statusRow] = await db
-          .select({ status: merchantsTable.status })
+          .select({
+            status: merchantsTable.status,
+            businessName: merchantsTable.businessName,
+            contactName: merchantsTable.contactName,
+            phone: merchantsTable.phone,
+            website: merchantsTable.website,
+            rejectionReason: merchantsTable.rejectionReason,
+          })
           .from(merchantsTable)
           .where(eq(merchantsTable.id, user.merchantId))
           .limit(1);
         merchantStatus = statusRow?.status ?? null;
+        merchantBusinessName = statusRow?.businessName ?? null;
+        merchantContactName = statusRow?.contactName ?? null;
+        merchantPhone = statusRow?.phone ?? null;
+        merchantWebsite = statusRow?.website ?? null;
+        merchantRejectionReason = (statusRow as any)?.rejectionReason ?? null;
       } catch (err) {
         logger.warn({ err, merchantId: user.merchantId }, "Failed to fetch merchant status");
       }
@@ -630,6 +647,12 @@ router.get("/me", requireAuth, async (req, res, next) => {
       merchantType,
       payoutServiceEnabled,
       payinServiceEnabled,
+      businessName: merchantBusinessName,
+      contactName: merchantContactName,
+      phone: merchantPhone,
+      website: merchantWebsite,
+      status: merchantStatus,
+      rejectionReason: merchantRejectionReason,
       reconciliationAlertEmails: row?.reconciliationAlertEmails ?? true,
       planExpiryAlertEmails: row?.planExpiryAlertEmails ?? true,
       settlementStateEmails: row?.settlementStateEmails ?? true,

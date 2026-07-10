@@ -24,6 +24,10 @@ args = "settings-persistence"
 task = "workflow.run"
 args = "test:settings-persistence"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "test-merchant-settings-persistence"
+
 [[workflows.workflow]]
 name = "settings-persistence"
 author = "agent"
@@ -42,6 +46,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd /home/runner/workspace/scripts && psql \"$DATABASE_URL\" -c \"DELETE FROM rate_limit_hits;\" && PLAYWRIGHT_BROWSERS_PATH=/home/runner/workspace/.cache/ms-playwright pnpm exec playwright test --config=playwright.config.ts e2e/settings-persistence.spec.ts"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "test-merchant-settings-persistence"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace/scripts && psql \"$DATABASE_URL\" -c \"DELETE FROM rate_limit_hits;\" && PLAYWRIGHT_BROWSERS_PATH=/home/runner/workspace/.cache/ms-playwright pnpm exec playwright test --config=playwright.config.ts e2e/merchant-settings-persistence.spec.ts"
 
 [workflows.workflow.metadata]
 isValidation = true
