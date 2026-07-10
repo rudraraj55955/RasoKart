@@ -119,7 +119,9 @@ interface SmtpConfig {
 
 function MaintenanceCard() {
   const qc = useQueryClient();
-  const { data: lastRun, isLoading: lastRunLoading } = useGetLedgerBackfillLastRun();
+  const { data: lastRun, isLoading: lastRunLoading } = useGetLedgerBackfillLastRun({
+    query: { queryKey: getGetLedgerBackfillLastRunQueryKey(), staleTime: 30_000 },
+  });
 
   const { mutate: runBackfill, isPending: running } = useRunLedgerBackfill({
     mutation: {
@@ -322,7 +324,7 @@ export default function AdminSettings() {
   const [smtpTestResult, setSmtpTestResult] = useState<"success" | "error" | null>(null);
   const [smtpTestMessage, setSmtpTestMessage] = useState("");
 
-  const { data: me } = useGetMe();
+  const { data: me } = useGetMe({ query: { staleTime: 30_000 } } as any);
   const alertEnabled = me?.reconciliationAlertEmails ?? true;
   const planExpiryEnabled = me?.planExpiryAlertEmails ?? true;
   const settlementStateEnabled = me?.settlementStateEmails ?? true;
@@ -620,8 +622,8 @@ export default function AdminSettings() {
   const [qrHistoryOpen, setQrHistoryOpen] = useState(false);
   const [vaHistoryOpen, setVaHistoryOpen] = useState(false);
 
-  const { data: qrHistoryData, isLoading: qrHistoryLoading } = useGetQrCleanupHistory({ query: { enabled: qrHistoryOpen, queryKey: getGetQrCleanupHistoryQueryKey() } });
-  const { data: vaHistoryData, isLoading: vaHistoryLoading } = useGetVaCleanupHistory({ query: { enabled: vaHistoryOpen, queryKey: getGetVaCleanupHistoryQueryKey() } });
+  const { data: qrHistoryData, isLoading: qrHistoryLoading } = useGetQrCleanupHistory({ query: { enabled: qrHistoryOpen, queryKey: getGetQrCleanupHistoryQueryKey(), staleTime: 30_000 } });
+  const { data: vaHistoryData, isLoading: vaHistoryLoading } = useGetVaCleanupHistory({ query: { enabled: vaHistoryOpen, queryKey: getGetVaCleanupHistoryQueryKey(), staleTime: 30_000 } });
 
   const { mutate: clearQrHistory, isPending: clearingQrHistory } = useClearQrCleanupHistory({
     mutation: {
@@ -765,7 +767,7 @@ export default function AdminSettings() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const { data: cleanupStats } = useGetCleanupStats();
+  const { data: cleanupStats } = useGetCleanupStats({ query: { staleTime: 30_000 } } as any);
 
   const currentRetryMaxAttempts = webhookRetriesData?.maxAttempts ?? 4;
   const currentRetryDelay1 = webhookRetriesData?.delay1 ?? 300;
@@ -862,7 +864,7 @@ export default function AdminSettings() {
   });
 
 
-  const { data: webhookAlertConfigData, isLoading: webhookAlertConfigLoading } = useGetWebhookFailureAlertConfig();
+  const { data: webhookAlertConfigData, isLoading: webhookAlertConfigLoading } = useGetWebhookFailureAlertConfig({ query: { staleTime: 30_000 } } as any);
   const { data: alertCooldownStatus } = useQuery({
     ...getGetAlertCooldownStatusQueryOptions(),
     refetchInterval: 60_000,
@@ -891,7 +893,7 @@ export default function AdminSettings() {
     },
   });
 
-  const { data: sigFailureHistoryData, refetch: refetchSigFailureHistory } = useGetSignatureFailureAlertHistory();
+  const { data: sigFailureHistoryData, refetch: refetchSigFailureHistory } = useGetSignatureFailureAlertHistory({ query: { staleTime: 30_000 } } as any);
   const sigFailureHistory: SignatureFailureAlertLogEntry[] = sigFailureHistoryData?.data ?? [];
   const sigFailureHistoryCount = sigFailureHistoryData?.total ?? 0;
 
@@ -909,13 +911,13 @@ export default function AdminSettings() {
   const webhookAlertHistoryParams = webhookAlertMerchantFilter != null
     ? { merchantId: webhookAlertMerchantFilter }
     : undefined;
-  const { data: webhookAlertHistoryData, refetch: refetchWebhookAlertHistory } = useGetWebhookFailureAlertHistory(webhookAlertHistoryParams);
+  const { data: webhookAlertHistoryData, refetch: refetchWebhookAlertHistory } = useGetWebhookFailureAlertHistory(webhookAlertHistoryParams, { query: { staleTime: 30_000 } } as any);
   const webhookAlertHistory: WebhookFailureAlertLogEntry[] = webhookAlertHistoryData?.data ?? [];
 
-  const { data: webhookAlertGlobalData, refetch: refetchWebhookAlertGlobal } = useGetWebhookFailureAlertHistory({ limit: 1 });
+  const { data: webhookAlertGlobalData, refetch: refetchWebhookAlertGlobal } = useGetWebhookFailureAlertHistory({ limit: 1 }, { query: { staleTime: 30_000 } } as any);
   const webhookAlertGlobalCount = webhookAlertGlobalData?.total ?? 0;
 
-  const { data: webhookAlertMerchantsData } = useListMerchants({ limit: 200 });
+  const { data: webhookAlertMerchantsData } = useListMerchants({ limit: 200 }, { query: { staleTime: 30_000 } } as any);
   const webhookAlertMerchants = webhookAlertMerchantsData?.data ?? [];
   const webhookAlertMerchantMap = new Map(webhookAlertMerchants.map((m) => [m.id, m.businessName]));
 
@@ -953,7 +955,7 @@ export default function AdminSettings() {
     },
   });
 
-  const { data: githubSyncConfig, isLoading: githubSyncLoading } = useGetGithubSyncConfig();
+  const { data: githubSyncConfig, isLoading: githubSyncLoading } = useGetGithubSyncConfig({ query: { staleTime: 30_000 } } as any);
 
   useEffect(() => {
     if (!githubSyncInitialized && githubSyncConfig) {
@@ -1062,7 +1064,7 @@ export default function AdminSettings() {
   };
 
   const [githubSyncLogCleanupResult, setGithubSyncLogCleanupResult] = useState<{ deleted: number; errors: number } | null>(null);
-  const { data: githubSyncLastCleanup } = useGetGithubSyncLastCleanup();
+  const { data: githubSyncLastCleanup } = useGetGithubSyncLastCleanup({ query: { staleTime: 30_000 } } as any);
   const { mutate: runLogCleanupNow, isPending: runningLogCleanup } = useRunGithubSyncLogCleanup({
     mutation: {
       onSuccess: (res) => {
@@ -1114,7 +1116,7 @@ export default function AdminSettings() {
     }
   }, [retryingFromModal, githubSyncHistory, selectedSyncRun?.id]);
 
-  const { data: quietHoursFlushData, isLoading: quietHoursFlushLoading } = useGetQuietHoursFlushConfig();
+  const { data: quietHoursFlushData, isLoading: quietHoursFlushLoading } = useGetQuietHoursFlushConfig({ query: { staleTime: 30_000 } } as any);
 
   useEffect(() => {
     if (!quietHoursFlushInitialized && quietHoursFlushData) {
