@@ -250,6 +250,15 @@ const SETTING_LABELS: Record<string, string> = {
 
 const SKIP_KEYS = new Set(["providerKey", "updatedByEmail", "section", "key"]);
 
+// Only these action types have details JSON shapes that map cleanly to
+// SETTING_LABELS / ROTATED_FIELD_LABELS. Every other action (csv_export,
+// plan_assigned, merchant_created, etc.) must produce an empty Changes cell
+// rather than raw key:value noise or the raw JSON string.
+const SUPPORTED_CHANGE_SUMMARY_ACTIONS = new Set([
+  "system_config_updated",
+  "provider_integration_updated",
+]);
+
 function formatCsvValue(v: unknown): string {
   if (typeof v === "boolean") return v ? "On" : "Off";
   if (v === null || v === undefined || v === "") return "—";
@@ -269,8 +278,9 @@ function isFromTo(v: unknown): v is { from: unknown; to: unknown } {
  *   "Client Secret rotated; Environment: sandbox → production"
  *   "API Key rotated; Enabled: Off → On"
  */
-function buildChangeSummaryText(details: string | null): string {
+function buildChangeSummaryText(details: string | null, action?: string): string {
   if (!details) return "";
+  if (action !== undefined && !SUPPORTED_CHANGE_SUMMARY_ACTIONS.has(action)) return "";
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(details) as Record<string, unknown>;
@@ -521,7 +531,7 @@ router.get("/export", async (req, res) => {
     escapeCsv(r.targetId != null ? String(r.targetId) : null),
     escapeCsv(r.ipAddress),
     escapeCsv(r.createdAt.toISOString()),
-    escapeCsv(buildChangeSummaryText(r.details)),
+    escapeCsv(buildChangeSummaryText(r.details, r.action)),
   ].join(","));
 
   const csv = [header.join(","), ...csvRows].join("\n");
