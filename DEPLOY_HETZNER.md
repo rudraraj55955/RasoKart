@@ -171,6 +171,15 @@ UPI gateway columns, routing tables, `quiet_hours_queue` delivery columns,
 are logged but are **never fatal** — the server always starts and serves requests
 even if seeding hits an unexpected error.
 
+**KYC tables are included in both places**: `db-migrate.ts` creates
+`merchant_kyc`, `kyc_review_history`, `merchant_kyc_data` (incl. `aadhaar_status`
+and `udyam_*` columns), `merchant_kyc_verifications`, `kyc_verification_logs`,
+`verification_logs`, and `merchant_kyc_settings` directly, and `schemaGuard.ts`
+self-heals the same tables/columns on every server boot as a second safety net.
+A fresh VPS database gets full KYC support (manual document upload KYC, the
+auto-KYC PAN/Aadhaar pipeline, and Super Admin auto-KYC provider settings)
+from running step 6 alone, before the server is ever started.
+
 ### Permanent SQL migration files
 
 The file `artifacts/api-server/src/migrations/0002_payout_wallet_load_orders.sql`

@@ -91,6 +91,151 @@ async function migrate() {
     );
     CREATE INDEX IF NOT EXISTS kyc_review_history_kyc_id_idx ON kyc_review_history(kyc_id);
 
+    -- ── merchant_kyc_data (secure onboarding, structured extracted KYC fields) ──
+    CREATE TABLE IF NOT EXISTS merchant_kyc_data (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL UNIQUE,
+      onboarding_session_id INTEGER,
+      full_name TEXT,
+      dob TEXT,
+      gender TEXT,
+      email TEXT,
+      pan_masked TEXT,
+      aadhaar_last4 TEXT,
+      address_line1 TEXT,
+      address_line2 TEXT,
+      city TEXT,
+      state_name TEXT,
+      pincode TEXT,
+      business_name TEXT,
+      gstin_masked TEXT,
+      cin_number TEXT,
+      bank_account_masked TEXT,
+      bank_ifsc TEXT,
+      bank_name TEXT,
+      bank_holder_name TEXT,
+      pan_status TEXT DEFAULT 'PENDING',
+      gst_status TEXT DEFAULT 'SKIPPED',
+      cin_status TEXT DEFAULT 'SKIPPED',
+      bank_status TEXT DEFAULT 'PENDING',
+      aadhaar_status TEXT DEFAULT 'PENDING',
+      udyam_number TEXT,
+      udyam_status TEXT DEFAULT 'SKIPPED',
+      risk_score INTEGER DEFAULT 0,
+      mismatch_flags JSONB,
+      admin_decision TEXT NOT NULL DEFAULT 'PENDING',
+      rejection_reason TEXT,
+      approved_by TEXT,
+      approved_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── merchant_kyc_verifications (auto-KYC PAN/Aadhaar pipeline) ─────────────
+    CREATE TABLE IF NOT EXISTS merchant_kyc_verifications (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL UNIQUE,
+      pan_number_masked TEXT,
+      pan_number_hash TEXT,
+      pan_name TEXT,
+      pan_type TEXT,
+      pan_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      pan_verified_at TIMESTAMPTZ,
+      pan_reference_id_encrypted TEXT,
+      pan_reference_id_iv TEXT,
+      pan_reference_id_tag TEXT,
+      aadhaar_last4 TEXT,
+      aadhaar_number_hash TEXT,
+      aadhaar_name TEXT,
+      aadhaar_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      aadhaar_verified_at TIMESTAMPTZ,
+      aadhaar_reference_id_encrypted TEXT,
+      aadhaar_reference_id_iv TEXT,
+      aadhaar_reference_id_tag TEXT,
+      aadhaar_otp_session_encrypted TEXT,
+      aadhaar_otp_session_iv TEXT,
+      aadhaar_otp_session_tag TEXT,
+      name_match_score INTEGER,
+      verification_status TEXT NOT NULL DEFAULT 'PENDING',
+      failure_reason TEXT,
+      consent_ip TEXT,
+      consent_user_agent TEXT,
+      consent_at TIMESTAMPTZ,
+      admin_decision_by TEXT,
+      admin_decision_at TIMESTAMPTZ,
+      admin_decision_note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mkv_status_idx ON merchant_kyc_verifications(verification_status);
+    CREATE INDEX IF NOT EXISTS mkv_pan_hash_idx ON merchant_kyc_verifications(pan_number_hash);
+    CREATE INDEX IF NOT EXISTS mkv_aadhaar_hash_idx ON merchant_kyc_verifications(aadhaar_number_hash);
+
+    -- ── kyc_verification_logs (masked audit trail for auto-KYC pipeline) ──────
+    CREATE TABLE IF NOT EXISTS kyc_verification_logs (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      verification_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      request_masked TEXT,
+      response_masked TEXT,
+      provider_reference_id_encrypted TEXT,
+      provider_reference_id_iv TEXT,
+      provider_reference_id_tag TEXT,
+      error_reason TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS kvl_merchant_id_idx ON kyc_verification_logs(merchant_id);
+    CREATE INDEX IF NOT EXISTS kvl_created_at_idx ON kyc_verification_logs(created_at DESC);
+
+    -- ── verification_logs (encrypted raw provider responses, secure onboarding) ─
+    CREATE TABLE IF NOT EXISTS verification_logs (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      onboarding_session_id INTEGER,
+      verification_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      request_id TEXT,
+      raw_response_encrypted TEXT,
+      raw_response_iv TEXT,
+      raw_response_tag TEXT,
+      error_encrypted TEXT,
+      error_iv TEXT,
+      error_tag TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS vl_merchant_id_idx ON verification_logs(merchant_id);
+    CREATE INDEX IF NOT EXISTS vl_created_at_idx ON verification_logs(created_at DESC);
+
+    -- ── merchant_kyc_settings (Super Admin auto-KYC provider config) ───────────
+    CREATE TABLE IF NOT EXISTS merchant_kyc_settings (
+      id SERIAL PRIMARY KEY,
+      pan_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      aadhaar_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      mode TEXT NOT NULL DEFAULT 'test',
+      client_id_encrypted TEXT,
+      client_id_iv TEXT,
+      client_id_tag TEXT,
+      client_secret_encrypted TEXT,
+      client_secret_iv TEXT,
+      client_secret_tag TEXT,
+      base_url TEXT,
+      min_name_match_score INTEGER NOT NULL DEFAULT 80,
+      auto_approve_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      duplicate_check_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      daily_verification_limit INTEGER NOT NULL DEFAULT 200,
+      per_merchant_attempt_limit INTEGER NOT NULL DEFAULT 5,
+      updated_by_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── merchant_kyc_data: columns added after initial release (self-heals older DBs) ─
+    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS aadhaar_status TEXT DEFAULT 'PENDING';
+    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS bank_holder_name TEXT;
+    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_number TEXT;
+    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_status TEXT DEFAULT 'SKIPPED';
+
     -- ── module_controls ────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS module_controls (
       id SERIAL PRIMARY KEY,

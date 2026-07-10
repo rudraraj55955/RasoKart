@@ -6,7 +6,7 @@ import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useG
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, GitCompareArrows } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
@@ -168,83 +168,6 @@ function CallbackSecretBanner() {
 interface DashboardLayoutProps {
   children: ReactNode;
   publicMode?: boolean;
-}
-
-const SYNC_BANNER_SESSION_KEY = "rasokart_admin_sync_banner_dismissed_signature";
-
-function AdminSyncStatusBanner() {
-  const { data: syncStatus } = useGetGithubSyncStatus({
-    query: { refetchInterval: 60_000, queryKey: ["/api/github-sync/status"] },
-  });
-  const { data: divergence } = useGetGithubSyncDivergence({
-    query: { refetchInterval: 60_000, queryKey: ["/api/github-sync/divergence"] },
-  });
-
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const githubOk = syncStatus?.status === "success" && !(divergence?.checked && divergence.diverged);
-  const signature = `${syncStatus?.status ?? "unknown"}|${syncStatus?.syncedAt ?? ""}|${divergence?.diverged ? "diverged" : "clean"}`;
-
-  const [dismissedSignature, setDismissedSignature] = useState<string | null>(
-    () => sessionStorage.getItem(SYNC_BANNER_SESSION_KEY)
-  );
-
-  const isDismissed = dismissedSignature === signature;
-  const shouldShow = !githubOk && !isDismissed;
-
-  if (!shouldShow) return null;
-
-  const githubLabel = syncStatus == null
-    ? "Checking..."
-    : syncStatus.status === "success"
-    ? "Synced"
-    : syncStatus.status === "running"
-    ? "Sync in progress"
-    : syncStatus.status === "never"
-    ? "Not yet synced"
-    : syncStatus.status === "skipped"
-    ? "Skipped (needs review)"
-    : "Push failed";
-
-  const divergedLabel = divergence?.checked && divergence.diverged
-    ? "Diverged — remote has changes not present here"
-    : null;
-
-  return (
-    <Card className="border-amber-500/40 bg-amber-950/20 rounded-lg">
-      <CardContent className="p-3 space-y-1.5">
-        <div className="flex items-start gap-2">
-          <GitCompareArrows className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0 space-y-1">
-            <p className="text-xs font-medium text-amber-300">Deployment Sync Status</p>
-            <div className="text-[11px] text-amber-200/80 space-y-0.5">
-              <p>Replit code: <span className="font-medium">Up to date</span></p>
-              <p>GitHub sync: <span className="font-medium">{githubLabel}</span>{syncStatus?.syncedAt ? ` · ${format(new Date(syncStatus.syncedAt), "d MMM, HH:mm")}` : ""}</p>
-              {divergedLabel && <p className="text-red-300">{divergedLabel}</p>}
-              <p>VPS deploy: <span className="font-medium">Pending — deploy manually from your VPS</span></p>
-              <p className="text-amber-200/50">Last checked: {format(now, "HH:mm:ss")}</p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 p-0 text-amber-400/60 hover:text-amber-400 hover:bg-amber-500/10 shrink-0"
-            onClick={() => {
-              sessionStorage.setItem(SYNC_BANNER_SESSION_KEY, signature);
-              setDismissedSignature(signature);
-            }}
-            aria-label="Dismiss sync status warning for this session"
-          >
-            <X className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
 }
 
 function MerchantSidebar() {
@@ -668,6 +591,110 @@ function AdminSidebar() {
   );
 }
 
+const DEPLOY_SYNC_ALERT_DISMISS_KEY = "rasokart_deploy_sync_alert_dismissed";
+
+function GithubSyncAdminAlert() {
+  const [expanded, setExpanded] = useState(false);
+  const [dismissedSignature, setDismissedSignature] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem(DEPLOY_SYNC_ALERT_DISMISS_KEY);
+    } catch {
+      return null;
+    }
+  });
+
+  const { data: divergence, dataUpdatedAt: divergenceCheckedAt } = useGetGithubSyncDivergence({
+    query: {
+      refetchInterval: 5 * 60 * 1000,
+      staleTime: 4 * 60 * 1000,
+      queryKey: ["/api/github-sync/divergence", "admin-sidebar-alert"],
+    },
+  });
+  const { data: syncStatus, dataUpdatedAt: statusCheckedAt } = useGetGithubSyncStatus({
+    query: {
+      refetchInterval: 5 * 60 * 1000,
+      staleTime: 4 * 60 * 1000,
+      queryKey: ["/api/github-sync/status", "admin-sidebar-alert"],
+    },
+  });
+
+  const diverged = divergence?.checked === true && divergence.diverged === true;
+  const pushFailed = syncStatus?.status === "failure";
+  const pushSkipped = syncStatus?.status === "skipped";
+  const hasIssue = diverged || pushFailed || pushSkipped;
+
+  const signature = `${diverged ? "d" : "-"}${pushFailed ? "f" : "-"}${pushSkipped ? "s" : "-"}:${divergence?.remoteAheadBy ?? 0}`;
+
+  if (!hasIssue || dismissedSignature === signature) return null;
+
+  const lastCheckedMs = Math.max(divergenceCheckedAt || 0, statusCheckedAt || 0);
+
+  const handleDismiss = () => {
+    try {
+      sessionStorage.setItem(DEPLOY_SYNC_ALERT_DISMISS_KEY, signature);
+    } catch {
+      // sessionStorage unavailable — dismissal just won't persist, non-critical
+    }
+    setDismissedSignature(signature);
+  };
+
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-950/10 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-2 w-full text-left px-2.5 py-2"
+        aria-expanded={expanded}
+      >
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+        </span>
+        <span className="flex-1 text-xs font-medium text-amber-300 truncate">Deploy sync needs attention</span>
+        {expanded ? <ChevronUp className="w-3.5 h-3.5 text-amber-400/70 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-amber-400/70 shrink-0" />}
+      </button>
+      {expanded && (
+        <div className="px-2.5 pb-2.5 space-y-1.5 text-[11px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">Replit ↔ GitHub</span>
+            <span className={diverged ? "text-amber-400 font-medium" : "text-emerald-400 font-medium"}>
+              {diverged ? `${divergence?.remoteAheadBy ?? "some"} commit${divergence?.remoteAheadBy === 1 ? "" : "s"} diverged` : "In sync"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">GitHub push</span>
+            <span className={pushFailed ? "text-red-400 font-medium" : pushSkipped ? "text-amber-400 font-medium" : "text-emerald-400 font-medium"}>
+              {syncStatus?.status === "failure" ? "Failed" : syncStatus?.status === "skipped" ? "Skipped" : syncStatus?.status === "running" ? "Running" : syncStatus?.status === "never" ? "Never run" : "Synced"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">VPS deploy</span>
+            <span className="text-muted-foreground/80" title="Deployed manually per DEPLOY_HETZNER.md — not auto-tracked yet">Manual — pending your deploy</span>
+          </div>
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-amber-500/20 text-muted-foreground/70">
+            <span>Last checked</span>
+            <span>{lastCheckedMs ? format(new Date(lastCheckedMs), "d MMM, h:mm a") : "—"}</span>
+          </div>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <Link href="/admin/settings" className="text-[11px] text-amber-300 hover:text-amber-200 underline underline-offset-2">
+              Open GitHub Sync settings
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={handleDismiss}
+            >
+              Dismiss for now
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DashboardLayout({ children, publicMode = false }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
@@ -739,7 +766,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
             )}
           </SidebarContent>
           <SidebarFooter className="p-4 space-y-2">
-            {!publicMode && isAdmin && <AdminSyncStatusBanner />}
+            {!publicMode && isAdmin && <GithubSyncAdminAlert />}
             <InstallAppButton
               appName={portalName}
               variant="ghost"
