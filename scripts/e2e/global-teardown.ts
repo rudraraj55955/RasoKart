@@ -101,6 +101,18 @@ async function restoreMerchantSettings(): Promise<void> {
   ]);
 }
 
+/**
+ * Same guard as global-setup.ts: when the validation runner fires both playwright
+ * invocations simultaneously, only the settings-persistence invocation should
+ * restore admin settings. The merchant invocation finishing first would otherwise
+ * race to reset qr-cleanup/SMTP/etc. while the settings tests are still running.
+ */
+const isMerchantRun = process.argv.some((arg) => arg.includes("merchant-settings-persistence"));
+
 export default async function globalTeardown(): Promise<void> {
-  await Promise.all([restoreAdminSettings(), restoreMerchantSettings()]);
+  const tasks: Promise<void>[] = [restoreMerchantSettings()];
+  if (!isMerchantRun) {
+    tasks.push(restoreAdminSettings());
+  }
+  await Promise.all(tasks);
 }

@@ -111,6 +111,19 @@ async function snapshotMerchantSettings(merchantToken: string): Promise<void> {
   writeFileSync(MERCHANT_SETTINGS_SNAPSHOT_CACHE_PATH, JSON.stringify(snapshot));
 }
 
+/**
+ * When the validation runner executes both playwright invocations simultaneously
+ * (settings-persistence.spec.ts AND merchant-settings-persistence.spec.ts), the
+ * merchant run finishes faster and its globalTeardown fires while the settings
+ * run is still mid-test. If both teardowns call restoreAdminSettings(), the
+ * merchant teardown races to reset qr-cleanup / SMTP / etc. back to snapshot
+ * values while the settings tests have just set them to known baselines.
+ *
+ * Guard: only the settings spec invocation snapshots (and later restores) admin
+ * settings. The merchant spec invocation is identified by its process.argv.
+ */
+const isMerchantRun = process.argv.some((arg) => arg.includes("merchant-settings-persistence"));
+
 export default async function globalSetup(): Promise<void> {
   const adminToken = await login("admin@rasokart.com", "Admin@123456");
   writeFileSync(ADMIN_TOKEN_CACHE_PATH, JSON.stringify({ token: adminToken }));
@@ -118,5 +131,9 @@ export default async function globalSetup(): Promise<void> {
   const merchantToken = await login("merchant2@demo.com", "Merchant@123456");
   writeFileSync(MERCHANT_TOKEN_CACHE_PATH, JSON.stringify({ token: merchantToken }));
 
-  await Promise.all([snapshotSettings(adminToken), snapshotMerchantSettings(merchantToken)]);
+  const tasks: Promise<void>[] = [snapshotMerchantSettings(merchantToken)];
+  if (!isMerchantRun) {
+    tasks.push(snapshotSettings(adminToken));
+  }
+  await Promise.all(tasks);
 }
