@@ -203,7 +203,27 @@ router.get("/", async (req, res, next) => {
     if (isMerchantUser) {
       providerToLabel = await getStableProviderToLabel(user.merchantId!);
     } else {
-      // Admin: derive labels from the current filtered set (admins see raw provider names anyway)
+      // Admin: derive labels from the current filtered set, sorted alphabetically.
+      //
+      // WHY this differs from the merchant path:
+      //   Admins see the raw `connectionProvider` key on every response item, so
+      //   they can always identify the real provider regardless of the label.
+      //   The label stability guarantee (same letter across every filter/page) is
+      //   only a UI requirement for the white-label merchant view; it is
+      //   unnecessary — and more expensive to compute — for the admin view.
+      //
+      // IMPORTANT — do NOT share this code path with the merchant branch:
+      //   Because this label is derived from the CURRENT filtered set, it will
+      //   shift when the active filter changes (a provider that is "B" in an
+      //   unfiltered list may become "A" when other providers are filtered out).
+      //   That is acceptable for admins (they have the raw key) but would be
+      //   a visible bug for merchants. The behaviour is asserted end-to-end in
+      //   transactions.adminGatewayLabel.realdb.test.ts (CONTRACT 2b).
+      //
+      // If you ever surface `payinGatewayLabel` to admins in a context where
+      // stability matters (e.g. a paginated export, a cross-filter comparison),
+      // switch that code path to call getStableProviderToLabel() instead of
+      // relying on this per-filter shortcut.
       const allProviderRows = await db
         .selectDistinct({ connectionProvider: merchantConnectionsTable.provider })
         .from(transactionsTable)
