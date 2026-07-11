@@ -1170,6 +1170,219 @@ async function migrate() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json JSONB;
   `);
 
+  // ── Section 13: Core business tables accessed by seed.ts ─────────────────
+  // These tables are created by schemaGuard/seed on a running server but were
+  // never in db-migrate.ts. On a fresh CI DB the post-merge seed crashes with
+  // "relation X does not exist" before schemaGuard has a chance to create them.
+  // Creating them here (all IF NOT EXISTS — safe to re-run on existing DBs).
+  await runSection("core-business-tables (settlements, qr_codes, virtual_accounts, account_details, ledger_entries, notifications, reconciliation, scheduled_audit_report_logs)", sql`
+
+    -- ── settlements ──────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS settlements (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      amount NUMERIC(18,2) NOT NULL,
+      requested_amount NUMERIC(18,2),
+      requested_note TEXT,
+      currency TEXT NOT NULL DEFAULT 'INR',
+      status TEXT NOT NULL DEFAULT 'pending',
+      period_from DATE,
+      period_to DATE,
+      transaction_count INTEGER NOT NULL DEFAULT 0,
+      admin_remark TEXT,
+      processed_by INTEGER,
+      processed_at TIMESTAMPTZ,
+      paid_at TIMESTAMPTZ,
+      reference_number TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS settlements_merchant_id_idx ON settlements(merchant_id);
+    CREATE INDEX IF NOT EXISTS settlements_status_idx ON settlements(status);
+
+    -- ── qr_codes ─────────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS qr_codes (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      label TEXT,
+      payload TEXT NOT NULL,
+      amount TEXT,
+      order_id TEXT,
+      callback_url TEXT,
+      merchant_reference TEXT,
+      expires_at TIMESTAMPTZ,
+      ekqr_order_id TEXT,
+      ekqr_payment_url TEXT,
+      provider_key TEXT,
+      provider_order_id TEXT,
+      provider_payment_url TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS qr_codes_merchant_id_idx ON qr_codes(merchant_id);
+
+    -- ── virtual_accounts ─────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS virtual_accounts (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      account_number TEXT NOT NULL UNIQUE,
+      ifsc TEXT NOT NULL,
+      bank_name TEXT NOT NULL,
+      account_holder TEXT NOT NULL,
+      label TEXT,
+      balance TEXT NOT NULL DEFAULT '0.00',
+      total_collection TEXT NOT NULL DEFAULT '0.00',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS virtual_accounts_merchant_id_idx ON virtual_accounts(merchant_id);
+
+    -- ── account_details ───────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS account_details (
+      id SERIAL PRIMARY KEY,
+      type TEXT NOT NULL,
+      label TEXT NOT NULL,
+      account_number TEXT,
+      ifsc TEXT,
+      bank_name TEXT,
+      account_holder TEXT,
+      upi_id TEXT,
+      qr_payload TEXT,
+      provider TEXT,
+      metadata TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      is_global BOOLEAN NOT NULL DEFAULT TRUE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── ledger_entries ────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS ledger_entries (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      amount NUMERIC(18,2) NOT NULL,
+      balance_before NUMERIC(18,2) NOT NULL,
+      balance_after NUMERIC(18,2) NOT NULL,
+      reference_type TEXT,
+      reference_id INTEGER,
+      description TEXT NOT NULL,
+      created_by INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS ledger_merchant_created_idx ON ledger_entries(merchant_id, created_at);
+
+    -- ── notifications ─────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      metadata JSONB,
+      is_read BOOLEAN NOT NULL DEFAULT FALSE,
+      read_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, is_read, created_at);
+    -- Dedup partial unique indexes relied on by onConflictDoNothing() callers:
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_provider_limit_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'provider')), ((metadata->>'monthKey')))
+      WHERE type IN ('provider_limit_warning', 'provider_limit_reached');
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_provider_limit_reset_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'provider')), ((metadata->>'currentMonthKey')))
+      WHERE type = 'provider_limit_reset';
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_merchant_dormant_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'dedupeKey')))
+      WHERE type = 'merchant_dormant';
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_report_overdue_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'dedupeKey')))
+      WHERE type = 'scheduled_report_overdue';
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_report_auto_paused_admin_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'scheduleId')))
+      WHERE type = 'report_schedule_auto_paused_admin' AND is_read = false;
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_scheduled_report_failure_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'scheduleId')), ((metadata->>'consecutiveFailures')))
+      WHERE type = 'scheduled_report_failure';
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_scheduled_report_auto_paused_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'scheduleId')))
+      WHERE type = 'scheduled_report_auto_paused';
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_delivery_rate_alert_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'dedupeKey')))
+      WHERE type = 'report_delivery_low_success_rate';
+
+    -- ── reconciliation_runs ───────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS reconciliation_runs (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER,
+      date_from DATE NOT NULL,
+      date_to DATE NOT NULL,
+      run_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      total_deposits INTEGER NOT NULL DEFAULT 0,
+      total_matched INTEGER NOT NULL DEFAULT 0,
+      total_unmatched INTEGER NOT NULL DEFAULT 0,
+      total_settlements INTEGER NOT NULL DEFAULT 0,
+      matched_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+      unmatched_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'running',
+      completed_at TIMESTAMPTZ,
+      created_by INTEGER,
+      triggered_by TEXT NOT NULL DEFAULT 'manual',
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── reconciliation_items ──────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS reconciliation_items (
+      id SERIAL PRIMARY KEY,
+      run_id INTEGER NOT NULL,
+      transaction_id INTEGER,
+      settlement_id INTEGER,
+      merchant_id INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      amount NUMERIC(18,2) NOT NULL,
+      matched_at TIMESTAMPTZ,
+      notes TEXT,
+      resolved_at TIMESTAMPTZ,
+      resolved_by INTEGER,
+      resolved_by_email TEXT,
+      resolution_type TEXT,
+      resolution_notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── reconciliation_email_logs ─────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS reconciliation_email_logs (
+      id SERIAL PRIMARY KEY,
+      run_id INTEGER NOT NULL,
+      email_type TEXT NOT NULL,
+      recipients TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'sent',
+      error_message TEXT,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── scheduled_audit_report_logs ───────────────────────────────────────────
+    -- Per-delivery log for scheduled_audit_reports runs.
+    -- References scheduled_audit_reports(id) which is created in Section 11.
+    CREATE TABLE IF NOT EXISTS scheduled_audit_report_logs (
+      id SERIAL PRIMARY KEY,
+      schedule_id INTEGER NOT NULL REFERENCES scheduled_audit_reports(id) ON DELETE CASCADE,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      row_count INTEGER NOT NULL DEFAULT 0,
+      success BOOLEAN NOT NULL,
+      error_message TEXT,
+      is_retry BOOLEAN NOT NULL DEFAULT FALSE,
+      retry_attempt INTEGER NOT NULL DEFAULT 0,
+      is_manual_retry BOOLEAN NOT NULL DEFAULT FALSE,
+      delivery_cycle_id TEXT
+    );
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }
