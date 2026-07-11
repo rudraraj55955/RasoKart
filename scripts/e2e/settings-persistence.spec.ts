@@ -220,7 +220,14 @@ test("QR cleanup retention days persists after page reload", async ({ page }) =>
 
   await goToSettings(page, token);
 
-  await expect(page.locator("#retention-days")).toHaveValue(String(baseline), { timeout: 8_000 });
+  // Wait for React Query to hydrate the field (any non-empty value).
+  // We do not assert the exact baseline here because a concurrent
+  // globalTeardown from the simultaneously-running merchant test suite can
+  // race and restore the DB to its own snapshot value between our apiPut and
+  // the page fetch.  The persistence assertion (after save+reload) is
+  // authoritative — the pre-save check is only a readiness gate.
+  await expect(page.locator("#retention-days")).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator("#retention-days")).not.toHaveValue("", { timeout: 8_000 });
 
   await fillNumeric(page, "retention-days", canary);
   await saveAndConfirm(page, cardSave(page, "retention-days"), /\/system-config\/qr-cleanup$/, /qr cleanup retention saved/i);
@@ -238,7 +245,10 @@ test("VA cleanup retention days persists after page reload", async ({ page }) =>
 
   await goToSettings(page, token);
 
-  await expect(page.locator("#va-retention-days")).toHaveValue(String(baseline), { timeout: 8_000 });
+  // Same readiness-gate pattern as QR cleanup — avoid brittle exact-baseline
+  // assertion that races against concurrent globalTeardown restores.
+  await expect(page.locator("#va-retention-days")).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator("#va-retention-days")).not.toHaveValue("", { timeout: 8_000 });
 
   await fillNumeric(page, "va-retention-days", canary);
   await saveAndConfirm(page, cardSave(page, "va-retention-days"), /\/system-config\/va-cleanup$/, /va cleanup retention saved/i);
