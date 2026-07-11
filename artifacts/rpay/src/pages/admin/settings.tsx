@@ -257,13 +257,14 @@ export default function AdminSettings() {
   const [sendingCredRotationTest, setSendingCredRotationTest] = useState(false);
   const [previewingCredRotationEmail, setPreviewingCredRotationEmail] = useState(false);
 
-  type AlertTestState = { previewing: boolean; sending: boolean; result: "success" | "error" | null; message: string };
+  type AlertTestState = { previewing: boolean; sending: boolean; result: "success" | "error" | null; message: string; sentRecipients: string[]; failedRecipients: string[] };
+  const ALERT_STATE_DEFAULT: AlertTestState = { previewing: false, sending: false, result: null, message: "", sentRecipients: [], failedRecipients: [] };
   const [alertTestStates, setAlertTestStates] = useState<Record<string, AlertTestState>>({});
   function getAlertState(key: string): AlertTestState {
-    return alertTestStates[key] ?? { previewing: false, sending: false, result: null, message: "" };
+    return alertTestStates[key] ?? ALERT_STATE_DEFAULT;
   }
   function patchAlertState(key: string, patch: Partial<AlertTestState>) {
-    setAlertTestStates(prev => ({ ...prev, [key]: { ...(prev[key] ?? { previewing: false, sending: false, result: null, message: "" }), ...patch } }));
+    setAlertTestStates(prev => ({ ...prev, [key]: { ...(prev[key] ?? ALERT_STATE_DEFAULT), ...patch } }));
   }
   async function previewAlertEmail(key: string, previewPath: string) {
     patchAlertState(key, { previewing: true });
@@ -282,19 +283,76 @@ export default function AdminSettings() {
     }
   }
   async function sendAlertTest(key: string, sendPath: string) {
-    patchAlertState(key, { sending: true, result: null, message: "" });
+    patchAlertState(key, { sending: true, result: null, message: "", sentRecipients: [], failedRecipients: [] });
     try {
-      const res = await apiPost(`/settings/${sendPath}/send-sample`);
-      const stats = res.stats as { attempted: number; sent: number; failed: number } | undefined;
-      if (stats && stats.failed > 0) {
-        patchAlertState(key, { sending: false, result: "error", message: `Partial delivery — ${stats.sent} of ${stats.attempted} sent (${stats.failed} failed). Check SMTP settings.` });
+      const httpRes = await fetch(`/api/settings/${sendPath}/send-sample`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      let body: any = {};
+      try { body = await httpRes.json(); } catch {}
+      const stats = body.stats as { attempted: number; sent: number; failed: number } | undefined;
+      const sentRecipients: string[] = body.recipients?.sent ?? [];
+      const failedRecipients: string[] = body.recipients?.failed ?? [];
+      if (!httpRes.ok) {
+        const msg: string = body.error ?? "Send failed";
+        patchAlertState(key, { sending: false, result: "error", message: msg, sentRecipients, failedRecipients });
+        return;
+      }
+      if (stats && stats.failed > 0 && stats.sent > 0) {
+        patchAlertState(key, { sending: false, result: "error", message: `Partial delivery — ${stats.sent} of ${stats.attempted} sent, ${stats.failed} failed. Check SMTP or opt-in settings.`, sentRecipients, failedRecipients });
       } else {
         const count = stats?.sent ?? "all";
-        patchAlertState(key, { sending: false, result: "success", message: `Test alert sent to ${count} admin${stats?.sent === 1 ? "" : "s"} — check your inbox` });
+        patchAlertState(key, { sending: false, result: "success", message: `Test sent to ${count} admin${stats?.sent === 1 ? "" : "s"} — check inbox`, sentRecipients, failedRecipients });
       }
     } catch (err: any) {
-      patchAlertState(key, { sending: false, result: "error", message: err.message ?? "Send failed" });
+      patchAlertState(key, { sending: false, result: "error", message: err.message ?? "Send failed", sentRecipients: [], failedRecipients: [] });
     }
+  }
+
+  function renderAlertTestResult(key: string, label?: string) {
+    const state = getAlertState(key);
+    if (!state.result) return null;
+    const prefix = label ? `${label}: ` : "";
+    if (state.result === "success") {
+      return (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{prefix}{state.message}</span>
+          </div>
+          {state.sentRecipients.length > 0 && (
+            <div className="flex flex-wrap gap-1 pl-1">
+              {state.sentRecipients.map(email => (
+                <span key={email} className="inline-flex items-center gap-1 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5">
+                  <CheckCircle2 className="w-2.5 h-2.5" />{email}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{prefix}{state.message}</span>
+        </div>
+        {(state.sentRecipients.length > 0 || state.failedRecipients.length > 0) && (
+          <div className="flex flex-wrap gap-1 pl-1">
+            {state.sentRecipients.map(email => (
+              <span key={email} className="inline-flex items-center gap-1 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5">
+                <CheckCircle2 className="w-2.5 h-2.5" />{email}
+              </span>
+            ))}
+            {state.failedRecipients.map(email => (
+              <span key={email} className="inline-flex items-center gap-1 text-xs bg-red-500/10 border border-red-500/20 text-red-300 rounded px-1.5 py-0.5">
+                <AlertCircle className="w-2.5 h-2.5" />{email}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   const [webhookAlertCooldownHours, setWebhookAlertCooldownHours] = useState<number>(1);
@@ -2983,16 +3041,7 @@ export default function AdminSettings() {
                 <Send className="w-3 h-3 mr-1" />{getAlertState("planExpiry").sending ? "Sending…" : "Send test"}
               </Button>
             </div>
-            {getAlertState("planExpiry").result === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("planExpiry").message}</span>
-              </div>
-            )}
-            {getAlertState("planExpiry").result === "error" && (
-              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("planExpiry").message}</span>
-              </div>
-            )}
+            {renderAlertTestResult("planExpiry")}
           </div>
           {!planExpiryEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
@@ -3025,16 +3074,7 @@ export default function AdminSettings() {
                 <Send className="w-3 h-3 mr-1" />{getAlertState("settlementState").sending ? "Sending…" : "Send test"}
               </Button>
             </div>
-            {getAlertState("settlementState").result === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("settlementState").message}</span>
-              </div>
-            )}
-            {getAlertState("settlementState").result === "error" && (
-              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("settlementState").message}</span>
-              </div>
-            )}
+            {renderAlertTestResult("settlementState")}
           </div>
           {!settlementStateEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
@@ -3109,16 +3149,7 @@ export default function AdminSettings() {
                 <Send className="w-3 h-3 mr-1" />{getAlertState("webhookFailure").sending ? "Sending…" : "Send test"}
               </Button>
             </div>
-            {getAlertState("webhookFailure").result === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("webhookFailure").message}</span>
-              </div>
-            )}
-            {getAlertState("webhookFailure").result === "error" && (
-              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("webhookFailure").message}</span>
-              </div>
-            )}
+            {renderAlertTestResult("webhookFailure")}
           </div>
           {!webhookFailureEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
@@ -3159,26 +3190,8 @@ export default function AdminSettings() {
                 <Send className="w-3 h-3 mr-1" />{getAlertState("reportResumed").sending ? "Sending…" : "Send test"}
               </Button>
             </div>
-            {getAlertState("reportAutopause").result === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>Auto-pause: {getAlertState("reportAutopause").message}</span>
-              </div>
-            )}
-            {getAlertState("reportAutopause").result === "error" && (
-              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>Auto-pause: {getAlertState("reportAutopause").message}</span>
-              </div>
-            )}
-            {getAlertState("reportResumed").result === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>Resumed: {getAlertState("reportResumed").message}</span>
-              </div>
-            )}
-            {getAlertState("reportResumed").result === "error" && (
-              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>Resumed: {getAlertState("reportResumed").message}</span>
-              </div>
-            )}
+            {renderAlertTestResult("reportAutopause", "Auto-pause")}
+            {renderAlertTestResult("reportResumed", "Resumed")}
           </div>
           {!reportFailureEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
@@ -3231,16 +3244,7 @@ export default function AdminSettings() {
                 <Send className="w-3 h-3 mr-1" />{getAlertState("ekqrStuck").sending ? "Sending…" : "Send test"}
               </Button>
             </div>
-            {getAlertState("ekqrStuck").result === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("ekqrStuck").message}</span>
-              </div>
-            )}
-            {getAlertState("ekqrStuck").result === "error" && (
-              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /><span>{getAlertState("ekqrStuck").message}</span>
-              </div>
-            )}
+            {renderAlertTestResult("ekqrStuck")}
           </div>
           {!ekqrSyncAlertEnabled && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">

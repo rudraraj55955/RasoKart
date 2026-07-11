@@ -595,8 +595,15 @@ router.post("/plan-expiry-alert/send-sample", async (req, res, next) => {
     const results = await Promise.allSettled(
       recipients.map(email => sendMail({ to: email, subject, html }))
     );
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
+    const sentEmails: string[] = [];
+    const failedEmails: string[] = [];
+    recipients.forEach((email, i) => {
+      const r = results[i];
+      if (r.status === "fulfilled" && r.value) sentEmails.push(email);
+      else failedEmails.push(email);
+    });
+    const sent = sentEmails.length;
+    const failed = failedEmails.length;
     try {
       await db.insert(auditLogsTable).values({
         adminId: user.id, adminEmail: user.email,
@@ -611,10 +618,11 @@ router.post("/plan-expiry-alert/send-sample", async (req, res, next) => {
       res.status(502).json({
         error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
         stats: { attempted: recipients.length, sent, failed },
+        recipients: { sent: sentEmails, failed: failedEmails },
       });
       return;
     }
-    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed }, recipients: { sent: sentEmails, failed: failedEmails } });
   } catch (err) {
     next(err);
   }
@@ -666,8 +674,15 @@ router.post("/settlement-state-alert/send-sample", async (req, res, next) => {
     const results = await Promise.allSettled(
       recipients.map(email => sendMail({ to: email, subject, html }))
     );
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
+    const sentEmails: string[] = [];
+    const failedEmails: string[] = [];
+    recipients.forEach((email, i) => {
+      const r = results[i];
+      if (r.status === "fulfilled" && r.value) sentEmails.push(email);
+      else failedEmails.push(email);
+    });
+    const sent = sentEmails.length;
+    const failed = failedEmails.length;
     try {
       await db.insert(auditLogsTable).values({
         adminId: user.id, adminEmail: user.email,
@@ -682,10 +697,11 @@ router.post("/settlement-state-alert/send-sample", async (req, res, next) => {
       res.status(502).json({
         error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
         stats: { attempted: recipients.length, sent, failed },
+        recipients: { sent: sentEmails, failed: failedEmails },
       });
       return;
     }
-    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed }, recipients: { sent: sentEmails, failed: failedEmails } });
   } catch (err) {
     next(err);
   }
@@ -733,8 +749,15 @@ router.post("/webhook-failure-alert/send-sample", async (req, res, next) => {
     const results = await Promise.allSettled(
       recipients.map(email => sendMail({ to: email, subject, html }))
     );
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
+    const sentEmails: string[] = [];
+    const failedEmails: string[] = [];
+    recipients.forEach((email, i) => {
+      const r = results[i];
+      if (r.status === "fulfilled" && r.value) sentEmails.push(email);
+      else failedEmails.push(email);
+    });
+    const sent = sentEmails.length;
+    const failed = failedEmails.length;
     try {
       await db.insert(auditLogsTable).values({
         adminId: user.id, adminEmail: user.email,
@@ -749,10 +772,11 @@ router.post("/webhook-failure-alert/send-sample", async (req, res, next) => {
       res.status(502).json({
         error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
         stats: { attempted: recipients.length, sent, failed },
+        recipients: { sent: sentEmails, failed: failedEmails },
       });
       return;
     }
-    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed }, recipients: { sent: sentEmails, failed: failedEmails } });
   } catch (err) {
     next(err);
   }
@@ -798,8 +822,15 @@ router.post("/ekqr-stuck-alert/send-sample", async (req, res, next) => {
     const results = await Promise.allSettled(
       recipients.map(email => sendMail({ to: email, subject, html }))
     );
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
+    const sentEmails: string[] = [];
+    const failedEmails: string[] = [];
+    recipients.forEach((email, i) => {
+      const r = results[i];
+      if (r.status === "fulfilled" && r.value) sentEmails.push(email);
+      else failedEmails.push(email);
+    });
+    const sent = sentEmails.length;
+    const failed = failedEmails.length;
     try {
       await db.insert(auditLogsTable).values({
         adminId: user.id, adminEmail: user.email,
@@ -814,10 +845,11 @@ router.post("/ekqr-stuck-alert/send-sample", async (req, res, next) => {
       res.status(502).json({
         error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
         stats: { attempted: recipients.length, sent, failed },
+        recipients: { sent: sentEmails, failed: failedEmails },
       });
       return;
     }
-    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed }, recipients: { sent: sentEmails, failed: failedEmails } });
   } catch (err) {
     next(err);
   }
@@ -867,8 +899,15 @@ router.post("/report-autopause-alert/send-sample", async (req, res, next) => {
     const results = await Promise.allSettled(
       recipients.map(email => sendMail({ to: email, subject, html }))
     );
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
+    const sentEmails: string[] = [];
+    const failedEmails: string[] = [];
+    recipients.forEach((email, i) => {
+      const r = results[i];
+      if (r.status === "fulfilled" && r.value) sentEmails.push(email);
+      else failedEmails.push(email);
+    });
+    const sent = sentEmails.length;
+    const failed = failedEmails.length;
     try {
       await db.insert(auditLogsTable).values({
         adminId: user.id, adminEmail: user.email,
@@ -883,10 +922,11 @@ router.post("/report-autopause-alert/send-sample", async (req, res, next) => {
       res.status(502).json({
         error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
         stats: { attempted: recipients.length, sent, failed },
+        recipients: { sent: sentEmails, failed: failedEmails },
       });
       return;
     }
-    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed }, recipients: { sent: sentEmails, failed: failedEmails } });
   } catch (err) {
     next(err);
   }
@@ -934,8 +974,15 @@ router.post("/report-resumed-alert/send-sample", async (req, res, next) => {
     const results = await Promise.allSettled(
       recipients.map(email => sendMail({ to: email, subject, html }))
     );
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
+    const sentEmails: string[] = [];
+    const failedEmails: string[] = [];
+    recipients.forEach((email, i) => {
+      const r = results[i];
+      if (r.status === "fulfilled" && r.value) sentEmails.push(email);
+      else failedEmails.push(email);
+    });
+    const sent = sentEmails.length;
+    const failed = failedEmails.length;
     try {
       await db.insert(auditLogsTable).values({
         adminId: user.id, adminEmail: user.email,
@@ -950,10 +997,11 @@ router.post("/report-resumed-alert/send-sample", async (req, res, next) => {
       res.status(502).json({
         error: `Delivery failed — ${failed} of ${recipients.length} recipient${recipients.length !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
         stats: { attempted: recipients.length, sent, failed },
+        recipients: { sent: sentEmails, failed: failedEmails },
       });
       return;
     }
-    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed } });
+    res.json({ ok: true, stats: { attempted: recipients.length, sent, failed }, recipients: { sent: sentEmails, failed: failedEmails } });
   } catch (err) {
     next(err);
   }
