@@ -16,7 +16,8 @@
     "test:merchant-settings-persistence": "playwright test --config=playwright.config.ts e2e/merchant-settings-persistence.spec.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify-alert-email-samples": "tsx ./src/verify-alert-email-samples.ts",
-    "cleanup:dummy-data": "tsx ./src/cleanup-dummy-data.ts"
+    "cleanup:dummy-data": "tsx ./src/cleanup-dummy-data.ts",
+    "verify-priority-conflict-tests": "tsx ./src/verify-priority-conflict-tests.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

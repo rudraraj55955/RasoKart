@@ -9,4 +9,5 @@ pnpm --filter @workspace/scripts run verify-demo-credentials
 # set in the environment — so cold-start deploys without email configured are
 # not blocked.  Set those vars in ecosystem.config.cjs to enable the full check.
 pnpm --filter @workspace/scripts run verify-alert-email-samples
+pnpm --filter @workspace/scripts run verify-priority-conflict-tests
 GITHUB_SYNC_FORCE=true pnpm --filter @workspace/scripts run github-sync

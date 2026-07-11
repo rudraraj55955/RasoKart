@@ -190,8 +190,9 @@ router.post("/configs/:id/rules", async (req, res, next) => {
       updatedAt: row!.updatedAt.toISOString(),
     });
   } catch (err) {
-    const isRoutingPriorityConflict = (err as any)?.code === "23505" &&
-      (!(err as any)?.constraint || (err as any)?.constraint === "routing_rules_enabled_priority_uniq");
+    const pgErr = (err as any)?.code ? (err as any) : (err as any)?.cause;
+    const isRoutingPriorityConflict = pgErr?.code === "23505" &&
+      (!pgErr?.constraint || pgErr?.constraint === "routing_rules_enabled_priority_uniq");
     if (isRoutingPriorityConflict) {
       try {
         const p: number = (req.body as any).priority ?? 1;
@@ -306,8 +307,9 @@ router.put("/rules/:id", async (req, res, next) => {
       updatedAt: updated!.updatedAt.toISOString(),
     });
   } catch (err) {
-    const isRoutingPriorityConflict = (err as any)?.code === "23505" &&
-      (!(err as any)?.constraint || (err as any)?.constraint === "routing_rules_enabled_priority_uniq");
+    const pgErr = (err as any)?.code ? (err as any) : (err as any)?.cause;
+    const isRoutingPriorityConflict = pgErr?.code === "23505" &&
+      (!pgErr?.constraint || pgErr?.constraint === "routing_rules_enabled_priority_uniq");
     if (isRoutingPriorityConflict) {
       try {
         const ruleId = parseInt(req.params["id"] as string);
