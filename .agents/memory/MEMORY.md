@@ -32,6 +32,7 @@
 - [Super admin as boolean flag, not a role](super-admin-flag-not-role.md) — add narrower permission tiers as a boolean flag + dedicated middleware, not a new role enum value, to avoid auditing ~dozens of `role === "admin"` call sites.
 - [GitHub sync per-run log capture](github-sync-run-log-capture.md) — can't literally "replay" a past sync run (git push always uses current HEAD); expose id+captured stdout/stderr per run instead.
 - [Migration script itself can drift](quiet-hours-queue-drift.md) — hand-written CREATE TABLE in db-migrate.ts/schemaGuard.ts can itself be incomplete vs schema.ts; diff live columns, check scheduler logs over a full tick, not just login e2e.
+- [schemaGuard cascade abort pattern](schemagGuard-cascade-abort.md) — a single missing CREATE TABLE before an ALTER TABLE in schemaGuard.ts crashes the entire guard run; ALL subsequent tables/columns never exist on a fresh CI DB.
 - [Fresh-DB CI seed crash pattern](fresh-db-ci-seed-crash.md) — omitting a column from db-migrate CREATE TABLE + schemaGuard causes seed to crash on a fresh CI DB (502); always grep seed.ts INSERT fields against both files.
 - [React Query v5 useQuery onSuccess no-op](rq5-usequery-onsuccess-noop.md) — generated hooks' `query: { onSuccess }` silently never fires in RQ v5; use useEffect to hydrate state from `data`, and test reload-persistence in e2e.
 - [Payout status sync correction](payout-status-sync.md) — FAILED+providerReferenceId rows need cf_transfer_id GET fallback + separate FAILED→SUCCESS wallet correction path (not the normal hold path).

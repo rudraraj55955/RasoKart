@@ -750,6 +750,219 @@ async function migrate() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_by_email VARCHAR(255)
     );
+
+    -- ── rate_limit_hits ─────────────────────────────────────────────────────
+    -- Persistent rate-limit counter store used by express-rate-limit on every
+    -- login request. Missing from the original db-migrate caused POST
+    -- /api/auth/login to return HTTP 500 on a fresh CI database (unhandled
+    -- "relation rate_limit_hits does not exist" error from the middleware).
+    CREATE TABLE IF NOT EXISTS rate_limit_hits (
+      key TEXT PRIMARY KEY,
+      hits INTEGER NOT NULL DEFAULT 1,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS rate_limit_hits_expires_at_idx ON rate_limit_hits(expires_at);
+
+    -- ── merchant_connections ─────────────────────────────────────────────────
+    -- Must be created before transactions (which has an FK to this table).
+    -- Also accessed by the providerLimitScheduler at startup.
+    CREATE TABLE IF NOT EXISTS merchant_connections (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      credentials TEXT,
+      monthly_limit NUMERIC(18,2) NOT NULL DEFAULT 0,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      deactivated_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id);
+
+    -- ── withdrawals ─────────────────────────────────────────────────────────
+    -- schemaGuard.ts has ALTER TABLE withdrawals ADD COLUMN lines but no
+    -- CREATE TABLE, so on a fresh CI database schemaGuard crashes at the very
+    -- first ALTER TABLE (relation does not exist) → the entire schemaGuard
+    -- run is aborted → payin_charge_settings, platform_wallet_ledger, agents,
+    -- payout_wallet_load_orders, and every table after line 232 are never
+    -- created. Creating the table here (before schemaGuard runs) fixes the
+    -- cascade. The ALTER TABLE lines in schemaGuard remain as safe no-ops.
+    CREATE TABLE IF NOT EXISTS withdrawals (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      amount NUMERIC(18,2) NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'INR',
+      status TEXT NOT NULL DEFAULT 'pending',
+      transfer_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+      provider_reference_id TEXT,
+      utr TEXT,
+      failure_reason TEXT,
+      approved_by_admin_id INTEGER,
+      approved_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      payout_mode TEXT NOT NULL DEFAULT 'IMPS',
+      upi_id TEXT,
+      remarks TEXT,
+      bank_account TEXT NOT NULL DEFAULT '',
+      bank_name TEXT NOT NULL DEFAULT '',
+      ifsc_code TEXT NOT NULL DEFAULT '',
+      account_holder TEXT NOT NULL DEFAULT '',
+      beneficiary_id INTEGER,
+      rejection_reason TEXT,
+      rejected_by_admin_id INTEGER,
+      rejected_at TIMESTAMPTZ,
+      approval_type TEXT NOT NULL DEFAULT 'MANUAL',
+      approved_by_system BOOLEAN NOT NULL DEFAULT FALSE,
+      auto_approval_rule_snapshot JSONB,
+      approved_by TEXT,
+      idempotency_key TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS withdrawals_merchant_id_idx ON withdrawals(merchant_id);
+    CREATE INDEX IF NOT EXISTS withdrawals_status_idx ON withdrawals(status);
+    CREATE INDEX IF NOT EXISTS withdrawals_transfer_status_idx ON withdrawals(transfer_status);
+    CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_merchant_idempotency_key_uniq
+      ON withdrawals(merchant_id, idempotency_key)
+      WHERE idempotency_key IS NOT NULL;
+
+    -- ── transactions ─────────────────────────────────────────────────────────
+    -- schemaGuard.ts has ALTER TABLE transactions ADD COLUMN lines (payin fee
+    -- columns) but no CREATE TABLE. On a fresh CI DB, after the withdrawals
+    -- cascade is fixed, schemaGuard reaches line 246 and would again crash on
+    -- "relation transactions does not exist". Creating here prevents that.
+    -- Also: seed.ts inserts demo transactions at startup.
+    CREATE TABLE IF NOT EXISTS transactions (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      virtual_account_id INTEGER,
+      qr_code_id INTEGER,
+      connection_id INTEGER REFERENCES merchant_connections(id) ON DELETE SET NULL,
+      provider TEXT,
+      payment_link_id INTEGER,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      amount NUMERIC(18,2) NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'INR',
+      utr TEXT NOT NULL UNIQUE,
+      reference_id TEXT,
+      description TEXT,
+      metadata TEXT,
+      gross_amount NUMERIC(12,2),
+      payin_fee NUMERIC(12,2),
+      gst_amount NUMERIC(12,2),
+      net_amount NUMERIC(12,2),
+      fee_rate NUMERIC(8,4),
+      fee_rule_source TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS transactions_merchant_id_idx ON transactions(merchant_id);
+    CREATE INDEX IF NOT EXISTS transactions_status_idx ON transactions(status);
+    CREATE INDEX IF NOT EXISTS transactions_created_at_idx ON transactions(created_at DESC);
+
+    -- ── api_keys ─────────────────────────────────────────────────────────────
+    -- schemaGuard.ts has ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label
+    -- but no CREATE TABLE. Also: seed.ts inserts demo API keys at startup.
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      api_key TEXT NOT NULL UNIQUE,
+      secret_key TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      label TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_used_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS api_keys_merchant_id_idx ON api_keys(merchant_id);
+
+    -- ── webhooks ─────────────────────────────────────────────────────────────
+    -- Required by PUT /api/webhooks (merchant settings test) and by seed.ts.
+    -- Missing from both db-migrate and schemaGuard caused the merchant webhook
+    -- configuration route to return HTTP 500 on a fresh CI database.
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL UNIQUE,
+      url TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      events TEXT[] NOT NULL DEFAULT '{}',
+      secret TEXT,
+      secret_rotated_at TIMESTAMPTZ,
+      max_retries INTEGER NOT NULL DEFAULT 3,
+      retry_delay_1 INTEGER,
+      retry_delay_2 INTEGER,
+      retry_delay_3 INTEGER,
+      failure_alert_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      failure_alert_threshold INTEGER NOT NULL DEFAULT 3,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── scheduled_audit_reports ──────────────────────────────────────────────
+    -- Accessed by overdueReportScheduler at startup. Missing table caused a
+    -- level-50 error log on every server start with a fresh CI database.
+    CREATE TABLE IF NOT EXISTS scheduled_audit_reports (
+      id SERIAL PRIMARY KEY,
+      frequency TEXT NOT NULL,
+      recipient_email TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_sent_at TIMESTAMPTZ,
+      consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      auto_pause_after_failures INTEGER NOT NULL DEFAULT 3,
+      failure_acknowledged_at TIMESTAMPTZ,
+      failure_acknowledged_by_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── users: missing notification preference + profile columns ─────────────
+    -- The original CREATE TABLE users only had id/email/password_hash/role/
+    -- timestamps. Subsequent ALTER TABLE blocks in this file added a handful
+    -- of columns. The rest of the Drizzle schema (notification email/notif
+    -- toggles, badge-snooze fields, is_active, merchant_id, last_seen_ip,
+    -- password_updated_at, last_login_at, and the payout-admin permission
+    -- columns) were never added here — only in schemaGuard (which crashes on
+    -- fresh DBs before reaching its own users ALTER TABLE block at line 689).
+    -- Adding all of them here ensures they exist on the first server request.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS merchant_id INTEGER;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reconciliation_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_failure_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS report_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_generated_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_revoked_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS report_schedule_changed_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_changed_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reconciliation_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_failure_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_failure_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_sync_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS report_failure_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_generated_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_revoked_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS report_schedule_changed_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_changed_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_change_notifs BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_reminder_emails BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reports_badge_snoozed_until TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS badge_snoozed_until JSONB;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_reminder_sent_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_field_disabled_at JSONB;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_ip TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_payout_provider_credentials BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json JSONB;
   `);
 
   console.log("DB migrations complete.");

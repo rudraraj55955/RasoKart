@@ -229,6 +229,49 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS quiet_hours_queue_flushed_deliver_after_idx ON quiet_hours_queue(flushed, deliver_after)`);
   logger.info({ table: "quiet_hours_queue" }, "schema_guard_column_added");
 
+  // ── withdrawals: CREATE TABLE (must precede all ALTER TABLE lines below) ──
+  // db-migrate.ts creates this table before the server starts, but this
+  // CREATE TABLE IF NOT EXISTS guards against any env where db-migrate did not
+  // run (e.g. a stale workflow or direct drizzle-kit push workflow). Without
+  // the table the first ALTER TABLE below threw "relation does not exist",
+  // crashing runGuard() and preventing every subsequent schemaGuard entry
+  // (payin_charge_settings, platform_wallet_ledger, agents, etc.) from running.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS withdrawals (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      amount NUMERIC(18,2) NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'INR',
+      status TEXT NOT NULL DEFAULT 'pending',
+      transfer_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+      provider_reference_id TEXT,
+      utr TEXT,
+      failure_reason TEXT,
+      approved_by_admin_id INTEGER,
+      approved_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      payout_mode TEXT NOT NULL DEFAULT 'IMPS',
+      upi_id TEXT,
+      remarks TEXT,
+      bank_account TEXT NOT NULL DEFAULT '',
+      bank_name TEXT NOT NULL DEFAULT '',
+      ifsc_code TEXT NOT NULL DEFAULT '',
+      account_holder TEXT NOT NULL DEFAULT '',
+      beneficiary_id INTEGER,
+      rejection_reason TEXT,
+      rejected_by_admin_id INTEGER,
+      rejected_at TIMESTAMPTZ,
+      approval_type TEXT NOT NULL DEFAULT 'MANUAL',
+      approved_by_system BOOLEAN NOT NULL DEFAULT FALSE,
+      auto_approval_rule_snapshot JSONB,
+      approved_by TEXT,
+      idempotency_key TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "withdrawals" }, "schema_guard_table_created");
+
   // Withdrawals: rejection audit columns (admin ID + timestamp)
   await db.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_by_admin_id INTEGER`);
   await db.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`);
@@ -241,6 +284,60 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_account_holder TEXT`);
   await db.execute(sql`ALTER TABLE provider_integrations ADD COLUMN IF NOT EXISTS own_instructions TEXT`);
   logger.info({ table: "provider_integrations", columns: ["collection_type", "own_upi_id", "own_qr_image_url", "own_account_holder", "own_instructions"] }, "schema_guard_column_added");
+
+  // ── merchant_connections: CREATE TABLE (must precede transactions FK) ──────
+  // db-migrate.ts creates this table before the server starts. This guard
+  // ensures it also exists in direct-push envs without db-migrate.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS merchant_connections (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      credentials TEXT,
+      monthly_limit NUMERIC(18,2) NOT NULL DEFAULT 0,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      deactivated_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id)`);
+  logger.info({ table: "merchant_connections" }, "schema_guard_table_created");
+
+  // ── transactions: CREATE TABLE (must precede ALTER TABLE lines below) ──────
+  // db-migrate.ts creates this table before the server starts. This guard
+  // ensures it also exists in direct-push envs without db-migrate.
+  // seed.ts inserts demo transactions at startup.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS transactions (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      virtual_account_id INTEGER,
+      qr_code_id INTEGER,
+      connection_id INTEGER REFERENCES merchant_connections(id) ON DELETE SET NULL,
+      provider TEXT,
+      payment_link_id INTEGER,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      amount NUMERIC(18,2) NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'INR',
+      utr TEXT NOT NULL UNIQUE,
+      reference_id TEXT,
+      description TEXT,
+      metadata TEXT,
+      gross_amount NUMERIC(12,2),
+      payin_fee NUMERIC(12,2),
+      gst_amount NUMERIC(12,2),
+      net_amount NUMERIC(12,2),
+      fee_rate NUMERIC(8,4),
+      fee_rule_source TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS transactions_merchant_id_idx ON transactions(merchant_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS transactions_status_idx ON transactions(status)`);
+  logger.info({ table: "transactions" }, "schema_guard_table_created");
 
   // transactions: payin charge columns (nullable — safe for existing rows)
   await db.execute(sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS gross_amount  NUMERIC(12,2)`);
@@ -338,6 +435,27 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS tll_source_id_idx ON tax_liability_ledger(source_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS tll_created_at_idx ON tax_liability_ledger(created_at DESC)`);
   logger.info({ tables: ["platform_wallet_ledger", "tax_liability_ledger"] }, "schema_guard_table_created");
+
+  // ── api_keys: CREATE TABLE (must precede ALTER TABLE below) ─────────────
+  // db-migrate.ts creates this table before the server starts. This guard
+  // ensures it also exists in direct-push envs without db-migrate.
+  // seed.ts inserts demo API keys at startup.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      api_key TEXT NOT NULL UNIQUE,
+      secret_key TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      label TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_used_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS api_keys_merchant_id_idx ON api_keys(merchant_id)`);
+  logger.info({ table: "api_keys" }, "schema_guard_table_created");
 
   // ── api_keys: label column for named/labelled API keys ───────────────────
   await db.execute(sql`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label TEXT`);
@@ -780,6 +898,110 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_by INTEGER`);
   await db.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS notes TEXT`);
   logger.info({ table: "merchant_plans", migration: "add_unique_and_drizzle_columns" }, "schema_guard_column_added");
+
+  // ── rate_limit_hits ────────────────────────────────────────────────────
+  // Persistent rate-limit counter store used by express-rate-limit on every
+  // login request. Not in the original schemaGuard — missing table caused
+  // POST /api/auth/login to return HTTP 500 on a fresh CI database.
+  // db-migrate.ts also creates this table; this is defense-in-depth.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rate_limit_hits (
+      key TEXT PRIMARY KEY,
+      hits INTEGER NOT NULL DEFAULT 1,
+      expires_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS rate_limit_hits_expires_at_idx ON rate_limit_hits(expires_at)`);
+  logger.info({ table: "rate_limit_hits" }, "schema_guard_table_created");
+
+  // ── webhooks ───────────────────────────────────────────────────────────
+  // Required by PUT /api/webhooks (merchant settings route) and seed.ts.
+  // Not in the original schemaGuard — missing table caused the route to
+  // return HTTP 500 on a fresh CI database.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL UNIQUE,
+      url TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      events TEXT[] NOT NULL DEFAULT '{}',
+      secret TEXT,
+      secret_rotated_at TIMESTAMPTZ,
+      max_retries INTEGER NOT NULL DEFAULT 3,
+      retry_delay_1 INTEGER,
+      retry_delay_2 INTEGER,
+      retry_delay_3 INTEGER,
+      failure_alert_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      failure_alert_threshold INTEGER NOT NULL DEFAULT 3,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "webhooks" }, "schema_guard_table_created");
+
+  // ── scheduled_audit_reports ────────────────────────────────────────────
+  // Accessed by overdueReportScheduler at startup. Not in the original
+  // schemaGuard — missing table caused level-50 error logs on fresh DBs.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS scheduled_audit_reports (
+      id SERIAL PRIMARY KEY,
+      frequency TEXT NOT NULL,
+      recipient_email TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_sent_at TIMESTAMPTZ,
+      consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      auto_pause_after_failures INTEGER NOT NULL DEFAULT 3,
+      failure_acknowledged_at TIMESTAMPTZ,
+      failure_acknowledged_by_email TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "scheduled_audit_reports" }, "schema_guard_table_created");
+
+  // ── users: missing notification preference + profile columns ──────────
+  // The original CREATE TABLE users only had id/email/password_hash/role/
+  // timestamps. schemaGuard previously added only a handful of columns in
+  // the block at the top. The rest of the Drizzle users schema (all
+  // notification email/notif toggles, badge-snooze fields, is_active,
+  // merchant_id, last_seen_ip, password_updated_at, last_login_at) must
+  // also be guarded here so they exist on the very first server request.
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS merchant_id INTEGER`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reconciliation_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_failure_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_generated_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_revoked_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alert_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_schedule_changed_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_changed_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reconciliation_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expiry_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_failure_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS webhook_failure_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_sync_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_failure_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_generated_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_revoked_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alert_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS report_schedule_changed_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS settlement_state_changed_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_change_notifs BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_reminder_emails BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS reports_badge_snoozed_until TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS badge_snoozed_until JSONB`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_reminder_sent_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_field_disabled_at JSONB`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_ip TEXT`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+  logger.info({ table: "users", migration: "add_missing_notif_and_profile_cols" }, "schema_guard_column_added");
 
   logger.info("schema_guard_completed");
 }
