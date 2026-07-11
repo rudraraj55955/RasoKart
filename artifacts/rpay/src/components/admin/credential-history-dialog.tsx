@@ -123,6 +123,16 @@ export function ChangeSummary({ details }: { details: string | null | undefined 
     return <span className="text-muted-foreground text-xs">No changes recorded</span>;
   }
 
+  const diffItems = changed.filter((i) => i.hasDiff);
+  const noRealChanges =
+    rotated.length === 0 && diffItems.length > 0 && diffItems.every((i) => i.unchanged);
+
+  if (noRealChanges) {
+    return (
+      <span className="text-muted-foreground/50 text-xs italic">Saved with no changes</span>
+    );
+  }
+
   return (
     <div className="flex flex-wrap gap-1.5">
       {rotated.map((label) => (
