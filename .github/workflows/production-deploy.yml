@@ -33,12 +33,7 @@ name: Production Deploy
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      force_reset_to_origin:
-        description: 'Force-reset VPS to origin/main even if local HEAD has diverged (use once to recover from branch divergence)'
-        type: boolean
-        default: false
+  workflow_dispatch: {}
 
 concurrency:
   group: rasokart-production
@@ -364,7 +359,6 @@ jobs:
             echo "Script found    : $DEPLOY_SCRIPT"
           fi
 
-          export FORCE_RESET_TO_ORIGIN="${{ inputs.force_reset_to_origin || 'false' }}"
           echo "=== PREFLIGHT COMPLETE → handing off to deploy script ==="
           exec bash "$DEPLOY_SCRIPT"
           DEPLOY_EOF
@@ -484,7 +478,6 @@ jobs:
             echo "Script found    : $DEPLOY_SCRIPT"
           fi
 
-          export FORCE_RESET_TO_ORIGIN="${{ inputs.force_reset_to_origin || 'false' }}"
           echo "=== PREFLIGHT COMPLETE → handing off to deploy script ==="
           exec bash "$DEPLOY_SCRIPT"
           DEPLOY_EOF
