@@ -180,9 +180,13 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
     const ROUTING_SAFETY_CAP = 50;
     const excludedProviders: string[] = [];           // providers that have exhausted maxRetries
     const providerAttemptCounts: Record<string, number> = {}; // per-provider dispatch counter
+    const providerSkipReasons: Record<string, string> = {}; // why each provider was skipped/exhausted
     let primaryAttempted = false;     // has at least one non-fallback rule been tried?
     let routingWasConfigured = false; // did selectProvider return a non-null result?
     let cashfreeRoutingLogId: number | null = null;   // log ID when Cashfree is in the routing chain
+    // Snapshot of the routing config from the first decision (needed for the
+    // chain_exhausted sentinel log inserted after the loop).
+    let routingConfigSnapshot: { configId: number; configName: string; strategy: string } | null = null;
 
     for (let attempt = 1; attempt <= ROUTING_SAFETY_CAP; attempt++) {
       const decision = await selectProvider(
@@ -193,6 +197,12 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       ).catch(() => null);
 
       if (!decision) break; // no more eligible providers — chain exhausted
+
+      // Capture config details from the first non-null decision for the
+      // chain_exhausted sentinel row written after the loop.
+      if (!routingWasConfigured) {
+        routingConfigSnapshot = { configId: decision.configId, configName: decision.configName, strategy: decision.strategy };
+      }
 
       // First non-null decision signals that routing is configured.
       routingWasConfigured = true;
@@ -213,6 +223,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         if (!ugCfg || !ugCfg.enabled || !ugCfg.apiKeySet) {
           req.log.warn({ event: "payin_upigateway_not_configured", merchantId }, "payin_upigateway_not_configured");
           await recordRoutingResult({ routingLogId: decision.routingLogId, providerKey: decision.providerKey, result: "skipped", errorMessage: "UPIGateway not configured or disabled" });
+          providerSkipReasons[decision.providerKey] = "skipped: not configured or disabled";
           excludedProviders.push(decision.providerKey);
           continue;
         }
@@ -288,7 +299,10 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         req.log.warn({ event: "payin_upigateway_dispatch_failed", merchantId, attempt }, "payin_upigateway_dispatch_failed");
         await recordRoutingResult({ routingLogId: decision.routingLogId, providerKey: decision.providerKey, result: "failed", responseTimeMs: ugResponseTimeMs, errorMessage: "UPIGateway order creation failed" });
         if ((providerAttemptCounts[decision.providerKey] ?? 0) >= decision.maxRetries) {
+          providerSkipReasons[decision.providerKey] = `failed: exhausted ${decision.maxRetries} attempt(s)`;
           excludedProviders.push(decision.providerKey);
+        } else {
+          providerSkipReasons[decision.providerKey] = "failed: dispatch error";
         }
         continue;
       }
@@ -307,6 +321,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       if (!integration) {
         req.log.warn({ event: "payin_custom_gateway_not_found", merchantId, providerKey: decision.providerKey }, "payin_custom_gateway_not_found");
         await recordRoutingResult({ routingLogId: decision.routingLogId, providerKey: decision.providerKey, result: "skipped", errorMessage: "Integration not found or disabled" });
+        providerSkipReasons[decision.providerKey] = "skipped: integration not found or disabled";
         excludedProviders.push(decision.providerKey);
         continue;
       }
@@ -391,7 +406,10 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
 
       // Exhaust this provider when its maxRetries budget is spent
       if (providerAttemptCounts[decision.providerKey] >= decision.maxRetries) {
+        providerSkipReasons[decision.providerKey] = `failed: exhausted ${decision.maxRetries} attempt(s) — ${gatewayResult.errorMessage ?? "dispatch error"}`;
         excludedProviders.push(decision.providerKey);
+      } else {
+        providerSkipReasons[decision.providerKey] = `failed: ${gatewayResult.errorMessage ?? "dispatch error"}`;
       }
     }
 
@@ -402,6 +420,35 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
     // admin never configured. This makes the failover chain authoritative.
     if (routingWasConfigured && cashfreeRoutingLogId === null) {
       req.log.warn({ event: "payin_routing_chain_exhausted", merchantId }, "payin_routing_chain_exhausted");
+
+      // ── Chain-exhausted sentinel log ─────────────────────────────────────
+      // Write a structured "chain_exhausted" routing log row so the admin
+      // Routing Logs UI can distinguish "all providers tried and failed live"
+      // from "misconfigured (no rule covers this order)". Each per-attempt
+      // row already records why that specific attempt failed; this summary
+      // row ties the whole sequence together in a single scannable entry.
+      const triedEntries = Object.entries(providerSkipReasons)
+        .map(([key, reason]) => `${key} (${reason})`)
+        .join("; ");
+      const totalAttempts = Object.values(providerAttemptCounts).reduce((a, b) => a + b, 0);
+      const exhaustedMsg = triedEntries
+        ? `Routing chain exhausted after ${totalAttempts} attempt(s). ${triedEntries}`
+        : `Routing chain exhausted after ${totalAttempts} attempt(s) — no providers dispatched`;
+
+      db.insert(routingLogsTable).values({
+        merchantId,
+        configId: routingConfigSnapshot?.configId ?? null,
+        configName: routingConfigSnapshot?.configName ?? null,
+        strategyUsed: routingConfigSnapshot?.strategy ?? null,
+        attemptNumber: totalAttempts,
+        providerKey: "none",
+        result: "chain_exhausted",
+        amount: String(depositAmount),
+        paymentMode: "upi",
+        errorMessage: exhaustedMsg,
+      }).catch(() => {
+        req.log.error({ event: "payin_chain_exhausted_log_failed", merchantId }, "payin_chain_exhausted_log_failed");
+      });
 
       // Mark (once) the start of this outage so the next successful routing
       // attempt — for any merchant — knows to fire a merchant-facing

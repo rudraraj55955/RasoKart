@@ -172,6 +172,8 @@ function resultBadge(result: string) {
     case "timeout": return <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">Timeout</Badge>;
     case "disabled": return <Badge className="bg-zinc-500/20 text-zinc-400 border-zinc-500/30">Disabled</Badge>;
     case "skipped": return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Skipped</Badge>;
+    case "misconfigured": return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">Misconfigured</Badge>;
+    case "chain_exhausted": return <Badge className="bg-rose-600/20 text-rose-400 border-rose-600/30">Chain Exhausted</Badge>;
     default: return <Badge variant="outline">{result}</Badge>;
   }
 }
@@ -1228,7 +1230,20 @@ export default function AdminSmartRouting() {
                             {log.amount != null ? `₹${Number(log.amount).toLocaleString("en-IN")}` : "—"}
                           </TableCell>
                           <TableCell className="text-zinc-400 text-sm">{log.paymentMode ?? "—"}</TableCell>
-                          <TableCell>{resultBadge(log.result)}</TableCell>
+                          <TableCell>
+                            {log.errorMessage ? (
+                              <TooltipProvider>
+                                <UiTooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="cursor-help">{resultBadge(log.result)}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs bg-zinc-900 border-zinc-700 text-zinc-300 text-xs break-words">
+                                    {log.errorMessage}
+                                  </TooltipContent>
+                                </UiTooltip>
+                              </TooltipProvider>
+                            ) : resultBadge(log.result)}
+                          </TableCell>
                           <TableCell className="text-zinc-400 text-sm">
                             {log.responseTimeMs != null ? `${log.responseTimeMs}ms` : "—"}
                           </TableCell>
