@@ -115,11 +115,21 @@ function cardSave(page: Page, inputId: string) {
     .first();
 }
 
-/** Triple-click to select all content, then fill with the new value. */
+/**
+ * Triple-click to select all content, then fill with the new value.
+ *
+ * After `fill`, we assert the input actually shows the new value before
+ * returning.  On a loaded 2-core sandbox, React's type="number" controlled
+ * input can win a render race against Playwright's fill and revert to the
+ * server-synced state, causing the subsequent save to silently send the old
+ * value.  The assertion auto-waits (up to 3 s) for the React onChange cycle
+ * to settle, turning a silent wrong-save into a fast, clear failure.
+ */
 async function fillNumeric(page: Page, id: string, value: number): Promise<void> {
   const input = page.locator(`#${id}`);
   await input.click({ clickCount: 3 });
   await input.fill(String(value));
+  await expect(input).toHaveValue(String(value), { timeout: 3_000 });
 }
 
 /**

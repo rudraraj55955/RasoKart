@@ -151,8 +151,14 @@ test("API key generated email preference persists after page reload", async ({ p
   const toggle = page.locator("#api-key-generated-email-switch");
   await expect(toggle).toHaveAttribute("data-state", "checked", { timeout: 8_000 });
 
-  await toggle.click();
-  await expect(page.getByText(/notification preferences saved/i)).toBeVisible({ timeout: 6_000 });
+  const [prefResponse] = await Promise.all([
+    page.waitForResponse((res) => /\/auth\/preferences$/.test(res.url()) && res.request().method() === "PUT"),
+    toggle.click(),
+  ]);
+  if (!prefResponse.ok()) {
+    throw new Error(`PUT /auth/preferences failed with ${prefResponse.status()}`);
+  }
+  await expect(page.getByText(/notification preferences saved/i)).toBeVisible({ timeout: 10_000 });
   await expect(toggle).toHaveAttribute("data-state", "unchecked");
 
   await page.reload();
