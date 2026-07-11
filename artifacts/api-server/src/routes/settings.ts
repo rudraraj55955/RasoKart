@@ -563,6 +563,7 @@ router.get("/plan-expiry-alert/preview", (_req, res) => {
     merchantId: 42,
     daysUntilExpiry: 5,
     expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
+    isTest: true,
   });
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
@@ -588,6 +589,7 @@ router.post("/plan-expiry-alert/send-sample", async (req, res, next) => {
       merchantId: 42,
       daysUntilExpiry: 5,
       expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
+      isTest: true,
     });
     const subject = "[RasoKart] ⚠️ Plan Expiry Alert — Demo Merchant Ltd. (TEST)";
     const results = await Promise.allSettled(
@@ -631,6 +633,7 @@ router.get("/settlement-state-alert/preview", (_req, res) => {
     newStatus: "approved",
     amount: "25000.00",
     note: "Verified and approved by admin.",
+    isTest: true,
   });
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
@@ -657,6 +660,7 @@ router.post("/settlement-state-alert/send-sample", async (req, res, next) => {
       newStatus: "approved",
       amount: "25000.00",
       note: "This is a test alert — no real settlement was modified.",
+      isTest: true,
     });
     const subject = "[RasoKart] Settlement #101 — Status changed to approved (TEST)";
     const results = await Promise.allSettled(
@@ -698,6 +702,7 @@ router.get("/webhook-failure-alert/preview", (_req, res) => {
     url: "https://merchant.example.com/webhooks/rasokart",
     attempts: 5,
     qrCodeId: 7,
+    isTest: true,
   });
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
@@ -722,6 +727,7 @@ router.post("/webhook-failure-alert/send-sample", async (req, res, next) => {
       url: "https://merchant.example.com/webhooks/rasokart (TEST — no real failure occurred)",
       attempts: 5,
       qrCodeId: 7,
+      isTest: true,
     });
     const subject = "[RasoKart] 🔴 Webhook Permanently Failed — Merchant #42 (TEST)";
     const results = await Promise.allSettled(
@@ -762,6 +768,7 @@ router.get("/ekqr-stuck-alert/preview", (_req, res) => {
     stuck: 3,
     threshold: 2,
     staleMinutes: 30,
+    isTest: true,
   });
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
@@ -785,6 +792,7 @@ router.post("/ekqr-stuck-alert/send-sample", async (req, res, next) => {
       stuck: 3,
       threshold: 2,
       staleMinutes: 30,
+      isTest: true,
     });
     const subject = "[RasoKart] 🔴 3 EKQR QR Codes Stuck — Auto-retry Threshold Exceeded (TEST)";
     const results = await Promise.allSettled(
@@ -827,6 +835,7 @@ router.get("/report-autopause-alert/preview", (_req, res) => {
     frequency: "weekly",
     consecutiveFailures: 3,
     autoPauseAfterFailures: 3,
+    isTest: true,
   });
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
@@ -852,6 +861,7 @@ router.post("/report-autopause-alert/send-sample", async (req, res, next) => {
       frequency: "weekly",
       consecutiveFailures: 3,
       autoPauseAfterFailures: 3,
+      isTest: true,
     });
     const subject = "[RasoKart] ⚠️ Report Schedule Auto-Paused — Demo Merchant Ltd. (TEST)";
     const results = await Promise.allSettled(
@@ -893,6 +903,7 @@ router.get("/report-resumed-alert/preview", (_req, res) => {
     merchantId: 42,
     frequency: "weekly",
     previousFailures: 3,
+    isTest: true,
   });
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
@@ -917,6 +928,7 @@ router.post("/report-resumed-alert/send-sample", async (req, res, next) => {
       merchantId: 42,
       frequency: "weekly",
       previousFailures: 3,
+      isTest: true,
     });
     const subject = "[RasoKart] ✅ Report Schedule Resumed — Demo Merchant Ltd. (TEST)";
     const results = await Promise.allSettled(

@@ -45,10 +45,21 @@ export function buildPlanExpiryHtml(opts: {
   merchantId: number;
   daysUntilExpiry: number;
   expiresAt: string;
+  isTest?: boolean;
 }): string {
-  const { merchantName, planName, merchantId, daysUntilExpiry, expiresAt } = opts;
+  const { merchantName, planName, merchantId, daysUntilExpiry, expiresAt, isTest } = opts;
   const merchantLink = `${APP_DOMAIN}/admin/merchants/${merchantId}`;
   const urgencyColor = daysUntilExpiry <= 3 ? "#f87171" : daysUntilExpiry <= 7 ? "#fb923c" : "#facc15";
+
+  const testBanner = isTest ? `
+    <div style="background: #78350f; border: 2px solid #f59e0b; border-radius: 6px; padding: 14px 18px; margin-bottom: 20px; text-align: center;">
+      <p style="margin: 0; color: #fde68a; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;">
+        ⚠️ THIS IS A TEST — no real event occurred
+      </p>
+      <p style="margin: 6px 0 0; color: #fbbf24; font-size: 12px;">
+        This email was sent manually from Admin Settings to verify delivery. It does not indicate any real plan expiry.
+      </p>
+    </div>` : "";
 
   return `
 <!DOCTYPE html>
@@ -61,6 +72,7 @@ export function buildPlanExpiryHtml(opts: {
       <p style="margin: 4px 0 0; color: #fde68a; font-size: 13px;">Merchant subscription expiring soon</p>
     </div>
     <div style="padding: 24px;">
+      ${testBanner}
       <p style="margin: 0 0 16px; color: ${urgencyColor}; font-size: 14px; font-weight: 600;">
         ⚠️ ${merchantName}'s ${planName} plan expires in <strong>${daysUntilExpiry} day${daysUntilExpiry === 1 ? "" : "s"}</strong>.
       </p>
@@ -154,8 +166,9 @@ export function buildSettlementStateHtml(opts: {
   newStatus: string;
   amount: string | number;
   note: string | null;
+  isTest?: boolean;
 }): string {
-  const { settlementId, merchantName, referenceNumber, newStatus, amount, note } = opts;
+  const { settlementId, merchantName, referenceNumber, newStatus, amount, note, isTest } = opts;
   const settlementLink = `${APP_DOMAIN}/admin/settlements/${settlementId}`;
 
   const statusColors: Record<string, string> = {
@@ -166,6 +179,16 @@ export function buildSettlementStateHtml(opts: {
     pending: "#facc15",
   };
   const statusColor = statusColors[newStatus.toLowerCase()] ?? "#a1a1aa";
+
+  const testBanner = isTest ? `
+    <div style="background: #78350f; border: 2px solid #f59e0b; border-radius: 6px; padding: 14px 18px; margin-bottom: 20px; text-align: center;">
+      <p style="margin: 0; color: #fde68a; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;">
+        ⚠️ THIS IS A TEST — no real event occurred
+      </p>
+      <p style="margin: 6px 0 0; color: #fbbf24; font-size: 12px;">
+        This email was sent manually from Admin Settings to verify delivery. It does not indicate any real settlement state change.
+      </p>
+    </div>` : "";
 
   return `
 <!DOCTYPE html>
@@ -178,6 +201,7 @@ export function buildSettlementStateHtml(opts: {
       <p style="margin: 4px 0 0; color: #bfdbfe; font-size: 13px;">Settlement #${settlementId}${referenceNumber ? ` · Ref: ${referenceNumber}` : ""}</p>
     </div>
     <div style="padding: 24px;">
+      ${testBanner}
       <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 14px;">
         A settlement request has changed state. Here are the details:
       </p>
@@ -242,10 +266,21 @@ export function buildWebhookFailureHtml(opts: {
   url: string;
   attempts: number;
   qrCodeId: number | null;
+  isTest?: boolean;
 }): string {
-  const { merchantId, url, attempts, qrCodeId } = opts;
+  const { merchantId, url, attempts, qrCodeId, isTest } = opts;
   const merchantLink = `${APP_DOMAIN}/admin/merchants/${merchantId}`;
   const qrLabel = qrCodeId != null ? ` (QR Code #${qrCodeId})` : "";
+
+  const testBanner = isTest ? `
+    <div style="background: #78350f; border: 2px solid #f59e0b; border-radius: 6px; padding: 14px 18px; margin-bottom: 20px; text-align: center;">
+      <p style="margin: 0; color: #fde68a; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;">
+        ⚠️ THIS IS A TEST — no real event occurred
+      </p>
+      <p style="margin: 6px 0 0; color: #fbbf24; font-size: 12px;">
+        This email was sent manually from Admin Settings to verify delivery. It does not indicate any real webhook failure.
+      </p>
+    </div>` : "";
 
   return `
 <!DOCTYPE html>
@@ -258,6 +293,7 @@ export function buildWebhookFailureHtml(opts: {
       <p style="margin: 4px 0 0; color: #fca5a5; font-size: 13px;">All retry attempts exhausted — merchant action required</p>
     </div>
     <div style="padding: 24px;">
+      ${testBanner}
       <p style="margin: 0 0 16px; color: #f87171; font-size: 14px; font-weight: 600;">
         🔴 Merchant #${merchantId} webhook permanently failed after ${attempts} attempt${attempts !== 1 ? "s" : ""}${qrLabel}.
       </p>
@@ -429,11 +465,22 @@ export function buildReportScheduleAutoPausedHtml(opts: {
   frequency: string;
   consecutiveFailures: number;
   autoPauseAfterFailures: number;
+  isTest?: boolean;
 }): string {
-  const { merchantName, merchantId, frequency, consecutiveFailures, autoPauseAfterFailures } = opts;
+  const { merchantName, merchantId, frequency, consecutiveFailures, autoPauseAfterFailures, isTest } = opts;
   const freqLabel = frequency.charAt(0).toUpperCase() + frequency.slice(1);
   const reportsLink = `${APP_DOMAIN}/admin/reports?merchantId=${merchantId}`;
   const smtpSettingsLink = `${APP_DOMAIN}/admin/settings`;
+
+  const testBanner = isTest ? `
+    <div style="background: #78350f; border: 2px solid #f59e0b; border-radius: 6px; padding: 14px 18px; margin-bottom: 20px; text-align: center;">
+      <p style="margin: 0; color: #fde68a; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;">
+        ⚠️ THIS IS A TEST — no real event occurred
+      </p>
+      <p style="margin: 6px 0 0; color: #fbbf24; font-size: 12px;">
+        This email was sent manually from Admin Settings to verify delivery. It does not indicate any real report schedule pause.
+      </p>
+    </div>` : "";
 
   return `
 <!DOCTYPE html>
@@ -446,6 +493,7 @@ export function buildReportScheduleAutoPausedHtml(opts: {
       <p style="margin: 4px 0 0; color: #fed7aa; font-size: 13px;">Repeated delivery failures triggered an automatic pause</p>
     </div>
     <div style="padding: 24px;">
+      ${testBanner}
       <p style="margin: 0 0 16px; color: #fb923c; font-size: 14px; font-weight: 600;">
         ⚠️ ${merchantName}'s ${freqLabel.toLowerCase()} report schedule has been automatically paused after ${consecutiveFailures} consecutive delivery failures.
       </p>
@@ -542,10 +590,21 @@ export function buildReportScheduleResumedHtml(opts: {
   merchantId: number;
   frequency: string;
   previousFailures: number;
+  isTest?: boolean;
 }): string {
-  const { merchantName, merchantId, frequency, previousFailures } = opts;
+  const { merchantName, merchantId, frequency, previousFailures, isTest } = opts;
   const freqLabel = frequency.charAt(0).toUpperCase() + frequency.slice(1);
   const reportsLink = `${APP_DOMAIN}/admin/reports?merchantId=${merchantId}`;
+
+  const testBanner = isTest ? `
+    <div style="background: #78350f; border: 2px solid #f59e0b; border-radius: 6px; padding: 14px 18px; margin-bottom: 20px; text-align: center;">
+      <p style="margin: 0; color: #fde68a; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;">
+        ⚠️ THIS IS A TEST — no real event occurred
+      </p>
+      <p style="margin: 6px 0 0; color: #fbbf24; font-size: 12px;">
+        This email was sent manually from Admin Settings to verify delivery. It does not indicate any real report schedule resumption.
+      </p>
+    </div>` : "";
 
   return `
 <!DOCTYPE html>
@@ -558,6 +617,7 @@ export function buildReportScheduleResumedHtml(opts: {
       <p style="margin: 4px 0 0; color: #bbf7d0; font-size: 13px;">Delivery is working again after previous failures</p>
     </div>
     <div style="padding: 24px;">
+      ${testBanner}
       <p style="margin: 0 0 16px; color: #4ade80; font-size: 14px; font-weight: 600;">
         ✅ ${merchantName}'s ${freqLabel.toLowerCase()} report schedule has delivered successfully and resumed normal operation.
       </p>
@@ -648,9 +708,20 @@ export function buildStuckEkqrHtml(opts: {
   stuck: number;
   threshold: number;
   staleMinutes: number;
+  isTest?: boolean;
 }): string {
-  const { stuck, threshold, staleMinutes } = opts;
+  const { stuck, threshold, staleMinutes, isTest } = opts;
   const adminLink = `${APP_DOMAIN}/admin/qr-codes`;
+
+  const testBanner = isTest ? `
+    <div style="background: #78350f; border: 2px solid #f59e0b; border-radius: 6px; padding: 14px 18px; margin-bottom: 20px; text-align: center;">
+      <p style="margin: 0; color: #fde68a; font-size: 15px; font-weight: 700; letter-spacing: 0.3px;">
+        ⚠️ THIS IS A TEST — no real event occurred
+      </p>
+      <p style="margin: 6px 0 0; color: #fbbf24; font-size: 12px;">
+        This email was sent manually from Admin Settings to verify delivery. It does not indicate any real stuck EKQR QR codes.
+      </p>
+    </div>` : "";
 
   return `
 <!DOCTYPE html>
@@ -663,6 +734,7 @@ export function buildStuckEkqrHtml(opts: {
       <p style="margin: 4px 0 0; color: #fca5a5; font-size: 13px;">Auto-retry threshold exceeded — admin review required</p>
     </div>
     <div style="padding: 24px;">
+      ${testBanner}
       <p style="margin: 0 0 16px; color: #f87171; font-size: 14px; font-weight: 600;">
         🔴 ${stuck} EKQR QR code${stuck !== 1 ? "s are" : " is"} stuck in an active state after automatic retry.
       </p>
