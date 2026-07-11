@@ -4,16 +4,43 @@
  * Idempotent schema migration using CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS.
  * Safe to run multiple times. No TTY required — replaces `drizzle-kit push` in post-merge.
  *
+ * Each section is a separate db.execute() call so failures are isolated:
+ * - The failing section name is printed clearly.
+ * - The actual PostgreSQL error (cause.message / cause.code) is printed, NOT the full SQL.
+ * - This prevents the 1500-line SQL dump from hiding the real error in CI/deploy logs.
+ *
  * Add new tables/columns here whenever a task agent ships new schema.
  */
 
 import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
+
+async function runSection(name: string, query: SQL<unknown>): Promise<void> {
+  process.stdout.write(`  [migrate] ${name}... `);
+  try {
+    await db.execute(query);
+    process.stdout.write("ok\n");
+  } catch (err: unknown) {
+    process.stdout.write("FAILED\n");
+    const e = err as Record<string, unknown>;
+    const cause = e["cause"] as Record<string, unknown> | undefined;
+    if (cause) {
+      console.error(`  PG error  : ${String(cause["message"] ?? "unknown")}`);
+      if (cause["code"])   console.error(`  PG code   : ${String(cause["code"])}`);
+      if (cause["detail"]) console.error(`  PG detail : ${String(cause["detail"])}`);
+      if (cause["hint"])   console.error(`  PG hint   : ${String(cause["hint"])}`);
+    } else {
+      console.error(`  Error: ${String(e["message"] ?? err)}`);
+    }
+    throw new Error(`Migration section "${name}" failed — see PG error above`);
+  }
+}
 
 async function migrate() {
   console.log("Running DB migrations…");
 
-  await db.execute(sql`
+  // ── Section 1: Core tables ───────────────────────────────────────────────
+  await runSection("core-tables (users, merchants, plans, merchant_plans)", sql`
     -- ── users ──────────────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
@@ -130,7 +157,10 @@ async function migrate() {
     ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS scheduled_renewal_at TIMESTAMPTZ;
     ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_by INTEGER;
     ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS notes TEXT;
+  `);
 
+  // ── Section 2: KYC base tables ───────────────────────────────────────────
+  await runSection("kyc-base (merchant_kyc, kyc_review_history, kyc_data, kyc_verifications, verification_logs)", sql`
     -- ── merchant_kyc ───────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS merchant_kyc (
       id SERIAL PRIMARY KEY,
@@ -201,6 +231,11 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Columns added after initial release (self-heals older DBs):
+    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS aadhaar_status TEXT DEFAULT 'PENDING';
+    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS bank_holder_name TEXT;
+    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_number TEXT;
+    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_status TEXT DEFAULT 'SKIPPED';
 
     -- ── merchant_kyc_verifications (auto-KYC PAN/Aadhaar pipeline) ─────────────
     CREATE TABLE IF NOT EXISTS merchant_kyc_verifications (
@@ -245,6 +280,17 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS mkv_status_idx ON merchant_kyc_verifications(verification_status);
     CREATE INDEX IF NOT EXISTS mkv_pan_hash_idx ON merchant_kyc_verifications(pan_number_hash);
     CREATE INDEX IF NOT EXISTS mkv_aadhaar_hash_idx ON merchant_kyc_verifications(aadhaar_number_hash);
+    -- DigiLocker Aadhaar + mobile/email contact verification (self-heals older DBs):
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_encrypted TEXT;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_iv TEXT;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_tag TEXT;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified_at TIMESTAMPTZ;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_encrypted;
+    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_iv;
+    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_tag;
 
     -- ── kyc_verification_logs (masked audit trail for auto-KYC pipeline) ──────
     CREATE TABLE IF NOT EXISTS kyc_verification_logs (
@@ -281,7 +327,10 @@ async function migrate() {
     );
     CREATE INDEX IF NOT EXISTS vl_merchant_id_idx ON verification_logs(merchant_id);
     CREATE INDEX IF NOT EXISTS vl_created_at_idx ON verification_logs(created_at DESC);
+  `);
 
+  // ── Section 3: KYC settings, module controls ─────────────────────────────
+  await runSection("kyc-settings + module-controls", sql`
     -- ── merchant_kyc_settings (Super Admin auto-KYC provider config) ───────────
     CREATE TABLE IF NOT EXISTS merchant_kyc_settings (
       id SERIAL PRIMARY KEY,
@@ -304,24 +353,6 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-
-    -- ── merchant_kyc_data: columns added after initial release (self-heals older DBs) ─
-    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS aadhaar_status TEXT DEFAULT 'PENDING';
-    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS bank_holder_name TEXT;
-    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_number TEXT;
-    ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS udyam_status TEXT DEFAULT 'SKIPPED';
-
-    -- ── merchant_kyc_verifications: DigiLocker Aadhaar + mobile/email contact verification (self-heals older DBs) ─
-    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_encrypted TEXT;
-    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_iv TEXT;
-    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS aadhaar_digilocker_session_tag TEXT;
-    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS mobile_verified_at TIMESTAMPTZ;
-    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE merchant_kyc_verifications ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
-    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_encrypted;
-    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_iv;
-    ALTER TABLE merchant_kyc_verifications DROP COLUMN IF EXISTS aadhaar_otp_session_tag;
 
     -- ── module_controls ────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS module_controls (
@@ -348,7 +379,10 @@ async function migrate() {
       updated_by_admin_email TEXT,
       CONSTRAINT module_visibility_uniq UNIQUE (module_name, entity_type, entity_id)
     );
+  `);
 
+  // ── Section 4: Wallet tables ──────────────────────────────────────────────
+  await runSection("wallets (merchant_wallets, wallet_ledger, wallet_holds, wallet_charges)", sql`
     -- ── merchant_wallets ───────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS merchant_wallets (
       id                SERIAL PRIMARY KEY,
@@ -416,7 +450,10 @@ async function migrate() {
       created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS wallet_charges_merchant_idx ON wallet_charges(merchant_id);
+  `);
 
+  // ── Section 5: Merchant onboarding + user columns + company settings ──────
+  await runSection("merchant-onboarding + user-columns + company-settings", sql`
     -- ── merchant_verifications ──────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS merchant_verifications (
       id                       SERIAL PRIMARY KEY,
@@ -463,23 +500,15 @@ async function migrate() {
     -- ── merchants: add verification_status column ───────────────────────────────
     ALTER TABLE merchants ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending';
 
-    -- ── users: add weekly_delivery_digest_emails column ─────────────────────────
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_emails BOOLEAN NOT NULL DEFAULT TRUE;
-
     -- ── users: notification preference columns ───────────────────────────────────
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_delivery_digest_emails BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS ekqr_sync_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_change_emails BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_prefs_disabled_at TIMESTAMPTZ;
-
-    -- ── users: quiet hours columns ───────────────────────────────────────────────
     ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_start TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_end TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_timezone TEXT;
-
-    -- ── users: github sync repeated-failure escalation email preference ─────────
     ALTER TABLE users ADD COLUMN IF NOT EXISTS github_sync_failure_alert_emails BOOLEAN NOT NULL DEFAULT TRUE;
-
-    -- ── users: super admin flag (Company Branding settings gate) ────────────────
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE;
 
     -- ── company_settings: dynamic company branding / support contact ────────────
@@ -503,16 +532,17 @@ async function migrate() {
     INSERT INTO company_settings (id, company_name, support_phone)
       SELECT 1, 'Nickey Collection Private Limited', '9358774496'
       WHERE NOT EXISTS (SELECT 1 FROM company_settings);
+  `);
 
+  // ── Section 6: Quiet hours queue + cashfree orders + auth OTPs ───────────
+  await runSection("quiet-hours-queue + cashfree-payment-orders + merchant-auth-otps", sql`
     -- ── quiet_hours_queue ────────────────────────────────────────────────────────
     -- Real incident: this CREATE TABLE previously only had (id, user_id, subject,
     -- html, queued_at) while the Drizzle schema (lib/db/src/schema/quietHoursQueue.ts)
     -- and the code that reads/writes it (helpers/quietHours.ts, routes/auth.ts)
     -- require "to", deliver_after, flushed, flushed_at, created_at — so the
     -- every-minute quiet-hours flush scheduler failed with
-    -- "column quiet_hours_queue.flushed does not exist" on every tick. Adding the
-    -- missing columns below (idempotent, all nullable/defaulted) fixes this
-    -- permanently without touching existing rows.
+    -- "column quiet_hours_queue.flushed does not exist" on every tick.
     CREATE TABLE IF NOT EXISTS quiet_hours_queue (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -532,14 +562,8 @@ async function migrate() {
     -- Ensures every column the deposit-order insert (payinOrders.ts) needs
     -- actually exists on the live table, and all statuses are canonical
     -- uppercase (CREATED/PENDING/PAID/FAILED/EXPIRED), on every deploy — so
-    -- this never again depends on a manual VPS SQL hotfix. This is the fix
-    -- for the "provider order created, but DB insert failed" incident: the
-    -- live table was missing columns (provider_key, payment_method,
-    -- customer_email, raw_provider_status, failure_reason, raw_payload,
-    -- public_order_id) that existed in the Drizzle schema but were never
-    -- applied to the database. Safe/idempotent to run repeatedly — every
-    -- ADD COLUMN is IF NOT EXISTS and nullable/defaulted (never NOT NULL
-    -- without a DEFAULT), so it can never fail against a table with rows.
+    -- this never again depends on a manual VPS SQL hotfix. Safe/idempotent:
+    -- every ADD COLUMN is IF NOT EXISTS and nullable/defaulted.
     CREATE TABLE IF NOT EXISTS cashfree_payment_orders (
       id SERIAL PRIMARY KEY,
       merchant_id INTEGER NOT NULL,
@@ -561,23 +585,6 @@ async function migrate() {
     ALTER TABLE cashfree_payment_orders ADD COLUMN IF NOT EXISTS failure_reason TEXT;
     ALTER TABLE cashfree_payment_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
     ALTER TABLE cashfree_payment_orders ADD COLUMN IF NOT EXISTS raw_payload TEXT;
-
-    DO $$
-    DECLARE col TEXT;
-    BEGIN
-      FOREACH col IN ARRAY ARRAY[
-        'public_order_id', 'provider_key', 'payment_session_id', 'payment_method',
-        'utr', 'customer_phone', 'customer_email', 'raw_provider_status',
-        'failure_reason', 'raw_payload'
-      ]
-      LOOP
-        BEGIN
-          EXECUTE format('ALTER TABLE cashfree_payment_orders ALTER COLUMN %I DROP NOT NULL', col);
-        EXCEPTION WHEN undefined_column THEN NULL;
-        END;
-      END LOOP;
-    END $$;
-
     UPDATE cashfree_payment_orders SET status = UPPER(status) WHERE status IS NOT NULL AND status <> UPPER(status);
 
     -- ── merchant_auth_otps: merchant OTP login + password reset ────────────────
@@ -602,7 +609,31 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS merchant_auth_otps_merchant_id_idx ON merchant_auth_otps(merchant_id);
     CREATE INDEX IF NOT EXISTS merchant_auth_otps_purpose_idx ON merchant_auth_otps(purpose);
     CREATE INDEX IF NOT EXISTS merchant_auth_otps_expires_at_idx ON merchant_auth_otps(expires_at);
+  `);
 
+  // ── Section 7: DROP NOT NULL on cashfree_payment_orders optional columns ──
+  // Separate section because it uses PL/pgSQL DO block — isolated so any
+  // failure here is immediately visible without polluting other sections.
+  await runSection("cashfree-drop-not-null (PL/pgSQL DO block)", sql`
+    DO $$
+    DECLARE col TEXT;
+    BEGIN
+      FOREACH col IN ARRAY ARRAY[
+        'public_order_id', 'provider_key', 'payment_session_id', 'payment_method',
+        'utr', 'customer_phone', 'customer_email', 'raw_provider_status',
+        'failure_reason', 'raw_payload'
+      ]
+      LOOP
+        BEGIN
+          EXECUTE format('ALTER TABLE cashfree_payment_orders ALTER COLUMN %I DROP NOT NULL', col);
+        EXCEPTION WHEN undefined_column THEN NULL;
+        END;
+      END LOOP;
+    END $$;
+  `);
+
+  // ── Section 8: Providers, routing, trusted IPs ───────────────────────────
+  await runSection("providers + routing + trusted-ips", sql`
     -- ── merchant_trusted_ips: per-merchant trusted IP allowlist ─────────────
     CREATE TABLE IF NOT EXISTS merchant_trusted_ips (
       id SERIAL PRIMARY KEY,
@@ -711,97 +742,16 @@ async function migrate() {
     CREATE UNIQUE INDEX IF NOT EXISTS routing_rules_enabled_priority_uniq
       ON routing_rules(config_id, priority)
       WHERE is_enabled = true;
+  `);
 
+  // ── Section 9: Misc tables (demo removals, system config, rate limits) ────
+  await runSection("demo-account-removals + system-config + rate-limit-hits", sql`
     -- ── demo_account_removals ────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS demo_account_removals (
       email TEXT PRIMARY KEY,
       removed_by_admin_id INTEGER,
       removed_by_email TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    -- ── merchant_kyc_verifications (dedicated auto-KYC pipeline) ─────────────
-    CREATE TABLE IF NOT EXISTS merchant_kyc_verifications (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL UNIQUE,
-      pan_number_masked TEXT,
-      pan_number_hash TEXT,
-      pan_name TEXT,
-      pan_type TEXT,
-      pan_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      pan_verified_at TIMESTAMPTZ,
-      pan_reference_id_encrypted TEXT,
-      pan_reference_id_iv TEXT,
-      pan_reference_id_tag TEXT,
-      aadhaar_last4 TEXT,
-      aadhaar_number_hash TEXT,
-      aadhaar_name TEXT,
-      aadhaar_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      aadhaar_verified_at TIMESTAMPTZ,
-      aadhaar_reference_id_encrypted TEXT,
-      aadhaar_reference_id_iv TEXT,
-      aadhaar_reference_id_tag TEXT,
-      aadhaar_digilocker_session_encrypted TEXT,
-      aadhaar_digilocker_session_iv TEXT,
-      aadhaar_digilocker_session_tag TEXT,
-      mobile_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      mobile_verified_at TIMESTAMPTZ,
-      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-      email_verified_at TIMESTAMPTZ,
-      name_match_score INTEGER,
-      verification_status TEXT NOT NULL DEFAULT 'PENDING',
-      failure_reason TEXT,
-      consent_ip TEXT,
-      consent_user_agent TEXT,
-      consent_at TIMESTAMPTZ,
-      admin_decision_by TEXT,
-      admin_decision_at TIMESTAMPTZ,
-      admin_decision_note TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS mkv_status_idx ON merchant_kyc_verifications(verification_status);
-    CREATE INDEX IF NOT EXISTS mkv_pan_hash_idx ON merchant_kyc_verifications(pan_number_hash);
-    CREATE INDEX IF NOT EXISTS mkv_aadhaar_hash_idx ON merchant_kyc_verifications(aadhaar_number_hash);
-
-    -- ── kyc_verification_logs (masked audit trail for auto-KYC pipeline) ────
-    CREATE TABLE IF NOT EXISTS kyc_verification_logs (
-      id SERIAL PRIMARY KEY,
-      merchant_id INTEGER NOT NULL,
-      verification_type TEXT NOT NULL,
-      status TEXT NOT NULL,
-      request_masked TEXT,
-      response_masked TEXT,
-      provider_reference_id_encrypted TEXT,
-      provider_reference_id_iv TEXT,
-      provider_reference_id_tag TEXT,
-      error_reason TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS kvl_merchant_id_idx ON kyc_verification_logs(merchant_id);
-    CREATE INDEX IF NOT EXISTS kvl_created_at_idx ON kyc_verification_logs(created_at DESC);
-
-    -- ── merchant_kyc_settings (Super Admin auto-KYC provider config) ─────────
-    CREATE TABLE IF NOT EXISTS merchant_kyc_settings (
-      id SERIAL PRIMARY KEY,
-      pan_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      aadhaar_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      mode TEXT NOT NULL DEFAULT 'test',
-      client_id_encrypted TEXT,
-      client_id_iv TEXT,
-      client_id_tag TEXT,
-      client_secret_encrypted TEXT,
-      client_secret_iv TEXT,
-      client_secret_tag TEXT,
-      base_url TEXT,
-      min_name_match_score INTEGER NOT NULL DEFAULT 80,
-      auto_approve_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      duplicate_check_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      daily_verification_limit INTEGER NOT NULL DEFAULT 200,
-      per_merchant_attempt_limit INTEGER NOT NULL DEFAULT 5,
-      updated_by_email TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     -- ── system_config ───────────────────────────────────────────────────────
@@ -828,7 +778,10 @@ async function migrate() {
       expires_at TIMESTAMPTZ NOT NULL
     );
     CREATE INDEX IF NOT EXISTS rate_limit_hits_expires_at_idx ON rate_limit_hits(expires_at);
+  `);
 
+  // ── Section 10: Transactions, withdrawals, API keys, webhooks ─────────────
+  await runSection("merchant-connections + withdrawals + transactions + api-keys + webhooks", sql`
     -- ── merchant_connections ─────────────────────────────────────────────────
     -- Must be created before transactions (which has an FK to this table).
     -- Also accessed by the providerLimitScheduler at startup.
@@ -965,7 +918,10 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
 
+  // ── Section 11: Audit, settings, reports ─────────────────────────────────
+  await runSection("scheduled-audit-reports + system-settings + audit-logs", sql`
     -- ── scheduled_audit_reports ──────────────────────────────────────────────
     -- Accessed by overdueReportScheduler at startup. Missing table caused a
     -- level-50 error log on every server start with a fresh CI database.
@@ -1015,7 +971,10 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS audit_logs_admin_id_idx ON audit_logs(admin_id);
     CREATE INDEX IF NOT EXISTS audit_logs_target_type_idx ON audit_logs(target_type);
     CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at DESC);
+  `);
 
+  // ── Section 12: Users columns (large block of notification prefs) ─────────
+  await runSection("users-columns (notification prefs + profile fields)", sql`
     -- ── users: missing notification preference + profile columns ─────────────
     -- The original CREATE TABLE users only had id/email/password_hash/role/
     -- timestamps. Subsequent ALTER TABLE blocks in this file added a handful
@@ -1071,6 +1030,6 @@ async function migrate() {
 migrate()
   .then(() => process.exit(0))
   .catch((err) => {
-    console.error("Migration failed:", err);
+    console.error("Migration failed:", err instanceof Error ? err.message : String(err));
     process.exit(1);
   });
