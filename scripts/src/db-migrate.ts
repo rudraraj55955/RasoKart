@@ -23,6 +23,10 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- name column: required by seed.ts and the Drizzle schema but was absent
+    -- from the original CREATE TABLE definition in db-migrate, causing seed to
+    -- crash in a fresh CI database ("column name does not exist").
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 
     -- ── merchants ──────────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS merchants (
@@ -59,6 +63,17 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- UNIQUE index on merchant_id: required for seed.ts onConflictDoUpdate and
+    -- matches the Drizzle schema (.unique() on merchantId). Missing in the
+    -- original CREATE TABLE, so seed crashed with "no unique constraint
+    -- matching ON CONFLICT specification" in a fresh CI database.
+    CREATE UNIQUE INDEX IF NOT EXISTS merchant_plans_merchant_id_uniq ON merchant_plans(merchant_id);
+    -- Drizzle schema columns not present in the original CREATE TABLE above:
+    ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS renewed_at TIMESTAMPTZ;
+    ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS scheduled_renewal_at TIMESTAMPTZ;
+    ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_by INTEGER;
+    ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS notes TEXT;
 
     -- ── merchant_kyc ───────────────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS merchant_kyc (

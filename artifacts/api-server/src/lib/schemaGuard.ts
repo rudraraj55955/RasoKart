@@ -32,6 +32,10 @@ async function runGuard(): Promise<void> {
   logger.info("schema_guard_started");
 
   // ── users: super admin flag + auth/audit columns ────────────────────────
+  // name: required by seed.ts INSERT/UPDATE and the Drizzle schema, but absent
+  // from the original db-migrate CREATE TABLE — seed crashes in a fresh DB
+  // ("column name does not exist") without this guard.
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT FALSE`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS merchant_id INTEGER`);
@@ -745,6 +749,22 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS idempotency_key TEXT`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_merchant_idempotency_key_uniq ON withdrawals(merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
   logger.info({ table: "withdrawals", migration: "add_idempotency_key" }, "schema_guard_column_added");
+
+  // ── merchant_plans: UNIQUE constraint + Drizzle schema columns ──────────
+  // Root CI failure: db-migrate's CREATE TABLE for merchant_plans had neither
+  // a UNIQUE constraint on merchant_id nor the Drizzle-schema columns
+  // (assigned_at, renewed_at, scheduled_renewal_at, assigned_by, notes).
+  // seed.ts uses onConflictDoUpdate(target: merchantPlansTable.merchantId)
+  // which requires a UNIQUE constraint — without it Postgres throws "no unique
+  // constraint matching ON CONFLICT specification" on a fresh DB → seed
+  // crashes → server never binds to port 8080 → nginx returns 502.
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS merchant_plans_merchant_id_uniq ON merchant_plans(merchant_id)`);
+  await db.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+  await db.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS renewed_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS scheduled_renewal_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS assigned_by INTEGER`);
+  await db.execute(sql`ALTER TABLE merchant_plans ADD COLUMN IF NOT EXISTS notes TEXT`);
+  logger.info({ table: "merchant_plans", migration: "add_unique_and_drizzle_columns" }, "schema_guard_column_added");
 
   logger.info("schema_guard_completed");
 }
