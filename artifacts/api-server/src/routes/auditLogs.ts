@@ -246,6 +246,14 @@ const SETTING_LABELS: Record<string, string> = {
   productType: "Product Type",
   webhookUrl: "Webhook URL",
   notes: "Notes",
+  // Cashfree payin limit fields
+  minAmount: "Min Amount (₹)",
+  maxAmount: "Max Amount (₹)",
+  // Cashfree payout limit fields
+  minLimit: "Min Limit (₹)",
+  maxLimit: "Max Limit (₹)",
+  // Shared limit field (dailyLimit applies to both payin and payout)
+  dailyLimit: "Daily Limit (₹)",
 };
 
 const SKIP_KEYS = new Set(["providerKey", "updatedByEmail", "section", "key"]);
