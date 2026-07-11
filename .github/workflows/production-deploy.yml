@@ -174,15 +174,18 @@ jobs:
           sudo ln -sf /etc/nginx/sites-available/rasokart-ci.conf /etc/nginx/sites-enabled/rasokart-ci.conf
           sudo systemctl restart nginx
 
-      - name: Wait for stack to be healthy
+      - name: Wait for stack to be healthy (deep — confirms seed + demo credentials)
         run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:80/api/healthz > /dev/null 2>&1; then
-              echo "API is up"; break
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:80/api/healthz/deep > /dev/null 2>&1; then
+              echo "API seed complete and credentials verified"; break
             fi
-            echo "Waiting for API... ($i)"; sleep 2
+            echo "Waiting for seed... ($i)"; sleep 2
           done
-          curl -fsS http://localhost:80/api/healthz
+          curl -fsS http://localhost:80/api/healthz/deep
+
+      - name: Clear rate-limit hits accumulated during startup polling
+        run: psql "$DATABASE_URL" -c "DELETE FROM rate_limit_hits;"
 
       - name: Install Playwright browsers
         run: pnpm --filter @workspace/scripts exec playwright install --with-deps chromium
