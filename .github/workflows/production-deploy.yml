@@ -1,6 +1,6 @@
 name: Production Deploy
 
-# Hybrid approval-gated CI/CD for RasoKart.
+# Hybrid CI/CD for RasoKart.
 #
 #   classify              - diffs the push, decides frontend_auto vs
 #                            sensitive_approval using scripts/classify-deployment.sh
@@ -10,15 +10,25 @@ name: Production Deploy
 #                            Runs regardless of classification. Nothing
 #                            deploys if this fails.
 #   auto_frontend_deploy  - only for deployment_type == frontend_auto.
-#                            GitHub Environment "production-auto", no required
-#                            reviewer, restricted to main. Deploys ONLY the
-#                            static frontend build - never runs db-migrate,
-#                            never restarts the API.
+#                            GitHub Environment "production-sensitive", no
+#                            required reviewer. Deploys ONLY the static
+#                            frontend build - never runs db-migrate, never
+#                            restarts the API.
+#   deploy_full_auto      - TEMPORARY fully-automatic full-stack deploy.
+#                            Only active when the repo variable
+#                            TEMP_AUTO_DEPLOY_ENABLED == 'true'.
+#                            Uses environment "production-sensitive" (all VPS
+#                            secrets live there). Zero approval gate while the
+#                            variable is set.
+#                            To revert to manual: set TEMP_AUTO_DEPLOY_ENABLED
+#                            to 'false' (or delete it) AND add required
+#                            reviewers back to production-sensitive.
 #   sensitive_production_deploy
-#                         - only for deployment_type == sensitive_approval.
-#                            GitHub Environment "production-sensitive",
-#                            required reviewer rudraraj55955, restricted to
-#                            main. Nothing touches the VPS until approved.
+#                         - Full-stack deploy WITH manual approval gate.
+#                            Only runs when deployment_type == sensitive_approval
+#                            AND vars.TEMP_AUTO_DEPLOY_ENABLED != 'true'.
+#                            Uses environment "production-sensitive" with
+#                            required reviewer rudraraj55955.
 
 on:
   push:
@@ -212,7 +222,7 @@ jobs:
     if: needs.classify.outputs.deployment_type == 'frontend_auto' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
-      name: production-auto
+      name: production-sensitive
       url: https://rasokart.com
     steps:
       - name: Checkout
@@ -243,10 +253,130 @@ jobs:
         if: always()
         run: rm -f ~/.ssh/deploy_key
 
+  # ── TEMPORARY AUTO DEPLOY ──────────────────────────────────────────────────
+  # Active when vars.TEMP_AUTO_DEPLOY_ENABLED == 'true'.
+  # Uses production-sensitive environment (VPS secrets live there, no approval
+  # gate currently configured). Runs the exact same deploy script as
+  # sensitive_production_deploy. Zero manual approval needed.
+  #
+  # To revert to manual-approval-gated deploys:
+  #   1. Set TEMP_AUTO_DEPLOY_ENABLED to 'false' (or delete the variable).
+  #   2. Add required reviewer rudraraj55955 back to the production-sensitive
+  #      environment in GitHub Settings → Environments.
+  deploy_full_auto:
+    name: Auto full-stack deploy (TEMP — no approval)
+    needs: [classify, validate]
+    if: >
+      needs.classify.outputs.deployment_type == 'sensitive_approval' &&
+      vars.TEMP_AUTO_DEPLOY_ENABLED == 'true' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-sensitive
+      url: https://rasokart.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy (runs scripts/deploy-sensitive-production.sh on the VPS)
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" 'bash -s' << 'DEPLOY_EOF'
+          set -Eeuo pipefail
+          APP_DIR=/var/www/rasokart
+
+          # ── PREFLIGHT ──────────────────────────────────────────────────
+          echo "=== PREFLIGHT ==="
+          echo "CWD before cd   : $(pwd)"
+          echo "Target          : $APP_DIR"
+
+          if [ ! -d "$APP_DIR" ]; then
+            echo "ERROR: $APP_DIR does not exist on this VPS." >&2
+            echo "Run the initial setup steps from DEPLOY_HETZNER.md section 4 first." >&2
+            exit 1
+          fi
+          if [ ! -d "$APP_DIR/.git" ]; then
+            echo "ERROR: $APP_DIR exists but has no .git directory — not a git repo." >&2
+            exit 1
+          fi
+
+          cd "$APP_DIR"
+          echo "Working dir     : $(pwd)"
+
+          REMOTE_URL="$(git config --get remote.origin.url 2>/dev/null || echo '<none>')"
+          GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '<unknown>')"
+          CURRENT_SHA="$(git rev-parse HEAD 2>/dev/null || echo '<unknown>')"
+
+          echo "Git remote      : $REMOTE_URL"
+          echo "Git branch      : $GIT_BRANCH"
+          echo "Current commit  : $CURRENT_SHA"
+
+          case "$REMOTE_URL" in
+            *rudraraj55955/RasoKart* | *rudraraj55955/RPAY*) ;;
+            *)
+              echo "ERROR: Unexpected git remote '$REMOTE_URL' — refusing to deploy." >&2
+              echo "Expected a remote pointing to rudraraj55955/RasoKart or rudraraj55955/RPAY." >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "$GIT_BRANCH" != "main" ]; then
+            echo "ERROR: VPS repo is on branch '$GIT_BRANCH', not main." >&2
+            exit 1
+          fi
+
+          # Fetch without moving HEAD so the deploy script sees the correct
+          # before/after commit pair.
+          echo "Fetching origin/main (HEAD unchanged)..."
+          git fetch origin main
+          REMOTE_SHA="$(git rev-parse origin/main)"
+          echo "Remote commit   : $REMOTE_SHA"
+
+          # Bootstrap: extract deploy script from origin/main if absent locally.
+          if [ ! -f "scripts/deploy-sensitive-production.sh" ]; then
+            echo "Bootstrap: script absent from local tree — extracting from origin/main"
+            git show origin/main:scripts/deploy-sensitive-production.sh \
+              > /tmp/rasokart-deploy-sensitive.sh
+            chmod 755 /tmp/rasokart-deploy-sensitive.sh
+            DEPLOY_SCRIPT=/tmp/rasokart-deploy-sensitive.sh
+            echo "Script written  : $DEPLOY_SCRIPT"
+          else
+            chmod +x scripts/deploy-sensitive-production.sh
+            DEPLOY_SCRIPT=scripts/deploy-sensitive-production.sh
+            echo "Script found    : $DEPLOY_SCRIPT"
+          fi
+
+          echo "=== PREFLIGHT COMPLETE → handing off to deploy script ==="
+          exec bash "$DEPLOY_SCRIPT"
+          DEPLOY_EOF
+
+      - name: Verify production deep health after deploy
+        run: curl -fsS https://rasokart.com/api/healthz/deep
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
   sensitive_production_deploy:
     name: Deploy to production VPS (sensitive - approval required)
     needs: [classify, validate]
-    if: needs.classify.outputs.deployment_type == 'sensitive_approval' && github.ref == 'refs/heads/main'
+    if: >
+      needs.classify.outputs.deployment_type == 'sensitive_approval' &&
+      vars.TEMP_AUTO_DEPLOY_ENABLED != 'true' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # Nothing in this job runs, and the VPS is never contacted, until a human
     # reviewer clicks "Approve and deploy" on this environment's gate. See
