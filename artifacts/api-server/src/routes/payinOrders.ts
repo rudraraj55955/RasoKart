@@ -413,12 +413,25 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
 
       // ── Admin alert: rolling-window failover exhaustion ───────────────────
       // Fire a notification to all active admins when routing failures in the
-      // last hour exceed FAILOVER_ALERT_THRESHOLD. A per-hour dedup check
-      // prevents alert floods (one alert per hour max, across all admins).
+      // rolling window exceed the configured threshold. A per-window dedup
+      // check prevents alert floods (one alert per window max, across all
+      // admins). Threshold and window are admin-configurable via system_config.
       // This runs best-effort — never blocks or alters the 503 response.
-      const FAILOVER_ALERT_THRESHOLD = 5;
-      const FAILOVER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
       try {
+        // Read threshold and window from system_config (fall back to defaults)
+        const alertConfigRows = await db
+          .select({ key: systemConfigTable.key, value: systemConfigTable.value })
+          .from(systemConfigTable)
+          .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD));
+        const alertWindowRows = await db
+          .select({ key: systemConfigTable.key, value: systemConfigTable.value })
+          .from(systemConfigTable)
+          .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES));
+        const rawThreshold = parseInt(alertConfigRows[0]?.value ?? "5");
+        const rawWindow = parseInt(alertWindowRows[0]?.value ?? "60");
+        const FAILOVER_ALERT_THRESHOLD = (Number.isFinite(rawThreshold) && rawThreshold >= 1) ? rawThreshold : 5;
+        const FAILOVER_WINDOW_MINUTES = (Number.isFinite(rawWindow) && rawWindow >= 1) ? rawWindow : 60;
+        const FAILOVER_WINDOW_MS = FAILOVER_WINDOW_MINUTES * 60 * 1000;
         const windowStart = new Date(Date.now() - FAILOVER_WINDOW_MS);
 
         // Count all routing_logs failures in the rolling window (global, all merchants)
@@ -461,15 +474,18 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
                 .limit(1);
               const outageStartedAt = chainMarker?.value ?? new Date().toISOString();
 
+              const windowLabel = FAILOVER_WINDOW_MINUTES >= 60
+                ? `${FAILOVER_WINDOW_MINUTES / 60}h`
+                : `${FAILOVER_WINDOW_MINUTES}m`;
               await db.insert(notificationsTable).values(
                 adminUsers.map(u => ({
                   userId: u.id,
                   type: "gateway_failover_exhausted" as const,
                   title: "Payment Gateway Failover Chain Exhausted",
-                  body: `All configured payment gateways failed ${failureCount} times in the last hour. Merchants may be unable to initiate deposits. Please review gateway health and routing configuration immediately.`,
+                  body: `All configured payment gateways failed ${failureCount} times in the last ${windowLabel}. Merchants may be unable to initiate deposits. Please review gateway health and routing configuration immediately.`,
                   metadata: {
                     failureCount,
-                    windowMinutes: 60,
+                    windowMinutes: FAILOVER_WINDOW_MINUTES,
                     triggerMerchantId: merchantId,
                     outageStartedAt,
                   },

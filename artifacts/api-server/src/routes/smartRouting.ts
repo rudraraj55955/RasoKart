@@ -26,8 +26,11 @@ import {
   providerMetricsTable,
   auditLogsTable,
   notificationsTable,
+  systemConfigTable,
+  SYSTEM_CONFIG_KEYS,
+  SYSTEM_CONFIG_DEFAULTS,
 } from "@workspace/db";
-import { eq, and, desc, asc, ne, gte, sql } from "drizzle-orm";
+import { eq, and, desc, asc, ne, gte, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { simulateRouting } from "../helpers/smartRouter";
 
@@ -625,6 +628,109 @@ router.get("/status", async (req, res, next) => {
         avgResponseMs: m.avgResponseMs,
       })),
       recentActivity: { successCount24h, failedCount24h },
+    });
+  } catch (err) { next(err); }
+});
+
+// ── Alert Settings ────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/smart-routing/alert-settings
+ * Returns the current failover-alert threshold and window (with defaults).
+ */
+router.get("/alert-settings", async (req, res, next) => {
+  try {
+    const keys = [
+      SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD,
+      SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES,
+    ];
+    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const map = new Map(rows.map(r => [r.key, r.value]));
+
+    const rawThreshold = parseInt(
+      map.get(SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD) ??
+      SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD]
+    );
+    const rawWindowMinutes = parseInt(
+      map.get(SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES) ??
+      SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES]
+    );
+    const threshold = (Number.isFinite(rawThreshold) && rawThreshold >= 1) ? rawThreshold : 5;
+    const windowMinutes = (Number.isFinite(rawWindowMinutes) && rawWindowMinutes >= 1) ? rawWindowMinutes : 60;
+
+    res.json({ threshold, windowMinutes });
+  } catch (err) { next(err); }
+});
+
+/**
+ * PUT /api/smart-routing/alert-settings
+ * Updates failover-alert threshold and/or window (admin-only).
+ */
+router.put("/alert-settings", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const { threshold, windowMinutes } = req.body as { threshold?: number; windowMinutes?: number };
+
+    if (threshold !== undefined) {
+      const t = Number(threshold);
+      if (!Number.isInteger(t) || t < 1 || t > 10000) {
+        res.status(400).json({ error: "threshold must be a positive integer (1 – 10000)" });
+        return;
+      }
+    }
+    if (windowMinutes !== undefined) {
+      const w = Number(windowMinutes);
+      if (!Number.isInteger(w) || w < 1 || w > 1440) {
+        res.status(400).json({ error: "windowMinutes must be a positive integer (1 – 1440)" });
+        return;
+      }
+    }
+
+    const upserts: { key: string; value: string; updatedByEmail: string }[] = [];
+    if (threshold !== undefined) {
+      upserts.push({ key: SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD, value: String(threshold), updatedByEmail: user.email });
+    }
+    if (windowMinutes !== undefined) {
+      upserts.push({ key: SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES, value: String(windowMinutes), updatedByEmail: user.email });
+    }
+
+    if (upserts.length === 0) {
+      res.status(400).json({ error: "At least one of threshold or windowMinutes must be provided" });
+      return;
+    }
+
+    for (const upsert of upserts) {
+      await db
+        .insert(systemConfigTable)
+        .values(upsert)
+        .onConflictDoUpdate({
+          target: systemConfigTable.key,
+          set: { value: upsert.value, updatedByEmail: upsert.updatedByEmail },
+        });
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "failover_alert_settings_updated",
+      targetType: "system_config",
+      targetId: 0,
+      details: JSON.stringify({ threshold, windowMinutes }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ threshold, windowMinutes }, "failover_alert_settings_updated");
+
+    // Return the now-current values
+    const keys = [
+      SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD,
+      SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES,
+    ];
+    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const map = new Map(rows.map(r => [r.key, r.value]));
+    res.json({
+      threshold: parseInt(map.get(SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD]),
+      windowMinutes: parseInt(map.get(SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES]),
     });
   } catch (err) { next(err); }
 });

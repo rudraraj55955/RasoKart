@@ -117,6 +117,9 @@ export const SYSTEM_CONFIG_KEYS = {
   // Cleared as soon as a routing attempt succeeds again, which also
   // triggers a "gateways are back online" notification to affected merchants.
   PAYIN_CHAIN_EXHAUSTED_SINCE: "payin_chain_exhausted_since",
+  // Failover-exhaustion admin alert tuning
+  FAILOVER_ALERT_THRESHOLD: "failover_alert_threshold",
+  FAILOVER_ALERT_WINDOW_MINUTES: "failover_alert_window_minutes",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {
@@ -194,4 +197,6 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.WALLET_LOAD_IFSC]:              "",
   [SYSTEM_CONFIG_KEYS.WALLET_LOAD_ACCOUNT_HOLDER]:    "",
   [SYSTEM_CONFIG_KEYS.WALLET_LOAD_UPI_ID]:            "",
+  [SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD]:       "5",
+  [SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES]:  "60",
 } as const;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -264,6 +264,12 @@ export default function AdminSmartRouting() {
   const [rfMaxRetries, setRfMaxRetries] = useState(1);
   const [rfNotes, setRfNotes] = useState("");
 
+  // Form state — alert settings
+  const [alertThreshold, setAlertThreshold] = useState<number>(5);
+  const [alertWindowMinutes, setAlertWindowMinutes] = useState<number>(60);
+  const [alertSettingsDirty, setAlertSettingsDirty] = useState(false);
+  const [alertSettingsInitialized, setAlertSettingsInitialized] = useState(false);
+
   // Queries
   const statusQ = useQuery<StatusData>({
     queryKey: ["smart-routing-status"],
@@ -307,6 +313,11 @@ export default function AdminSmartRouting() {
     refetchInterval: 60000,
   });
 
+  const alertSettingsQ = useQuery<{ threshold: number; windowMinutes: number }>({
+    queryKey: ["smart-routing-alert-settings"],
+    queryFn: () => apiReq("/alert-settings"),
+  });
+
   // Admin-added custom gateways — offered as provider key suggestions alongside the built-ins.
   const integrationsQ = useQuery<{ providerKey: string; displayNamePublic: string; isEnabled: boolean }[]>({
     queryKey: ["smart-routing-integrations"],
@@ -325,7 +336,29 @@ export default function AdminSmartRouting() {
     ...((integrationsQ.data ?? []).filter(i => i.isEnabled).map(i => ({ providerKey: i.providerKey, displayNamePublic: i.displayNamePublic }))),
   ];
 
+  // Sync alert settings state from server (only on first successful load)
+  useEffect(() => {
+    if (alertSettingsQ.data && !alertSettingsInitialized) {
+      setAlertThreshold(alertSettingsQ.data.threshold);
+      setAlertWindowMinutes(alertSettingsQ.data.windowMinutes);
+      setAlertSettingsInitialized(true);
+    }
+  }, [alertSettingsQ.data, alertSettingsInitialized]);
+
   // Mutations
+  const saveAlertSettingsM = useMutation({
+    mutationFn: (data: { threshold: number; windowMinutes: number }) =>
+      apiReq("/alert-settings", "PUT", data),
+    onSuccess: (data: { threshold: number; windowMinutes: number }) => {
+      qc.invalidateQueries({ queryKey: ["smart-routing-alert-settings"] });
+      setAlertThreshold(data.threshold);
+      setAlertWindowMinutes(data.windowMinutes);
+      setAlertSettingsDirty(false);
+      toast.success("Alert settings saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const updateConfigM = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => apiReq(`/configs/${id}`, "PUT", data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["smart-routing-configs"] }); qc.invalidateQueries({ queryKey: ["smart-routing-status"] }); setEditConfigOpen(false); toast.success("Routing config updated"); },
@@ -604,6 +637,77 @@ export default function AdminSmartRouting() {
                     </CardContent>
                   </Card>
                 ))}
+
+                {/* Failover Alert Settings */}
+                <Card className="bg-zinc-900 border-zinc-800">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-white text-base flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-400" />
+                          Failover Alert Threshold
+                        </CardTitle>
+                        <CardDescription className="text-zinc-500 mt-0.5">
+                          Admins receive a notification when routing failures exceed the threshold within the rolling window
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {alertSettingsQ.isLoading ? (
+                      <div className="text-zinc-500 text-sm">Loading...</div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-zinc-300 text-sm">Failure Count Threshold</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={10000}
+                              value={alertThreshold}
+                              onChange={e => { setAlertThreshold(parseInt(e.target.value) || 1); setAlertSettingsDirty(true); }}
+                              className="bg-zinc-800 border-zinc-700 text-white w-full"
+                            />
+                            <p className="text-xs text-zinc-500">Number of routing failures in the window that trigger an alert</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-zinc-300 text-sm">Rolling Window (minutes)</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={1440}
+                              value={alertWindowMinutes}
+                              onChange={e => { setAlertWindowMinutes(parseInt(e.target.value) || 1); setAlertSettingsDirty(true); }}
+                              className="bg-zinc-800 border-zinc-700 text-white w-full"
+                            />
+                            <p className="text-xs text-zinc-500">Duration of the rolling failure-count window (max 1440 = 24 h)</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-1">
+                          <p className="text-xs text-zinc-500">
+                            Current: alert if{" "}
+                            <span className="text-white font-semibold">{alertThreshold}</span>{" "}
+                            failures occur within{" "}
+                            <span className="text-white font-semibold">
+                              {alertWindowMinutes >= 60
+                                ? `${alertWindowMinutes / 60}h`
+                                : `${alertWindowMinutes}m`}
+                            </span>
+                          </p>
+                          <Button
+                            size="sm"
+                            disabled={!alertSettingsDirty || saveAlertSettingsM.isPending}
+                            onClick={() => saveAlertSettingsM.mutate({ threshold: alertThreshold, windowMinutes: alertWindowMinutes })}
+                            className="bg-violet-600 hover:bg-violet-500 text-white"
+                          >
+                            {saveAlertSettingsM.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />Saving…</> : "Save"}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
 
                 {/* Strategy guide */}
                 <Card className="bg-zinc-900/50 border-zinc-800/50">
