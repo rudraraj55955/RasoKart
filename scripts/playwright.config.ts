@@ -11,12 +11,14 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
   fullyParallel: true,
-  // This sandbox only has 2 CPU cores; oversubscribing chromium workers (e.g. 4)
-  // causes real resource contention that manifests as flaky UI timing (saves
-  // silently not landing, toasts not rendering) rather than a clean speedup.
-  // 2 workers matches the core count and was empirically far more stable while
-  // still finishing the 9-test suite well under the 90s target.
-  workers: 2,
+  // This sandbox only has 2 CPU cores.  The validation runner executes both
+  // playwright invocations (settings-persistence + merchant-settings-persistence)
+  // simultaneously, so 2 workers × 2 invocations = 4 Chromium processes on 2
+  // cores.  That causes the exact resource contention this comment originally
+  // warned about (saves silently not landing, toasts not rendering, etc.).
+  // With workers: 1, each invocation uses 1 Chromium process = 2 total across
+  // both simultaneous runs, which fits cleanly within the 2-core budget.
+  workers: 1,
   globalSetup: "./e2e/global-setup.ts",
   globalTeardown: "./e2e/global-teardown.ts",
   use: {

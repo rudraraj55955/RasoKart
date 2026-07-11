@@ -116,19 +116,27 @@ function cardSave(page: Page, inputId: string) {
 }
 
 /**
- * Triple-click to select all content, then fill with the new value.
+ * Select all content in the input, then type the new value character-by-
+ * character using Playwright's keyboard API.
  *
- * After `fill`, we assert the input actually shows the new value before
- * returning.  On a loaded 2-core sandbox, React's type="number" controlled
- * input can win a render race against Playwright's fill and revert to the
- * server-synced state, causing the subsequent save to silently send the old
- * value.  The assertion auto-waits (up to 3 s) for the React onChange cycle
- * to settle, turning a silent wrong-save into a fast, clear failure.
+ * Why not `locator.fill()`?  `fill()` sets the DOM value directly without
+ * firing the individual key-event sequence (keydown → keypress → input →
+ * keyup) that React 19's synthetic event system hooks into.  For
+ * `type="number"` controlled inputs this can leave React's state at the old
+ * value even though the DOM shows the new one, so the subsequent `mutate()`
+ * call captures the stale closure and writes the wrong value to the DB.
+ *
+ * `page.keyboard.type()` fires real key events for each character, which
+ * React processes through its input-event listener and correctly calls the
+ * `onChange` handler so the state updates before the Save button is clicked.
+ *
+ * We finish with a `toHaveValue` assertion (auto-waits up to 3 s) to confirm
+ * React has settled on the new value before we proceed.
  */
 async function fillNumeric(page: Page, id: string, value: number): Promise<void> {
   const input = page.locator(`#${id}`);
   await input.click({ clickCount: 3 });
-  await input.fill(String(value));
+  await page.keyboard.type(String(value));
   await expect(input).toHaveValue(String(value), { timeout: 3_000 });
 }
 
