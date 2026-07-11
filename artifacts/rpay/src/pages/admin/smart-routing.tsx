@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -117,6 +117,23 @@ type StatusData = {
   recentActivity: { successCount24h: number; failedCount24h: number };
 };
 
+type CoverageGap = {
+  paymentMode: string | null;
+  uncoveredAmounts: number[];
+  minUncovered: number;
+  maxUncovered: number;
+  description: string;
+};
+
+type CoverageCheckResult = {
+  configName: string;
+  hasGaps: boolean;
+  gaps: CoverageGap[];
+  testedAmountCount: number;
+  testedModeCount: number;
+  excludedRuleId: number | null;
+};
+
 type SimulateStep = {
   step: number;
   providerKey: string;
@@ -220,6 +237,167 @@ async function apiReq(path: string, method = "GET", body?: unknown) {
   return r.json();
 }
 
+// ── Client-side coverage check ────────────────────────────────────────────────
+
+const COVERAGE_STANDARD_AMOUNTS = [1, 100, 500, 1000, 5000, 10000, 50000, 100000];
+const COVERAGE_STANDARD_MODES = ["upi", "card", "netbanking", "wallet", "bnpl", "emi"];
+
+/**
+ * Compute coverage gaps for a proposed rule set (current rules + pending dialog changes).
+ * Mirrors the logic in GET /api/smart-routing/configs/:id/coverage-check.
+ *
+ * Returns human-readable gap descriptions, or an empty array if coverage is complete.
+ * Returns null if the rule list is empty / no primary rules exist (other warnings cover that).
+ */
+function computeCoverageGaps(rules: RoutingRule[]): string[] | null {
+  const enabledRules = rules.filter(r => r.isEnabled);
+  const primaryRules = enabledRules.filter(r => !r.isFallbackOnly);
+
+  // If no primary rules remain in the proposed set, every payment would be rejected.
+  // Return an explicit gap rather than null so the dialog warning fires for this case too
+  // (e.g. admin disables the last primary rule, or disabling leaves only fallbacks).
+  if (primaryRules.length === 0) {
+    return ["All payments would be rejected — no primary (non-fallback) rules are active after this change"];
+  }
+
+  // Build amount checkpoints from rule boundaries + standard amounts
+  const amountSet = new Set<number>(COVERAGE_STANDARD_AMOUNTS);
+  for (const r of enabledRules) {
+    if (r.minAmount != null) {
+      const min = Number(r.minAmount);
+      if (min > 1) amountSet.add(min - 1);
+      amountSet.add(min);
+      amountSet.add(min + 1);
+    }
+    if (r.maxAmount != null) {
+      const max = Number(r.maxAmount);
+      if (max > 1) amountSet.add(max - 1);
+      amountSet.add(max);
+      amountSet.add(max + 1);
+    }
+  }
+  const testAmounts = Array.from(amountSet).filter(a => a > 0).sort((a, b) => a - b);
+  const testModes: (string | null)[] = [null, ...COVERAGE_STANDARD_MODES];
+
+  function isCoveredByPrimary(amount: number, mode: string | null): boolean {
+    return primaryRules.some(r => {
+      if (r.minAmount != null && amount < Number(r.minAmount)) return false;
+      if (r.maxAmount != null && amount > Number(r.maxAmount)) return false;
+      if (mode != null && r.allowedPaymentModes) {
+        try {
+          const modes = JSON.parse(r.allowedPaymentModes) as string[];
+          if (modes.length > 0 && !modes.includes("all") && !modes.includes(mode)) return false;
+        } catch { /* ignore */ }
+      }
+      return true;
+    });
+  }
+
+  const gaps: string[] = [];
+  const nullGapAmounts: Set<number> = new Set();
+
+  for (const mode of testModes) {
+    const uncovered = testAmounts.filter(a => !isCoveredByPrimary(a, mode));
+    if (uncovered.length === 0) continue;
+
+    // Track which amounts are uncovered for "any mode" to avoid redundant mode-specific messages
+    if (mode === null) {
+      for (const a of uncovered) nullGapAmounts.add(a);
+    } else {
+      // Only report mode-specific gap if it adds amounts beyond the null-mode gap
+      const newAmounts = uncovered.filter(a => !nullGapAmounts.has(a));
+      if (newAmounts.length === 0) continue;
+    }
+
+    const min = uncovered[0];
+    const max = uncovered[uncovered.length - 1];
+    const modeLabel = mode == null ? "any payment mode" : `${mode} payments`;
+
+    let description: string;
+    if (uncovered.length === testAmounts.length) {
+      description = `No primary rule covers any amount for ${modeLabel}`;
+    } else if (min === testAmounts[0]) {
+      description = `Amounts up to ₹${max.toLocaleString("en-IN")} are not covered for ${modeLabel}`;
+    } else if (max === testAmounts[testAmounts.length - 1]) {
+      description = `Amounts from ₹${min.toLocaleString("en-IN")} and above are not covered for ${modeLabel}`;
+    } else {
+      description = `Amounts ₹${min.toLocaleString("en-IN")}–₹${max.toLocaleString("en-IN")} are not covered for ${modeLabel}`;
+    }
+    gaps.push(description);
+  }
+
+  return gaps;
+}
+
+// ── DeleteCoveragePreview ─────────────────────────────────────────────────────
+
+/**
+ * Fetches the coverage check with the to-be-deleted rule excluded and shows
+ * an inline warning if the deletion would leave any amount ranges uncovered.
+ * Mounted inside the delete-confirm dialog so it only fetches when the dialog opens.
+ */
+function DeleteCoveragePreview({
+  configId,
+  excludeRuleId,
+}: {
+  configId: number | null;
+  excludeRuleId: number | null;
+}) {
+  const previewQ = useQuery<CoverageCheckResult>({
+    queryKey: ["smart-routing-coverage-preview", configId, excludeRuleId],
+    queryFn: () =>
+      fetch(`/api/smart-routing/configs/${configId}/coverage-check?excludeRuleId=${excludeRuleId}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      }).then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? r.statusText);
+        return d as CoverageCheckResult;
+      }),
+    enabled: configId != null && excludeRuleId != null,
+    staleTime: 0,
+  });
+
+  if (previewQ.isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-zinc-500 py-1">
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        Checking coverage impact…
+      </div>
+    );
+  }
+
+  if (!previewQ.data) return null;
+
+  if (!previewQ.data.hasGaps) {
+    return (
+      <div className="flex items-center gap-2 p-2.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300">
+        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+        Remaining rules still cover all tested amounts and payment modes — no coverage gap introduced.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2 p-2.5 rounded-md bg-orange-500/10 border border-orange-500/30">
+      <AlertTriangle className="w-3.5 h-3.5 text-orange-400 mt-0.5 shrink-0" />
+      <div>
+        <p className="text-xs font-medium text-orange-300 mb-1">
+          Deleting this rule will leave coverage gaps:
+        </p>
+        <ul className="space-y-0.5">
+          {previewQ.data.gaps.map((gap, i) => (
+            <li key={i} className="text-xs text-orange-200/80 flex items-start gap-1">
+              <span className="text-orange-400 shrink-0 mt-0.5">•</span>
+              {gap.description}
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-orange-400/60 mt-1.5">Orders in these ranges will receive a 422 error until the gaps are filled.</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AdminSmartRouting() {
@@ -320,6 +498,13 @@ export default function AdminSmartRouting() {
     queryFn: () => apiReq("/alert-settings"),
   });
 
+  const coverageCheckQ = useQuery<CoverageCheckResult>({
+    queryKey: ["smart-routing-coverage", selectedConfigId],
+    queryFn: () => apiReq(`/configs/${selectedConfigId}/coverage-check`),
+    enabled: selectedConfigId != null,
+    staleTime: 0,
+  });
+
   // Admin-added custom gateways — offered as provider key suggestions alongside the built-ins.
   const integrationsQ = useQuery<{ providerKey: string; displayNamePublic: string; isEnabled: boolean }[]>({
     queryKey: ["smart-routing-integrations"],
@@ -373,6 +558,7 @@ export default function AdminSmartRouting() {
       : apiReq(`/configs/${selectedConfigId}/rules`, "POST", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["smart-routing-rules", selectedConfigId] });
+      qc.invalidateQueries({ queryKey: ["smart-routing-coverage", selectedConfigId] });
       setRuleDialogOpen(false);
       toast.success(editingRule ? "Rule updated" : "Rule added");
     },
@@ -381,7 +567,12 @@ export default function AdminSmartRouting() {
 
   const deleteRuleM = useMutation({
     mutationFn: (id: number) => apiReq(`/rules/${id}`, "DELETE"),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["smart-routing-rules", selectedConfigId] }); setDeleteRuleId(null); toast.success("Rule deleted"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["smart-routing-rules", selectedConfigId] });
+      qc.invalidateQueries({ queryKey: ["smart-routing-coverage", selectedConfigId] });
+      setDeleteRuleId(null);
+      toast.success("Rule deleted");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -444,6 +635,44 @@ export default function AdminSmartRouting() {
         .filter(r => r.isEnabled && r.id !== editingRule?.id)
         .every(r => r.isFallbackOnly)
     : false;
+
+  /**
+   * Pre-save coverage check: build the proposed rule set (current rules + dialog changes)
+   * and run the client-side gap check to warn before the admin clicks Save.
+   */
+  const dialogCoverageGaps = useMemo<string[] | null>(() => {
+    if (!ruleDialogOpen || !rulesQ.data) return null;
+    // Adding a brand-new rule that's already disabled can't create gaps (it's a no-op on coverage).
+    // But disabling an *existing* enabled rule can expose gaps — always compute for edits.
+    if (!rfEnabled && !editingRule) return null;
+    if (wouldLeaveNoPrimaryRule) return null; // already warned by the dedicated banner
+
+    const proposedRule: RoutingRule = {
+      id: editingRule?.id ?? -1,
+      configId: selectedConfigId ?? 0,
+      providerKey: rfProviderKey,
+      priority: rfPriority,
+      weightPercent: rfWeight,
+      minAmount: rfMinAmount !== "" ? rfMinAmount : null,
+      maxAmount: rfMaxAmount !== "" ? rfMaxAmount : null,
+      allowedPaymentModes: rfModes.length > 0 ? JSON.stringify(rfModes) : null,
+      isEnabled: rfEnabled,
+      isFallbackOnly: rfFallbackOnly,
+      maxRetries: rfMaxRetries,
+      notes: rfNotes,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const proposedRules: RoutingRule[] = editingRule
+      ? rulesQ.data.map(r => (r.id === editingRule.id ? proposedRule : r))
+      : [...rulesQ.data, proposedRule];
+
+    return computeCoverageGaps(proposedRules);
+  }, [
+    ruleDialogOpen, rulesQ.data, rfEnabled, rfFallbackOnly, rfProviderKey, rfPriority,
+    rfWeight, rfMinAmount, rfMaxAmount, rfModes, rfMaxRetries, rfNotes,
+    editingRule, selectedConfigId, wouldLeaveNoPrimaryRule,
+  ]);
 
   async function runSimulate() {
     const amount = parseFloat(simAmount);
@@ -810,6 +1039,28 @@ export default function AdminSmartRouting() {
                                 </li>
                               ))}
                             </ul>
+                          </div>
+                        </div>
+                      )}
+                      {coverageCheckQ.data?.hasGaps && (
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/30 mb-2">
+                          <AlertTriangle className="w-4 h-4 text-orange-400 mt-0.5 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-orange-300">Coverage gaps detected — some payments would be rejected</p>
+                            <p className="text-xs text-orange-200/70 mt-0.5 mb-1.5">
+                              The current rules leave the following amount ranges or payment modes without a primary provider. Orders in these ranges will receive a 422 error at order-create time.
+                            </p>
+                            <ul className="space-y-1">
+                              {coverageCheckQ.data.gaps.map((gap, i) => (
+                                <li key={i} className="text-xs text-orange-200/80 flex items-start gap-1.5">
+                                  <span className="text-orange-400 mt-0.5 shrink-0">•</span>
+                                  {gap.description}
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="text-xs text-orange-400/60 mt-2">
+                              Use the <span className="font-medium">Simulate</span> tool to test specific amounts and modes, or edit rules to extend coverage.
+                            </p>
                           </div>
                         </div>
                       )}
@@ -1450,6 +1701,26 @@ export default function AdminSmartRouting() {
               <Label className="text-zinc-300 text-sm">Rule Enabled</Label>
               <Switch checked={rfEnabled} onCheckedChange={setRfEnabled} />
             </div>
+
+            {dialogCoverageGaps != null && dialogCoverageGaps.length > 0 && (
+              <div className="flex items-start gap-2 p-2.5 rounded-md bg-orange-500/10 border border-orange-500/30">
+                <AlertTriangle className="w-3.5 h-3.5 text-orange-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-medium text-orange-300 mb-1">
+                    {editingRule ? "After this update, some payments would be rejected:" : "After adding this rule, some payments would still be rejected:"}
+                  </p>
+                  <ul className="space-y-0.5">
+                    {dialogCoverageGaps.map((gap, i) => (
+                      <li key={i} className="text-xs text-orange-200/80 flex items-start gap-1">
+                        <span className="text-orange-400 shrink-0 mt-0.5">•</span>
+                        {gap}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-orange-400/60 mt-1.5">You can still save — add more rules to fill the gaps.</p>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter className="mt-2">
             <Button variant="ghost" onClick={() => setRuleDialogOpen(false)} className="text-zinc-400">Cancel</Button>
@@ -1467,6 +1738,10 @@ export default function AdminSmartRouting() {
             <DialogTitle>Delete Routing Rule?</DialogTitle>
           </DialogHeader>
           <p className="text-zinc-400 text-sm">This rule will be permanently removed from the routing config.</p>
+          <DeleteCoveragePreview
+            configId={selectedConfigId}
+            excludeRuleId={deleteRuleId}
+          />
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteRuleId(null)} className="text-zinc-400">Cancel</Button>
             <Button variant="destructive" onClick={() => deleteRuleId && deleteRuleM.mutate(deleteRuleId)} disabled={deleteRuleM.isPending}>

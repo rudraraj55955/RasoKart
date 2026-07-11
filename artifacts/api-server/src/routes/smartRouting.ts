@@ -357,6 +357,157 @@ router.delete("/rules/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Coverage Check ────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/smart-routing/configs/:id/coverage-check?excludeRuleId=<id>
+ *
+ * Checks whether the current enabled rules for this config leave any common
+ * amount ranges or payment modes uncovered (i.e. no primary, non-fallback-only
+ * rule would handle the payment).  Pass excludeRuleId to simulate what
+ * coverage looks like *after* a specific rule is deleted — used by the
+ * delete-confirm dialog to warn before the deletion takes place.
+ *
+ * Tests a smart set of amount checkpoints derived from the rules' own min/max
+ * values plus a set of standard amounts, across every payment mode that
+ * appears in any rule plus the six standard modes.
+ */
+router.get("/configs/:id/coverage-check", async (req, res, next) => {
+  try {
+    const configId = parseInt(req.params["id"] as string);
+    const excludeRuleId = req.query["excludeRuleId"] ? parseInt(req.query["excludeRuleId"] as string) : null;
+
+    const [config] = await db.select().from(routingConfigsTable)
+      .where(eq(routingConfigsTable.id, configId)).limit(1);
+    if (!config) { res.status(404).json({ error: "Config not found" }); return; }
+
+    const allRules = await db.select().from(routingRulesTable)
+      .where(and(
+        eq(routingRulesTable.configId, configId),
+        eq(routingRulesTable.isEnabled, true),
+      ));
+
+    const rules = excludeRuleId != null
+      ? allRules.filter(r => r.id !== excludeRuleId)
+      : allRules;
+
+    const STANDARD_AMOUNTS = [1, 100, 500, 1000, 5000, 10000, 50000, 100000];
+    const STANDARD_MODES = ["upi", "card", "netbanking", "wallet", "bnpl", "emi"];
+
+    // Build a smart set of amount checkpoints from rule boundaries + standards
+    const amountSet = new Set<number>(STANDARD_AMOUNTS);
+    for (const r of rules) {
+      if (r.minAmount != null) {
+        const min = Number(r.minAmount);
+        if (min > 1) amountSet.add(min - 1);
+        amountSet.add(min);
+        amountSet.add(min + 1);
+      }
+      if (r.maxAmount != null) {
+        const max = Number(r.maxAmount);
+        if (max > 1) amountSet.add(max - 1);
+        amountSet.add(max);
+        amountSet.add(max + 1);
+      }
+    }
+    const testAmounts = Array.from(amountSet).filter(a => a > 0).sort((a, b) => a - b);
+
+    // Collect every specific mode referenced in any rule; null means "no mode filter" (any)
+    const modeSet = new Set<string | null>([null, ...STANDARD_MODES]);
+    for (const r of rules) {
+      if (r.allowedPaymentModes) {
+        try {
+          const modes = JSON.parse(r.allowedPaymentModes) as string[];
+          if (modes.length > 0 && !modes.includes("all")) {
+            for (const m of modes) modeSet.add(m);
+          }
+        } catch { /* ignore */ }
+      }
+    }
+    const testModes = Array.from(modeSet);
+
+    // Check whether a specific (amount, mode) is covered by at least one primary rule
+    function isCoveredByPrimary(amount: number, mode: string | null): boolean {
+      return rules.some(r => {
+        if (r.isFallbackOnly) return false;
+        if (r.minAmount != null && amount < Number(r.minAmount)) return false;
+        if (r.maxAmount != null && amount > Number(r.maxAmount)) return false;
+        if (mode != null && r.allowedPaymentModes) {
+          try {
+            const modes = JSON.parse(r.allowedPaymentModes) as string[];
+            if (modes.length > 0 && !modes.includes("all") && !modes.includes(mode)) return false;
+          } catch { /* ignore */ }
+        }
+        return true;
+      });
+    }
+
+    // For each mode, collect uncovered amounts and build a gap description
+    type Gap = {
+      paymentMode: string | null;
+      uncoveredAmounts: number[];
+      minUncovered: number;
+      maxUncovered: number;
+      description: string;
+    };
+
+    const gaps: Gap[] = [];
+
+    for (const mode of testModes) {
+      const uncovered = testAmounts.filter(a => !isCoveredByPrimary(a, mode));
+      if (uncovered.length === 0) continue;
+
+      const min = uncovered[0];
+      const max = uncovered[uncovered.length - 1];
+      const modeLabel = mode == null ? "any payment mode" : `${mode} payments`;
+      let description: string;
+      if (uncovered.length === testAmounts.length) {
+        description = `No primary rule covers any tested amount for ${modeLabel}`;
+      } else if (min === testAmounts[0] && max === testAmounts[testAmounts.length - 1]) {
+        description = `No primary rule covers tested amounts for ${modeLabel}`;
+      } else if (min === testAmounts[0]) {
+        description = `Amounts up to ₹${max.toLocaleString("en-IN")} are not covered for ${modeLabel}`;
+      } else if (max === testAmounts[testAmounts.length - 1]) {
+        description = `Amounts from ₹${min.toLocaleString("en-IN")} and above are not covered for ${modeLabel}`;
+      } else {
+        description = `Amounts ₹${min.toLocaleString("en-IN")}–₹${max.toLocaleString("en-IN")} are not covered for ${modeLabel}`;
+      }
+
+      gaps.push({ paymentMode: mode, uncoveredAmounts: uncovered, minUncovered: min, maxUncovered: max, description });
+    }
+
+    // De-duplicate: if "null" (any mode) has exactly the same uncovered set as a specific mode,
+    // the specific mode is redundant — keep only the broadest/most useful gaps.
+    // Simplification: if a gap exists for "null mode", it means ALL payments at those amounts fail.
+    // Any overlapping mode-specific gap is already implied. Remove gaps whose uncoveredAmounts are
+    // a subset of the null-mode gap's uncoveredAmounts.
+    const nullGap = gaps.find(g => g.paymentMode === null);
+    const filteredGaps = nullGap
+      ? gaps.filter(g => {
+          if (g.paymentMode === null) return true;
+          // Keep mode-specific gap only if it has amounts NOT already flagged by null gap
+          const nullUncoveredSet = new Set(nullGap.uncoveredAmounts);
+          return g.uncoveredAmounts.some(a => !nullUncoveredSet.has(a));
+        })
+      : gaps;
+
+    res.json({
+      configName: config.configName,
+      hasGaps: filteredGaps.length > 0,
+      gaps: filteredGaps.map(g => ({
+        paymentMode: g.paymentMode,
+        uncoveredAmounts: g.uncoveredAmounts,
+        minUncovered: g.minUncovered,
+        maxUncovered: g.maxUncovered,
+        description: g.description,
+      })),
+      testedAmountCount: testAmounts.length,
+      testedModeCount: testModes.length,
+      excludedRuleId: excludeRuleId,
+    });
+  } catch (err) { next(err); }
+});
+
 // ── Metrics ───────────────────────────────────────────────────────────────────
 
 /** GET /api/smart-routing/metrics?window=24h */

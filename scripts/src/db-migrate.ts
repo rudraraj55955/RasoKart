@@ -721,8 +721,16 @@ async function migrate() {
     -- that only have the original minimal (name, is_active) schema:
     -- Make the legacy name/is_active columns optional so Drizzle INSERTs that
     -- omit them (using the new config_name/is_enabled schema) never violate NOT NULL.
-    ALTER TABLE routing_configs ALTER COLUMN name DROP NOT NULL;
-    ALTER TABLE routing_configs ALTER COLUMN name SET DEFAULT '';
+    -- Wrapped in DO block so fresh DBs (which never had a "name" column) skip safely.
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'routing_configs' AND column_name = 'name'
+      ) THEN
+        ALTER TABLE routing_configs ALTER COLUMN name DROP NOT NULL;
+        ALTER TABLE routing_configs ALTER COLUMN name SET DEFAULT '';
+      END IF;
+    END $$;
     ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS config_name VARCHAR(64);
     ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS description TEXT;
     ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS strategy VARCHAR(32) NOT NULL DEFAULT 'priority';
