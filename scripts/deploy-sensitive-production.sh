@@ -92,7 +92,17 @@ if [ "$PRE_DEPLOY_COMMIT" = "$REMOTE_COMMIT" ]; then
 fi
 
 if ! git merge-base --is-ancestor "$PRE_DEPLOY_COMMIT" "$REMOTE_COMMIT"; then
-  fail "Branch divergence detected: local HEAD is not an ancestor of origin/main. Refusing to force-update. Investigate manually — exact blocking commits: $(git log --oneline "$REMOTE_COMMIT..$PRE_DEPLOY_COMMIT" | tr '\n' ';')"
+  DIVERGED_COMMITS="$(git log --oneline "$REMOTE_COMMIT..$PRE_DEPLOY_COMMIT" | tr '\n' ';')"
+  if [ "${FORCE_RESET_TO_ORIGIN:-false}" = "true" ]; then
+    log "WARN: Branch divergence detected — local HEAD ($PRE_DEPLOY_COMMIT) is not an ancestor of origin/main ($REMOTE_COMMIT)."
+    log "WARN: FORCE_RESET_TO_ORIGIN=true — hard-resetting local HEAD to origin/main."
+    log "WARN: VPS-only commits being abandoned: $DIVERGED_COMMITS"
+    git reset --hard "$REMOTE_COMMIT"
+    # Rollback target becomes the new HEAD (orphaned commits are gone).
+    PRE_DEPLOY_COMMIT="$REMOTE_COMMIT"
+  else
+    fail "Branch divergence detected: local HEAD is not an ancestor of origin/main. Refusing to force-update. Re-run the workflow with force_reset_to_origin=true to override, or investigate manually. VPS-only commits: $DIVERGED_COMMITS"
+  fi
 fi
 
 log "Checking for untracked-file collisions with incoming changes..."
