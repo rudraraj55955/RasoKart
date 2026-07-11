@@ -29,25 +29,81 @@ async function migrate() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 
     -- ── merchants ──────────────────────────────────────────────────────────────
+    -- Full column set matching lib/db/src/schema/merchants.ts (Drizzle source of truth).
+    -- The original stub was missing email (onConflict target in seed.ts), balance,
+    -- total_deposits, total_withdrawals, and most other fields. The seed crashed on
+    -- the first merchant INSERT, leaving all user.merchant_id values as null, which
+    -- caused GET /webhooks to return 403 ("Merchants only") in e2e global-setup.
     CREATE TABLE IF NOT EXISTS merchants (
       id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       business_name TEXT NOT NULL,
-      contact_name TEXT,
-      phone TEXT,
+      contact_name TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL UNIQUE,
+      phone TEXT NOT NULL DEFAULT '',
       website TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
+      verification_status TEXT NOT NULL DEFAULT 'pending',
+      rejection_reason TEXT,
+      merchant_type TEXT NOT NULL DEFAULT 'NORMAL',
+      payout_service_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      payin_service_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      collection_service_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      onboarding_type TEXT NOT NULL DEFAULT 'NORMAL',
+      agent_id INTEGER,
+      approved_for_payout_at TIMESTAMPTZ,
+      payout_limits_json JSONB,
+      payout_fee_json JSONB,
+      total_deposits NUMERIC(18,2) NOT NULL DEFAULT 0,
+      total_withdrawals NUMERIC(18,2) NOT NULL DEFAULT 0,
+      balance NUMERIC(18,2) NOT NULL DEFAULT 0,
+      logo_url TEXT,
+      brand_color TEXT,
+      callback_secret TEXT,
+      callback_secret_updated_at TIMESTAMPTZ,
+      callback_timestamp_window_seconds INTEGER,
+      auto_payout_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      auto_payout_max_single_amount NUMERIC(18,2),
+      auto_payout_daily_limit NUMERIC(18,2),
+      auto_payout_monthly_limit NUMERIC(18,2),
+      per_beneficiary_daily_limit NUMERIC(18,2),
+      auto_payout_allowed_modes JSONB,
+      auto_payout_only_verified_beneficiaries BOOLEAN NOT NULL DEFAULT TRUE,
+      auto_payout_min_wallet_balance_after_payout NUMERIC(18,2) NOT NULL DEFAULT 0,
+      auto_payout_paused BOOLEAN NOT NULL DEFAULT FALSE,
+      auto_payout_updated_by TEXT,
+      auto_payout_updated_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     -- ── plans ──────────────────────────────────────────────────────────────────
+    -- Full column set matching lib/db/src/schema/plans.ts (Drizzle source of truth).
+    -- The original stub only had 6 columns; seed.ts inserts all 22, so on a fresh
+    -- CI database the first INSERT crashed with "column does not exist".
     CREATE TABLE IF NOT EXISTS plans (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
-      price NUMERIC(12,2) NOT NULL DEFAULT 0,
-      billing_cycle TEXT NOT NULL DEFAULT 'monthly',
-      features JSONB NOT NULL DEFAULT '{}',
+      description TEXT,
+      price TEXT NOT NULL DEFAULT '0',
+      monthly_fee TEXT NOT NULL DEFAULT '0',
+      yearly_fee TEXT NOT NULL DEFAULT '0',
+      setup_fee TEXT NOT NULL DEFAULT '0',
+      pricing TEXT NOT NULL DEFAULT '{}',
+      features TEXT NOT NULL DEFAULT '[]',
+      custom_features TEXT NOT NULL DEFAULT '[]',
+      dynamic_qr_limit INTEGER NOT NULL DEFAULT 10,
+      static_qr_limit INTEGER NOT NULL DEFAULT 10,
+      virtual_account_limit INTEGER NOT NULL DEFAULT 5,
+      payment_link_limit INTEGER NOT NULL DEFAULT 10,
+      payout_limit INTEGER NOT NULL DEFAULT 20,
+      daily_transaction_limit INTEGER NOT NULL DEFAULT 999,
+      monthly_transaction_limit INTEGER NOT NULL DEFAULT 9999,
+      settlement_fee TEXT NOT NULL DEFAULT '2.0',
+      deposit_fee TEXT NOT NULL DEFAULT '0.0',
+      api_access BOOLEAN NOT NULL DEFAULT TRUE,
+      webhook_access BOOLEAN NOT NULL DEFAULT TRUE,
+      provider_access BOOLEAN NOT NULL DEFAULT FALSE,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -926,6 +982,39 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    -- ── system_settings ─────────────────────────────────────────────────────
+    -- Key-value store for SMTP config, finance_report_email, reconciliation
+    -- schedule, and other admin-configurable settings.
+    -- routes/settings.ts reads/writes this table on every PUT /settings/* call.
+    -- Missing on a fresh CI database caused all admin settings PUT endpoints to
+    -- return HTTP 500 (relation "system_settings" does not exist).
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by INTEGER
+    );
+
+    -- ── audit_logs ───────────────────────────────────────────────────────────
+    -- Admin action audit trail. Every PUT handler in routes/systemConfig.ts and
+    -- routes/settings.ts inserts a row here after a successful save — so if this
+    -- table is absent on a fresh CI database every admin config PUT returns 500.
+    -- Schema matches lib/db/src/schema/auditLogs.ts (Drizzle source of truth).
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      admin_id INTEGER NOT NULL,
+      admin_email TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id INTEGER,
+      details TEXT,
+      ip_address TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS audit_logs_admin_id_idx ON audit_logs(admin_id);
+    CREATE INDEX IF NOT EXISTS audit_logs_target_type_idx ON audit_logs(target_type);
+    CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at DESC);
 
     -- ── users: missing notification preference + profile columns ─────────────
     -- The original CREATE TABLE users only had id/email/password_hash/role/

@@ -557,6 +557,29 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "admin_tryit_presets" }, "schema_guard_table_created");
 
+  // ── merchants: core Drizzle-schema columns missing from the original stub ────
+  // The original db-migrate.ts CREATE TABLE for merchants was missing email
+  // (the onConflictDoUpdate target in seed.ts), balance, total_deposits,
+  // total_withdrawals, and several other columns. seed.ts crashed on the
+  // first merchant INSERT, leaving user.merchant_id = null for all demo
+  // accounts, which caused GET /webhooks → 403 in the e2e global-setup.
+  // The CREATE TABLE in db-migrate.ts is now fixed; these ALTER TABLEs are a
+  // safety net for any existing DB still on the old stub.
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''`);
+  // Create UNIQUE index separately (CREATE UNIQUE INDEX IF NOT EXISTS is idempotent).
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS merchants_email_uniq ON merchants(email)`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'pending'`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS total_deposits NUMERIC(18,2) NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS total_withdrawals NUMERIC(18,2) NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS balance NUMERIC(18,2) NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS logo_url TEXT`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS brand_color TEXT`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_secret TEXT`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_secret_updated_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS callback_timestamp_window_seconds INTEGER`);
+  logger.info({ table: "merchants", migration: "add_core_drizzle_schema_columns" }, "schema_guard_column_added");
+
   // ── merchants: payout merchant type & service flags ──────────────────────────
   await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS merchant_type TEXT NOT NULL DEFAULT 'NORMAL'`);
   await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_service_enabled BOOLEAN NOT NULL DEFAULT false`);
@@ -897,6 +920,33 @@ async function runGuard(): Promise<void> {
     )
   `);
   logger.info({ table: "system_config" }, "schema_guard_table_created");
+
+  // ── plans: full Drizzle schema column set ────────────────────────────────
+  // The original db-migrate.ts stub only created 6 columns (id, name, price,
+  // billing_cycle, features, created_at, updated_at). seed.ts inserts all 22
+  // Drizzle-schema columns, so a fresh CI DB crashed immediately with
+  // "column does not exist". The CREATE TABLE in db-migrate.ts is now fixed,
+  // but these ALTER TABLEs are a safety net for any existing DB still on the stub.
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS description TEXT`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS monthly_fee TEXT NOT NULL DEFAULT '0'`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS yearly_fee TEXT NOT NULL DEFAULT '0'`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS setup_fee TEXT NOT NULL DEFAULT '0'`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS pricing TEXT NOT NULL DEFAULT '{}'`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS custom_features TEXT NOT NULL DEFAULT '[]'`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS dynamic_qr_limit INTEGER NOT NULL DEFAULT 10`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS static_qr_limit INTEGER NOT NULL DEFAULT 10`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS virtual_account_limit INTEGER NOT NULL DEFAULT 5`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS payment_link_limit INTEGER NOT NULL DEFAULT 10`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS payout_limit INTEGER NOT NULL DEFAULT 20`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS daily_transaction_limit INTEGER NOT NULL DEFAULT 999`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS monthly_transaction_limit INTEGER NOT NULL DEFAULT 9999`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS settlement_fee TEXT NOT NULL DEFAULT '2.0'`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS deposit_fee TEXT NOT NULL DEFAULT '0.0'`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS api_access BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS webhook_access BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS provider_access BOOLEAN NOT NULL DEFAULT FALSE`);
+  await db.execute(sql`ALTER TABLE plans ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+  logger.info({ table: "plans", migration: "add_full_drizzle_schema_columns" }, "schema_guard_column_added");
 
   // ── merchant_plans: UNIQUE constraint + Drizzle schema columns ──────────
   // Root CI failure: db-migrate's CREATE TABLE for merchant_plans had neither
