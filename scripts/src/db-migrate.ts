@@ -797,6 +797,8 @@ async function migrate() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id);
+    -- Columns added after initial production deploy — self-heal existing DB:
+    ALTER TABLE merchant_connections ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
 
     -- ── withdrawals ─────────────────────────────────────────────────────────
     -- schemaGuard.ts has ALTER TABLE withdrawals ADD COLUMN lines but no
@@ -838,6 +840,17 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Columns added after initial production deploy — self-heal existing DB.
+    -- idempotency_key is required by the unique index below; without this guard
+    -- the index CREATE fails with "column does not exist" on older production DBs.
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_by_admin_id INTEGER;
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approval_type TEXT NOT NULL DEFAULT 'MANUAL';
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approved_by_system BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS auto_approval_rule_snapshot JSONB;
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approved_by TEXT;
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
     CREATE INDEX IF NOT EXISTS withdrawals_merchant_id_idx ON withdrawals(merchant_id);
     CREATE INDEX IF NOT EXISTS withdrawals_status_idx ON withdrawals(status);
     CREATE INDEX IF NOT EXISTS withdrawals_transfer_status_idx ON withdrawals(transfer_status);
@@ -876,6 +889,15 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Columns added after initial production deploy — self-heal existing DB:
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS gross_amount NUMERIC(12,2);
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payin_fee NUMERIC(12,2);
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(12,2);
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS net_amount NUMERIC(12,2);
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fee_rate NUMERIC(8,4);
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS fee_rule_source TEXT;
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS provider TEXT;
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_link_id INTEGER;
     CREATE INDEX IF NOT EXISTS transactions_merchant_id_idx ON transactions(merchant_id);
     CREATE INDEX IF NOT EXISTS transactions_status_idx ON transactions(status);
     CREATE INDEX IF NOT EXISTS transactions_created_at_idx ON transactions(created_at DESC);
@@ -895,6 +917,10 @@ async function migrate() {
       revoked_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Columns added after initial production deploy — self-heal existing DB:
+    ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS label TEXT;
+    ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
+    ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS api_keys_merchant_id_idx ON api_keys(merchant_id);
 
     -- ── webhooks ─────────────────────────────────────────────────────────────
@@ -918,6 +944,14 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Columns added after initial production deploy — self-heal existing DB:
+    ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS secret_rotated_at TIMESTAMPTZ;
+    ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS max_retries INTEGER NOT NULL DEFAULT 3;
+    ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS retry_delay_1 INTEGER;
+    ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS retry_delay_2 INTEGER;
+    ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS retry_delay_3 INTEGER;
+    ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS failure_alert_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS failure_alert_threshold INTEGER NOT NULL DEFAULT 3;
   `);
 
   // ── Section 11: Audit, settings, reports ─────────────────────────────────
