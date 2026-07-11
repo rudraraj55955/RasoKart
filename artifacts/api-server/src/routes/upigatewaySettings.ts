@@ -60,6 +60,8 @@ router.put("/settings", async (req, res, next) => {
       merchantAccess?: boolean;
     };
 
+    const oldCfg = await loadUpigatewayConfig();
+
     const upsert = async (key: string, value: string) => {
       await db.insert(systemConfigTable)
         .values({ key, value, updatedByEmail: user.email })
@@ -95,10 +97,20 @@ router.put("/settings", async (req, res, next) => {
       }
     }
 
+    const auditDetails: Record<string, unknown> = {
+      section: "upigateway",
+      ...(apiKey !== undefined && { apiKeyUpdated: true }),
+      ...(webhookSecret !== undefined && { webhookSecretUpdated: true }),
+      ...(enabled !== undefined && { enabled: { from: oldCfg.enabled, to: enabled } }),
+      ...(env !== undefined && { env: { from: oldCfg.env, to: env } }),
+      ...(minAmount !== undefined && { minAmount: { from: oldCfg.minAmount, to: Number(minAmount) } }),
+      ...(maxAmount !== undefined && { maxAmount: { from: oldCfg.maxAmount, to: Number(maxAmount) } }),
+    };
+
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
       action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify({ section: "upigateway", enabled, env, apiKeyUpdated: apiKey !== undefined, webhookSecretUpdated: webhookSecret !== undefined }),
+      details: JSON.stringify(auditDetails),
       ipAddress: (req as any).ip ?? null,
     });
 

@@ -1775,7 +1775,15 @@ router.post("/cashfree-payout/check-transfer-status", async (req, res, next) => 
 // ── EKQR / UPI Gateway config ──────────────────────────────────────────────
 
 async function getEkqrConfig() {
-  const keys = [SYSTEM_CONFIG_KEYS.EKQR_API_KEY, SYSTEM_CONFIG_KEYS.EKQR_ENABLED, SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET, SYSTEM_CONFIG_KEYS.EKQR_ENV];
+  const keys = [
+    SYSTEM_CONFIG_KEYS.EKQR_API_KEY,
+    SYSTEM_CONFIG_KEYS.EKQR_ENABLED,
+    SYSTEM_CONFIG_KEYS.EKQR_WEBHOOK_SECRET,
+    SYSTEM_CONFIG_KEYS.EKQR_ENV,
+    SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT,
+    SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT,
+    SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT,
+  ];
   const [rows, lastUpdated] = await Promise.all([
     db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys)),
     getLastUpdatedInfo(keys),
@@ -1789,6 +1797,9 @@ async function getEkqrConfig() {
     enabled: (map.get(SYSTEM_CONFIG_KEYS.EKQR_ENABLED) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_ENABLED]) === "true",
     webhookSecretSet: rawSecret.length > 0,
     env: (map.get(SYSTEM_CONFIG_KEYS.EKQR_ENV) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_ENV] ?? "test") as "test" | "live",
+    minAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT]),
+    maxAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT]),
+    dailyLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT]),
     ...lastUpdated,
   };
 }
@@ -1804,7 +1815,15 @@ router.get("/ekqr", async (req, res, next) => {
 router.put("/ekqr", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { apiKey, enabled, webhookSecret, env } = req.body as { apiKey?: string; enabled?: boolean; webhookSecret?: string; env?: "test" | "live" };
+    const { apiKey, enabled, webhookSecret, env, minAmount, maxAmount, dailyLimit } = req.body as {
+      apiKey?: string;
+      enabled?: boolean;
+      webhookSecret?: string;
+      env?: "test" | "live";
+      minAmount?: number;
+      maxAmount?: number;
+      dailyLimit?: number;
+    };
 
     const oldEkqrConfig = await getEkqrConfig();
 
@@ -1838,11 +1857,32 @@ router.put("/ekqr", async (req, res, next) => {
       }
     }
 
+    if (minAmount !== undefined) {
+      await db.insert(systemConfigTable)
+        .values({ key: SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT, value: String(minAmount), updatedByEmail: user.email })
+        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: String(minAmount), updatedByEmail: user.email } });
+    }
+
+    if (maxAmount !== undefined) {
+      await db.insert(systemConfigTable)
+        .values({ key: SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT, value: String(maxAmount), updatedByEmail: user.email })
+        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: String(maxAmount), updatedByEmail: user.email } });
+    }
+
+    if (dailyLimit !== undefined) {
+      await db.insert(systemConfigTable)
+        .values({ key: SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT, value: String(dailyLimit), updatedByEmail: user.email })
+        .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: String(dailyLimit), updatedByEmail: user.email } });
+    }
+
     const auditEkqrDetails: Record<string, unknown> = { section: "ekqr" };
     if (apiKey !== undefined) auditEkqrDetails.apiKeyUpdated = true;
     if (webhookSecret !== undefined) auditEkqrDetails.webhookSecretUpdated = true;
     if (enabled !== undefined) auditEkqrDetails.enabled = { from: oldEkqrConfig.enabled, to: enabled };
     if (env !== undefined) auditEkqrDetails.env = { from: oldEkqrConfig.env, to: env };
+    if (minAmount !== undefined) auditEkqrDetails.minAmount = { from: oldEkqrConfig.minAmount, to: minAmount };
+    if (maxAmount !== undefined) auditEkqrDetails.maxAmount = { from: oldEkqrConfig.maxAmount, to: maxAmount };
+    if (dailyLimit !== undefined) auditEkqrDetails.dailyLimit = { from: oldEkqrConfig.dailyLimit, to: dailyLimit };
 
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
