@@ -3089,6 +3089,26 @@ export default function AdminSettings() {
               <p className="text-xs text-muted-foreground">
                 Receive an email when signature verification failures spike above the configured alert threshold. Use the Signature Failure Alert card above to adjust the threshold, window, and cooldown.
               </p>
+              {alertCooldownStatus?.signatureFailure && (
+                alertCooldownStatus.signatureFailure.cooldownActive && alertCooldownStatus.signatureFailure.cooldownExpiresAt
+                  ? (
+                    <span
+                      className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs text-amber-400"
+                      title={`A real alert was suppressed — cooldown expires at ${new Date(alertCooldownStatus.signatureFailure.cooldownExpiresAt).toLocaleString()}`}
+                    >
+                      <Clock className="w-3 h-3 shrink-0" />
+                      Cooldown active until {new Date(alertCooldownStatus.signatureFailure.cooldownExpiresAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  ) : alertCooldownStatus.signatureFailure.lastSentAt ? (
+                    <span
+                      className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted/30 border border-border/50 px-2 py-0.5 text-xs text-muted-foreground"
+                      title={`Last alert sent at ${new Date(alertCooldownStatus.signatureFailure.lastSentAt).toLocaleString()}`}
+                    >
+                      <Clock className="w-3 h-3 shrink-0" />
+                      Last sent {formatTimeAgo(alertCooldownStatus.signatureFailure.lastSentAt)}
+                    </span>
+                  ) : null
+              )}
             </div>
             <Switch
               checked={signatureFailureEnabled}

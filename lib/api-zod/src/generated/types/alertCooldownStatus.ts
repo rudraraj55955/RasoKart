@@ -10,4 +10,5 @@ import type { AlertCooldownEntry } from './alertCooldownEntry';
 export interface AlertCooldownStatus {
   webhookFailure: AlertCooldownEntry;
   ekqr: AlertCooldownEntry;
+  signatureFailure: AlertCooldownEntry;
 }

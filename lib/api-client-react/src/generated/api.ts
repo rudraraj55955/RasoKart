@@ -21645,7 +21645,7 @@ export const getGetAlertCooldownStatusUrl = () => {
 }
 
 /**
- * @summary Get last-sent timestamps and cooldown windows for webhook-failure and EKQR stuck-QR alerts (admin only)
+ * @summary Get last-sent timestamps and cooldown windows for webhook-failure, EKQR stuck-QR, and signature-failure alerts (admin only)
  */
 export const getAlertCooldownStatus = async ( options?: RequestInit): Promise<AlertCooldownStatus> => {
 
@@ -21692,7 +21692,7 @@ export type GetAlertCooldownStatusQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get last-sent timestamps and cooldown windows for webhook-failure and EKQR stuck-QR alerts (admin only)
+ * @summary Get last-sent timestamps and cooldown windows for webhook-failure, EKQR stuck-QR, and signature-failure alerts (admin only)
  */
 
 export function useGetAlertCooldownStatus<TData = Awaited<ReturnType<typeof getAlertCooldownStatus>>, TError = ErrorType<unknown>>(

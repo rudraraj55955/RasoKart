@@ -7334,7 +7334,7 @@ paths:
     get:
       operationId: getAlertCooldownStatus
       tags: [system-config]
-      summary: Get last-sent timestamps and cooldown windows for webhook-failure and EKQR stuck-QR alerts (admin only)
+      summary: Get last-sent timestamps and cooldown windows for webhook-failure, EKQR stuck-QR, and signature-failure alerts (admin only)
       responses:
         "200":
           description: Alert cooldown status for webhook-failure and EKQR alerts
@@ -15985,11 +15985,13 @@ components:
 
     AlertCooldownStatus:
       type: object
-      required: [webhookFailure, ekqr]
+      required: [webhookFailure, ekqr, signatureFailure]
       properties:
         webhookFailure:
           $ref: "#/components/schemas/AlertCooldownEntry"
         ekqr:
+          $ref: "#/components/schemas/AlertCooldownEntry"
+        signatureFailure:
           $ref: "#/components/schemas/AlertCooldownEntry"
 
     WebhookFailureAlertConfig:

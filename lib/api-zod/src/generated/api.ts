@@ -7335,7 +7335,7 @@ export const ResetWebhookFailureAlertCooldownResponse = zod.object({
 
 
 /**
- * @summary Get last-sent timestamps and cooldown windows for webhook-failure and EKQR stuck-QR alerts (admin only)
+ * @summary Get last-sent timestamps and cooldown windows for webhook-failure, EKQR stuck-QR, and signature-failure alerts (admin only)
  */
 export const GetAlertCooldownStatusResponse = zod.object({
   "webhookFailure": zod.object({
@@ -7345,6 +7345,12 @@ export const GetAlertCooldownStatusResponse = zod.object({
   "cooldownExpiresAt": zod.coerce.date().nullish()
 }),
   "ekqr": zod.object({
+  "lastSentAt": zod.coerce.date().nullish(),
+  "cooldownHours": zod.number(),
+  "cooldownActive": zod.boolean(),
+  "cooldownExpiresAt": zod.coerce.date().nullish()
+}),
+  "signatureFailure": zod.object({
   "lastSentAt": zod.coerce.date().nullish(),
   "cooldownHours": zod.number(),
   "cooldownActive": zod.boolean(),

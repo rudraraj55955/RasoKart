@@ -947,7 +947,7 @@ router.delete("/webhook-failure-alert-history", async (req, res, next) => {
 });
 
 // GET /api/system-config/alert-cooldown-status
-// Returns last-sent timestamps and cooldown window for the webhook-failure and EKQR stuck-QR alerts.
+// Returns last-sent timestamps and cooldown window for the webhook-failure, EKQR stuck-QR, and signature-failure alerts.
 router.get("/alert-cooldown-status", async (req, res, next) => {
   try {
     // Fetch all needed config keys in one query
@@ -958,6 +958,7 @@ router.get("/alert-cooldown-status", async (req, res, next) => {
         inArray(systemConfigTable.key, [
           SYSTEM_CONFIG_KEYS.WEBHOOK_FAILURE_ALERT_COOLDOWN_HOURS,
           SYSTEM_CONFIG_KEYS.EKQR_SYNC_ALERT_COOLDOWN_HOURS,
+          SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS,
           "ekqr_sync_alert_last_sent_at",
         ])
       );
@@ -1000,6 +1001,27 @@ router.get("/alert-cooldown-status", async (req, res, next) => {
       ? new Date(ekqrCooldownExpiresAt) > new Date()
       : false;
 
+    // Signature failure: most recent alert log entry
+    const [latestSigFailLog] = await db
+      .select({ sentAt: signatureFailureAlertLogsTable.sentAt })
+      .from(signatureFailureAlertLogsTable)
+      .orderBy(desc(signatureFailureAlertLogsTable.sentAt))
+      .limit(1);
+
+    const sigFailCooldownHours = parseInt(
+      configMap.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS) ??
+        SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS]
+    );
+    const sigFailLastSentAt = latestSigFailLog?.sentAt?.toISOString() ?? null;
+    const sigFailSentDate = sigFailLastSentAt ? new Date(sigFailLastSentAt) : null;
+    const sigFailSentValid = sigFailSentDate != null && !isNaN(sigFailSentDate.getTime());
+    const sigFailCooldownExpiresAt = sigFailSentValid
+      ? new Date(sigFailSentDate!.getTime() + sigFailCooldownHours * 60 * 60 * 1000).toISOString()
+      : null;
+    const sigFailCooldownActive = sigFailCooldownExpiresAt
+      ? new Date(sigFailCooldownExpiresAt) > new Date()
+      : false;
+
     res.json({
       webhookFailure: {
         lastSentAt: webhookLastSentAt,
@@ -1012,6 +1034,12 @@ router.get("/alert-cooldown-status", async (req, res, next) => {
         cooldownHours: ekqrCooldownHours,
         cooldownActive: ekqrCooldownActive,
         cooldownExpiresAt: ekqrCooldownExpiresAt,
+      },
+      signatureFailure: {
+        lastSentAt: sigFailLastSentAt,
+        cooldownHours: sigFailCooldownHours,
+        cooldownActive: sigFailCooldownActive,
+        cooldownExpiresAt: sigFailCooldownExpiresAt,
       },
     });
   } catch (err) {

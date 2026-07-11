@@ -4213,6 +4213,7 @@ export interface AlertCooldownEntry {
 export interface AlertCooldownStatus {
   webhookFailure: AlertCooldownEntry;
   ekqr: AlertCooldownEntry;
+  signatureFailure: AlertCooldownEntry;
 }
 
 export interface WebhookFailureAlertConfig {
