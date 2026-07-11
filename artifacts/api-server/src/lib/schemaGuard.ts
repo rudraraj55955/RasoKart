@@ -750,6 +750,21 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_merchant_idempotency_key_uniq ON withdrawals(merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
   logger.info({ table: "withdrawals", migration: "add_idempotency_key" }, "schema_guard_column_added");
 
+  // ── system_config ────────────────────────────────────────────────────────
+  // Key-value store queried by initReconciliationScheduler() at startup.
+  // If it doesn't exist on a fresh DB the scheduler throws "relation
+  // system_config does not exist" before the server binds to port 8080
+  // → nginx returns HTTP 502 on every health-check retry (CI failure).
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS system_config (
+      key VARCHAR(100) PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by_email VARCHAR(255)
+    )
+  `);
+  logger.info({ table: "system_config" }, "schema_guard_table_created");
+
   // ── merchant_plans: UNIQUE constraint + Drizzle schema columns ──────────
   // Root CI failure: db-migrate's CREATE TABLE for merchant_plans had neither
   // a UNIQUE constraint on merchant_id nor the Drizzle-schema columns

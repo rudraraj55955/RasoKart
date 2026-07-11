@@ -737,6 +737,19 @@ async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    -- ── system_config ───────────────────────────────────────────────────────
+    -- Key-value store for reconciliation schedule, gateway config, EkQR,
+    -- UPI Gateway, Cashfree payin/payout settings, wallet-load config, etc.
+    -- initReconciliationScheduler() SELECTs from this table at startup; if it
+    -- doesn't exist on a fresh CI database the API crashes before binding to
+    -- port 8080 → nginx returns HTTP 502 on every health-check retry.
+    CREATE TABLE IF NOT EXISTS system_config (
+      key VARCHAR(100) PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by_email VARCHAR(255)
+    );
   `);
 
   console.log("DB migrations complete.");
