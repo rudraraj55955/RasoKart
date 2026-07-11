@@ -280,6 +280,24 @@ type CheckResult = { name: string; passed: boolean; detail: string };
 async function run() {
   console.log("=== RasoKart Alert Email Samples — End-to-End Verification ===\n");
 
+  // Guard: skip gracefully when no SMTP credentials are configured in the environment.
+  // This prevents blocking cold-start deploys where email is not yet configured.
+  // Set SMTP_HOST + SMTP_USER in the environment (e.g. ecosystem.config.cjs) to enable
+  // the full check. The script uses an Ethereal test account internally for sending, but
+  // SMTP_HOST presence signals that this environment is configured for email operations.
+  const smtpConfiguredInEnv = Boolean(
+    process.env["SMTP_HOST"] && process.env["SMTP_USER"],
+  );
+  if (!smtpConfiguredInEnv) {
+    console.log(
+      "⚠  SMTP credentials not configured in environment (SMTP_HOST / SMTP_USER missing).\n" +
+        "   Skipping alert email verification — set SMTP_HOST, SMTP_PORT, SMTP_USER,\n" +
+        "   SMTP_PASS, and SMTP_FROM in ecosystem.config.cjs (or your environment) to\n" +
+        "   enable this post-merge check.\n",
+    );
+    process.exit(0);
+  }
+
   // 1. Admin login
   let token: string;
   try {

@@ -31,6 +31,11 @@ curl -s https://rasokart.com/api/healthz/deep
 # For Hetzner (PM2) deploys, also run the standalone credential check for a
 # more detailed per-account breakdown in the terminal output:
 pnpm --filter @workspace/scripts run verify-demo-credentials
+
+# Smoke-test all 6 alert email send-sample endpoints + preview routes.
+# Requires SMTP_HOST and SMTP_USER to be set in the environment (ecosystem.config.cjs).
+# Skips with a warning if those vars are absent — never blocks a deploy.
+pnpm --filter @workspace/scripts run verify-alert-email-samples
 ```
 
 If `/api/healthz/deep` returns `"status":"degraded"` or `"demo_credentials":false`, do not
@@ -379,6 +384,10 @@ BASE_PATH=/ pnpm --filter @workspace/rpay run build
 
 # Verify the deploy actually applied schema/columns correctly before moving on:
 curl -s https://rasokart.com/api/healthz/deep
+
+# Smoke-test all 6 alert email send-sample endpoints + preview routes.
+# Requires SMTP_HOST and SMTP_USER to be set. Skips with a warning if absent.
+pnpm --filter @workspace/scripts run verify-alert-email-samples
 ```
 
 ### Backups
@@ -448,12 +457,20 @@ Internet
 | `SESSION_SECRET` | ✅ | 64-char random secret for JWT signing |
 | `PORT` | ✅ | API server port (default 8080) |
 | `NODE_ENV` | ✅ | Set to `production` |
-| `SMTP_HOST` | Optional | SMTP server for finance report emails |
-| `SMTP_PORT` | Optional | SMTP port (default 587) |
-| `SMTP_USER` | Optional | SMTP username |
-| `SMTP_PASS` | Optional | SMTP password |
-| `SMTP_FROM` | Optional | From address for outbound emails |
+| `SMTP_HOST` | Optional* | SMTP server hostname (e.g. `smtp.sendgrid.net`) |
+| `SMTP_PORT` | Optional* | SMTP port (default 587) |
+| `SMTP_USER` | Optional* | SMTP username / API key username |
+| `SMTP_PASS` | Optional* | SMTP password / API key |
+| `SMTP_FROM` | Optional* | From address for outbound emails (e.g. `noreply@rasokart.com`) |
+
+> **\* Alert email post-merge check** — `SMTP_HOST` and `SMTP_USER` must both be set for
+> `verify-alert-email-samples` to run during post-merge (the script uses an internal
+> Ethereal test account to send, but uses these vars to detect that email is configured
+> in the environment). When they are absent the step skips with a warning (exit 0) so
+> cold-start deploys are never blocked. Set all five `SMTP_*` vars in
+> `ecosystem.config.cjs` on every environment where you want the full email template
+> smoke test to run automatically on each merge.
 
 ---
 
-*Last updated: 2026-06-10*
+*Last updated: 2026-07-11*
