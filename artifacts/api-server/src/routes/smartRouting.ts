@@ -438,8 +438,8 @@ router.get("/simulate", async (req, res, next) => {
  * notification, so events are deduplicated by (createdAt, failureCount, triggerMerchantId)
  * before returning — one row per real outage alert, not one per admin recipient.
  * Also includes, per event, the distinct provider keys attempted in the hour window
- * leading up to the event (from routing_logs) so admins can see which providers were
- * involved in the exhausted chain.
+ * leading up to the event, and a resolved/ongoing status with duration derived from
+ * the matching `gateway_recovered` admin notification (matched by outageStartedAt).
  */
 router.get("/failover-events", async (req, res, next) => {
   try {
@@ -456,8 +456,46 @@ router.get("/failover-events", async (req, res, next) => {
       .where(eq(notificationsTable.type, "gateway_failover_exhausted"))
       .orderBy(desc(notificationsTable.createdAt));
 
+    // Load all admin-facing gateway_recovered notifications so we can correlate
+    // each exhaustion event with its recovery (matched by metadata.outageStartedAt).
+    const recoveryRows = await db.select({
+      metadata: notificationsTable.metadata,
+      createdAt: notificationsTable.createdAt,
+    })
+      .from(notificationsTable)
+      .where(eq(notificationsTable.type, "gateway_recovered"))
+      .orderBy(desc(notificationsTable.createdAt));
+
+    // Build a map from outageStartedAt (ISO string) → recovery info.
+    // Both the gateway_failover_exhausted notification (metadata.outageStartedAt,
+    // read from PAYIN_CHAIN_EXHAUSTED_SINCE at alert time) and the
+    // gateway_recovered notification (metadata.outageStartedAt, read from the
+    // same system_config row at recovery time) use the identical ISO string —
+    // so this is an exact-key match with no timestamp tolerance needed.
+    type RecoveryInfo = { recoveredAt: string; durationSeconds: number };
+    const recoveryMap = new Map<string, RecoveryInfo>();
+    for (const rec of recoveryRows) {
+      const m = (rec.metadata ?? {}) as { outageStartedAt?: string; recoveredAt?: string; durationSeconds?: number };
+      if (m.outageStartedAt && m.recoveredAt && m.durationSeconds != null && !recoveryMap.has(m.outageStartedAt)) {
+        recoveryMap.set(m.outageStartedAt, {
+          recoveredAt: m.recoveredAt,
+          durationSeconds: m.durationSeconds,
+        });
+      }
+    }
+
     const seen = new Set<string>();
-    const events: { id: number; createdAt: string; failureCount: number; windowMinutes: number; triggerMerchantId: number | null; providersInvolved: string[] }[] = [];
+    const events: {
+      id: number;
+      createdAt: string;
+      failureCount: number;
+      windowMinutes: number;
+      triggerMerchantId: number | null;
+      providersInvolved: string[];
+      status: "resolved" | "ongoing";
+      resolvedAt: string | null;
+      durationSeconds: number | null;
+    }[] = [];
 
     for (const r of rows) {
       const meta = (r.metadata ?? {}) as { failureCount?: number; windowMinutes?: number; triggerMerchantId?: number };
@@ -475,6 +513,16 @@ router.get("/failover-events", async (req, res, next) => {
           eq(routingLogsTable.result, "failed"),
         ));
 
+      // Correlate with a recovery event using the exact outageStartedAt key
+      // stored in both the exhaustion notification metadata (written at alert
+      // time from PAYIN_CHAIN_EXHAUSTED_SINCE) and the recovery notification
+      // metadata (written at recovery time from the same system_config row).
+      // The two values are the identical ISO string, so no tolerance is needed.
+      const exhaustionMeta = (r.metadata ?? {}) as { outageStartedAt?: string };
+      const recovery = exhaustionMeta.outageStartedAt
+        ? (recoveryMap.get(exhaustionMeta.outageStartedAt) ?? null)
+        : null;
+
       events.push({
         id: r.id,
         createdAt: r.createdAt.toISOString(),
@@ -482,6 +530,9 @@ router.get("/failover-events", async (req, res, next) => {
         windowMinutes,
         triggerMerchantId: meta.triggerMerchantId ?? null,
         providersInvolved: providerRows.map(p => p.providerKey),
+        status: recovery ? "resolved" : "ongoing",
+        resolvedAt: recovery?.recoveredAt ?? null,
+        durationSeconds: recovery?.durationSeconds ?? null,
       });
 
       if (events.length >= limit) break;

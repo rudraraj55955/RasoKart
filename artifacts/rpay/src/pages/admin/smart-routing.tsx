@@ -19,7 +19,7 @@ import {
   GitMerge, Activity, BarChart2, ScrollText, Plus, Pencil, Trash2,
   RefreshCw, ArrowUpDown, CheckCircle2, XCircle, Clock, AlertTriangle,
   ShieldCheck, Zap, Settings2, ChevronsDown, Shield, FlaskConical, Loader2,
-  Copy, Download, Info,
+  Copy, Download, Info, CheckCircle,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -91,6 +91,9 @@ type FailoverEvent = {
   windowMinutes: number;
   triggerMerchantId: number | null;
   providersInvolved: string[];
+  status: "resolved" | "ongoing";
+  resolvedAt: string | null;
+  durationSeconds: number | null;
 };
 
 type FailureTrendPoint = {
@@ -147,6 +150,20 @@ const STRATEGY_LABELS: Record<string, string> = {
 };
 
 const PAYMENT_MODES = ["upi", "card", "netbanking", "wallet", "bnpl", "emi"];
+
+function formatDuration(seconds: number): string {
+  if (seconds >= 3600) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  if (seconds >= 60) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  }
+  return `${seconds}s`;
+}
 
 function resultBadge(result: string) {
   switch (result) {
@@ -944,16 +961,40 @@ export default function AdminSmartRouting() {
                   ) : (
                     <div className="space-y-2">
                       {(failoverEventsQ.data?.events ?? []).map(ev => (
-                        <div key={ev.id} className="flex items-start gap-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20">
-                          <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                        <div
+                          key={ev.id}
+                          className={`flex items-start gap-3 p-3 rounded-lg border ${
+                            ev.status === "resolved"
+                              ? "bg-emerald-500/5 border-emerald-500/20"
+                              : "bg-red-500/5 border-red-500/20"
+                          }`}
+                        >
+                          {ev.status === "resolved"
+                            ? <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                            : <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                          }
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium text-red-300">
+                              <span className={`text-sm font-medium ${ev.status === "resolved" ? "text-emerald-300" : "text-red-300"}`}>
                                 {ev.failureCount} failures in {ev.windowMinutes}m
                               </span>
+                              {ev.status === "resolved"
+                                ? <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">Resolved</Badge>
+                                : <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">Ongoing</Badge>
+                              }
                               <span className="text-xs text-zinc-500">
-                                {new Date(ev.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                                Started: {new Date(ev.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                               </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 flex-wrap">
+                              {ev.status === "resolved" && ev.resolvedAt != null && (
+                                <span className="text-xs text-zinc-400">
+                                  Recovered: <span className="text-zinc-300">{new Date(ev.resolvedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>
+                                  {ev.durationSeconds != null && (
+                                    <span className="text-zinc-500"> · outage lasted <span className="text-amber-300 font-medium">{formatDuration(ev.durationSeconds)}</span></span>
+                                  )}
+                                </span>
+                              )}
                             </div>
                             <p className="text-xs text-zinc-400 mt-1">
                               Providers tried: {ev.providersInvolved.length > 0

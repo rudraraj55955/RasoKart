@@ -451,6 +451,16 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
               .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
 
             if (adminUsers.length > 0) {
+              // Read the canonical outage start time so the Failover Events tab
+              // can correlate this alert with its matching gateway_recovered
+              // notification using an exact key match on outageStartedAt.
+              const [chainMarker] = await db
+                .select({ value: systemConfigTable.value })
+                .from(systemConfigTable)
+                .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE))
+                .limit(1);
+              const outageStartedAt = chainMarker?.value ?? new Date().toISOString();
+
               await db.insert(notificationsTable).values(
                 adminUsers.map(u => ({
                   userId: u.id,
@@ -461,6 +471,7 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
                     failureCount,
                     windowMinutes: 60,
                     triggerMerchantId: merchantId,
+                    outageStartedAt,
                   },
                 })),
               ).onConflictDoNothing();

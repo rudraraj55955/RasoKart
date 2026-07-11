@@ -320,6 +320,9 @@ export async function maybeNotifyGatewayRecovery(logger?: Logger): Promise<void>
 
     if (isNaN(exhaustedSince.getTime())) return;
 
+    const recoveredAt = new Date();
+    const durationSeconds = Math.round((recoveredAt.getTime() - exhaustedSince.getTime()) / 1000);
+
     const affected = await db.selectDistinct({ merchantId: routingLogsTable.merchantId })
       .from(routingLogsTable)
       .where(and(
@@ -327,29 +330,73 @@ export async function maybeNotifyGatewayRecovery(logger?: Logger): Promise<void>
         eq(routingLogsTable.result, "failed"),
       ));
     const merchantIds = affected.map(r => r.merchantId);
-    if (merchantIds.length === 0) return;
 
-    const merchantUsers = await db.select({ id: usersTable.id })
+    // Notify affected merchants (best-effort, skip if none)
+    if (merchantIds.length > 0) {
+      const merchantUsers = await db.select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(
+          inArray(usersTable.merchantId, merchantIds),
+          eq(usersTable.role, "merchant"),
+          eq(usersTable.isActive, true),
+        ));
+
+      if (merchantUsers.length > 0) {
+        await createBulkNotifications(merchantUsers.map(u => ({
+          userId: u.id,
+          type: "gateway_recovered" as const,
+          title: "Payment Gateways Are Back Online",
+          body: "Deposit gateways have recovered after a temporary outage. You can now retry your deposit.",
+          metadata: {
+            outageStartedAt: exhaustedSince.toISOString(),
+            recoveredAt: recoveredAt.toISOString(),
+            durationSeconds,
+          },
+        })), { skipPrefCheck: true });
+
+        logger?.info({
+          event: "payin_gateway_recovery_notified",
+          merchantCount: merchantUsers.length,
+          durationSeconds,
+        }, "payin_gateway_recovery_notified");
+      }
+    }
+
+    // Always notify all active admins so they can see outage start/end in the Failover Events tab
+    const adminUsers = await db.select({ id: usersTable.id })
       .from(usersTable)
       .where(and(
-        inArray(usersTable.merchantId, merchantIds),
-        eq(usersTable.role, "merchant"),
+        eq(usersTable.role, "admin"),
         eq(usersTable.isActive, true),
       ));
-    if (merchantUsers.length === 0) return;
 
-    await createBulkNotifications(merchantUsers.map(u => ({
-      userId: u.id,
-      type: "gateway_recovered" as const,
-      title: "Payment Gateways Are Back Online",
-      body: "Deposit gateways have recovered after a temporary outage. You can now retry your deposit.",
-      metadata: { recoveredAt: new Date().toISOString() },
-    })), { skipPrefCheck: true });
+    if (adminUsers.length > 0) {
+      const durationLabel = durationSeconds >= 3600
+        ? `${Math.floor(durationSeconds / 3600)}h ${Math.floor((durationSeconds % 3600) / 60)}m`
+        : durationSeconds >= 60
+          ? `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`
+          : `${durationSeconds}s`;
 
-    logger?.info({
-      event: "payin_gateway_recovery_notified",
-      merchantCount: merchantUsers.length,
-    }, "payin_gateway_recovery_notified");
+      await createBulkNotifications(adminUsers.map(u => ({
+        userId: u.id,
+        type: "gateway_recovered" as const,
+        title: "Gateway Chain Recovered",
+        body: `Payment gateway chain is back online after a ${durationLabel} outage. ${merchantIds.length} merchant(s) were affected.`,
+        metadata: {
+          outageStartedAt: exhaustedSince.toISOString(),
+          recoveredAt: recoveredAt.toISOString(),
+          durationSeconds,
+          affectedMerchantCount: merchantIds.length,
+        },
+      })), { skipPrefCheck: true });
+
+      logger?.info({
+        event: "payin_gateway_recovery_admin_notified",
+        adminCount: adminUsers.length,
+        durationSeconds,
+        affectedMerchantCount: merchantIds.length,
+      }, "payin_gateway_recovery_admin_notified");
+    }
   } catch {
     logger?.error({ event: "payin_gateway_recovery_notify_failed" }, "payin_gateway_recovery_notify_failed");
   }
