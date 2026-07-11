@@ -706,11 +706,31 @@ async function migrate() {
 
     CREATE TABLE IF NOT EXISTS routing_configs (
       id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      config_name VARCHAR(64) NOT NULL UNIQUE,
+      description TEXT,
+      strategy VARCHAR(32) NOT NULL DEFAULT 'priority',
+      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      fallback_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      timeout_ms INTEGER NOT NULL DEFAULT 30000,
+      min_success_rate_threshold NUMERIC(5,2) DEFAULT 80.00,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by_email VARCHAR(255)
     );
+    -- Columns added after initial production deploy — self-heal existing DBs
+    -- that only have the original minimal (name, is_active) schema:
+    -- Make the legacy name/is_active columns optional so Drizzle INSERTs that
+    -- omit them (using the new config_name/is_enabled schema) never violate NOT NULL.
+    ALTER TABLE routing_configs ALTER COLUMN name DROP NOT NULL;
+    ALTER TABLE routing_configs ALTER COLUMN name SET DEFAULT '';
+    ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS config_name VARCHAR(64);
+    ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS description TEXT;
+    ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS strategy VARCHAR(32) NOT NULL DEFAULT 'priority';
+    ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS is_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS fallback_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS timeout_ms INTEGER NOT NULL DEFAULT 30000;
+    ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS min_success_rate_threshold NUMERIC(5,2) DEFAULT 80.00;
+    ALTER TABLE routing_configs ADD COLUMN IF NOT EXISTS updated_by_email VARCHAR(255);
     CREATE TABLE IF NOT EXISTS routing_rules (
       id SERIAL PRIMARY KEY,
       config_id INTEGER NOT NULL REFERENCES routing_configs(id) ON DELETE CASCADE,
@@ -952,6 +972,50 @@ async function migrate() {
     ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS retry_delay_3 INTEGER;
     ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS failure_alert_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS failure_alert_threshold INTEGER NOT NULL DEFAULT 3;
+
+    -- ── callback_logs ─────────────────────────────────────────────────────────
+    -- Accessed by callbackRetry.ts scheduler at startup.
+    CREATE TABLE IF NOT EXISTS callback_logs (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      qr_code_id INTEGER,
+      transaction_id INTEGER,
+      url TEXT NOT NULL,
+      status TEXT NOT NULL,
+      http_status INTEGER,
+      request_body TEXT,
+      response_body TEXT,
+      attempts INTEGER NOT NULL DEFAULT 1,
+      next_retry_at TIMESTAMPTZ,
+      last_attempt_at TIMESTAMPTZ,
+      event_type TEXT,
+      signature_verified BOOLEAN,
+      is_test BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- ── callback_log_attempts ────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS callback_log_attempts (
+      id SERIAL PRIMARY KEY,
+      callback_log_id INTEGER NOT NULL,
+      attempt_number INTEGER NOT NULL,
+      fired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      http_status INTEGER,
+      response_body TEXT
+    );
+
+    -- ── credential_events ────────────────────────────────────────────────────
+    -- Tracks login and API key events for the security audit log.
+    CREATE TABLE IF NOT EXISTS credential_events (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      actor_id INTEGER NOT NULL,
+      actor_email TEXT NOT NULL,
+      key_prefix TEXT,
+      ip_address TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   // ── Section 11: Audit, settings, reports ─────────────────────────────────
@@ -1005,6 +1069,47 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS audit_logs_admin_id_idx ON audit_logs(admin_id);
     CREATE INDEX IF NOT EXISTS audit_logs_target_type_idx ON audit_logs(target_type);
     CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at DESC);
+
+    -- ── report_schedules ─────────────────────────────────────────────────────
+    -- Per-merchant scheduled report config. Accessed by overdueReportScheduler
+    -- and deliverySuccessRateAlertScheduler at startup.
+    CREATE TABLE IF NOT EXISTS report_schedules (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL,
+      frequency TEXT NOT NULL,
+      format TEXT NOT NULL DEFAULT 'xlsx',
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      day_of_week INTEGER,
+      day_of_month INTEGER,
+      last_sent_at TIMESTAMPTZ,
+      consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      auto_pause_after_failures INTEGER NOT NULL DEFAULT 3,
+      next_run_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS report_schedules_merchant_unique_idx ON report_schedules(merchant_id);
+
+    -- ── report_delivery_logs ─────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS report_delivery_logs (
+      id SERIAL PRIMARY KEY,
+      schedule_id INTEGER NOT NULL REFERENCES report_schedules(id) ON DELETE CASCADE,
+      merchant_id INTEGER NOT NULL,
+      attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      success BOOLEAN NOT NULL,
+      failure_reason TEXT,
+      is_auto_pause BOOLEAN NOT NULL DEFAULT FALSE,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      frequency TEXT,
+      format TEXT,
+      outcome TEXT,
+      triggered_by TEXT,
+      triggered_by_email TEXT,
+      performed_by_admin_id INTEGER,
+      performed_by_admin_email TEXT,
+      max_attempts INTEGER,
+      backoff_base_ms INTEGER
+    );
   `);
 
   // ── Section 12: Users columns (large block of notification prefs) ─────────
