@@ -79,6 +79,11 @@ async function restoreMerchantSettings(): Promise<void> {
         isActive: originals.webhookIsActive,
         events: originals.webhookEvents.length ? originals.webhookEvents : ["payment.success"],
         secret: null,
+        // Explicitly pass 0 so the server never applies its default (which can
+        // exceed the global cap when a concurrent test has temporarily lowered
+        // maxAttempts, causing a 422 that aborts the whole teardown and leaves
+        // QR / VA / SMTP settings un-restored for the next run).
+        maxRetries: 0,
       })
     : Promise.resolve();
 

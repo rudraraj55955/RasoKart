@@ -45,3 +45,4 @@
 - [Merchant /auth/me missing business fields](merchant-me-missing-business-fields.md) — silent-revert bugs can be an incomplete backend SELECT, not just a broken frontend useEffect; diff the actual JSON payload against every field read.
 - [GitHub sync repo target & workflows gitignore](github-repo-env-and-workflows-gitignore.md) — set GITHUB_REPO=rudraraj55955/RasoKart (defaults to old RPAY name); verify actual PAT scope before assuming .github/workflows/ can't be pushed.
 - [Playwright fullyParallel hook scope](playwright-fullyparallel-hooks.md) — file-level beforeAll/afterAll run once per worker, not once per file; global mutable-state snapshot/restore must live in globalSetup/globalTeardown instead.
+- [Settings initialized-flag reset antipattern](settings-initialized-flag-reset.md) — calling setXxxInitialized(false) in onSuccess causes stale-cache overwrite before refetch lands; omit the reset so user-typed value stays in state.

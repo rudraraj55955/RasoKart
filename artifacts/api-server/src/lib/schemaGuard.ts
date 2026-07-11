@@ -304,6 +304,21 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS merchant_connections_merchant_id_idx ON merchant_connections(merchant_id)`);
   logger.info({ table: "merchant_connections" }, "schema_guard_table_created");
 
+  // ── merchant_trusted_ips: per-merchant trusted IP allowlist ─────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS merchant_trusted_ips (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      ip_address TEXT NOT NULL,
+      label TEXT NOT NULL,
+      labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // labeled_at was added after initial table creation in some envs
+  await db.execute(sql`ALTER TABLE merchant_trusted_ips ADD COLUMN IF NOT EXISTS labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+  logger.info({ table: "merchant_trusted_ips" }, "schema_guard_table_created");
+
   // ── transactions: CREATE TABLE (must precede ALTER TABLE lines below) ──────
   // db-migrate.ts creates this table before the server starts. This guard
   // ensures it also exists in direct-push envs without db-migrate.

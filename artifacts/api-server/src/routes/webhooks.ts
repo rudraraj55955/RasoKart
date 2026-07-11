@@ -771,14 +771,16 @@ router.put("/", async (req, res) => {
     return;
   }
 
-  const maxRetriesNum = maxRetries != null ? parseInt(String(maxRetries), 10) : 3;
+  const globalConfig = await loadWebhookRetryConfig();
+  const globalMaxRetries = globalConfig.maxAttempts - 1;
+  // Default maxRetries to the lesser of 3 and the current global cap so that
+  // omitting the field never produces a 422 from the cap check below.
+  const maxRetriesNum = maxRetries != null ? parseInt(String(maxRetries), 10) : Math.min(3, globalMaxRetries);
   if (!isFinite(maxRetriesNum) || maxRetriesNum < 0 || maxRetriesNum > 10) {
     res.status(400).json({ error: "maxRetries must be an integer between 0 and 10" });
     return;
   }
 
-  const globalConfig = await loadWebhookRetryConfig();
-  const globalMaxRetries = globalConfig.maxAttempts - 1;
   if (maxRetriesNum > globalMaxRetries) {
     res.status(422).json({ error: `maxRetries cannot exceed the global cap of ${globalMaxRetries}` });
     return;

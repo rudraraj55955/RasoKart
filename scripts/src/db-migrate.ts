@@ -547,6 +547,16 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS merchant_auth_otps_purpose_idx ON merchant_auth_otps(purpose);
     CREATE INDEX IF NOT EXISTS merchant_auth_otps_expires_at_idx ON merchant_auth_otps(expires_at);
 
+    -- ── merchant_trusted_ips: per-merchant trusted IP allowlist ─────────────
+    CREATE TABLE IF NOT EXISTS merchant_trusted_ips (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      ip_address TEXT NOT NULL,
+      label TEXT NOT NULL,
+      labeled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     -- ── providers / provider_integrations / provider_visibility / routing ──────
     -- Safety net for envs where these were never created by drizzle-kit push.
     CREATE TABLE IF NOT EXISTS providers (

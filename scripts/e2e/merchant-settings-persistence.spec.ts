@@ -125,6 +125,10 @@ test("Webhook URL persists after page reload", async ({ page }) => {
     isActive: true,
     events: ["payment.success"],
     secret: null,
+    // Explicitly pass 0 so the server never applies its default (which can
+    // exceed the global cap when a concurrent settings test has temporarily
+    // lowered maxAttempts, causing a spurious 422).
+    maxRetries: 0,
   });
 
   await goToMerchantPage(page, token, "/merchant/webhook");

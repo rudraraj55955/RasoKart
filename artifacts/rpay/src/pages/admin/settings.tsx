@@ -387,7 +387,6 @@ export default function AdminSettings() {
     onSuccess: () => {
       toast.success("SMTP settings saved");
       setSmtpPass("");
-      setSmtpInitialized(false);
       qc.invalidateQueries({ queryKey: ["/api/settings/smtp"] });
       qc.invalidateQueries({ queryKey: ["/api/settings/smtp-status"] });
     },
