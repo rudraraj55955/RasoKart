@@ -36,6 +36,7 @@ router.get("/config", requireSuperAdmin, async (req, res, next) => {
       maxAmount:             parseFloat(cfg.get(SYSTEM_CONFIG_KEYS.RAZORPAY_MAX_AMOUNT) ?? "500000"),
       dailyLimit:            parseFloat(cfg.get(SYSTEM_CONFIG_KEYS.RAZORPAY_DAILY_LIMIT) ?? "1000000"),
       keyIdConfigured:       !!keyId,
+      keyIdLiveMode:         keyId.startsWith("rzp_live_"),
       keySecretConfigured:   !!keySecret,
       webhookSecretConfigured: !!webhookSecret,
     });

@@ -1383,6 +1383,46 @@ async function migrate() {
     );
   `);
 
+  // ── Section 14: Razorpay Payin tables ──────────────────────────────────────
+  await runSection("razorpay-payin-tables", sql`
+    CREATE TABLE IF NOT EXISTS razorpay_payment_orders (
+      id                  SERIAL PRIMARY KEY,
+      merchant_id         INTEGER NOT NULL,
+      internal_order_id   TEXT    NOT NULL,
+      razorpay_order_id   TEXT    NOT NULL,
+      razorpay_payment_id TEXT,
+      amount              NUMERIC(18,2) NOT NULL,
+      currency            TEXT NOT NULL DEFAULT 'INR',
+      status              TEXT NOT NULL DEFAULT 'CREATED',
+      payment_method      TEXT,
+      utr                 TEXT,
+      failure_reason      TEXT,
+      paid_at             TIMESTAMPTZ,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_internal_id_uniq     ON razorpay_payment_orders(internal_order_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_rzp_order_id_uniq    ON razorpay_payment_orders(razorpay_order_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_rzp_payment_id_uniq  ON razorpay_payment_orders(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS razorpay_orders_utr_uniq              ON razorpay_payment_orders(utr) WHERE utr IS NOT NULL;
+    CREATE INDEX        IF NOT EXISTS razorpay_orders_merchant_created_idx  ON razorpay_payment_orders(merchant_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS razorpay_webhook_logs (
+      id                  SERIAL PRIMARY KEY,
+      webhook_event_id    TEXT,
+      event_type          TEXT,
+      razorpay_order_id   TEXT,
+      razorpay_payment_id TEXT,
+      merchant_id         INTEGER,
+      amount              TEXT,
+      processing_result   TEXT NOT NULL,
+      safe_message        TEXT,
+      received_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS razorpay_webhook_logs_event_id_uniq ON razorpay_webhook_logs(webhook_event_id) WHERE webhook_event_id IS NOT NULL;
+    CREATE INDEX        IF NOT EXISTS razorpay_webhook_logs_created_idx    ON razorpay_webhook_logs(received_at);
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }

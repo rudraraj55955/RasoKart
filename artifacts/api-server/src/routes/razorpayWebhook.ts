@@ -33,14 +33,19 @@ router.post("/razorpay", async (req, res) => {
 
   try {
     const webhookSecret = process.env["RAZORPAY_WEBHOOK_SECRET"] ?? "";
-    if (webhookSecret && incomingSignature) {
+    if (webhookSecret) {
+      if (!incomingSignature) {
+        logger.warn({ webhookEventId }, "Razorpay webhook rejected: missing x-razorpay-signature header");
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const valid = verifyRazorpayWebhookSignature(rawBody, incomingSignature, webhookSecret);
       if (!valid) {
         logger.warn({ webhookEventId }, "Razorpay webhook rejected: invalid signature");
         res.status(401).json({ error: "Invalid webhook signature" });
         return;
       }
-    } else if (!webhookSecret) {
+    } else {
       logger.warn("Razorpay webhook secret not configured — accepting without verification (dev mode)");
     }
 
