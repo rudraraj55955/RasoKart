@@ -10246,3 +10246,176 @@ export const CreatePlatformProfitAdjustmentResponse = zod.object({
 })
 
 
+/**
+ * @summary Check if RasoKart payment collection is available (merchant only)
+ */
+export const GetRazorpayStatusResponse = zod.object({
+  "enabled": zod.boolean(),
+  "minAmount": zod.number().optional(),
+  "maxAmount": zod.number().optional()
+})
+
+
+/**
+ * @summary Create a Razorpay payment order server-side (merchant only)
+ */
+export const CreateRazorpayOrderBody = zod.object({
+  "amount": zod.number().describe('Amount in INR'),
+  "note": zod.string().optional()
+})
+
+export const CreateRazorpayOrderResponse = zod.object({
+  "internalOrderId": zod.string(),
+  "razorpayOrderId": zod.string(),
+  "amount": zod.number(),
+  "amountInPaise": zod.number(),
+  "currency": zod.string(),
+  "keyId": zod.string().describe('Public Razorpay Key ID (safe to expose to frontend)')
+})
+
+
+/**
+ * @summary Verify Razorpay payment signature and credit wallet (merchant only)
+ */
+export const VerifyRazorpayPaymentBody = zod.object({
+  "internalOrderId": zod.string(),
+  "razorpayPaymentId": zod.string(),
+  "razorpayOrderId": zod.string(),
+  "razorpaySignature": zod.string()
+})
+
+export const VerifyRazorpayPaymentResponse = zod.object({
+  "status": zod.enum(['success', 'failed']),
+  "message": zod.string(),
+  "internalOrderId": zod.string().optional(),
+  "amount": zod.string().optional(),
+  "paidAt": zod.coerce.date().optional(),
+  "utr": zod.string().optional(),
+  "paymentMethod": zod.string().optional()
+})
+
+
+/**
+ * @summary Get Razorpay order status by internal order ID (merchant only)
+ */
+export const GetRazorpayOrderStatusParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetRazorpayOrderStatusResponse = zod.object({
+  "internalOrderId": zod.string(),
+  "status": zod.string(),
+  "amount": zod.string(),
+  "currency": zod.string(),
+  "paidAt": zod.coerce.date().nullish(),
+  "utr": zod.string().nullish(),
+  "paymentMethod": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get Razorpay payin config (super admin only — no credential values returned)
+ */
+export const GetRazorpayConfigResponse = zod.object({
+  "enabled": zod.boolean(),
+  "minAmount": zod.number(),
+  "maxAmount": zod.number(),
+  "dailyLimit": zod.number(),
+  "keyIdConfigured": zod.boolean(),
+  "keySecretConfigured": zod.boolean(),
+  "webhookSecretConfigured": zod.boolean()
+})
+
+
+/**
+ * @summary Update Razorpay payin config (super admin only)
+ */
+export const UpdateRazorpayConfigBody = zod.object({
+  "enabled": zod.boolean().optional(),
+  "minAmount": zod.number().optional(),
+  "maxAmount": zod.number().optional(),
+  "dailyLimit": zod.number().optional()
+})
+
+export const UpdateRazorpayConfigResponse = zod.object({
+  "enabled": zod.boolean(),
+  "minAmount": zod.number(),
+  "maxAmount": zod.number(),
+  "dailyLimit": zod.number()
+})
+
+
+/**
+ * @summary List Razorpay payment orders (admin only)
+ */
+export const listAdminRazorpayOrdersQueryPageDefault = 1;
+export const listAdminRazorpayOrdersQueryLimitDefault = 20;
+
+export const ListAdminRazorpayOrdersQueryParams = zod.object({
+  "page": zod.coerce.number().default(listAdminRazorpayOrdersQueryPageDefault),
+  "limit": zod.coerce.number().default(listAdminRazorpayOrdersQueryLimitDefault),
+  "status": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional()
+})
+
+export const ListAdminRazorpayOrdersResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "merchantId": zod.number().optional(),
+  "internalOrderId": zod.string().optional(),
+  "razorpayOrderId": zod.string().optional(),
+  "razorpayPaymentId": zod.string().nullish(),
+  "amount": zod.string().optional(),
+  "currency": zod.string().optional(),
+  "status": zod.string().optional(),
+  "paymentMethod": zod.string().nullish(),
+  "utr": zod.string().nullish(),
+  "paidAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Export Razorpay orders as CSV (admin only)
+ */
+export const ExportAdminRazorpayOrdersCsvQueryParams = zod.object({
+  "status": zod.coerce.string().optional()
+})
+
+
+/**
+ * @summary List Razorpay webhook logs (super admin only)
+ */
+export const listRazorpayWebhookLogsQueryPageDefault = 1;
+export const listRazorpayWebhookLogsQueryLimitDefault = 20;
+
+export const ListRazorpayWebhookLogsQueryParams = zod.object({
+  "page": zod.coerce.number().default(listRazorpayWebhookLogsQueryPageDefault),
+  "limit": zod.coerce.number().default(listRazorpayWebhookLogsQueryLimitDefault),
+  "result": zod.coerce.string().optional(),
+  "eventType": zod.coerce.string().optional()
+})
+
+export const ListRazorpayWebhookLogsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "webhookEventId": zod.string().nullish(),
+  "eventType": zod.string().nullish(),
+  "razorpayOrderId": zod.string().nullish(),
+  "razorpayPaymentId": zod.string().nullish(),
+  "merchantId": zod.number().nullish(),
+  "amount": zod.string().nullish(),
+  "processingResult": zod.string().optional(),
+  "safeMessage": zod.string().nullish(),
+  "receivedAt": zod.coerce.date().optional()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+

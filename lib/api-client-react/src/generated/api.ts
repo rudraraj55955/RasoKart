@@ -103,6 +103,7 @@ import type {
   CreatePayinOrderBody,
   CreatePlatformProfitAdjustment200,
   CreateProviderIntegrationBody,
+  CreateRazorpayOrderBody,
   CreateSavedFilterInput,
   CreateSettlementInput,
   CreateSupportTicketInput,
@@ -130,6 +131,7 @@ import type {
   ExpiryCheckResult,
   ExportAdminAuditLogsCsvParams,
   ExportAdminPayinOrdersCsvParams,
+  ExportAdminRazorpayOrdersCsvParams,
   ExportMerchantBalanceHistoryParams,
   ExportMerchantsCsvParams,
   ExportPlatformProfitLedgerCsvParams,
@@ -153,6 +155,7 @@ import type {
   GetPlatformProfitSummaryParams,
   GetQrCodeStatsParams,
   GetQuietHoursQueueCount200,
+  GetRazorpayStatus200,
   GetReconciliationRunEmailLogs200,
   GetReportDeliveryHealth200,
   GetReportDeliveryHealthParams,
@@ -202,6 +205,7 @@ import type {
   ListAccountDetailsParams,
   ListAdminAuditLogsParams,
   ListAdminPayinOrdersParams,
+  ListAdminRazorpayOrdersParams,
   ListAllAuditReportScheduleLogsParams,
   ListApiKeyHistoryParams,
   ListAuditReportScheduleLogsParams,
@@ -230,6 +234,7 @@ import type {
   ListProvidersParams,
   ListQrCodesParams,
   ListQuietHoursQueue200,
+  ListRazorpayWebhookLogsParams,
   ListReconciliationRunItemsParams,
   ListReconciliationRunsParams,
   ListSavedFilters200,
@@ -334,6 +339,13 @@ import type {
   QrCodeUpdateInput,
   QuietHoursFlushConfig,
   RasokartServicesResponse,
+  RazorpayAdminConfig,
+  RazorpayAdminConfigUpdate,
+  RazorpayCreateOrderResult,
+  RazorpayOrderStatusResult,
+  RazorpayOrdersListResponse,
+  RazorpayVerifyResult,
+  RazorpayWebhookLogsResponse,
   ReconciliationItem,
   ReconciliationItemListResponse,
   ReconciliationItemResolveInput,
@@ -426,6 +438,7 @@ import type {
   UpdatePayinChargeSettingsInput,
   UpdateProviderIntegrationBody,
   UpdateProviderProductBody,
+  UpdateRazorpayConfigBody,
   UpdateTicketStatusInput,
   UpiGateway,
   UpiGatewayAssignMerchantsBody,
@@ -460,6 +473,7 @@ import type {
   VerificationDocumentResponse,
   VerificationDocumentsResponse,
   VerificationResponse,
+  VerifyRazorpayPaymentBody,
   VirtualAccount,
   VirtualAccountInput,
   VirtualAccountListResponse,
@@ -31517,4 +31531,700 @@ export const useCreatePlatformProfitAdjustment = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreatePlatformProfitAdjustmentMutationOptions(options));
     }
+
+export const getGetRazorpayStatusUrl = () => {
+
+
+
+
+  return `/api/merchant/razorpay/status`
+}
+
+/**
+ * @summary Check if RasoKart payment collection is available (merchant only)
+ */
+export const getRazorpayStatus = async ( options?: RequestInit): Promise<GetRazorpayStatus200> => {
+
+  return customFetch<GetRazorpayStatus200>(getGetRazorpayStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRazorpayStatusQueryKey = () => {
+    return [
+    `/api/merchant/razorpay/status`
+    ] as const;
+    }
+
+
+export const getGetRazorpayStatusQueryOptions = <TData = Awaited<ReturnType<typeof getRazorpayStatus>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRazorpayStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRazorpayStatus>>> = ({ signal }) => getRazorpayStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRazorpayStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRazorpayStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getRazorpayStatus>>>
+export type GetRazorpayStatusQueryError = ErrorType<void>
+
+
+/**
+ * @summary Check if RasoKart payment collection is available (merchant only)
+ */
+
+export function useGetRazorpayStatus<TData = Awaited<ReturnType<typeof getRazorpayStatus>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRazorpayStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateRazorpayOrderUrl = () => {
+
+
+
+
+  return `/api/merchant/razorpay/create-order`
+}
+
+/**
+ * @summary Create a Razorpay payment order server-side (merchant only)
+ */
+export const createRazorpayOrder = async (createRazorpayOrderBody: CreateRazorpayOrderBody, options?: RequestInit): Promise<RazorpayCreateOrderResult> => {
+
+  return customFetch<RazorpayCreateOrderResult>(getCreateRazorpayOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createRazorpayOrderBody,)
+  }
+);}
+
+
+
+
+export const getCreateRazorpayOrderMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRazorpayOrder>>, TError,{data: BodyType<CreateRazorpayOrderBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRazorpayOrder>>, TError,{data: BodyType<CreateRazorpayOrderBody>}, TContext> => {
+
+const mutationKey = ['createRazorpayOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRazorpayOrder>>, {data: BodyType<CreateRazorpayOrderBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createRazorpayOrder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRazorpayOrderMutationResult = NonNullable<Awaited<ReturnType<typeof createRazorpayOrder>>>
+    export type CreateRazorpayOrderMutationBody = BodyType<CreateRazorpayOrderBody>
+    export type CreateRazorpayOrderMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a Razorpay payment order server-side (merchant only)
+ */
+export const useCreateRazorpayOrder = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRazorpayOrder>>, TError,{data: BodyType<CreateRazorpayOrderBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRazorpayOrder>>,
+        TError,
+        {data: BodyType<CreateRazorpayOrderBody>},
+        TContext
+      > => {
+      return useMutation(getCreateRazorpayOrderMutationOptions(options));
+    }
+
+export const getVerifyRazorpayPaymentUrl = () => {
+
+
+
+
+  return `/api/merchant/razorpay/verify-payment`
+}
+
+/**
+ * @summary Verify Razorpay payment signature and credit wallet (merchant only)
+ */
+export const verifyRazorpayPayment = async (verifyRazorpayPaymentBody: VerifyRazorpayPaymentBody, options?: RequestInit): Promise<RazorpayVerifyResult> => {
+
+  return customFetch<RazorpayVerifyResult>(getVerifyRazorpayPaymentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      verifyRazorpayPaymentBody,)
+  }
+);}
+
+
+
+
+export const getVerifyRazorpayPaymentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyRazorpayPayment>>, TError,{data: BodyType<VerifyRazorpayPaymentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyRazorpayPayment>>, TError,{data: BodyType<VerifyRazorpayPaymentBody>}, TContext> => {
+
+const mutationKey = ['verifyRazorpayPayment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyRazorpayPayment>>, {data: BodyType<VerifyRazorpayPaymentBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  verifyRazorpayPayment(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyRazorpayPaymentMutationResult = NonNullable<Awaited<ReturnType<typeof verifyRazorpayPayment>>>
+    export type VerifyRazorpayPaymentMutationBody = BodyType<VerifyRazorpayPaymentBody>
+    export type VerifyRazorpayPaymentMutationError = ErrorType<void>
+
+    /**
+ * @summary Verify Razorpay payment signature and credit wallet (merchant only)
+ */
+export const useVerifyRazorpayPayment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyRazorpayPayment>>, TError,{data: BodyType<VerifyRazorpayPaymentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyRazorpayPayment>>,
+        TError,
+        {data: BodyType<VerifyRazorpayPaymentBody>},
+        TContext
+      > => {
+      return useMutation(getVerifyRazorpayPaymentMutationOptions(options));
+    }
+
+export const getGetRazorpayOrderStatusUrl = (id: string,) => {
+
+
+
+
+  return `/api/merchant/razorpay/order-status/${id}`
+}
+
+/**
+ * @summary Get Razorpay order status by internal order ID (merchant only)
+ */
+export const getRazorpayOrderStatus = async (id: string, options?: RequestInit): Promise<RazorpayOrderStatusResult> => {
+
+  return customFetch<RazorpayOrderStatusResult>(getGetRazorpayOrderStatusUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRazorpayOrderStatusQueryKey = (id: string,) => {
+    return [
+    `/api/merchant/razorpay/order-status/${id}`
+    ] as const;
+    }
+
+
+export const getGetRazorpayOrderStatusQueryOptions = <TData = Awaited<ReturnType<typeof getRazorpayOrderStatus>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayOrderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRazorpayOrderStatusQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRazorpayOrderStatus>>> = ({ signal }) => getRazorpayOrderStatus(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRazorpayOrderStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRazorpayOrderStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getRazorpayOrderStatus>>>
+export type GetRazorpayOrderStatusQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get Razorpay order status by internal order ID (merchant only)
+ */
+
+export function useGetRazorpayOrderStatus<TData = Awaited<ReturnType<typeof getRazorpayOrderStatus>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayOrderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRazorpayOrderStatusQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetRazorpayConfigUrl = () => {
+
+
+
+
+  return `/api/admin/razorpay/config`
+}
+
+/**
+ * @summary Get Razorpay payin config (super admin only — no credential values returned)
+ */
+export const getRazorpayConfig = async ( options?: RequestInit): Promise<RazorpayAdminConfig> => {
+
+  return customFetch<RazorpayAdminConfig>(getGetRazorpayConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRazorpayConfigQueryKey = () => {
+    return [
+    `/api/admin/razorpay/config`
+    ] as const;
+    }
+
+
+export const getGetRazorpayConfigQueryOptions = <TData = Awaited<ReturnType<typeof getRazorpayConfig>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRazorpayConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRazorpayConfig>>> = ({ signal }) => getRazorpayConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRazorpayConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRazorpayConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getRazorpayConfig>>>
+export type GetRazorpayConfigQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get Razorpay payin config (super admin only — no credential values returned)
+ */
+
+export function useGetRazorpayConfig<TData = Awaited<ReturnType<typeof getRazorpayConfig>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRazorpayConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateRazorpayConfigUrl = () => {
+
+
+
+
+  return `/api/admin/razorpay/config`
+}
+
+/**
+ * @summary Update Razorpay payin config (super admin only)
+ */
+export const updateRazorpayConfig = async (updateRazorpayConfigBody: UpdateRazorpayConfigBody, options?: RequestInit): Promise<RazorpayAdminConfigUpdate> => {
+
+  return customFetch<RazorpayAdminConfigUpdate>(getUpdateRazorpayConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateRazorpayConfigBody,)
+  }
+);}
+
+
+
+
+export const getUpdateRazorpayConfigMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRazorpayConfig>>, TError,{data: BodyType<UpdateRazorpayConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRazorpayConfig>>, TError,{data: BodyType<UpdateRazorpayConfigBody>}, TContext> => {
+
+const mutationKey = ['updateRazorpayConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRazorpayConfig>>, {data: BodyType<UpdateRazorpayConfigBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateRazorpayConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRazorpayConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateRazorpayConfig>>>
+    export type UpdateRazorpayConfigMutationBody = BodyType<UpdateRazorpayConfigBody>
+    export type UpdateRazorpayConfigMutationError = ErrorType<void>
+
+    /**
+ * @summary Update Razorpay payin config (super admin only)
+ */
+export const useUpdateRazorpayConfig = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRazorpayConfig>>, TError,{data: BodyType<UpdateRazorpayConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRazorpayConfig>>,
+        TError,
+        {data: BodyType<UpdateRazorpayConfigBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateRazorpayConfigMutationOptions(options));
+    }
+
+export const getListAdminRazorpayOrdersUrl = (params?: ListAdminRazorpayOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/razorpay/orders?${stringifiedParams}` : `/api/admin/razorpay/orders`
+}
+
+/**
+ * @summary List Razorpay payment orders (admin only)
+ */
+export const listAdminRazorpayOrders = async (params?: ListAdminRazorpayOrdersParams, options?: RequestInit): Promise<RazorpayOrdersListResponse> => {
+
+  return customFetch<RazorpayOrdersListResponse>(getListAdminRazorpayOrdersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminRazorpayOrdersQueryKey = (params?: ListAdminRazorpayOrdersParams,) => {
+    return [
+    `/api/admin/razorpay/orders`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAdminRazorpayOrdersQueryOptions = <TData = Awaited<ReturnType<typeof listAdminRazorpayOrders>>, TError = ErrorType<void>>(params?: ListAdminRazorpayOrdersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminRazorpayOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminRazorpayOrdersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminRazorpayOrders>>> = ({ signal }) => listAdminRazorpayOrders(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminRazorpayOrders>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminRazorpayOrdersQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminRazorpayOrders>>>
+export type ListAdminRazorpayOrdersQueryError = ErrorType<void>
+
+
+/**
+ * @summary List Razorpay payment orders (admin only)
+ */
+
+export function useListAdminRazorpayOrders<TData = Awaited<ReturnType<typeof listAdminRazorpayOrders>>, TError = ErrorType<void>>(
+ params?: ListAdminRazorpayOrdersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminRazorpayOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminRazorpayOrdersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportAdminRazorpayOrdersCsvUrl = (params?: ExportAdminRazorpayOrdersCsvParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/razorpay/orders/export/csv?${stringifiedParams}` : `/api/admin/razorpay/orders/export/csv`
+}
+
+/**
+ * @summary Export Razorpay orders as CSV (admin only)
+ */
+export const exportAdminRazorpayOrdersCsv = async (params?: ExportAdminRazorpayOrdersCsvParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportAdminRazorpayOrdersCsvUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportAdminRazorpayOrdersCsvQueryKey = (params?: ExportAdminRazorpayOrdersCsvParams,) => {
+    return [
+    `/api/admin/razorpay/orders/export/csv`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportAdminRazorpayOrdersCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportAdminRazorpayOrdersCsv>>, TError = ErrorType<void>>(params?: ExportAdminRazorpayOrdersCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminRazorpayOrdersCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportAdminRazorpayOrdersCsvQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportAdminRazorpayOrdersCsv>>> = ({ signal }) => exportAdminRazorpayOrdersCsv(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportAdminRazorpayOrdersCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportAdminRazorpayOrdersCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportAdminRazorpayOrdersCsv>>>
+export type ExportAdminRazorpayOrdersCsvQueryError = ErrorType<void>
+
+
+/**
+ * @summary Export Razorpay orders as CSV (admin only)
+ */
+
+export function useExportAdminRazorpayOrdersCsv<TData = Awaited<ReturnType<typeof exportAdminRazorpayOrdersCsv>>, TError = ErrorType<void>>(
+ params?: ExportAdminRazorpayOrdersCsvParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportAdminRazorpayOrdersCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportAdminRazorpayOrdersCsvQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListRazorpayWebhookLogsUrl = (params?: ListRazorpayWebhookLogsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/razorpay/webhook-logs?${stringifiedParams}` : `/api/admin/razorpay/webhook-logs`
+}
+
+/**
+ * @summary List Razorpay webhook logs (super admin only)
+ */
+export const listRazorpayWebhookLogs = async (params?: ListRazorpayWebhookLogsParams, options?: RequestInit): Promise<RazorpayWebhookLogsResponse> => {
+
+  return customFetch<RazorpayWebhookLogsResponse>(getListRazorpayWebhookLogsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRazorpayWebhookLogsQueryKey = (params?: ListRazorpayWebhookLogsParams,) => {
+    return [
+    `/api/admin/razorpay/webhook-logs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListRazorpayWebhookLogsQueryOptions = <TData = Awaited<ReturnType<typeof listRazorpayWebhookLogs>>, TError = ErrorType<void>>(params?: ListRazorpayWebhookLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRazorpayWebhookLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRazorpayWebhookLogsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRazorpayWebhookLogs>>> = ({ signal }) => listRazorpayWebhookLogs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRazorpayWebhookLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRazorpayWebhookLogsQueryResult = NonNullable<Awaited<ReturnType<typeof listRazorpayWebhookLogs>>>
+export type ListRazorpayWebhookLogsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List Razorpay webhook logs (super admin only)
+ */
+
+export function useListRazorpayWebhookLogs<TData = Awaited<ReturnType<typeof listRazorpayWebhookLogs>>, TError = ErrorType<void>>(
+ params?: ListRazorpayWebhookLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRazorpayWebhookLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRazorpayWebhookLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 

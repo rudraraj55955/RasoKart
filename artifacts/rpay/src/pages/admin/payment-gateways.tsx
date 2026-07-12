@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -10,6 +10,7 @@ import {
   useListProviderIntegrations, useUpdateProviderIntegration, useDeleteProviderIntegration,
   getListProviderIntegrationsQueryKey,
   useGetPayinChargeSettings, useUpdatePayinChargeSettings, getGetPayinChargeSettingsQueryKey,
+  useGetRazorpayConfig, useUpdateRazorpayConfig,
 } from "@workspace/api-client-react";
 import type { ProviderIntegration } from "@workspace/api-client-react";
 import { getToken } from "@/lib/auth";
@@ -59,6 +60,55 @@ function copyToClipboard(text: string, label: string) {
 }
 
 // ── Overview provider cards ───────────────────────────────────────────────────
+
+function RazorpayPayinCard({ onConfigure }: { onConfigure: () => void }) {
+  const { data, isLoading } = useGetRazorpayConfig({ request: { headers: authHeader() } });
+  return (
+    <Card className="border-border/50 hover:border-indigo-500/30 transition-colors">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+            <CreditCard className="w-4 h-4 text-indigo-400" />
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            {!isLoading && data && <StatusBadge enabled={data.enabled} />}
+          </div>
+        </div>
+        <CardTitle className="text-sm font-semibold mt-2">Razorpay Payin</CardTitle>
+        <CardDescription className="text-xs">
+          Standard Checkout — collect via UPI, Cards, Netbanking
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Key ID</span>
+            <ConnectedBadge connected={data?.keyIdConfigured ?? false} />
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Key Secret</span>
+            <ConnectedBadge connected={data?.keySecretConfigured ?? false} />
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Webhook Secret</span>
+            <ConnectedBadge connected={data?.webhookSecretConfigured ?? false} />
+          </div>
+        </div>
+        <Separator className="opacity-30" />
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={onConfigure}>
+            <Settings2 className="w-3 h-3 mr-1.5" />Configure
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs px-2" asChild>
+            <Link href="/admin/razorpay-transactions">
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function CashfreePayinCard({ onConfigure }: { onConfigure: () => void }) {
   const { data, isLoading } = useGetCashfreeConfig({ request: { headers: authHeader() } });
@@ -945,6 +995,144 @@ function UpigatewayPayinPanel() {
 
 // ── Cashfree summary panels ───────────────────────────────────────────────────
 
+function RazorpayPanel() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useGetRazorpayConfig({ request: { headers: authHeader() } });
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
+  const [dailyLimit, setDailyLimit] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!data) return;
+    if (enabled === null) setEnabled(data.enabled);
+    if (!minAmount) setMinAmount(String(data.minAmount));
+    if (!maxAmount) setMaxAmount(String(data.maxAmount));
+    if (!dailyLimit) setDailyLimit(String(data.dailyLimit));
+  }, [data]);
+
+  const update = useUpdateRazorpayConfig();
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await update.mutateAsync({
+        data: {
+          enabled: enabled ?? false,
+          minAmount: parseFloat(minAmount) || 100,
+          maxAmount: parseFloat(maxAmount) || 500000,
+          dailyLimit: parseFloat(dailyLimit) || 1000000,
+        },
+      });
+      qc.invalidateQueries({ queryKey: ["/api/admin/razorpay/config"] });
+      toast.success("Razorpay config saved");
+    } catch (err: any) {
+      toast.error(err?.data?.error ?? "Failed to save config");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
+        <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+          <CreditCard className="w-4 h-4 text-indigo-400" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium">Razorpay Standard Checkout</p>
+          <p className="text-xs text-muted-foreground">UPI, Cards, Netbanking — credentials stored as environment secrets</p>
+        </div>
+        {!isLoading && data && <StatusBadge enabled={data.enabled} />}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="rounded-lg border border-border/40 p-3">
+          <p className="text-xs text-muted-foreground mb-1">RAZORPAY_KEY_ID</p>
+          <ConnectedBadge connected={data?.keyIdConfigured ?? false} />
+        </div>
+        <div className="rounded-lg border border-border/40 p-3">
+          <p className="text-xs text-muted-foreground mb-1">RAZORPAY_KEY_SECRET</p>
+          <ConnectedBadge connected={data?.keySecretConfigured ?? false} />
+        </div>
+        <div className="rounded-lg border border-border/40 p-3">
+          <p className="text-xs text-muted-foreground mb-1">RAZORPAY_WEBHOOK_SECRET</p>
+          <ConnectedBadge connected={data?.webhookSecretConfigured ?? false} />
+        </div>
+      </div>
+
+      <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 flex items-start gap-2">
+        <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          Credentials are read from <code className="font-mono">RAZORPAY_KEY_ID</code>, <code className="font-mono">RAZORPAY_KEY_SECRET</code>, and <code className="font-mono">RAZORPAY_WEBHOOK_SECRET</code> environment secrets — never stored in the database.
+        </span>
+      </div>
+
+      <div className="space-y-4 border border-border/40 rounded-lg p-4">
+        <p className="text-sm font-medium">Payin Settings</p>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm">Enable Razorpay Payin</p>
+            <p className="text-xs text-muted-foreground">Allow merchants to deposit via Razorpay checkout</p>
+          </div>
+          <Switch
+            checked={enabled ?? false}
+            onCheckedChange={setEnabled}
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Min Amount (₹)</Label>
+            <Input
+              type="number"
+              value={minAmount}
+              onChange={e => setMinAmount(e.target.value)}
+              className="h-8 text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Max Amount (₹)</Label>
+            <Input
+              type="number"
+              value={maxAmount}
+              onChange={e => setMaxAmount(e.target.value)}
+              className="h-8 text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Daily Limit (₹)</Label>
+            <Input
+              type="number"
+              value={dailyLimit}
+              onChange={e => setDailyLimit(e.target.value)}
+              className="h-8 text-xs"
+            />
+          </div>
+        </div>
+
+        <Button onClick={handleSave} disabled={saving} size="sm">
+          {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Save className="w-3.5 h-3.5 mr-1.5" />Save Settings</>}
+        </Button>
+      </div>
+
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/admin/razorpay-transactions">
+            View Transactions <ExternalLink className="w-3 h-3 ml-1.5" />
+          </Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/admin/razorpay-webhook-logs">
+            Webhook Logs <ExternalLink className="w-3 h-3 ml-1.5" />
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function CashfreePayinPanel() {
   const { data, isLoading } = useGetCashfreeConfig({ request: { headers: authHeader() } });
   return (
@@ -1749,6 +1937,7 @@ export default function AdminPaymentGateways() {
           {/* ── Overview ────────────────────────────────────────────────── */}
           <TabsContent value="overview" className="mt-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <RazorpayPayinCard onConfigure={() => openConfigTab("razorpay")} />
               <CashfreePayinCard onConfigure={() => openConfigTab("cashfree-payin")} />
               <CashfreePayoutCard onConfigure={() => openConfigTab("cashfree-payout")} />
               <EkqrCard onConfigure={() => openConfigTab("ekqr")} />
@@ -1789,6 +1978,9 @@ export default function AdminPaymentGateways() {
           <TabsContent value="configure" className="mt-5">
             <Tabs value={configTab} onValueChange={setConfigTab}>
               <TabsList className="h-8 mb-5 flex-wrap h-auto">
+                <TabsTrigger value="razorpay" className="text-xs px-3">
+                  <CreditCard className="w-3 h-3 mr-1.5" />Razorpay
+                </TabsTrigger>
                 <TabsTrigger value="cashfree-payin" className="text-xs px-3">
                   <CreditCard className="w-3 h-3 mr-1.5" />Payin Gateway
                 </TabsTrigger>
@@ -1804,6 +1996,7 @@ export default function AdminPaymentGateways() {
                   </TabsTrigger>
                 ))}
               </TabsList>
+              <TabsContent value="razorpay"><RazorpayPanel /></TabsContent>
               <TabsContent value="cashfree-payin"><CashfreePayinPanel /></TabsContent>
               <TabsContent value="cashfree-payout"><CashfreePayoutPanel /></TabsContent>
               <TabsContent value="ekqr">

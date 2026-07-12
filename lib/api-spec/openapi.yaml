@@ -10888,6 +10888,273 @@ paths:
                   newBalance:
                     type: number
 
+  /merchant/razorpay/status:
+    get:
+      operationId: getRazorpayStatus
+      tags: [system-config]
+      summary: Check if RasoKart payment collection is available (merchant only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Razorpay payin availability
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled]
+                properties:
+                  enabled:
+                    type: boolean
+                  minAmount:
+                    type: number
+                  maxAmount:
+                    type: number
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /merchant/razorpay/create-order:
+    post:
+      operationId: createRazorpayOrder
+      tags: [system-config]
+      summary: Create a Razorpay payment order server-side (merchant only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  description: Amount in INR
+                note:
+                  type: string
+      responses:
+        "200":
+          description: Order created — returns public fields only, never keySecret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RazorpayCreateOrderResult"
+        "400":
+          description: Validation error or gateway not enabled
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "502":
+          description: Razorpay API error
+
+  /merchant/razorpay/verify-payment:
+    post:
+      operationId: verifyRazorpayPayment
+      tags: [system-config]
+      summary: Verify Razorpay payment signature and credit wallet (merchant only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [internalOrderId, razorpayPaymentId, razorpayOrderId, razorpaySignature]
+              properties:
+                internalOrderId:
+                  type: string
+                razorpayPaymentId:
+                  type: string
+                razorpayOrderId:
+                  type: string
+                razorpaySignature:
+                  type: string
+      responses:
+        "200":
+          description: Payment verified and wallet credited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RazorpayVerifyResult"
+        "400":
+          description: Invalid signature or payment not captured
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "502":
+          description: Razorpay fetch error
+
+  /merchant/razorpay/order-status/{id}:
+    get:
+      operationId: getRazorpayOrderStatus
+      tags: [system-config]
+      summary: Get Razorpay order status by internal order ID (merchant only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RazorpayOrderStatusResult"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Order not found
+
+  /admin/razorpay/config:
+    get:
+      operationId: getRazorpayConfig
+      tags: [system-config]
+      summary: Get Razorpay payin config (super admin only — no credential values returned)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Razorpay config with masked credential availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RazorpayAdminConfig"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+    put:
+      operationId: updateRazorpayConfig
+      tags: [system-config]
+      summary: Update Razorpay payin config (super admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                minAmount:
+                  type: number
+                maxAmount:
+                  type: number
+                dailyLimit:
+                  type: number
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RazorpayAdminConfigUpdate"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /admin/razorpay/orders:
+    get:
+      operationId: listAdminRazorpayOrders
+      tags: [system-config]
+      summary: List Razorpay payment orders (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated Razorpay orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RazorpayOrdersListResponse"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /admin/razorpay/orders/export/csv:
+    get:
+      operationId: exportAdminRazorpayOrdersCsv
+      tags: [system-config]
+      summary: Export Razorpay orders as CSV (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /admin/razorpay/webhook-logs:
+    get:
+      operationId: listRazorpayWebhookLogs
+      tags: [system-config]
+      summary: List Razorpay webhook logs (super admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: result
+          in: query
+          schema: { type: string }
+        - name: eventType
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated webhook logs (masked, no raw payloads)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RazorpayWebhookLogsResponse"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
 components:
   schemas:
     CompanySettingsPublic:
@@ -18408,4 +18675,194 @@ components:
           type: object
           additionalProperties: true
           description: Full presets map keyed by "METHOD /path"
+
+    RazorpayCreateOrderResult:
+      type: object
+      required: [internalOrderId, razorpayOrderId, amount, amountInPaise, currency, keyId]
+      properties:
+        internalOrderId:
+          type: string
+        razorpayOrderId:
+          type: string
+        amount:
+          type: number
+        amountInPaise:
+          type: number
+        currency:
+          type: string
+        keyId:
+          type: string
+          description: Public Razorpay Key ID (safe to expose to frontend)
+
+    RazorpayVerifyResult:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [success, failed]
+        message:
+          type: string
+        internalOrderId:
+          type: string
+        amount:
+          type: string
+        paidAt:
+          type: string
+          format: date-time
+        utr:
+          type: string
+        paymentMethod:
+          type: string
+
+    RazorpayOrderStatusResult:
+      type: object
+      required: [internalOrderId, status, amount, currency]
+      properties:
+        internalOrderId:
+          type: string
+        status:
+          type: string
+        amount:
+          type: string
+        currency:
+          type: string
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        utr:
+          type: string
+          nullable: true
+        paymentMethod:
+          type: string
+          nullable: true
+
+    RazorpayAdminConfig:
+      type: object
+      required: [enabled, minAmount, maxAmount, dailyLimit, keyIdConfigured, keySecretConfigured, webhookSecretConfigured]
+      properties:
+        enabled:
+          type: boolean
+        minAmount:
+          type: number
+        maxAmount:
+          type: number
+        dailyLimit:
+          type: number
+        keyIdConfigured:
+          type: boolean
+        keySecretConfigured:
+          type: boolean
+        webhookSecretConfigured:
+          type: boolean
+
+    RazorpayAdminConfigUpdate:
+      type: object
+      required: [enabled, minAmount, maxAmount, dailyLimit]
+      properties:
+        enabled:
+          type: boolean
+        minAmount:
+          type: number
+        maxAmount:
+          type: number
+        dailyLimit:
+          type: number
+
+    RazorpayPaymentOrderRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        merchantId:
+          type: integer
+        internalOrderId:
+          type: string
+        razorpayOrderId:
+          type: string
+        razorpayPaymentId:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+        paymentMethod:
+          type: string
+          nullable: true
+        utr:
+          type: string
+          nullable: true
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    RazorpayOrdersListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RazorpayPaymentOrderRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    RazorpayWebhookLogRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        webhookEventId:
+          type: string
+          nullable: true
+        eventType:
+          type: string
+          nullable: true
+        razorpayOrderId:
+          type: string
+          nullable: true
+        razorpayPaymentId:
+          type: string
+          nullable: true
+        merchantId:
+          type: integer
+          nullable: true
+        amount:
+          type: string
+          nullable: true
+        processingResult:
+          type: string
+        safeMessage:
+          type: string
+          nullable: true
+        receivedAt:
+          type: string
+          format: date-time
+
+    RazorpayWebhookLogsResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RazorpayWebhookLogRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
 

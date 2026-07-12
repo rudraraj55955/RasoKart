@@ -120,6 +120,11 @@ export const SYSTEM_CONFIG_KEYS = {
   // Failover-exhaustion admin alert tuning
   FAILOVER_ALERT_THRESHOLD: "failover_alert_threshold",
   FAILOVER_ALERT_WINDOW_MINUTES: "failover_alert_window_minutes",
+  // Razorpay Payin — credentials are ENV-ONLY, never stored here
+  RAZORPAY_ENABLED:    "razorpay_enabled",
+  RAZORPAY_MIN_AMOUNT: "razorpay_min_amount",
+  RAZORPAY_MAX_AMOUNT: "razorpay_max_amount",
+  RAZORPAY_DAILY_LIMIT: "razorpay_daily_limit",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {
@@ -199,4 +204,8 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.WALLET_LOAD_UPI_ID]:            "",
   [SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD]:       "5",
   [SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES]:  "60",
+  [SYSTEM_CONFIG_KEYS.RAZORPAY_ENABLED]:    "false",
+  [SYSTEM_CONFIG_KEYS.RAZORPAY_MIN_AMOUNT]: "100",
+  [SYSTEM_CONFIG_KEYS.RAZORPAY_MAX_AMOUNT]: "500000",
+  [SYSTEM_CONFIG_KEYS.RAZORPAY_DAILY_LIMIT]: "1000000",
 } as const;

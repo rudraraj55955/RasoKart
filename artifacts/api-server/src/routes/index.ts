@@ -82,6 +82,9 @@ import dummyDataCleanupRouter from "./dummyDataCleanup";
 import accountStatementRouter from "./accountStatement";
 import tryItPresetsRouter from "./tryItPresets";
 import adminTryItPresetsRouter from "./adminTryItPresets";
+import razorpayOrdersRouter from "./razorpayOrders";
+import razorpayWebhookRouter from "./razorpayWebhook";
+import adminRazorpayRouter from "./adminRazorpay";
 
 const router: IRouter = Router();
 
@@ -106,6 +109,8 @@ router.use("/webhooks/payin", payinWebhookRouter);
 router.use("/webhooks/payin/custom", payinCustomWebhookRouter);
 // Public UPIGateway payin webhook — must come BEFORE /webhooks (which has global requireAuth)
 router.use("/webhooks/upigateway", upigatewayWebhookRouter);
+// Public Razorpay payin webhook — must come BEFORE /webhooks (which has global requireAuth)
+router.use("/webhooks", razorpayWebhookRouter);
 router.use("/webhooks", webhooksRouter);
 router.use("/callbacks", callbacksRouter);
 router.use("/settlements", settlementsRouter);
@@ -196,5 +201,10 @@ router.use("/public/payout-slip", publicPayoutSlipRouter);
 
 // Data Hygiene — Super Admin only dummy/demo data detection + cleanup
 router.use("/admin/dummy-data-cleanup", dummyDataCleanupRouter);
+
+// Merchant-facing Razorpay routes (create-order, verify-payment, status)
+router.use("/merchant", razorpayOrdersRouter);
+// Admin Razorpay config, orders, webhook-logs — Super Admin only
+router.use("/admin/razorpay", adminRazorpayRouter);
 
 export default router;

@@ -20,6 +20,9 @@ import {
   useGetPayinOrderStatus,
   useListNotifications,
   getListNotificationsQueryKey,
+  useGetRazorpayStatus,
+  useCreateRazorpayOrder,
+  useVerifyRazorpayPayment,
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -879,6 +882,19 @@ export default function MerchantDeposits() {
   const isCustomDateAlreadySaved = customDatePresets.some(p => p.from === dateFrom && p.to === dateTo);
   const canSaveDatePreset = isCustomDateRangeEntered && !isBuiltInPresetActive && !isCustomDateAlreadySaved;
 
+  // Razorpay deposit dialog state
+  const [showRazorpay, setShowRazorpay] = useState(false);
+  const [rzpAmount, setRzpAmount] = useState("");
+  const [rzpCreating, setRzpCreating] = useState(false);
+  const [rzpOrderData, setRzpOrderData] = useState<{ internalOrderId: string; razorpayOrderId: string; amount: number; amountInPaise: number; keyId: string } | null>(null);
+  const [rzpResult, setRzpResult] = useState<{ status: "success" | "failed" | "idle"; message?: string } | null>(null);
+  const { data: razorpayStatusData } = useGetRazorpayStatus();
+  const razorpayEnabled = razorpayStatusData?.enabled ?? false;
+  const razorpayMinAmount = razorpayStatusData?.minAmount ?? 100;
+  const razorpayMaxAmount = razorpayStatusData?.maxAmount ?? 500000;
+  const createRazorpayOrder = useCreateRazorpayOrder();
+  const verifyRazorpayPayment = useVerifyRazorpayPayment();
+
   // RasoKart UPI deposit dialog state
   const [showCashfree, setShowCashfree] = useState(false);
   const [cfAmount, setCfAmount] = useState("");
@@ -945,6 +961,79 @@ export default function MerchantDeposits() {
     setCheckoutAutoOpenFailed(false);
     checkoutOpenAttempted.current = false;
     setCfAmount(""); setCfPhone(""); setCfName(""); setCfEmail("");
+  };
+
+  const resetRazorpayDialog = () => {
+    setShowRazorpay(false);
+    setRzpAmount("");
+    setRzpOrderData(null);
+    setRzpResult(null);
+  };
+
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) { resolve(true); return; }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleRazorpayPay = async () => {
+    const amount = Number(rzpAmount);
+    if (!amount || amount < razorpayMinAmount || amount > razorpayMaxAmount) {
+      toast.error(`Amount must be between ₹${razorpayMinAmount.toLocaleString()} and ₹${razorpayMaxAmount.toLocaleString()}`);
+      return;
+    }
+    setRzpCreating(true);
+    try {
+      const order: any = await createRazorpayOrder.mutateAsync({ data: { amount } });
+      setRzpOrderData(order);
+      const loaded = await loadRazorpayScript();
+      if (!loaded) {
+        toast.error("Failed to load payment module. Please try again.");
+        setRzpCreating(false);
+        return;
+      }
+      const rzp = new (window as any).Razorpay({
+        key: order.keyId,
+        amount: order.amountInPaise,
+        currency: order.currency ?? "INR",
+        order_id: order.razorpayOrderId,
+        name: "RasoKart",
+        description: "Wallet Deposit",
+        theme: { color: "#6366f1" },
+        handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+          try {
+            const result: any = await verifyRazorpayPayment.mutateAsync({
+              data: {
+                internalOrderId: order.internalOrderId,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpaySignature: response.razorpay_signature,
+              },
+            });
+            setRzpResult({ status: "success", message: result.message ?? "Deposit received successfully" });
+            queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+          } catch {
+            setRzpResult({ status: "failed", message: "Payment verification failed. Contact support if amount was deducted." });
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setRzpResult((prev) => prev ?? { status: "idle" });
+          },
+        },
+      });
+      rzp.open();
+    } catch (err: any) {
+      toast.error(err?.data?.error ?? err?.message ?? "Failed to create payment order");
+    } finally {
+      setRzpCreating(false);
+    }
   };
 
   // Opens the RasoKart Secure Checkout in a new tab. Never logs the raw
@@ -1247,6 +1336,17 @@ export default function MerchantDeposits() {
                 )}
               </Tooltip>
             </TooltipProvider>
+          )}
+          {razorpayEnabled && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowRazorpay(true)}
+              className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/50"
+            >
+              <CreditCard className="w-4 h-4 mr-2" />
+              Deposit via Card / UPI
+            </Button>
           )}
           <Button size="sm" onClick={() => setShowSimulate(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -2058,6 +2158,97 @@ export default function MerchantDeposits() {
               )}
               <Button variant="outline" onClick={resetPayinDialog}>Close</Button>
             </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Razorpay Deposit Dialog */}
+      <Dialog open={showRazorpay} onOpenChange={(open) => { if (!open) resetRazorpayDialog(); else setShowRazorpay(true); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-violet-400" />
+              Deposit via Card / UPI
+            </DialogTitle>
+          </DialogHeader>
+
+          {rzpResult?.status === "success" ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-6 text-center space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+                <p className="text-sm font-medium text-emerald-300">Deposit successful</p>
+                {rzpOrderData && (
+                  <p className="text-2xl font-bold font-mono">₹{rzpOrderData.amount.toLocaleString()}</p>
+                )}
+                <p className="text-xs text-muted-foreground">Your wallet has been credited.</p>
+              </div>
+              <DialogFooter>
+                <Button onClick={resetRazorpayDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : rzpResult?.status === "failed" ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-6 text-center space-y-2">
+                <XCircle className="w-10 h-10 text-rose-400 mx-auto" />
+                <p className="text-sm font-medium text-rose-300">Payment failed</p>
+                {rzpResult.message && (
+                  <p className="text-xs text-muted-foreground">{rzpResult.message}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetRazorpayDialog}>Close</Button>
+                <Button onClick={() => { setRzpResult(null); setRzpOrderData(null); }}>Try Again</Button>
+              </DialogFooter>
+            </div>
+          ) : rzpResult?.status === "idle" && rzpOrderData ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4 text-center space-y-2">
+                <p className="text-xs text-muted-foreground">Order ID</p>
+                <p className="font-mono text-xs">{rzpOrderData.razorpayOrderId}</p>
+                <p className="text-2xl font-bold font-mono">₹{rzpOrderData.amount.toLocaleString()}</p>
+                <p className="text-sm text-amber-300">Payment window was closed. Use the button below to retry.</p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetRazorpayDialog}>Cancel</Button>
+                <Button
+                  onClick={handleRazorpayPay}
+                  disabled={rzpCreating}
+                >
+                  {rzpCreating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening…</> : "Reopen Checkout"}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>Amount (₹) <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="number"
+                    placeholder={`e.g. ${razorpayMinAmount}`}
+                    min={razorpayMinAmount}
+                    max={razorpayMaxAmount}
+                    value={rzpAmount}
+                    onChange={e => setRzpAmount(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleRazorpayPay(); }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Min ₹{razorpayMinAmount.toLocaleString()} · Max ₹{razorpayMaxAmount.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-md bg-muted/40 border border-border/40 p-3 text-xs text-muted-foreground">
+                  RasoKart Secure Checkout will open. Pay via UPI, Credit/Debit Card, or Netbanking. Your wallet will be credited automatically on success.
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetRazorpayDialog} disabled={rzpCreating}>Cancel</Button>
+                <Button onClick={handleRazorpayPay} disabled={rzpCreating || !rzpAmount}>
+                  {rzpCreating
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Opening checkout…</>
+                    : `Pay ₹${Number(rzpAmount) > 0 ? Number(rzpAmount).toLocaleString() : "—"}`}
+                </Button>
+              </DialogFooter>
+            </>
           )}
         </DialogContent>
       </Dialog>

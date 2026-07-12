@@ -86,3 +86,4 @@ export * from "./verificationLogs";
 export * from "./tryItPresets";
 export * from "./agents";
 export * from "./payoutWalletLoadOrders";
+export * from "./razorpayPayments";

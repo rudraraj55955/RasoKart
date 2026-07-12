@@ -97,6 +97,8 @@ import AdminWalletDetail from "@/pages/admin/wallet-detail";
 import AdminSupportTickets from "@/pages/admin/support-tickets";
 import AdminMerchantVerifications from "@/pages/admin/merchant-verifications";
 import AdminUtrVerifications from "@/pages/admin/utr-verifications";
+import AdminRazorpayTransactions from "@/pages/admin/razorpay-transactions";
+import AdminRazorpayWebhookLogs from "@/pages/admin/razorpay-webhook-logs";
 import PayPage from "@/pages/pay";
 import QrPayPage from "@/pages/qr-pay";
 import VaPayPage from "@/pages/va-pay";
@@ -420,6 +422,8 @@ function Router() {
       <Route path="/admin/virtual-accounts"><AdminRoute component={AdminVirtualAccounts} /></Route>
       <Route path="/admin/deposits"><AdminRoute component={AdminDeposits} /></Route>
       <Route path="/admin/utr-verifications"><AdminRoute component={AdminUtrVerifications} /></Route>
+      <Route path="/admin/razorpay-transactions"><AdminRoute component={AdminRazorpayTransactions} /></Route>
+      <Route path="/admin/razorpay-webhook-logs"><AdminRoute component={AdminRazorpayWebhookLogs} /></Route>
       <Route path="/admin/webhook-logs"><AdminRoute component={AdminWebhookLogs} /></Route>
       <Route path="/admin/payout-webhook-logs"><AdminRoute component={AdminPayoutWebhookLogs} /></Route>
       <Route path="/admin/api-monitoring"><AdminRoute component={AdminApiMonitoring} /></Route>

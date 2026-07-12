@@ -6069,6 +6069,103 @@ export interface SetMerchantTryItPresetsInput {
   presets: SetMerchantTryItPresetsInputPresets;
 }
 
+export interface RazorpayCreateOrderResult {
+  internalOrderId: string;
+  razorpayOrderId: string;
+  amount: number;
+  amountInPaise: number;
+  currency: string;
+  /** Public Razorpay Key ID (safe to expose to frontend) */
+  keyId: string;
+}
+
+export type RazorpayVerifyResultStatus = typeof RazorpayVerifyResultStatus[keyof typeof RazorpayVerifyResultStatus];
+
+
+export const RazorpayVerifyResultStatus = {
+  success: 'success',
+  failed: 'failed',
+} as const;
+
+export interface RazorpayVerifyResult {
+  status: RazorpayVerifyResultStatus;
+  message: string;
+  internalOrderId?: string;
+  amount?: string;
+  paidAt?: string;
+  utr?: string;
+  paymentMethod?: string;
+}
+
+export interface RazorpayOrderStatusResult {
+  internalOrderId: string;
+  status: string;
+  amount: string;
+  currency: string;
+  paidAt?: string | null;
+  utr?: string | null;
+  paymentMethod?: string | null;
+}
+
+export interface RazorpayAdminConfig {
+  enabled: boolean;
+  minAmount: number;
+  maxAmount: number;
+  dailyLimit: number;
+  keyIdConfigured: boolean;
+  keySecretConfigured: boolean;
+  webhookSecretConfigured: boolean;
+}
+
+export interface RazorpayAdminConfigUpdate {
+  enabled: boolean;
+  minAmount: number;
+  maxAmount: number;
+  dailyLimit: number;
+}
+
+export interface RazorpayPaymentOrderRow {
+  id?: number;
+  merchantId?: number;
+  internalOrderId?: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string | null;
+  amount?: string;
+  currency?: string;
+  status?: string;
+  paymentMethod?: string | null;
+  utr?: string | null;
+  paidAt?: string | null;
+  createdAt?: string;
+}
+
+export interface RazorpayOrdersListResponse {
+  data: RazorpayPaymentOrderRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface RazorpayWebhookLogRow {
+  id?: number;
+  webhookEventId?: string | null;
+  eventType?: string | null;
+  razorpayOrderId?: string | null;
+  razorpayPaymentId?: string | null;
+  merchantId?: number | null;
+  amount?: string | null;
+  processingResult?: string;
+  safeMessage?: string | null;
+  receivedAt?: string;
+}
+
+export interface RazorpayWebhookLogsResponse {
+  data: RazorpayWebhookLogRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
@@ -8018,5 +8115,49 @@ to?: string;
 export type CreatePlatformProfitAdjustment200 = {
   ok: boolean;
   newBalance: number;
+};
+
+export type GetRazorpayStatus200 = {
+  enabled: boolean;
+  minAmount?: number;
+  maxAmount?: number;
+};
+
+export type CreateRazorpayOrderBody = {
+  /** Amount in INR */
+  amount: number;
+  note?: string;
+};
+
+export type VerifyRazorpayPaymentBody = {
+  internalOrderId: string;
+  razorpayPaymentId: string;
+  razorpayOrderId: string;
+  razorpaySignature: string;
+};
+
+export type UpdateRazorpayConfigBody = {
+  enabled?: boolean;
+  minAmount?: number;
+  maxAmount?: number;
+  dailyLimit?: number;
+};
+
+export type ListAdminRazorpayOrdersParams = {
+page?: number;
+limit?: number;
+status?: string;
+search?: string;
+};
+
+export type ExportAdminRazorpayOrdersCsvParams = {
+status?: string;
+};
+
+export type ListRazorpayWebhookLogsParams = {
+page?: number;
+limit?: number;
+result?: string;
+eventType?: string;
 };
 
