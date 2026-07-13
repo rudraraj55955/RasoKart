@@ -12,9 +12,11 @@ import {
   withdrawalsTable,
   payoutBeneficiariesTable,
   walletLedgerTable,
+  auditLogsTable,
 } from "@workspace/db";
 import { eq, and, desc, count, sql, inArray, ne } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { ensureWallet } from "./wallets";
 
 const router = Router();
 router.use(requireAuth);
@@ -325,6 +327,213 @@ router.get("/auto-payout", requirePayoutMerchant, async (req, res, next) => {
     });
   } catch (err) { next(err); }
 });
+
+// ── POST /api/payout-merchant/payouts ────────────────────────────────────────
+// Creates a payout (withdrawal) for payout merchants.
+// Uses the merchant's configured payoutLimitsJson.minAmount (default ₹1).
+// Wraps wallet hold + withdrawal insert in a single DB transaction to prevent
+// concurrent overdrafts.
+router.post("/payouts", requirePayoutMerchant, async (req, res, next) => {
+  try {
+    const merchantId: number = (req as any).user.merchantId;
+
+    const { amount, beneficiaryId, remarks, idempotencyKey: _idempKey } = req.body as Record<string, unknown>;
+    const idempotencyKey: string | null =
+      typeof _idempKey === "string" && _idempKey.trim()
+        ? _idempKey.trim().slice(0, 128)
+        : null;
+
+    if (!amount || Number(amount) <= 0) {
+      res.status(400).json({ error: "amount must be a positive number" });
+      return;
+    }
+
+    // Read merchant's configured payout limits
+    const [merchant] = await db
+      .select({
+        payoutLimitsJson: merchantsTable.payoutLimitsJson,
+        payoutServiceEnabled: merchantsTable.payoutServiceEnabled,
+        status: merchantsTable.status,
+      })
+      .from(merchantsTable)
+      .where(eq(merchantsTable.id, merchantId))
+      .limit(1);
+
+    if (!merchant || !merchant.payoutServiceEnabled) {
+      res.status(403).json({ error: "Payout service is not enabled for this account. Complete KYC first." });
+      return;
+    }
+
+    const limits = (merchant.payoutLimitsJson ?? {}) as Record<string, number>;
+    const minAmount = limits.minAmount ?? 1;
+    const maxAmount = limits.maxAmount ?? 200000;
+    const amt = Number(amount);
+
+    if (amt < minAmount) {
+      res.status(400).json({ error: `Minimum payout amount is ₹${minAmount}` });
+      return;
+    }
+    if (amt > maxAmount) {
+      res.status(400).json({ error: `Maximum payout amount is ₹${maxAmount}` });
+      return;
+    }
+
+    if (!beneficiaryId) {
+      res.status(400).json({ error: "beneficiaryId is required" });
+      return;
+    }
+
+    // Idempotency check
+    if (idempotencyKey) {
+      const [existing] = await db
+        .select()
+        .from(withdrawalsTable)
+        .where(and(eq(withdrawalsTable.merchantId, merchantId), eq(withdrawalsTable.idempotencyKey, idempotencyKey)))
+        .limit(1);
+      if (existing) {
+        res.status(200).json(mapPayoutWithdrawal(existing));
+        return;
+      }
+    }
+
+    // Resolve beneficiary — must belong to this merchant and be provider-verified
+    const [beneficiary] = await db
+      .select()
+      .from(payoutBeneficiariesTable)
+      .where(eq(payoutBeneficiariesTable.id, parseInt(String(beneficiaryId))))
+      .limit(1);
+
+    if (!beneficiary || beneficiary.merchantId !== merchantId) {
+      res.status(404).json({ error: "Beneficiary not found" });
+      return;
+    }
+    if (beneficiary.localStatus !== "active") {
+      res.status(400).json({ error: "This beneficiary is disabled and cannot be used for payouts" });
+      return;
+    }
+    if (beneficiary.providerStatus !== "created") {
+      res.status(400).json({ error: "Beneficiary must be verified with the payment provider before use. Please wait or re-add the beneficiary." });
+      return;
+    }
+
+    const fmtAmt = (n: number) => n.toFixed(2);
+    const numStr = (v: string | null | undefined) => parseFloat(v ?? "0") || 0;
+
+    // Atomic: balance check + withdrawal insert + wallet hold
+    let createdWithdrawal: typeof withdrawalsTable.$inferSelect;
+    try {
+      createdWithdrawal = await db.transaction(async (tx) => {
+        const w = await ensureWallet(tx, merchantId);
+        const avBefore = numStr(w.availableBalance);
+
+        if (avBefore < amt) {
+          throw Object.assign(new Error("Insufficient available balance"), { statusCode: 400 });
+        }
+
+        const [withdrawal] = await tx
+          .insert(withdrawalsTable)
+          .values({
+            merchantId,
+            beneficiaryId: beneficiary.id,
+            amount: fmtAmt(amt),
+            bankAccount: beneficiary.bankAccount ?? "",
+            bankName: beneficiary.bankName ?? "",
+            ifscCode: beneficiary.ifscCode ?? "",
+            accountHolder: beneficiary.accountHolder ?? "",
+            payoutMode: beneficiary.payoutMode,
+            upiId: beneficiary.payoutMode === "UPI" ? (beneficiary.upiId ?? null) : null,
+            remarks: typeof remarks === "string" ? remarks.trim() || null : null,
+            status: "pending",
+            transferStatus: "NOT_STARTED",
+            idempotencyKey,
+          })
+          .returning();
+
+        const newAvailable = avBefore - amt;
+        const newHold = numStr(w.holdBalance) + amt;
+        await tx
+          .update(merchantWalletsTable)
+          .set({
+            availableBalance: fmtAmt(newAvailable),
+            holdBalance: fmtAmt(newHold),
+          })
+          .where(eq(merchantWalletsTable.merchantId, merchantId));
+
+        await tx.insert(walletLedgerTable).values({
+          merchantId,
+          txnType: "payout_hold",
+          bucket: "available",
+          amount: fmtAmt(-amt),
+          availableBefore: fmtAmt(avBefore),
+          availableAfter: fmtAmt(newAvailable),
+          pendingBefore: fmtAmt(numStr(w.pendingBalance)),
+          pendingAfter: fmtAmt(numStr(w.pendingBalance)),
+          referenceType: "withdrawal",
+          referenceId: withdrawal!.id,
+          description: `Payout request #${withdrawal!.id} — ₹${fmtAmt(amt)} locked`,
+          createdBy: null,
+        });
+
+        return withdrawal!;
+      });
+    } catch (e: any) {
+      if (e.statusCode === 400) {
+        res.status(400).json({ error: e.message });
+        return;
+      }
+      if (idempotencyKey && (e?.code === "23505" || /idempotency_key/.test(String(e?.message ?? "")))) {
+        const [existing] = await db
+          .select()
+          .from(withdrawalsTable)
+          .where(and(eq(withdrawalsTable.merchantId, merchantId), eq(withdrawalsTable.idempotencyKey, idempotencyKey)))
+          .limit(1);
+        if (existing) {
+          res.status(200).json(mapPayoutWithdrawal(existing));
+          return;
+        }
+      }
+      throw e;
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: 0,
+      adminEmail: (req as any).user.email,
+      action: "PAYOUT_MERCHANT_PAYOUT_REQUESTED",
+      targetType: "withdrawal",
+      targetId: createdWithdrawal.id,
+      details: JSON.stringify({ amount: amt, beneficiaryId: beneficiary.id, payoutMode: beneficiary.payoutMode }),
+      ipAddress: (req as any).ip ?? null,
+    } as any);
+
+    req.log.info({ merchantId, withdrawalId: createdWithdrawal.id, amount: amt }, "payout_merchant_payout_requested");
+    res.status(201).json(mapPayoutWithdrawal(createdWithdrawal));
+  } catch (err) { next(err); }
+});
+
+function mapPayoutWithdrawal(w: typeof withdrawalsTable.$inferSelect) {
+  return {
+    id: w.id,
+    amount: w.amount,
+    currency: w.currency,
+    status: w.status,
+    displayStatus: mapTransferStatus(w.transferStatus, w.status),
+    payoutMode: w.payoutMode,
+    accountHolder: w.accountHolder,
+    bankAccountMasked: w.bankAccount ? maskAccount(w.bankAccount) : null,
+    bankName: w.bankName,
+    ifscCode: w.ifscCode,
+    upiId: w.upiId,
+    utr: w.transferStatus === "SUCCESS" ? w.utr : null,
+    failureReason:
+      w.transferStatus === "FAILED" || w.transferStatus === "REVERSED"
+        ? mapFailureReason(w.failureReason)
+        : null,
+    approvedAt: w.approvedAt,
+    completedAt: w.completedAt,
+    createdAt: w.createdAt,
+    updatedAt: w.updatedAt,
+  };
+}
 
 function mapFailureReason(reason: string | null | undefined): string | null {
   if (!reason) return null;

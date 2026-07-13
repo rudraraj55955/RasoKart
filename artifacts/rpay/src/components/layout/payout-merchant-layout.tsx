@@ -31,6 +31,7 @@ const PAYOUT_MERCHANT_NAV: NavItem[] = [
   { label: "Beneficiaries",  icon: Users,            href: "/payout-merchant/beneficiaries" },
   { label: "Wallet",         icon: Wallet,           href: "/payout-merchant/wallet" },
   { label: "Ledger",         icon: BookOpen,         href: "/payout-merchant/ledger" },
+  { label: "KYC Verification", icon: ShieldCheck,    href: "/payout-merchant/kyc" },
   { label: "Profile",        icon: User,             href: "/payout-merchant/profile" },
 ];
 

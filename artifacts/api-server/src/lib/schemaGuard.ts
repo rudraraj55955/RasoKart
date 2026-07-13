@@ -867,6 +867,35 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "agents" }, "schema_guard_table_created");
 
+  // ── payout_beneficiaries ──────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS payout_beneficiaries (
+      id SERIAL PRIMARY KEY,
+      merchant_id INTEGER NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      env TEXT NOT NULL DEFAULT 'test',
+      label TEXT,
+      payout_mode TEXT NOT NULL,
+      bank_account TEXT,
+      bank_name TEXT,
+      ifsc_code TEXT,
+      account_holder TEXT,
+      upi_id TEXT,
+      beneficiary_key VARCHAR(120) NOT NULL,
+      provider_beneficiary_id VARCHAR(64),
+      local_status TEXT NOT NULL DEFAULT 'active',
+      provider_status TEXT NOT NULL DEFAULT 'not_created',
+      last_provider_error TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT payout_beneficiaries_merchant_env_key_unique UNIQUE (merchant_id, env, beneficiary_key)
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS pb_merchant_idx ON payout_beneficiaries(merchant_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS pb_local_status_idx ON payout_beneficiaries(local_status)`);
+  logger.info({ table: "payout_beneficiaries" }, "schema_guard_table_created");
+
   // ── payout_wallet_load_orders ─────────────────────────────────────────────
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS payout_wallet_load_orders (

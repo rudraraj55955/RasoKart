@@ -151,6 +151,7 @@ import PayoutMerchantBeneficiaries from "@/pages/payout-merchant/beneficiaries";
 import PayoutMerchantWallet from "@/pages/payout-merchant/wallet";
 import PayoutMerchantLedger from "@/pages/payout-merchant/ledger";
 import PayoutMerchantProfile from "@/pages/payout-merchant/profile";
+import PayoutMerchantKyc from "@/pages/payout-merchant/kyc";
 
 function extractApiError(error: unknown): string | null {
   if (!error) return null;
@@ -528,6 +529,7 @@ function Router() {
       <Route path="/payout-merchant/wallet"><PayoutMerchantRoute component={PayoutMerchantWallet} /></Route>
       <Route path="/payout-merchant/ledger"><PayoutMerchantRoute component={PayoutMerchantLedger} /></Route>
       <Route path="/payout-merchant/profile"><PayoutMerchantRoute component={PayoutMerchantProfile} /></Route>
+      <Route path="/payout-merchant/kyc"><PayoutMerchantRoute component={PayoutMerchantKyc} /></Route>
       {/* Redirect /payout-merchant root to dashboard */}
       <Route path="/payout-merchant"><Redirect to="/payout-merchant/dashboard" /></Route>
       <Route path="/api-docs"><Redirect to="/merchant/api-docs" /></Route>

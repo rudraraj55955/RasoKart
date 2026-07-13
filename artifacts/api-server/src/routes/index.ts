@@ -57,6 +57,7 @@ import merchantKycRouter from "./merchantKyc";
 import adminMerchantKycRouter from "./adminMerchantKyc";
 import merchantKycSettingsRouter from "./merchantKycSettings";
 import payoutMerchantRouter from "./payoutMerchant";
+import payoutMerchantKycRouter from "./payoutMerchantKyc";
 import adminPayoutMerchantsRouter from "./adminPayoutMerchants";
 import adminPayoutSettingsRouter from "./adminPayoutSettings";
 import payoutAdminRouter from "./payoutAdmin";
@@ -178,7 +179,8 @@ router.use("/merchant-kyc", merchantKycRouter);
 router.use("/admin/merchant-kyc-settings", merchantKycSettingsRouter);
 router.use("/admin/merchant-kyc", adminMerchantKycRouter);
 
-// Payout merchant module — merchant-facing config + admin management
+// Payout merchant module — merchant-facing config, payouts + KYC + admin management
+router.use("/payout-merchant/kyc", payoutMerchantKycRouter);
 router.use("/payout-merchant", payoutMerchantRouter);
 router.use("/admin/payout-merchants", adminPayoutMerchantsRouter);
 router.use("/admin/payout-settings", adminPayoutSettingsRouter);

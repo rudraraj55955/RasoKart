@@ -14,7 +14,7 @@ import { ArrowRightLeft, Plus, ChevronLeft, ChevronRight, Clock, CheckCircle2, X
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-const MIN_PAYOUT_AMOUNT = 100;
+const MIN_PAYOUT_AMOUNT = 1;
 
 function maskAccountNumber(acct: string | null | undefined): string {
   if (!acct) return "—";
@@ -94,7 +94,7 @@ export default function PayoutMerchantPayouts() {
 
   const createMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) =>
-      apiFetch<any>("/api/withdrawals", { method: "POST", body: JSON.stringify(body) }),
+      apiFetch<any>("/api/payout-merchant/payouts", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
       toast.success("Payout submitted successfully");
       setShowCreate(false);
