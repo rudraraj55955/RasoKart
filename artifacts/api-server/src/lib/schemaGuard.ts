@@ -906,6 +906,13 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_merchant_idempotency_key_uniq ON withdrawals(merchant_id, idempotency_key) WHERE idempotency_key IS NOT NULL`);
   logger.info({ table: "withdrawals", migration: "add_idempotency_key" }, "schema_guard_column_added");
 
+  // ── withdrawals: payout transaction slip fields ──────────────────────────
+  await db.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS slip_verification_token TEXT`);
+  await db.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS payout_fee NUMERIC(10,2) NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10,2) NOT NULL DEFAULT 0`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_slip_verif_token_uniq ON withdrawals(slip_verification_token) WHERE slip_verification_token IS NOT NULL`);
+  logger.info({ table: "withdrawals", migration: "add_slip_fields" }, "schema_guard_column_added");
+
   // ── system_config ────────────────────────────────────────────────────────
   // Key-value store queried by initReconciliationScheduler() at startup.
   // If it doesn't exist on a fresh DB the scheduler throws "relation

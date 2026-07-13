@@ -40,6 +40,12 @@ export const withdrawalsTable = pgTable("withdrawals", {
   // double-click of the "New Payout" form a no-op instead of creating a
   // second payout request. Nullable — legacy/no-key requests still work.
   idempotencyKey: text("idempotency_key"),
+  // Payout transaction slip fields — added for slip generation feature.
+  // slip_verification_token: unique random token for slip verification URL.
+  // payout_fee / gst_amount: zero by default (future: fee schedule support).
+  slipVerificationToken: text("slip_verification_token"),
+  payoutFee: numeric("payout_fee", { precision: 10, scale: 2 }).default("0"),
+  gstAmount: numeric("gst_amount", { precision: 10, scale: 2 }).default("0"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

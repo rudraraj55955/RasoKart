@@ -6,44 +6,54 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, AlertTriangle, TrendingUp } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Plus, AlertTriangle, TrendingUp, MoreHorizontal,
+  FileText, Download, Printer, Share2,
+} from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { PayoutSlipModal } from "@/components/payout-slip-modal";
 
 export default function MerchantWithdrawals() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
+  const [slipPayoutId, setSlipPayoutId] = useState<number | null>(null);
   const [form, setForm] = useState({ amount: "", bankAccount: "", bankName: "", ifscCode: "", accountHolder: "" });
 
   const { data, isLoading, isError } = useListWithdrawals({ page, limit: 20 });
   const { data: usage } = useGetMyPlanUsage();
   const createMutation = useCreateWithdrawal();
 
-  const payoutUsed = usage?.payout?.used ?? 0;
+  const payoutUsed  = usage?.payout?.used  ?? 0;
   const payoutLimit = usage?.payout?.limit ?? 0;
-  const isAtLimit = payoutLimit > 0 && payoutUsed >= payoutLimit;
-  const payoutPct = payoutLimit > 0 ? Math.min(100, Math.round((payoutUsed / payoutLimit) * 100)) : 0;
+  const isAtLimit   = payoutLimit > 0 && payoutUsed >= payoutLimit;
+  const payoutPct   = payoutLimit > 0 ? Math.min(100, Math.round((payoutUsed / payoutLimit) * 100)) : 0;
 
   const handleSubmit = () => {
     if (!form.amount || !form.bankAccount || !form.bankName || !form.ifscCode || !form.accountHolder) {
       toast.error("All fields are required");
       return;
     }
-    createMutation.mutate({
-      data: { ...form, amount: parseFloat(form.amount) }
-    }, {
-      onSuccess: () => {
-        toast.success("Withdrawal request submitted");
-        setOpen(false);
-        setForm({ amount: "", bankAccount: "", bankName: "", ifscCode: "", accountHolder: "" });
-        qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() });
+    createMutation.mutate(
+      { data: { ...form, amount: parseFloat(form.amount) } },
+      {
+        onSuccess: () => {
+          toast.success("Withdrawal request submitted");
+          setOpen(false);
+          setForm({ amount: "", bankAccount: "", bankName: "", ifscCode: "", accountHolder: "" });
+          qc.invalidateQueries({ queryKey: getListWithdrawalsQueryKey() });
+        },
+        onError: () => toast.error("Failed to submit withdrawal"),
       },
-      onError: () => toast.error("Failed to submit withdrawal"),
-    });
+    );
   };
 
   const exportCsv = () => {
@@ -51,16 +61,46 @@ export default function MerchantWithdrawals() {
     const rows = [["ID", "Amount", "Bank", "Account", "IFSC", "Holder", "Status", "Date"]];
     data.data.forEach(w => rows.push([String(w.id), String(w.amount), w.bankName, w.bankAccount, w.ifscCode, w.accountHolder, w.status, w.createdAt]));
     const csv = rows.map(r => r.join(",")).join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv])); a.download = "withdrawals.csv"; a.click();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv]));
+    a.download = "withdrawals.csv";
+    a.click();
+  };
+
+  const downloadPdf = async (id: number, receiptId?: string) => {
+    try {
+      const token = localStorage.getItem("rasokart_token") ?? "";
+      const resp = await fetch(`/api/withdrawals/${id}/slip.pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `RasoKart-Payout-${receiptId ?? id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      toast.success("PDF downloaded");
+    } catch {
+      toast.error("Failed to download PDF");
+    }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div><h1 className="text-3xl font-bold tracking-tight">Withdrawals</h1><p className="text-muted-foreground mt-1">Request and track your withdrawals</p></div>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Withdrawals</h1>
+          <p className="text-muted-foreground mt-1">Request and track your withdrawals</p>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={exportCsv}>Export CSV</Button>
-          <Button onClick={() => setOpen(true)} disabled={isAtLimit}><Plus className="w-4 h-4 mr-2" />New Request</Button>
+          <Button onClick={() => setOpen(true)} disabled={isAtLimit}>
+            <Plus className="w-4 h-4 mr-2" />New Request
+          </Button>
         </div>
       </div>
 
@@ -72,7 +112,7 @@ export default function MerchantWithdrawals() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-destructive">Monthly payout limit reached</p>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  You've used all {payoutLimit} payout{payoutLimit !== 1 ? "s" : ""} for this month on your {usage.planName ?? "current"} plan. New withdrawal requests will be available when the month resets.
+                  You've used all {payoutLimit} payout{payoutLimit !== 1 ? "s" : ""} for this month on your {usage.planName ?? "current"} plan.
                 </p>
                 <Link href="/merchant/plan" className="inline-block mt-2 text-sm font-medium text-primary hover:underline">
                   Upgrade plan for more payouts →
@@ -98,9 +138,7 @@ export default function MerchantWithdrawals() {
                   />
                 </div>
               </div>
-              <span className="text-sm font-semibold tabular-nums shrink-0">
-                {payoutLimit - payoutUsed} left
-              </span>
+              <span className="text-sm font-semibold tabular-nums shrink-0">{payoutLimit - payoutUsed} left</span>
             </CardContent>
           </Card>
         ) : null
@@ -110,38 +148,80 @@ export default function MerchantWithdrawals() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Bank / Account</TableHead>
-                <TableHead>IFSC</TableHead>
-                <TableHead>Account Holder</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>{Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>)}</TableRow>
-              )) : isError ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-10"><div className="flex flex-col items-center gap-2 text-destructive"><AlertTriangle className="w-5 h-5" /><p className="text-sm font-medium">Failed to load withdrawals</p><p className="text-xs text-muted-foreground">Please refresh the page and try again.</p></div></TableCell></TableRow>
-              ) : data?.data?.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-10">No withdrawal requests yet</TableCell></TableRow>
-              ) : data?.data?.map(w => (
-                <TableRow key={w.id}>
-                  <TableCell className="text-right font-mono font-semibold">₹{Number(w.amount).toLocaleString()}</TableCell>
-                  <TableCell>
-                    <div className="text-sm">{w.bankName}</div>
-                    <div className="text-xs text-muted-foreground font-mono">{w.bankAccount}</div>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{w.ifscCode}</TableCell>
-                  <TableCell>{w.accountHolder}</TableCell>
-                  <TableCell><StatusBadge status={w.status} /></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{format(new Date(w.createdAt), "MMM d, yyyy")}</TableCell>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Bank / Account</TableHead>
+                  <TableHead>IFSC</TableHead>
+                  <TableHead>Account Holder</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 7 }).map((_, j) => (
+                        <TableCell key={j}><div className="h-4 bg-muted/50 rounded animate-pulse" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : isError ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-10">
+                      <div className="flex flex-col items-center gap-2 text-destructive">
+                        <AlertTriangle className="w-5 h-5" />
+                        <p className="text-sm font-medium">Failed to load withdrawals</p>
+                        <p className="text-xs text-muted-foreground">Please refresh the page and try again.</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : data?.data?.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                      No withdrawal requests yet
+                    </TableCell>
+                  </TableRow>
+                ) : data?.data?.map(w => (
+                  <TableRow key={w.id}>
+                    <TableCell className="text-right font-mono font-semibold">
+                      ₹{Number(w.amount).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">{w.bankName}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{w.bankAccount}</div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{w.ifscCode}</TableCell>
+                    <TableCell>{w.accountHolder}</TableCell>
+                    <TableCell><StatusBadge status={w.status} /></TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {format(new Date(w.createdAt), "MMM d, yyyy")}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setSlipPayoutId(w.id)}>
+                            <FileText className="w-4 h-4 mr-2" />
+                            View Slip
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => downloadPdf(w.id, `RK-PO-${String(w.id).padStart(6, "0")}`)}>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -156,6 +236,7 @@ export default function MerchantWithdrawals() {
         </div>
       )}
 
+      {/* New Request Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>New Withdrawal Request</DialogTitle></DialogHeader>
@@ -187,6 +268,13 @@ export default function MerchantWithdrawals() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Payout Slip Modal */}
+      <PayoutSlipModal
+        payoutId={slipPayoutId}
+        open={slipPayoutId !== null}
+        onClose={() => setSlipPayoutId(null)}
+      />
     </div>
   );
 }

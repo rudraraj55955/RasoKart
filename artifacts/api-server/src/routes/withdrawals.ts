@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomBytes } from "crypto";
 import {
   db,
   withdrawalsTable,
@@ -8,6 +9,7 @@ import {
   auditLogsTable,
   systemConfigTable,
   payoutBeneficiariesTable,
+  companySettingsTable,
   SYSTEM_CONFIG_KEYS,
 } from "@workspace/db";
 import { buildPayoutSlipPdf } from "../helpers/payoutSlipPdf";
@@ -1896,10 +1898,55 @@ function getSlipDisplayStatus(w: typeof withdrawalsTable.$inferSelect): {
   return { displayStatus: "PROCESSING", statusLabel: "Payout Processing", isNotFinal: true };
 }
 
-export function buildSlipData(
+async function getOrCreateSlipToken(
+  withdrawalId: number,
+  existing: string | null,
+): Promise<string> {
+  if (existing) return existing;
+  const newToken = randomBytes(8).toString("hex");
+  const [updated] = await db
+    .update(withdrawalsTable)
+    .set({ slipVerificationToken: newToken })
+    .where(and(eq(withdrawalsTable.id, withdrawalId), isNull(withdrawalsTable.slipVerificationToken)))
+    .returning({ token: withdrawalsTable.slipVerificationToken });
+  if (updated?.token) return updated.token;
+  const [row] = await db
+    .select({ token: withdrawalsTable.slipVerificationToken })
+    .from(withdrawalsTable)
+    .where(eq(withdrawalsTable.id, withdrawalId))
+    .limit(1);
+  return row?.token ?? newToken;
+}
+
+async function getSlipCompanySettings(): Promise<{ supportEmail: string | null; supportPhone: string | null }> {
+  try {
+    const [row] = await db.select().from(companySettingsTable).limit(1);
+    return { supportEmail: row?.supportEmail ?? null, supportPhone: row?.supportPhone ?? null };
+  } catch {
+    return { supportEmail: null, supportPhone: null };
+  }
+}
+
+const APP_BASE_URL = process.env["APP_BASE_URL"] ?? "https://rasokart.com";
+
+function slipFmtDate(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  return d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "long", year: "numeric" });
+}
+
+function slipFmtDateTime(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  return d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric", month: "long", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  }) + " IST";
+}
+
+export async function buildSlipData(
   w: typeof withdrawalsTable.$inferSelect,
   merchantName: string | null,
-): PayoutSlipData {
+): Promise<PayoutSlipData> {
   const { displayStatus, statusLabel, isNotFinal } = getSlipDisplayStatus(w);
   const walletRefunded = w.transferStatus === "FAILED" || w.transferStatus === "REVERSED";
 
@@ -1910,31 +1957,52 @@ export function buildSlipData(
         : (rawFailure ?? "Transfer could not be completed. Please contact support."))
     : null;
 
-  const fmt = (d: Date | null | undefined): string | null =>
-    d ? d.toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-          dateStyle: "medium",
-          timeStyle: "short",
-        }) + " IST"
-      : null;
-
   const processedAt = w.completedAt ?? w.approvedAt ?? w.rejectedAt ?? null;
+
+  let utrDisplay: string;
+  if (displayStatus === "SUCCESS") {
+    utrDisplay = w.utr ?? "—";
+  } else if (displayStatus === "REJECTED" || displayStatus === "FAILED") {
+    utrDisplay = "Not Generated";
+  } else {
+    utrDisplay = "Awaiting Bank Confirmation";
+  }
+
+  const payoutFee   = Number((w as any).payoutFee  ?? 0);
+  const gstAmount   = Number((w as any).gstAmount  ?? 0);
+  const amount      = Number(w.amount);
+  const totalDebit  = amount + payoutFee + gstAmount;
+  const isUpi       = w.payoutMode === "UPI";
+
+  const token           = await getOrCreateSlipToken(w.id, (w as any).slipVerificationToken ?? null);
+  const dateStr         = w.createdAt.toISOString().slice(0, 10).replace(/-/g, "");
+  const verificationCode = `RK-${dateStr}-${token.slice(0, 8).toUpperCase()}`;
+  const verificationUrl  = `${APP_BASE_URL}/verify-payout/${token}`;
+
+  const company = await getSlipCompanySettings();
 
   return {
     id: w.id,
     receiptId: `RK-PO-${String(w.id).padStart(6, "0")}`,
-    generatedAt: fmt(new Date()) ?? new Date().toISOString(),
-    merchant: { businessName: merchantName ?? `Merchant #${w.merchantId}` },
-    amount: Number(w.amount),
+    merchantId: w.merchantId,
+    merchantBusinessName: merchantName ?? `Merchant #${w.merchantId}`,
+    generatedAt: slipFmtDateTime(new Date()) ?? new Date().toISOString(),
+    amount,
     currency: w.currency ?? "INR",
+    payoutFee,
+    gstAmount,
+    totalDebit,
     payoutMode: w.payoutMode,
     displayStatus,
     statusLabel,
-    utr: displayStatus === "SUCCESS" ? (w.utr ?? null) : null,
+    isNotFinal,
+    walletRefunded,
+    utrDisplay,
+    transferDate: slipFmtDate(processedAt),
+    transactionDateTime: slipFmtDateTime(processedAt),
+    requestedAt: slipFmtDateTime(w.createdAt) ?? "—",
     safeFailureReason,
     rejectionReason: w.rejectionReason ?? null,
-    requestedAt: fmt(w.createdAt) ?? "—",
-    processedAt: fmt(processedAt),
     beneficiary: {
       name: w.accountHolder ?? null,
       bankName: w.bankName ?? null,
@@ -1943,8 +2011,12 @@ export function buildSlipData(
       maskedUpi: maskUpi(w.upiId),
     },
     remarks: w.remarks ?? null,
-    isNotFinal,
-    walletRefunded,
+    isUpi,
+    verificationCode,
+    verificationToken: token,
+    verificationUrl,
+    supportEmail: company.supportEmail,
+    supportPhone: company.supportPhone,
   };
 }
 
@@ -2015,7 +2087,7 @@ router.get("/:id/slip", async (req, res, next) => {
       ipAddress:   req.ip ?? null,
     }).catch(err => req.log.warn({ err }, "audit_log_insert_failed"));
 
-    res.json(buildSlipData(row.withdrawal, row.merchantName ?? null));
+    res.json(await buildSlipData(row.withdrawal, row.merchantName ?? null));
   } catch (err) { next(err); }
 });
 
@@ -2049,11 +2121,12 @@ router.get("/:id/slip.pdf", async (req, res, next) => {
       ipAddress:   req.ip ?? null,
     }).catch(err => req.log.warn({ err }, "audit_log_insert_failed"));
 
-    const slip   = buildSlipData(row.withdrawal, row.merchantName ?? null);
-    const pdfBuf = await buildPayoutSlipPdf(slip);
+    const slip    = await buildSlipData(row.withdrawal, row.merchantName ?? null);
+    const pdfBuf  = await buildPayoutSlipPdf(slip);
+    const receipt = slip.receiptId;
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="rasokart-payout-slip-${id}.pdf"`);
+    res.setHeader("Content-Disposition", `attachment; filename="RasoKart-Payout-${receipt}.pdf"`);
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.send(pdfBuf);
   } catch (err) { next(err); }

@@ -7,6 +7,91 @@ import { buildPayoutSlipPdf } from "../helpers/payoutSlipPdf";
 
 const router = Router();
 
+// GET /api/public/payout-slip/verify/:verificationToken — PUBLIC payout verification
+// Returns limited, safe data for public verification. No auth required.
+router.get("/verify/:verificationToken", async (req, res, next) => {
+  try {
+    const vToken = (req.params["verificationToken"] as string).toLowerCase().trim();
+    if (!vToken || vToken.length < 8) {
+      res.status(400).json({ error: "Invalid verification token" });
+      return;
+    }
+
+    const [row] = await db
+      .select({
+        id:             withdrawalsTable.id,
+        amount:         withdrawalsTable.amount,
+        currency:       withdrawalsTable.currency,
+        payoutMode:     withdrawalsTable.payoutMode,
+        status:         withdrawalsTable.status,
+        transferStatus: withdrawalsTable.transferStatus,
+        utr:            withdrawalsTable.utr,
+        createdAt:      withdrawalsTable.createdAt,
+        completedAt:    withdrawalsTable.completedAt,
+        bankAccount:    withdrawalsTable.bankAccount,
+        upiId:          withdrawalsTable.upiId,
+      })
+      .from(withdrawalsTable)
+      .where(eq(withdrawalsTable.slipVerificationToken, vToken))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({
+        verified: false,
+        error: "Payout not found. The verification code may be incorrect.",
+      });
+      return;
+    }
+
+    const acc = row.bankAccount ?? "";
+    const maskedAccount = acc.length <= 4 ? "****" : "****" + acc.slice(-4);
+    const upi = row.upiId;
+    const maskedUpi = upi
+      ? (() => {
+          const at = upi.indexOf("@");
+          if (at < 0) return upi.slice(0, 2) + "***";
+          return upi.slice(0, 2) + "***" + upi.slice(at);
+        })()
+      : null;
+
+    const fmtDate = (d: Date | null): string | null =>
+      d
+        ? d.toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "numeric", month: "long", year: "numeric",
+            hour: "numeric", minute: "2-digit", hour12: true,
+          }) + " IST"
+        : null;
+
+    let verifiedStatus: string;
+    if (row.status === "rejected") verifiedStatus = "REJECTED";
+    else if (row.transferStatus === "SUCCESS") verifiedStatus = "SUCCESS";
+    else if (row.transferStatus === "FAILED" || row.transferStatus === "REVERSED") verifiedStatus = "FAILED";
+    else verifiedStatus = "PROCESSING";
+
+    const utrDisplay =
+      verifiedStatus === "SUCCESS"
+        ? (row.utr ?? "—")
+        : verifiedStatus === "REJECTED" || verifiedStatus === "FAILED"
+        ? "Not Generated"
+        : "Awaiting Bank Confirmation";
+
+    res.json({
+      verified: true,
+      transferId: `RK-PO-${String(row.id).padStart(6, "0")}`,
+      amount: `INR ${Number(row.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+      destination: row.payoutMode === "UPI" ? maskedUpi : maskedAccount,
+      payoutMode: row.payoutMode,
+      requestedAt: fmtDate(row.createdAt),
+      processedAt: fmtDate(row.completedAt ?? null),
+      status: verifiedStatus,
+      utr: utrDisplay,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/public/payout-slip/:token — read-only slip data from a signed share token
 router.get("/:token", async (req, res, next) => {
   try {
@@ -47,7 +132,7 @@ router.get("/:token", async (req, res, next) => {
       })
       .catch(() => {});
 
-    res.json(buildSlipData(row.withdrawal, row.merchantName ?? null));
+    res.json(await buildSlipData(row.withdrawal, row.merchantName ?? null));
   } catch (err) {
     next(err);
   }
@@ -80,14 +165,12 @@ router.get("/:token/pdf", async (req, res, next) => {
       return;
     }
 
-    const slip = buildSlipData(row.withdrawal, row.merchantName ?? null);
-    const pdfBuf = await buildPayoutSlipPdf(slip);
+    const slip    = await buildSlipData(row.withdrawal, row.merchantName ?? null);
+    const pdfBuf  = await buildPayoutSlipPdf(slip);
+    const receipt = slip.receiptId;
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="rasokart-payout-slip-${payoutId}.pdf"`,
-    );
+    res.setHeader("Content-Disposition", `inline; filename="RasoKart-Payout-${receipt}.pdf"`);
     res.setHeader("Cache-Control", "no-store");
     res.send(pdfBuf);
   } catch (err) {

@@ -1423,6 +1423,15 @@ async function migrate() {
     CREATE INDEX        IF NOT EXISTS razorpay_webhook_logs_created_idx    ON razorpay_webhook_logs(received_at);
   `);
 
+  // ── Section 15: Withdrawals payout slip fields ────────────────────────────
+  await runSection("withdrawals-slip-fields", sql`
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS slip_verification_token TEXT;
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS payout_fee NUMERIC(10,2) NOT NULL DEFAULT 0;
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10,2) NOT NULL DEFAULT 0;
+    CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_slip_verif_token_uniq
+      ON withdrawals(slip_verification_token) WHERE slip_verification_token IS NOT NULL;
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }

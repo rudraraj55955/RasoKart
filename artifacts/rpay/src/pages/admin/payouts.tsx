@@ -33,7 +33,9 @@ import {
   UserCog,
   Eye,
   ShieldCheck,
+  FileText,
 } from "lucide-react";
+import { PayoutSlipModal } from "@/components/payout-slip-modal";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -78,6 +80,7 @@ export default function AdminPayouts() {
   const [confirmApproveId, setConfirmApproveId] = useState<number | null>(null);
   const [confirmApproveAmount, setConfirmApproveAmount] = useState<number>(0);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [slipPayoutId, setSlipPayoutId] = useState<number | null>(null);
 
   const { data, isLoading, isError } = useListWithdrawals({ status: status as any, page, limit: 20 });
   const approveMutation = useApproveWithdrawal();
@@ -619,6 +622,16 @@ export default function AdminPayouts() {
                                   <Eye className="w-4 h-4 mr-1" />
                                   Details
                                 </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-muted-foreground hover:text-foreground"
+                                  onClick={() => setSlipPayoutId(w.id)}
+                                  title="View payout transaction slip"
+                                >
+                                  <FileText className="w-4 h-4 mr-1" />
+                                  Slip
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -880,6 +893,14 @@ export default function AdminPayouts() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Payout Slip Modal */}
+      <PayoutSlipModal
+        payoutId={slipPayoutId}
+        open={slipPayoutId !== null}
+        onClose={() => setSlipPayoutId(null)}
+        isAdmin
+      />
     </div>
   );
 }
