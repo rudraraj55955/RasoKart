@@ -316,11 +316,20 @@ jobs:
           fetch-depth: 0
 
       - name: Verify merge commit matches Step 1 output
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ACTUAL="$(git rev-parse HEAD)"
-          EXPECTED="${{ needs.create_merge_on_vps.outputs.merge_commit }}"
-          echo "Checked-out HEAD: $ACTUAL"
-          echo "Expected from Step 1: $EXPECTED"
+          # Job output is suppressed by GitHub Actions when the SHA contains a secret
+          # substring (VPS_PORT=22 matches any "22" in the SHA). Fetch the reconcile
+          # branch tip directly from the GitHub API instead.
+          EXPECTED=$(curl -sf \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/rudraraj55955/RasoKart/git/ref/heads/reconcile-production-lineage" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['object']['sha'])")
+          echo "Checked-out HEAD:        $ACTUAL"
+          echo "Branch tip (GitHub API): $EXPECTED"
           [ "$ACTUAL" = "$EXPECTED" ] || {
             echo "ERROR: HEAD mismatch — branch may have been tampered with"
             exit 1
@@ -510,11 +519,17 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          EXPECTED_MERGE: ${{ needs.create_merge_on_vps.outputs.merge_commit }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Pass variables as environment via ssh -o SendEnv or by writing a script.
-          # We embed only the non-secret EXPECTED_MERGE in the heredoc.
-          EXPECTED="$EXPECTED_MERGE"
+          # Job output is suppressed by GitHub Actions when the SHA contains a secret
+          # substring (VPS_PORT=22 matches any "22" in the SHA). Fetch the reconcile
+          # branch tip directly from the GitHub API instead.
+          EXPECTED=$(curl -sf \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/rudraraj55955/RasoKart/git/ref/heads/reconcile-production-lineage" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['object']['sha'])")
+          echo "Reconcile branch tip (GitHub API): $EXPECTED"
 
           ssh -i ~/.ssh/deploy_key \
               -o UserKnownHostsFile=~/.ssh/known_hosts \
