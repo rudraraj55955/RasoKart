@@ -10,9 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowRightLeft, Plus, ChevronLeft, ChevronRight, Clock, CheckCircle2, XCircle, Zap, PauseCircle, ShieldAlert } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ArrowRightLeft, Plus, ChevronLeft, ChevronRight, Clock, CheckCircle2, XCircle, Zap, PauseCircle, ShieldAlert, MoreHorizontal, FileText, Download, Share2, Copy } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { PayoutSlipModal } from "@/components/payout-slip-modal";
 
 const MIN_PAYOUT_AMOUNT = 1;
 
@@ -52,11 +54,49 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+async function downloadPdf(id: number, receiptId?: string) {
+  try {
+    const token = getToken();
+    const resp = await fetch(`/api/withdrawals/${id}/slip.pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error("Download failed");
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `RasoKart-Payout-${receiptId ?? `RK-PO-${String(id).padStart(6, "0")}`}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("PDF downloaded");
+  } catch {
+    toast.error("Failed to download PDF");
+  }
+}
+
+async function shareSlip(id: number) {
+  try {
+    const token = getToken();
+    const resp = await fetch(`/api/withdrawals/${id}/slip/share-link`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    });
+    if (!resp.ok) throw new Error("Share failed");
+    const { url } = await resp.json() as { url: string };
+    const full = `${window.location.origin}${url}`;
+    await navigator.clipboard.writeText(full);
+    toast.success("Share link copied to clipboard");
+  } catch {
+    toast.error("Failed to generate share link");
+  }
+}
+
 export default function PayoutMerchantPayouts() {
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
+  const [slipPayoutId, setSlipPayoutId] = useState<number | null>(null);
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string>("");
   const [idempotencyKey, setIdempotencyKey] = useState<string>("");
   const [form, setForm] = useState({
@@ -179,14 +219,15 @@ export default function PayoutMerchantPayouts() {
             <>
               <div className="divide-y divide-border/40">
                 {/* Header */}
-                <div className="grid grid-cols-[1fr_120px_100px_100px] gap-4 px-4 py-2 text-xs text-muted-foreground font-medium">
+                <div className="grid grid-cols-[1fr_120px_100px_100px_40px] gap-4 px-4 py-2 text-xs text-muted-foreground font-medium">
                   <span>Recipient</span>
                   <span>Amount</span>
                   <span>Mode</span>
                   <span>Status</span>
+                  <span />
                 </div>
                 {payouts.map((p: any) => (
-                  <div key={p.id} className="grid grid-cols-[1fr_120px_100px_100px] gap-4 px-4 py-3 items-center hover:bg-muted/10 transition-colors">
+                  <div key={p.id} className="grid grid-cols-[1fr_120px_100px_100px_40px] gap-4 px-4 py-3 items-center hover:bg-muted/10 transition-colors">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{p.accountHolder ?? p.upiId ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">{format(new Date(p.createdAt), "dd MMM yyyy, HH:mm")}</p>
@@ -196,6 +237,36 @@ export default function PayoutMerchantPayouts() {
                     <p className="text-sm font-semibold text-foreground">{fmtAmount(p.amount)}</p>
                     <p className="text-xs text-muted-foreground">{p.payoutMode}</p>
                     <StatusBadge status={p.displayStatus} />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setSlipPayoutId(p.id)}>
+                          <FileText className="w-4 h-4 mr-2" />
+                          View Slip
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => downloadPdf(p.id, `RK-PO-${String(p.id).padStart(6, "0")}`)}>
+                          <Download className="w-4 h-4 mr-2" />
+                          Download PDF
+                        </DropdownMenuItem>
+                        {p.displayStatus === "Sent" && (
+                          <DropdownMenuItem onClick={() => shareSlip(p.id)}>
+                            <Share2 className="w-4 h-4 mr-2" />
+                            Share Link
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => {
+                          navigator.clipboard.writeText(String(p.id));
+                          toast.success("Payout ID copied");
+                        }}>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copy ID
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 ))}
               </div>
@@ -213,6 +284,13 @@ export default function PayoutMerchantPayouts() {
           )}
         </CardContent>
       </Card>
+
+      {/* Payout slip modal */}
+      <PayoutSlipModal
+        payoutId={slipPayoutId}
+        open={slipPayoutId !== null}
+        onClose={() => setSlipPayoutId(null)}
+      />
 
       {/* Create payout dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
