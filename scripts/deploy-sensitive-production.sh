@@ -97,15 +97,16 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   log "Index and working tree fully reset to HEAD ($(git rev-parse HEAD))."
 fi
 
-# Remove known-safe untracked paths created by reconciliation tooling.
-# These directories hold no production data; they will be fully restored by
-# the incoming fast-forward from origin/main if they belong there.
+# Remove known-safe UNTRACKED paths created by reconciliation tooling.
+# Only remove paths that are NOT tracked in the VPS HEAD commit — removing
+# tracked files here would create "D" (deleted) entries and trip the dirty-tree
+# guard below. Tracked directories (e.g. .agents/memory) are NOT removed;
+# they will be correctly updated by the incoming fast-forward from origin/main.
 for _rk_path in \
-    ".agents/memory" \
     ".github/workflows/sed8S3arA" \
     "attached_assets/screenshots"; do
   if [ -e "$_rk_path" ]; then
-    log "Removing reconciliation artifact (no production data): $_rk_path"
+    log "Removing untracked reconciliation artifact: $_rk_path"
     rm -rf -- "$_rk_path"
   fi
 done
