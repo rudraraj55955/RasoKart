@@ -4,12 +4,24 @@ import { eq } from "drizzle-orm";
 import { verifySlipShareToken } from "../helpers/payoutSlipShare";
 import { buildSlipData } from "./withdrawals";
 import { buildPayoutSlipPdf } from "../helpers/payoutSlipPdf";
+import { makeRateLimiter } from "../helpers/makeRateLimiter";
+import { DbRateLimitStore } from "../lib/rateLimitStore";
 
 const router = Router();
 
+// Public verification endpoint is unauthenticated — rate-limit by IP.
+// 20 requests per 5-minute window; generous for legitimate use, blocks scrapers.
+const verifyLimiter = makeRateLimiter({
+  windowMs: 5 * 60 * 1000,
+  limit: 20,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many verification requests. Please wait a few minutes and try again." },
+  skipFailedRequests: false,
+});
+
 // GET /api/public/payout-slip/verify/:verificationToken — PUBLIC payout verification
 // Returns limited, safe data for public verification. No auth required.
-router.get("/verify/:verificationToken", async (req, res, next) => {
+router.get("/verify/:verificationToken", verifyLimiter, async (req, res, next) => {
   try {
     const vToken = (req.params["verificationToken"] as string).toLowerCase().trim();
     if (!vToken || vToken.length < 8) {
