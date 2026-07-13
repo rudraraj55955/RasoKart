@@ -3,6 +3,7 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { saveAuthAndRedirect } from "@/lib/auth";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
@@ -24,6 +25,8 @@ export default function PayoutMerchantLogin() {
   const [isPending, setIsPending] = useState(false);
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
+  const queryClient = useQueryClient();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -51,51 +54,35 @@ export default function PayoutMerchantLogin() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        const msg = (body as Record<string, unknown>)["message"] as string | undefined;
-        toast.error(msg || "Invalid credentials");
+        const msg = (body as Record<string, unknown>)["error"] as string
+          ?? (body as Record<string, unknown>)["message"] as string
+          ?? "Invalid credentials";
+        toast.error(msg);
         return;
       }
 
       const body = (await res.json()) as Record<string, unknown>;
-
-      const candidateUsers: unknown[] = [
-        (body as Record<string, unknown>)["user"],
-        ((body as Record<string, unknown>)["data"] as Record<string, unknown> | undefined)?.["user"],
-        body,
-      ];
-
-      let role: string | undefined;
-      let merchantType: string | undefined;
-      let rawUser: Record<string, unknown> | undefined;
-      for (const candidate of candidateUsers) {
-        if (candidate && typeof candidate === "object") {
-          const c = candidate as Record<string, unknown>;
-          if (role === undefined && typeof c["role"] === "string") { role = c["role"] as string; rawUser = c; }
-          if (merchantType === undefined && typeof c["merchantType"] === "string") {
-            merchantType = c["merchantType"] as string;
-          }
-        }
-      }
-      if (merchantType === undefined && typeof body["merchantType"] === "string") {
-        merchantType = body["merchantType"] as string;
-      }
-
-      const token = (body["token"] as string | undefined) ?? "";
-
-      if (!(role === "merchant" && merchantType === "PAYOUT_ONLY")) {
-        toast.error("This portal is for Payout merchants only. Please use the regular merchant login.");
-        return;
-      }
+      const userObj = (body["user"] as Record<string, unknown> | undefined) ?? body;
+      const role = typeof userObj["role"] === "string" ? userObj["role"] : "";
+      const merchantType = typeof userObj["merchantType"] === "string" ? userObj["merchantType"] : "";
+      const token = typeof body["token"] === "string" ? body["token"] : "";
 
       if (!token) {
         toast.error("Login failed. Please try again.");
         return;
       }
 
+      if (!(role === "merchant" && merchantType === "PAYOUT_ONLY")) {
+        toast.error("This portal is for Payout merchants only. Please use the regular merchant login.");
+        return;
+      }
+
       toast.success("Welcome to your Payout Portal.");
+      setSigningIn(true);
+      queryClient.clear();
       saveAuthAndRedirect(
         token,
-        { ...(rawUser ?? {}), role, merchantType },
+        { ...userObj, role, merchantType },
         "/payout-merchant/dashboard",
       );
     } catch {
@@ -104,6 +91,17 @@ export default function PayoutMerchantLogin() {
       setIsPending(false);
     }
   };
+
+  if (signingIn) {
+    return (
+      <AuthLayout title="Payout Merchant Portal" subtitle="Sign in to your RasoKart Payout account">
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+          <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <p className="text-sm">Signing you in…</p>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout title="Payout Merchant Portal" subtitle="Sign in to your RasoKart Payout account">
@@ -199,7 +197,7 @@ export default function PayoutMerchantLogin() {
             className="w-full"
             disabled={isPending || rateLimitSeconds !== null}
           >
-            {isPending ? "Signing in..." : "Sign in"}
+            {isPending ? "Signing in…" : "Sign in"}
           </Button>
 
           <div className="text-center text-sm text-muted-foreground space-y-2">

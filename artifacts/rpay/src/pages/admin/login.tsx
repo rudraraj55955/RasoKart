@@ -4,13 +4,14 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useLogin, UserRole } from "@workspace/api-client-react";
 import { saveAuthAndRedirect } from "@/lib/auth";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
-import { LoginDebugPanel, INITIAL_LOGIN_DEBUG_STATE, type LoginDebugState } from "@/components/login-debug-panel";
+import { Eye, EyeOff } from "lucide-react";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -21,14 +22,13 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
-  const [debugState, setDebugState] = useState<LoginDebugState>(INITIAL_LOGIN_DEBUG_STATE);
+  const [showPassword, setShowPassword] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
+  const queryClient = useQueryClient();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
 
   useEffect(() => {
@@ -43,54 +43,19 @@ export default function AdminLogin() {
       {
         onSuccess: (res) => {
           if (res.user.role !== UserRole.admin) {
-            setDebugState({
-              apiSuccess: true,
-              tokenExists: !!res.token,
-              role: res.user.role,
-              merchantType: (res.user as unknown as Record<string, unknown>)["merchantType"] as string || "",
-              targetPath: "/admin/dashboard",
-              redirectCalled: false,
-            });
-            toast.error("Unauthorized. Admin access required.");
+            toast.error("This account is not authorised for the Admin Portal.");
             return;
           }
-          // marker: admin-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
-          // Persist token/user to every storage key any guard could read,
-          // then force a REAL full-page navigation (assign + href + replace,
-          // staggered) directly in this success branch — before any return,
-          // not inside a useEffect, not gated on auth-context state resolving.
-          toast.success("Welcome back, Admin.");
-          const targetPath = "/admin/dashboard";
-          const userRecord = res.user as unknown as Record<string, unknown>;
-          setDebugState({
-            apiSuccess: true,
-            tokenExists: !!res.token,
-            role: res.user.role,
-            merchantType: (userRecord["merchantType"] as string) || "",
-            targetPath,
-            redirectCalled: false,
-          });
-          saveAuthAndRedirect(res.token, userRecord, targetPath, (d) =>
-            setDebugState({
-              apiSuccess: d.apiSuccess,
-              tokenExists: d.tokenPresent,
-              role: d.role,
-              merchantType: d.merchantType,
-              targetPath: d.targetPath,
-              redirectCalled: d.redirectCalled,
-            })
+          setSigningIn(true);
+          queryClient.clear();
+          saveAuthAndRedirect(
+            res.token,
+            res.user as unknown as Record<string, unknown>,
+            "/admin/dashboard",
           );
         },
         onError: (err) => {
           const e = err as unknown as Record<string, unknown>;
-          setDebugState({
-            apiSuccess: false,
-            tokenExists: false,
-            role: "",
-            merchantType: "",
-            targetPath: "/admin/dashboard",
-            redirectCalled: false,
-          });
           if (e["status"] === 429) {
             const headers = e["headers"] as Headers | undefined;
             const resetHeader = headers?.get("RateLimit-Reset") ?? headers?.get("ratelimit-reset");
@@ -98,11 +63,22 @@ export default function AdminLogin() {
             setRateLimitSeconds(Number.isFinite(seconds) && seconds > 0 ? seconds : 60);
             return;
           }
-          toast.error(e["message"] as string || "Login failed");
+          toast.error((e["message"] as string) || "Login failed");
         },
       }
     );
   };
+
+  if (signingIn) {
+    return (
+      <AuthLayout title="Admin Portal" subtitle="Sign in to RasoKart operations">
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+          <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <p className="text-sm">Signing you in…</p>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout title="Admin Portal" subtitle="Sign in to RasoKart operations">
@@ -124,7 +100,13 @@ export default function AdminLogin() {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="admin@rasokart.com" disabled={rateLimitSeconds !== null} {...field} />
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    placeholder="admin@rasokart.com"
+                    disabled={rateLimitSeconds !== null}
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -137,7 +119,24 @@ export default function AdminLogin() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input type="password" placeholder="••••••••" disabled={rateLimitSeconds !== null} {...field} />
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      disabled={rateLimitSeconds !== null}
+                      className="pr-10"
+                      {...field}
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword((s) => !s)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -148,14 +147,10 @@ export default function AdminLogin() {
             className="w-full"
             disabled={loginMutation.isPending || rateLimitSeconds !== null}
           >
-            {loginMutation.isPending ? "Authenticating..." : "Sign in"}
+            {loginMutation.isPending ? "Authenticating…" : "Sign in"}
           </Button>
-          <div className="text-center text-xs text-muted-foreground/40 pt-2">
-            Login Build: admin-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
-          </div>
         </form>
       </Form>
-      <LoginDebugPanel state={debugState} />
     </AuthLayout>
   );
 }

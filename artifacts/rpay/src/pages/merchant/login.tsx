@@ -11,7 +11,8 @@ import {
   UserRole,
 } from "@workspace/api-client-react";
 import { saveAuthAndRedirect } from "@/lib/auth";
-import { Link, useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -22,7 +23,6 @@ import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert } from "lucide-react";
 import { SUPPORT_MAILTO } from "@/lib/support-config";
-import { LoginDebugPanel, INITIAL_LOGIN_DEBUG_STATE, type LoginDebugState } from "@/components/login-debug-panel";
 
 const ACCOUNT_SUSPENDED_MESSAGE = "Account suspended. Please contact support.";
 const SAFE_OTP_MESSAGE = "If an account matches that email or mobile number, a login code has been sent.";
@@ -53,16 +53,14 @@ type PasswordLoginValues = z.infer<typeof passwordLoginSchema>;
 function PasswordLoginTab({
   onRateLimited,
   onAccountSuspended,
-  debugState,
-  setDebugState,
+  onSigningIn,
 }: {
   onRateLimited: (seconds: number) => void;
   onAccountSuspended: (suspended: boolean) => void;
-  debugState: LoginDebugState;
-  setDebugState: (s: LoginDebugState) => void;
+  onSigningIn: () => void;
 }) {
-  const [_, setLocation] = useLocation();
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
+  const queryClient = useQueryClient();
 
   const form = useForm<PasswordLoginValues>({
     resolver: zodResolver(passwordLoginSchema),
@@ -82,53 +80,20 @@ function PasswordLoginTab({
         onSuccess: (res) => {
           const userRecord = res.user as unknown as Record<string, unknown>;
           if (res.user.role !== UserRole.merchant) {
-            setDebugState({
-              apiSuccess: true,
-              tokenExists: !!res.token,
-              role: res.user.role,
-              merchantType: (userRecord["merchantType"] as string) || "",
-              targetPath: "/merchant/dashboard",
-              redirectCalled: false,
-            });
-            toast.error("Unauthorized. Merchant access required.");
+            toast.error("This account is not authorised for the Merchant Portal.");
             return;
           }
-          // marker: merchant-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
-          // Persist token/user to every storage key any guard could read,
-          // then force a REAL full-page navigation (assign + href + replace,
-          // staggered) directly in this success branch — before any return,
-          // not inside a useEffect, not gated on auth-context state resolving.
+          const merchantType = (userRecord["merchantType"] as string) || "";
+          const targetPath = merchantType === "PAYOUT_ONLY"
+            ? "/payout-merchant/dashboard"
+            : "/merchant/dashboard";
           toast.success("Welcome back.");
-          const targetPath = "/merchant/dashboard";
-          setDebugState({
-            apiSuccess: true,
-            tokenExists: !!res.token,
-            role: res.user.role,
-            merchantType: (userRecord["merchantType"] as string) || "",
-            targetPath,
-            redirectCalled: false,
-          });
-          saveAuthAndRedirect(res.token, userRecord, targetPath, (d) =>
-            setDebugState({
-              apiSuccess: d.apiSuccess,
-              tokenExists: d.tokenPresent,
-              role: d.role,
-              merchantType: d.merchantType,
-              targetPath: d.targetPath,
-              redirectCalled: d.redirectCalled,
-            })
-          );
+          onSigningIn();
+          queryClient.clear();
+          saveAuthAndRedirect(res.token, userRecord, targetPath);
         },
         onError: (err) => {
           const { status, message, headers } = getErrorInfo(err);
-          setDebugState({
-            apiSuccess: false,
-            tokenExists: false,
-            role: "",
-            merchantType: "",
-            targetPath: "/merchant/dashboard",
-            redirectCalled: false,
-          });
           if (status === 429) {
             const seconds = extractRateLimitSeconds(headers);
             setRateLimitSeconds(seconds);
@@ -163,7 +128,13 @@ function PasswordLoginTab({
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder="you@company.com" disabled={rateLimitSeconds !== null} {...field} />
+                <Input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@company.com"
+                  disabled={rateLimitSeconds !== null}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -176,20 +147,22 @@ function PasswordLoginTab({
             <FormItem>
               <FormLabel>Password</FormLabel>
               <FormControl>
-                <Input type="password" placeholder="••••••••" disabled={rateLimitSeconds !== null} {...field} />
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  disabled={rateLimitSeconds !== null}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
         <Button type="submit" className="w-full" disabled={loginMutation.isPending || rateLimitSeconds !== null}>
-          {loginMutation.isPending ? "Authenticating..." : "Sign in"}
+          {loginMutation.isPending ? "Authenticating…" : "Sign in"}
         </Button>
-        <div className="text-center text-xs text-muted-foreground/40 pt-2">
-          Login Build: merchant-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
-        </div>
       </form>
-      <LoginDebugPanel state={debugState} />
     </Form>
   );
 }
@@ -208,18 +181,16 @@ type OtpCodeValues = z.infer<typeof otpCodeSchema>;
 
 function OtpLoginTab({
   onRateLimited,
-  debugState,
-  setDebugState,
+  onSigningIn,
 }: {
   onRateLimited: (seconds: number) => void;
-  debugState: LoginDebugState;
-  setDebugState: (s: LoginDebugState) => void;
+  onSigningIn: () => void;
 }) {
-  const [_, setLocation] = useLocation();
   const [stage, setStage] = useState<"identifier" | "otp">("identifier");
   const [identifier, setIdentifier] = useState("");
   const [resendIn, setResendIn] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const queryClient = useQueryClient();
 
   const identifierForm = useForm<OtpIdentifierValues>({
     resolver: zodResolver(otpIdentifierSchema),
@@ -270,7 +241,6 @@ function OtpLoginTab({
             onRateLimited(extractRateLimitSeconds(headers));
             return;
           }
-          // Preserve the safe "if registered" behavior even on unexpected errors.
           setIdentifier(data.identifier);
           setStage("otp");
           startCooldown();
@@ -310,49 +280,20 @@ function OtpLoginTab({
         onSuccess: (res) => {
           const userRecord = res.user as unknown as Record<string, unknown>;
           if (res.user.role !== UserRole.merchant) {
-            setDebugState({
-              apiSuccess: true,
-              tokenExists: !!res.token,
-              role: res.user.role,
-              merchantType: (userRecord["merchantType"] as string) || "",
-              targetPath: "/merchant/dashboard",
-              redirectCalled: false,
-            });
-            toast.error("Unauthorized. Merchant access required.");
+            toast.error("This account is not authorised for the Merchant Portal.");
             return;
           }
-          // marker: merchant-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
+          const merchantType = (userRecord["merchantType"] as string) || "";
+          const targetPath = merchantType === "PAYOUT_ONLY"
+            ? "/payout-merchant/dashboard"
+            : "/merchant/dashboard";
           toast.success("Welcome back.");
-          const targetPath = "/merchant/dashboard";
-          setDebugState({
-            apiSuccess: true,
-            tokenExists: !!res.token,
-            role: res.user.role,
-            merchantType: (userRecord["merchantType"] as string) || "",
-            targetPath,
-            redirectCalled: false,
-          });
-          saveAuthAndRedirect(res.token, userRecord, targetPath, (d) =>
-            setDebugState({
-              apiSuccess: d.apiSuccess,
-              tokenExists: d.tokenPresent,
-              role: d.role,
-              merchantType: d.merchantType,
-              targetPath: d.targetPath,
-              redirectCalled: d.redirectCalled,
-            })
-          );
+          onSigningIn();
+          queryClient.clear();
+          saveAuthAndRedirect(res.token, userRecord, targetPath);
         },
         onError: (err) => {
           const { status, message, headers } = getErrorInfo(err);
-          setDebugState({
-            apiSuccess: false,
-            tokenExists: false,
-            role: "",
-            merchantType: "",
-            targetPath: "/merchant/dashboard",
-            redirectCalled: false,
-          });
           if (status === 429) {
             onRateLimited(extractRateLimitSeconds(headers));
             return;
@@ -382,7 +323,7 @@ function OtpLoginTab({
             )}
           />
           <Button type="submit" className="w-full" disabled={requestOtp.isPending}>
-            {requestOtp.isPending ? "Sending code..." : "Send login code"}
+            {requestOtp.isPending ? "Sending code…" : "Send login code"}
           </Button>
         </form>
       </Form>
@@ -415,7 +356,7 @@ function OtpLoginTab({
           )}
         />
         <Button type="submit" className="w-full" disabled={verifyOtp.isPending}>
-          {verifyOtp.isPending ? "Verifying..." : "Verify & sign in"}
+          {verifyOtp.isPending ? "Verifying…" : "Verify & sign in"}
         </Button>
         <div className="flex items-center justify-between text-sm">
           <button
@@ -435,7 +376,6 @@ function OtpLoginTab({
           </button>
         </div>
       </form>
-      <LoginDebugPanel state={debugState} />
     </Form>
   );
 }
@@ -592,7 +532,7 @@ function ForgotPasswordTab({
             )}
           />
           <Button type="submit" className="w-full" disabled={requestReset.isPending}>
-            {requestReset.isPending ? "Sending code..." : "Send reset code"}
+            {requestReset.isPending ? "Sending code…" : "Send reset code"}
           </Button>
         </form>
       </Form>
@@ -645,7 +585,7 @@ function ForgotPasswordTab({
           )}
         />
         <Button type="submit" className="w-full" disabled={resetPassword.isPending}>
-          {resetPassword.isPending ? "Resetting..." : "Reset password"}
+          {resetPassword.isPending ? "Resetting…" : "Reset password"}
         </Button>
         <div className="flex items-center justify-between text-sm">
           <button
@@ -675,7 +615,18 @@ export default function MerchantLogin() {
   const [tab, setTab] = useState<"password" | "otp" | "forgot">("password");
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
   const [accountSuspended, setAccountSuspended] = useState(false);
-  const [debugState, setDebugState] = useState<LoginDebugState>(INITIAL_LOGIN_DEBUG_STATE);
+  const [signingIn, setSigningIn] = useState(false);
+
+  if (signingIn) {
+    return (
+      <AuthLayout title="Merchant Portal" subtitle="Sign in to your RasoKart dashboard">
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+          <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <p className="text-sm">Signing you in…</p>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout title="Merchant Portal" subtitle="Sign in to your RasoKart dashboard">
@@ -718,16 +669,14 @@ export default function MerchantLogin() {
           <PasswordLoginTab
             onRateLimited={setRateLimitSeconds}
             onAccountSuspended={setAccountSuspended}
-            debugState={debugState}
-            setDebugState={setDebugState}
+            onSigningIn={() => setSigningIn(true)}
           />
         </TabsContent>
 
         <TabsContent value="otp">
           <OtpLoginTab
             onRateLimited={setRateLimitSeconds}
-            debugState={debugState}
-            setDebugState={setDebugState}
+            onSigningIn={() => setSigningIn(true)}
           />
         </TabsContent>
 
@@ -738,18 +687,12 @@ export default function MerchantLogin() {
           />
         </TabsContent>
       </Tabs>
-      <div className="text-center text-xs text-muted-foreground/40 pt-4">
-        Login Build: merchant-login-one-shot-fix-v2
-      </div>
 
       <div className="text-center mt-6 text-sm text-muted-foreground">
         Don't have an account?{" "}
         <Link href="/merchant/apply" className="text-primary hover:underline">
           Apply for an account
         </Link>
-      </div>
-      <div className="text-center text-xs text-muted-foreground/40 pt-2">
-        Login Build: merchant-login-final-redirect-fix-v1
       </div>
     </AuthLayout>
   );

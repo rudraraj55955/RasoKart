@@ -53,3 +53,4 @@
 - [Payout slip frontend/API field mismatch](payout-slip-frontend-api-mismatch.md) — buildSlipData returns flat `merchantBusinessName`/`utrDisplay`/`transactionDateTime`; frontend SlipData type must match exactly or crash. verificationUrl needs a matching /verify-payout/:token route in App.tsx.
 - [CF-Connecting-IP rate limit key](cf-connecting-ip-ratelimit.md) — key rate limiters on CF-Connecting-IP not req.ip behind Cloudflare; per-PoP buckets defeat the limit.
 - [api-server has no direct zod dep](api-server-no-zod.md) — api-server routes never import zod directly; use plain JS validation (if-checks) in any new route file or TypeScript build fails with TS2307.
+- [Login mutation key cross-session bleed](login-mutation-cache-bleed.md) — mutationKey:['login'] is shared; always call queryClient.clear() before saveAuthAndRedirect to evict stale mutation data from a prior portal session.

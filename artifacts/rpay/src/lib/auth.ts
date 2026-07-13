@@ -19,6 +19,12 @@ export function removeToken() {
     sessionStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     sessionStorage.removeItem(USER_KEY);
+    for (const store of [localStorage, sessionStorage]) {
+      store.removeItem("token");
+      store.removeItem("authToken");
+      store.removeItem("user");
+      store.removeItem("authUser");
+    }
   }
 }
 
@@ -30,15 +36,7 @@ export function setStoredUser(user: Record<string, unknown>) {
   }
 }
 
-/**
- * Writes the token/user to the legacy/alias key names ("token", "authToken",
- * "user", "authUser") in BOTH localStorage and sessionStorage, in addition to
- * the app's real rasokart_* keys above. Some older/duplicate guard code paths
- * or third-party embeds may still probe these generic names — writing them
- * defensively costs nothing and guarantees no guard reading a different key
- * name ever sees an empty session right after login.
- */
-export function setLegacyAuthKeys(token: string, user: Record<string, unknown>) {
+function setLegacyAuthKeys(token: string, user: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   const json = JSON.stringify(user);
   for (const store of [localStorage, sessionStorage]) {
@@ -50,53 +48,24 @@ export function setLegacyAuthKeys(token: string, user: Record<string, unknown>) 
 }
 
 /**
- * Single entry point called directly from a login success branch (never from
- * a useEffect, never gated on auth-context state). Persists the token/user
- * under every key any guard in the app might read (both the real
- * rasokart_* keys and the generic token/authToken/user/authUser aliases, in
- * both localStorage and sessionStorage), then forces navigation using three
- * independent methods staggered over time (marker: live-login-debug-hardredirect-v4):
- *   1. window.location.assign(targetPath) — immediately
- *   2. window.location.href = targetPath — after 100ms (in case assign was
- *      intercepted/no-opped by an extension or proxy quirk)
- *   3. window.location.replace(targetPath) — after 300ms (final fallback)
- * Once the first navigation actually takes effect the page unloads and the
- * later timeouts never fire, so this is safe to call unconditionally.
+ * Persists the new token/user to every storage key any guard might read,
+ * then forces immediate full-page navigation via window.location.replace so
+ * the new page always starts with a clean React tree and a fresh React Query
+ * cache — no stale auth state from a previous session can bleed over.
+ *
+ * Call queryClient.clear() BEFORE this function so no cached /me data from
+ * a prior session is serialised into the new session's query cache.
  */
 export function saveAuthAndRedirect(
   token: string,
   user: Record<string, unknown>,
   targetPath: string,
-  onDebug?: (state: {
-    apiSuccess: boolean;
-    tokenPresent: boolean;
-    role: string;
-    merchantType: string;
-    targetPath: string;
-    redirectCalled: boolean;
-  }) => void
 ) {
   if (typeof window === "undefined") return;
-  const tokenPresent = !!token;
-  const role = typeof user["role"] === "string" ? (user["role"] as string) : "";
-  const merchantType = typeof user["merchantType"] === "string" ? (user["merchantType"] as string) : "";
-
   setToken(token);
   setStoredUser(user);
   setLegacyAuthKeys(token, user);
-
-  // eslint-disable-next-line no-console
-  console.log("LOGIN_SUCCESS_DEBUG", { tokenPresent, user, targetPath });
-
-  onDebug?.({ apiSuccess: true, tokenPresent, role, merchantType, targetPath, redirectCalled: true });
-
-  window.location.assign(targetPath);
-  setTimeout(() => {
-    window.location.href = targetPath;
-  }, 100);
-  setTimeout(() => {
-    window.location.replace(targetPath);
-  }, 300);
+  window.location.replace(targetPath);
 }
 
 export function getStoredUser(): Record<string, unknown> | null {
