@@ -4,19 +4,31 @@ import { eq } from "drizzle-orm";
 import { verifySlipShareToken } from "../helpers/payoutSlipShare";
 import { buildSlipData } from "./withdrawals";
 import { buildPayoutSlipPdf } from "../helpers/payoutSlipPdf";
-import { makeRateLimiter } from "../helpers/makeRateLimiter";
+import { makeRateLimiter, safeIpKey } from "../helpers/makeRateLimiter";
+import { ipKeyGenerator } from "express-rate-limit";
 import { DbRateLimitStore } from "../lib/rateLimitStore";
 
 const router = Router();
 
-// Public verification endpoint is unauthenticated — rate-limit by IP.
+// Public verification endpoint is unauthenticated — rate-limit by real client IP.
 // 20 requests per 5-minute window; generous for legitimate use, blocks scrapers.
+//
+// IP resolution strategy (Cloudflare → Nginx → Express):
+//   CF-Connecting-IP is always set by Cloudflare to the real visitor IP and cannot
+//   be injected or overridden by the client. We prefer it over req.ip, which behind
+//   Cloudflare resolves to the Cloudflare edge node IP rather than the real client.
+//   Outside Cloudflare (dev / direct-access) we fall back to safeIpKey(req.ip).
 const verifyLimiter = makeRateLimiter({
   windowMs: 5 * 60 * 1000,
   limit: 20,
   store: new DbRateLimitStore(),
   message: { error: "Too many verification requests. Please wait a few minutes and try again." },
   skipFailedRequests: false,
+  keyGenerator: (req) => {
+    const cf = req.headers["cf-connecting-ip"];
+    if (typeof cf === "string" && cf.trim()) return ipKeyGenerator(cf.trim());
+    return safeIpKey(req);
+  },
 });
 
 // GET /api/public/payout-slip/verify/:verificationToken — PUBLIC payout verification
