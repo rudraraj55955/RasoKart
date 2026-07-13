@@ -354,9 +354,12 @@ jobs:
             DEPLOY_SCRIPT=/tmp/rasokart-deploy-sensitive.sh
             echo "Script written  : $DEPLOY_SCRIPT"
           else
-            chmod +x scripts/deploy-sensitive-production.sh
-            DEPLOY_SCRIPT=scripts/deploy-sensitive-production.sh
-            echo "Script found    : $DEPLOY_SCRIPT"
+            echo "Extracting latest deploy script from origin/main..."
+            git show origin/main:scripts/deploy-sensitive-production.sh \
+              > /tmp/rasokart-deploy-sensitive.sh
+            chmod 755 /tmp/rasokart-deploy-sensitive.sh
+            DEPLOY_SCRIPT=/tmp/rasokart-deploy-sensitive.sh
+            echo "Script extracted: $DEPLOY_SCRIPT"
           fi
 
           echo "=== PREFLIGHT COMPLETE → handing off to deploy script ==="
@@ -473,9 +476,12 @@ jobs:
             DEPLOY_SCRIPT=/tmp/rasokart-deploy-sensitive.sh
             echo "Script written  : $DEPLOY_SCRIPT"
           else
-            chmod +x scripts/deploy-sensitive-production.sh
-            DEPLOY_SCRIPT=scripts/deploy-sensitive-production.sh
-            echo "Script found    : $DEPLOY_SCRIPT"
+            echo "Extracting latest deploy script from origin/main..."
+            git show origin/main:scripts/deploy-sensitive-production.sh \
+              > /tmp/rasokart-deploy-sensitive.sh
+            chmod 755 /tmp/rasokart-deploy-sensitive.sh
+            DEPLOY_SCRIPT=/tmp/rasokart-deploy-sensitive.sh
+            echo "Script extracted: $DEPLOY_SCRIPT"
           fi
 
           echo "=== PREFLIGHT COMPLETE → handing off to deploy script ==="
