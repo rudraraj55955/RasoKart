@@ -505,6 +505,9 @@ async function runGuard(): Promise<void> {
     )
   `);
   logger.info({ table: "otp_sms_settings" }, "schema_guard_table_created");
+  // Post-launch columns added to otp_sms_settings:
+  await db.execute(sql`ALTER TABLE otp_sms_settings ADD COLUMN IF NOT EXISTS destination_country TEXT NOT NULL DEFAULT 'IN'`);
+  await db.execute(sql`ALTER TABLE otp_sms_settings ADD COLUMN IF NOT EXISTS test_verified_at TIMESTAMPTZ`);
 
   // ── sms_send_logs (SMS delivery audit log) ────────────────────────────────
   await db.execute(sql`

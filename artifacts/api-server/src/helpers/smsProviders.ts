@@ -8,6 +8,7 @@ export interface SmsSendOptions {
   apiKey: string;
   dltTemplateId: string | null;
   dltEntityId: string | null;
+  destinationCountry?: string;
 }
 
 export interface SmsSendResult {
@@ -16,8 +17,9 @@ export interface SmsSendResult {
   errorReason: string | null;
 }
 
+/** Replace ##OTP## (MSG91 format) and {otp} (legacy) with the actual OTP. */
 function buildMessage(templateText: string, otp: string): string {
-  return templateText.replace(/\{otp\}/gi, otp);
+  return templateText.replace(/##OTP##/g, otp).replace(/\{otp\}/gi, otp);
 }
 
 function sanitizeProviderResponse(raw: unknown): string | null {
@@ -30,11 +32,27 @@ function sanitizeProviderResponse(raw: unknown): string | null {
   }
 }
 
+/**
+ * Normalise an Indian mobile number to E.164 format (without leading "+").
+ * 10-digit numbers → "91" + number
+ * 12-digit numbers already starting with "91" → kept as-is
+ * All other numbers → kept as-is (international)
+ */
+export function normaliseIndianMobile(digits: string): string {
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return digits;
+  return digits;
+}
+
 export async function sendViaMSG91(opts: SmsSendOptions): Promise<SmsSendResult> {
-  const { mobile, otp, senderId, apiKey, dltTemplateId } = opts;
-  const normalMobile = mobile.replace(/\D/g, "");
+  const { mobile, otp, senderId, apiKey, dltTemplateId, destinationCountry } = opts;
+  const rawDigits = mobile.replace(/\D/g, "");
+  const normMobile = (destinationCountry ?? "IN") === "IN"
+    ? normaliseIndianMobile(rawDigits)
+    : rawDigits;
+
   const body: Record<string, string> = {
-    mobile: normalMobile,
+    mobile: normMobile,
     otp,
   };
   if (senderId) body["sender"] = senderId;

@@ -11,7 +11,7 @@ import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
 import { sendPrefChangeUnknownDeviceEmail } from "../helpers/prefChangeEmail";
 import { createNotification } from "../helpers/notifications";
 import { sendMerchantOtpEmail } from "../helpers/merchantOtpEmail";
-import { sendOtpSms } from "../helpers/sendOtpSms";
+import { sendOtpSms, loadOtpSmsSettings } from "../helpers/sendOtpSms";
 import {
   generateOtp,
   hashOtp,
@@ -1368,6 +1368,17 @@ const otpVerifyLimiter = makeRateLimiter({
   },
 });
 
+const otpResendLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many resend requests. Please try again later." },
+  keyGenerator: (req) => {
+    const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
+    return `otp-resend:${safeIpKey(req)}:${identifier}`;
+  },
+});
+
 const passwordForgotLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 5,
@@ -1409,10 +1420,12 @@ async function findMerchantUserByIdentifier(identifier: string): Promise<{ id: n
   }
   const digits = normalized.replace(/\D/g, "");
   if (!digits) return null;
+  // Accept numbers entered with India country code (91 + 10 digits → strip to 10 for DB lookup)
+  const lookupDigits = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits;
   const [merchant] = await db
     .select({ id: merchantsTable.id })
     .from(merchantsTable)
-    .where(eq(merchantsTable.phone, digits))
+    .where(eq(merchantsTable.phone, lookupDigits))
     .limit(1);
   if (!merchant) return null;
   const [user] = await db
@@ -1487,6 +1500,42 @@ async function createAndSendOtp(opts: {
     req.log.info({ purpose, sent }, "merchant_otp_sent");
   }
 }
+
+// POST /api/auth/merchant/otp/resend — dedicated resend (enforces maxResendCount from settings)
+router.post("/merchant/otp/resend", otpResendLimiter, async (req, res, next) => {
+  try {
+    const { identifier } = req.body as { identifier?: string };
+    if (!identifier || typeof identifier !== "string") {
+      res.status(400).json({ error: "identifier is required" });
+      return;
+    }
+    const user = await findMerchantUserByIdentifier(identifier);
+    if (!user) {
+      res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
+      return;
+    }
+    const settings = await loadOtpSmsSettings();
+    const maxResend = settings?.maxResendCount ?? 3;
+    const identifierHash = hashIdentifier(normalizeIdentifier(identifier));
+    const [existing] = await db
+      .select({ id: merchantAuthOtpsTable.id, resendCount: merchantAuthOtpsTable.resendCount })
+      .from(merchantAuthOtpsTable)
+      .where(and(
+        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+        eq(merchantAuthOtpsTable.purpose, "LOGIN"),
+      ))
+      .orderBy(desc(merchantAuthOtpsTable.createdAt))
+      .limit(1);
+    if (existing && existing.resendCount >= maxResend) {
+      res.status(429).json({ error: "Maximum resend limit reached. Please start a new login." });
+      return;
+    }
+    await createAndSendOtp({ req, identifier, purpose: "LOGIN", user });
+    res.json({ message: "A new code has been sent." });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // POST /api/auth/merchant/otp/request
 router.post("/merchant/otp/request", otpRequestLimiter, async (req, res, next) => {

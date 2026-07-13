@@ -250,27 +250,32 @@ function OtpLoginTab({
     );
   };
 
-  const resend = () => {
-    if (resendIn > 0) return;
-    requestOtp.mutate(
-      { data: { identifier } },
-      {
-        onSuccess: () => {
-          otpForm.reset();
-          startCooldown();
-          toast.success("A new code has been sent.");
-        },
-        onError: (err) => {
-          const { status, headers } = getErrorInfo(err);
-          if (status === 429) {
-            onRateLimited(extractRateLimitSeconds(headers));
-            return;
-          }
-          startCooldown();
-          toast.success("A new code has been sent.");
-        },
+  const [resending, setResending] = useState(false);
+  const resend = async () => {
+    if (resendIn > 0 || resending) return;
+    setResending(true);
+    try {
+      const BASE = (import.meta as any)?.env?.BASE_URL ?? "/";
+      const apiBase = `${BASE}api`.replace(/\/+/g, "/").replace(/\/$/, "");
+      const r = await fetch(`${apiBase}/auth/merchant/otp/resend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier }),
+      });
+      const data = await r.json().catch(() => ({ message: "" }));
+      if (r.status === 429) {
+        toast.error(data?.error ?? "Maximum resend limit reached. Please start a new login.");
+        return;
       }
-    );
+      otpForm.reset();
+      startCooldown();
+      toast.success(data?.message ?? "A new code has been sent.");
+    } catch {
+      startCooldown();
+      toast.success("A new code has been sent.");
+    } finally {
+      setResending(false);
+    }
   };
 
   const onVerify = (data: OtpCodeValues) => {

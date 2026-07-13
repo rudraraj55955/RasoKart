@@ -38,8 +38,8 @@ export async function sendOtpSms(opts: {
   }
 
   const templateText = purpose === "KYC_MOBILE"
-    ? "Your RasoKart KYC mobile verification code is {otp}. Valid for 5 minutes. Do not share."
-    : (settings.otpTemplateText ?? "Your login code is {otp}. Valid for 5 minutes. Do not share.");
+    ? "Your RasoKart KYC mobile verification OTP is ##OTP##. Valid for 5 minutes. Do not share."
+    : (settings.otpTemplateText ?? "Your login OTP is ##OTP##. Valid for 5 minutes. Do not share.");
   const mobileHash = hashIdentifier(mobile);
   const mobileLast4 = mobile.replace(/\D/g, "").slice(-4) || null;
 
@@ -51,6 +51,7 @@ export async function sendOtpSms(opts: {
     apiKey,
     dltTemplateId: settings.dltTemplateId ?? null,
     dltEntityId: settings.dltEntityId ?? null,
+    destinationCountry: settings.destinationCountry ?? "IN",
   };
 
   const primaryResult = await sendViaProvider(settings.provider, primaryOpts);
@@ -82,6 +83,7 @@ export async function sendOtpSms(opts: {
         apiKey: fbApiKey,
         dltTemplateId: settings.fallbackDltTemplateId ?? null,
         dltEntityId: null,
+        destinationCountry: settings.destinationCountry ?? "IN",
       };
       const fallbackResult = await sendViaProvider(settings.fallbackProvider, fallbackOpts);
 
