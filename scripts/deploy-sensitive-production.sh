@@ -98,16 +98,20 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
 fi
 
 # Remove known-safe UNTRACKED paths created by reconciliation tooling.
-# Only remove paths that are NOT tracked in the VPS HEAD commit — removing
-# tracked files here would create "D" (deleted) entries and trip the dirty-tree
-# guard below. Tracked directories (e.g. .agents/memory) are NOT removed;
-# they will be correctly updated by the incoming fast-forward from origin/main.
+# Safety rule: ALWAYS verify a path is git-untracked before deleting it.
+# Removing a tracked path creates "D" (deleted) entries that trip the
+# dirty-tree guard below. We use `git ls-files --error-unmatch` to abort
+# loudly if a candidate path is tracked — never auto-delete tracked files.
 for _rk_path in \
     ".github/workflows/sed8S3arA" \
     "attached_assets/screenshots"; do
   if [ -e "$_rk_path" ]; then
-    log "Removing untracked reconciliation artifact: $_rk_path"
-    rm -rf -- "$_rk_path"
+    if git ls-files --error-unmatch -- "$_rk_path" >/dev/null 2>&1; then
+      log "SKIP: '$_rk_path' is tracked by git — leaving it for fast-forward to handle."
+    else
+      log "Removing untracked reconciliation artifact: $_rk_path"
+      rm -rf -- "$_rk_path"
+    fi
   fi
 done
 unset _rk_path
