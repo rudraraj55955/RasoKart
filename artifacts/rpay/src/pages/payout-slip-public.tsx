@@ -7,17 +7,17 @@ type SlipData = {
   id: number;
   receiptId: string;
   generatedAt: string;
-  merchant: { businessName: string };
+  merchantBusinessName: string | null;
   amount: number;
   currency: string;
   payoutMode: string;
   displayStatus: "SUCCESS" | "FAILED" | "REJECTED" | "PROCESSING";
   statusLabel: string;
-  utr: string | null;
+  utrDisplay: string | null;
   safeFailureReason: string | null;
   rejectionReason: string | null;
   requestedAt: string;
-  processedAt: string | null;
+  transactionDateTime: string | null;
   beneficiary: {
     name: string | null;
     bankName: string | null;
@@ -213,10 +213,10 @@ export default function PayoutSlipPublic() {
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Payout Details</span>
                   <div className="flex-1 h-px bg-slate-700/50" />
                 </div>
-                <SlipRow label="Merchant" value={slip.merchant.businessName} />
+                <SlipRow label="Merchant" value={slip.merchantBusinessName} />
                 <SlipRow label="Requested" value={slip.requestedAt} />
-                {slip.processedAt && <SlipRow label="Processed" value={slip.processedAt} />}
-                {slip.utr && <SlipRow label="UTR" value={slip.utr} mono />}
+                {slip.transactionDateTime && <SlipRow label="Processed" value={slip.transactionDateTime} />}
+                {slip.utrDisplay && <SlipRow label="UTR" value={slip.utrDisplay} mono />}
                 {slip.remarks && <SlipRow label="Remarks" value={slip.remarks} />}
 
                 {(slip.beneficiary.name || slip.beneficiary.maskedAccount || slip.beneficiary.maskedUpi) && (

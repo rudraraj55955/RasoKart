@@ -18,6 +18,7 @@ import { UserRole } from "@workspace/api-client-react";
 import { useNoIndexSync } from "@/lib/use-no-index";
 import NotFound from "@/pages/not-found";
 import PayoutSlipPublic from "@/pages/payout-slip-public";
+import PayoutVerifyPublic from "@/pages/payout-verify-public";
 
 // Landing Page
 import Landing from "@/pages/landing";
@@ -540,6 +541,9 @@ function Router() {
 
       {/* Public payout receipt — token-authenticated, no login required */}
       <Route path="/payout-slip/:token" component={PayoutSlipPublic} />
+
+      {/* Public payout verification — verification-token, no login required */}
+      <Route path="/verify-payout/:token" component={PayoutVerifyPublic} />
 
       <Route component={NotFound} />
     </Switch>
