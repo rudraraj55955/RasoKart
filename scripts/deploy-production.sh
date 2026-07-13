@@ -98,7 +98,19 @@ fi
 # (fast-forward only). If the VPS has commits origin/main doesn't have, this
 # is a divergence and we must not force-overwrite it.
 if ! git merge-base --is-ancestor "$PRE_DEPLOY_COMMIT" "$REMOTE_COMMIT"; then
-  fail "Branch divergence detected: local HEAD is not an ancestor of origin/main. Refusing to force-update. Investigate manually."
+  log "===== BRANCH DIVERGENCE DETECTED ====="
+  log "VPS HEAD:        $PRE_DEPLOY_COMMIT"
+  log "origin/main:     $REMOTE_COMMIT"
+  log "Common ancestor: $(git merge-base "$PRE_DEPLOY_COMMIT" "$REMOTE_COMMIT" 2>/dev/null || echo 'unknown')"
+  log ""
+  log "VPS-only commits (present on VPS but NOT in origin/main):"
+  git log --oneline "$REMOTE_COMMIT..$PRE_DEPLOY_COMMIT" 2>/dev/null | tee -a "$LOG_FILE" || log "(none found)"
+  log ""
+  log "origin/main commits since common ancestor:"
+  git log --oneline "$(git merge-base "$PRE_DEPLOY_COMMIT" "$REMOTE_COMMIT" 2>/dev/null || echo HEAD)..$REMOTE_COMMIT" 2>/dev/null | head -10 | tee -a "$LOG_FILE" || true
+  log "====================================="
+  log ""
+  fail "Branch divergence detected: local HEAD is not an ancestor of origin/main. Refusing to force-update. To reconcile safely, trigger the 'Reconcile Production Lineage' workflow via GitHub Actions → workflow_dispatch. Full divergence detail is above."
 fi
 
 # Untracked-file collision check: any untracked file on the VPS whose path

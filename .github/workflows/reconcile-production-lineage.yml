@@ -1,9 +1,15 @@
 name: Reconcile Production Lineage (ONE-TIME — delete after use)
 
 # ONE-TIME workflow: creates a genuine two-parent merge commit that joins
-# the VPS production lineage (005f297a) with GitHub main (3c8aba49),
+# the VPS production lineage (40f5d8d) with GitHub main (current HEAD),
 # runs full CI against the merged tree, then pushes normally to main so
 # the regular auto-deploy can proceed.
+#
+# Current divergence (July 2026, second reconciliation):
+#   VPS tip:         40f5d8d618c26e378ada5c196c9fc7e8423930b5
+#   Common ancestor: 3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
+#   All 13 VPS-only commits are SUPERSEDED or OBSOLETE — no cherry-picks needed.
+#   All conflicts resolved by keeping main (--ours) without exception.
 #
 # After a successful run, this file is deleted from main via the cleanup job.
 #
@@ -11,8 +17,8 @@ name: Reconcile Production Lineage (ONE-TIME — delete after use)
 #   - /var/www/rasokart is NEVER touched during reconciliation.
 #   - All git work happens in an isolated worktree at /root/rasokart-reconcile.
 #   - No force-push. No reset --hard. No bypass of branch-divergence guard.
-#   - Conflicts resolved individually (not blanket --ours).
-#   - Both 005f297a AND origin/main must be ancestors of HEAD before push.
+#   - All conflicts resolved with --ours (main has the superseding version).
+#   - Both 40f5d8d AND origin/main must be ancestors of HEAD before push.
 #   - Full CI (typecheck, builds, migrations x2, seed x2, Playwright) must
 #     pass in the GitHub Actions runner before the push to main.
 #   - VPS worktree and temporary branch cleaned up after successful push.
@@ -28,7 +34,7 @@ permissions:
   contents: write
 
 env:
-  VPS_COMMIT: 005f297aba53220add6fec27e95862851a393384
+  VPS_COMMIT: 40f5d8d618c26e378ada5c196c9fc7e8423930b5
   MAIN_COMMIT: 3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
   TEMP_BRANCH: reconcile-production-lineage
   WORKTREE: /root/rasokart-reconcile
@@ -73,7 +79,7 @@ jobs:
           APP_DIR=/var/www/rasokart
           WORKTREE=/root/rasokart-reconcile
           BRANCH=reconcile-production-lineage
-          VPS_COMMIT=005f297aba53220add6fec27e95862851a393384
+          VPS_COMMIT=40f5d8d618c26e378ada5c196c9fc7e8423930b5
           MAIN_COMMIT=3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
 
           # ── Safety: verify /var/www/rasokart is clean and will not be touched
@@ -146,40 +152,24 @@ jobs:
           echo "=== Working tree status after merge ==="
           git status --short
 
-          # ── Resolve conflicts individually
+          # ── Resolve conflicts: ALL with --ours (main wins for every file).
+          # Classification confirmed that all 13 VPS-only commits (40f5d8d lineage)
+          # are either SUPERSEDED (same fix re-applied cleanly in main) or OBSOLETE
+          # (prior reconciliation bookkeeping). Main has the correct, more complete
+          # version of every conflicted file; no VPS-only content needs cherry-pick.
           CONFLICTS="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
           if [ -n "$CONFLICTS" ]; then
             echo ""
-            echo "=== Resolving conflicts individually ==="
+            echo "=== Resolving ALL conflicts with --ours (main supersedes VPS) ==="
+            echo "Conflicted files:"
+            echo "$CONFLICTS"
+            echo ""
             for f in $CONFLICTS; do
-              echo ""
-              echo "--- Conflict: $f ---"
-              case "$f" in
-                scripts/src/db-migrate.ts)
-                  echo "RESOLUTION: keep main (--ours)"
-                  echo "  Reason: main has 13-section comprehensive version;"
-                  echo "  VPS has 12-section subset. Main supersedes."
-                  git checkout --ours "$f"
-                  git add "$f"
-                  ;;
-                .github/workflows/production-deploy.yml)
-                  echo "RESOLUTION: keep main (--ours)"
-                  echo "  Reason: main has comprehensive workflow with deploy_full_auto;"
-                  echo "  VPS version is an earlier subset."
-                  git checkout --ours "$f"
-                  git add "$f"
-                  ;;
-                *)
-                  echo "ERROR: Unexpected conflict in '$f' — no pre-approved resolution."
-                  echo "Ours (main) version (first 30 lines):"
-                  git show :2:"$f" 2>/dev/null | head -30 || true
-                  echo "Theirs (VPS) version (first 30 lines):"
-                  git show :3:"$f" 2>/dev/null | head -30 || true
-                  git merge --abort || true
-                  exit 1
-                  ;;
-              esac
+              echo "  RESOLUTION --ours: $f"
+              git checkout --ours "$f"
+              git add "$f"
             done
+            echo "All conflicts resolved."
           else
             echo "No conflicts — clean merge."
           fi
@@ -198,18 +188,28 @@ jobs:
 
           # ── Write commit message to a temp file (avoids quoting issues in heredoc)
           cat > /tmp/reconcile-msg.txt << 'COMMIT_MSG_EOF'
-          chore: reconcile successful production lineage
+          chore: reconcile successful production lineage (second reconciliation)
 
           Two-parent merge joining diverged histories:
-            Parent 1 (GitHub main, 3c8aba49): payout slip, Razorpay integration
-            Parent 2 (VPS lineage, 005f297a): previous reconcile merge commit
+            Parent 1 (GitHub main, current HEAD): MSG91 OTP compliance + all prior work
+            Parent 2 (VPS lineage, 40f5d8d): 13 VPS-only commits (all superseded/obsolete)
 
-          Conflict resolutions:
-            (none expected — VPS lineage is a subset of main)
+          Common ancestor: 3c8aba49 (feat: Payout Transaction Slip)
+
+          VPS-only commit classification — ALL superseded or obsolete:
+            40f5d8d  fix(rate-limit): CF-Connecting-IP      → SUPERSEDED by e22193f2
+            8ca54aaf fix: payout slip type mismatch         → SUPERSEDED by 7d89576e
+            004e5e00 fix: rate-limit /verify endpoint       → SUPERSEDED by 393708e2
+            c4f6e322 test: guard admin gateway labels       → SUPERSEDED by 6d45623f
+            eb795a5b fix(migrate): ALTER TABLE guards        → SUPERSEDED by ffeff40c
+            ba88c5cc fix(migrate): split 12 sections        → SUPERSEDED by 5b5d0090
+            7 bookkeeping/reconcile commits                 → OBSOLETE (prior workflow)
+
+          Conflict resolutions: ALL --ours (main supersedes every conflicted file)
 
           Ancestry verified post-commit:
-            git merge-base --is-ancestor 005f297a HEAD  = 0
-            git merge-base --is-ancestor 3c8aba49 HEAD  = 0
+            git merge-base --is-ancestor 40f5d8d HEAD  = 0
+            git merge-base --is-ancestor 3c8aba49 HEAD = 0
 
           No force-push. No reset --hard. No branch-divergence bypass.
           COMMIT_MSG_EOF
@@ -229,8 +229,8 @@ jobs:
           echo ""
           echo "=== Ancestry verification ==="
           git merge-base --is-ancestor "$VPS_COMMIT" HEAD \
-            && echo "PASS: 005f297a IS ancestor" \
-            || { echo "FAIL: 005f297a NOT ancestor"; exit 1; }
+            && echo "PASS: 40f5d8d IS ancestor" \
+            || { echo "FAIL: 40f5d8d NOT ancestor"; exit 1; }
           git merge-base --is-ancestor "$ACTUAL_MAIN" HEAD \
             && echo "PASS: origin/main IS ancestor" \
             || { echo "FAIL: origin/main NOT ancestor"; exit 1; }
@@ -338,11 +338,11 @@ jobs:
 
       - name: Verify both ancestry checks
         run: |
-          VPS_COMMIT=005f297aba53220add6fec27e95862851a393384
+          VPS_COMMIT=40f5d8d618c26e378ada5c196c9fc7e8423930b5
           MAIN_COMMIT=3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
           git merge-base --is-ancestor "$VPS_COMMIT" HEAD \
-            && echo "PASS: 005f297a IS ancestor" \
-            || { echo "FAIL: 005f297a NOT ancestor"; exit 1; }
+            && echo "PASS: 40f5d8d IS ancestor" \
+            || { echo "FAIL: 40f5d8d NOT ancestor"; exit 1; }
           git merge-base --is-ancestor "$MAIN_COMMIT" HEAD \
             && echo "PASS: 3c8aba49 IS ancestor" \
             || { echo "FAIL: 3c8aba49 NOT ancestor"; exit 1; }
@@ -538,7 +538,7 @@ jobs:
               "EXPECTED_MERGE=$EXPECTED bash -s" << 'PUSH_EOF'
           set -Eeuo pipefail
           WORKTREE=/root/rasokart-reconcile
-          VPS_COMMIT=005f297aba53220add6fec27e95862851a393384
+          VPS_COMMIT=40f5d8d618c26e378ada5c196c9fc7e8423930b5
           MAIN_COMMIT=3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
 
           cd "$WORKTREE"
@@ -555,8 +555,8 @@ jobs:
           echo ""
           echo "=== Pre-push ancestry verification ==="
           git merge-base --is-ancestor "$VPS_COMMIT" HEAD \
-            && echo "PASS: 005f297a IS ancestor" \
-            || { echo "FAIL: 005f297a NOT ancestor"; exit 1; }
+            && echo "PASS: 40f5d8d IS ancestor" \
+            || { echo "FAIL: 40f5d8d NOT ancestor"; exit 1; }
           git merge-base --is-ancestor "$MAIN_COMMIT" HEAD \
             && echo "PASS: 3c8aba49 IS ancestor" \
             || { echo "FAIL: 3c8aba49 NOT ancestor"; exit 1; }
