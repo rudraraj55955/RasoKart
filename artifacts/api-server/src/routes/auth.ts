@@ -1639,6 +1639,11 @@ router.post("/merchant/otp/verify", otpVerifyLimiter, async (req, res, next) => 
       });
     }
 
+    let otpMerchantType: string | null = null;
+    if (fullUser.merchantId) {
+      otpMerchantType = await deriveMerchantTypeSafely(fullUser.merchantId, fullUser.email).catch(() => "NORMAL");
+    }
+
     res.json({
       token,
       user: {
@@ -1648,6 +1653,7 @@ router.post("/merchant/otp/verify", otpVerifyLimiter, async (req, res, next) => 
         name: fullUser.name,
         isActive: fullUser.isActive,
         merchantId: fullUser.merchantId,
+        merchantType: otpMerchantType,
         createdAt: fullUser.createdAt,
       },
     });
@@ -1740,6 +1746,256 @@ router.post("/merchant/password/reset", passwordResetLimiter, async (req, res, n
     req.log.info({ userId: user.id, purpose: "PASSWORD_RESET" }, "merchant_otp_verified");
 
     res.json({ message: "Your password has been reset successfully. Please log in with your new password." });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Admin OTP login (email-based)
+// ---------------------------------------------------------------------------
+
+const adminOtpRequestLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many OTP requests. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    return `admin-otp-req:${safeIpKey(req)}:${email}`;
+  },
+});
+
+const adminOtpVerifyLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many attempts. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    return `admin-otp-verify:${safeIpKey(req)}:${email}`;
+  },
+});
+
+const adminOtpResendLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many resend requests. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    return `admin-otp-resend:${safeIpKey(req)}:${email}`;
+  },
+});
+
+const SAFE_ADMIN_OTP_MESSAGE = "If this admin account exists, a login code has been sent.";
+
+async function createAndSendAdminOtp(opts: {
+  req: import("express").Request;
+  email: string;
+  userId: number;
+}): Promise<void> {
+  const { req, email, userId } = opts;
+  const identifierHash = hashIdentifier(email);
+  const ip = requestIp(req);
+  const ipHash = hashIp(ip);
+
+  const [existing] = await db
+    .select({ id: merchantAuthOtpsTable.id, createdAt: merchantAuthOtpsTable.createdAt, resendCount: merchantAuthOtpsTable.resendCount })
+    .from(merchantAuthOtpsTable)
+    .where(and(
+      eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+      eq(merchantAuthOtpsTable.purpose, "ADMIN_LOGIN"),
+    ))
+    .orderBy(desc(merchantAuthOtpsTable.createdAt))
+    .limit(1);
+
+  if (existing && Date.now() - existing.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
+    req.log.info({ purpose: "ADMIN_LOGIN", cooldown: true }, "admin_otp_requested");
+    return;
+  }
+
+  const otp = generateOtp();
+  const otpHash = await hashOtp(otp);
+  const resendCount = existing ? existing.resendCount + 1 : 0;
+
+  await db.insert(merchantAuthOtpsTable).values({
+    merchantId: null,
+    identifierHash,
+    otpHash,
+    purpose: "ADMIN_LOGIN",
+    expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
+    attempts: 0,
+    resendCount,
+    ipHash,
+  });
+
+  req.log.info({ purpose: "ADMIN_LOGIN", userId }, "admin_otp_created");
+
+  const sent = await sendMerchantOtpEmail({ to: email, otp, purpose: "LOGIN" }).catch((err: unknown) => {
+    req.log.warn({ err, purpose: "ADMIN_LOGIN" }, "admin_otp_email_error");
+    return false;
+  });
+  req.log.info({ purpose: "ADMIN_LOGIN", sent }, "admin_otp_sent");
+}
+
+// POST /api/auth/admin/otp/request
+router.post("/admin/otp/request", adminOtpRequestLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body as { email?: string };
+    if (!email || typeof email !== "string") {
+      res.status(400).json({ error: "email is required" });
+      return;
+    }
+    const normalizedEmail = email.toLowerCase().trim();
+    const [adminUser] = await db
+      .select({ id: usersTable.id, email: usersTable.email, isActive: usersTable.isActive })
+      .from(usersTable)
+      .where(and(eq(usersTable.email, normalizedEmail), eq(usersTable.role, "admin")))
+      .limit(1);
+
+    if (!adminUser || !adminUser.isActive) {
+      req.log.info({ purpose: "ADMIN_LOGIN", hasUser: false }, "admin_otp_requested");
+      res.json({ message: SAFE_ADMIN_OTP_MESSAGE });
+      return;
+    }
+
+    await createAndSendAdminOtp({ req, email: normalizedEmail, userId: adminUser.id });
+    res.json({ message: SAFE_ADMIN_OTP_MESSAGE });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/auth/admin/otp/resend
+router.post("/admin/otp/resend", adminOtpResendLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body as { email?: string };
+    if (!email || typeof email !== "string") {
+      res.status(400).json({ error: "email is required" });
+      return;
+    }
+    const normalizedEmail = email.toLowerCase().trim();
+    const [adminUser] = await db
+      .select({ id: usersTable.id, email: usersTable.email, isActive: usersTable.isActive })
+      .from(usersTable)
+      .where(and(eq(usersTable.email, normalizedEmail), eq(usersTable.role, "admin")))
+      .limit(1);
+
+    if (!adminUser || !adminUser.isActive) {
+      res.json({ message: SAFE_ADMIN_OTP_MESSAGE });
+      return;
+    }
+
+    const identifierHash = hashIdentifier(normalizedEmail);
+    const [existing] = await db
+      .select({ resendCount: merchantAuthOtpsTable.resendCount })
+      .from(merchantAuthOtpsTable)
+      .where(and(
+        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+        eq(merchantAuthOtpsTable.purpose, "ADMIN_LOGIN"),
+      ))
+      .orderBy(desc(merchantAuthOtpsTable.createdAt))
+      .limit(1);
+
+    const maxResend = 3;
+    if (existing && existing.resendCount >= maxResend) {
+      res.status(429).json({ error: "Maximum resend limit reached. Please start a new login." });
+      return;
+    }
+
+    await createAndSendAdminOtp({ req, email: normalizedEmail, userId: adminUser.id });
+    res.json({ message: "A new code has been sent." });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/auth/admin/otp/verify
+router.post("/admin/otp/verify", adminOtpVerifyLimiter, async (req, res, next) => {
+  try {
+    const { email, otp } = req.body as { email?: string; otp?: string };
+    if (!email || !otp || typeof email !== "string" || typeof otp !== "string") {
+      res.status(400).json({ error: "email and otp are required" });
+      return;
+    }
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const [adminUser] = await db
+      .select({ id: usersTable.id, email: usersTable.email, role: usersTable.role, isActive: usersTable.isActive, name: usersTable.name, merchantId: usersTable.merchantId, createdAt: usersTable.createdAt })
+      .from(usersTable)
+      .where(and(eq(usersTable.email, normalizedEmail), eq(usersTable.role, "admin")))
+      .limit(1);
+
+    if (!adminUser) {
+      req.log.warn({ purpose: "ADMIN_LOGIN" }, "admin_otp_failed_no_user");
+      res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
+      return;
+    }
+
+    if (!adminUser.isActive) {
+      req.log.warn({ userId: adminUser.id, purpose: "ADMIN_LOGIN", reason: "inactive" }, "admin_otp_failed");
+      res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
+      return;
+    }
+
+    const identifierHash = hashIdentifier(normalizedEmail);
+    const [otpRow] = await db
+      .select()
+      .from(merchantAuthOtpsTable)
+      .where(and(
+        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+        eq(merchantAuthOtpsTable.purpose, "ADMIN_LOGIN"),
+      ))
+      .orderBy(desc(merchantAuthOtpsTable.createdAt))
+      .limit(1);
+
+    if (!otpRow || otpRow.consumedAt || otpRow.expiresAt.getTime() < Date.now()) {
+      req.log.warn({ userId: adminUser.id, purpose: "ADMIN_LOGIN", reason: "no_active_otp" }, "admin_otp_failed");
+      res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
+      return;
+    }
+
+    if (otpRow.attempts >= OTP_MAX_ATTEMPTS) {
+      req.log.warn({ userId: adminUser.id, purpose: "ADMIN_LOGIN" }, "admin_otp_rate_limited");
+      res.status(429).json({ error: "Too many attempts. Please request a new code." });
+      return;
+    }
+
+    const valid = await verifyOtpHash(otp, otpRow.otpHash);
+    if (!valid) {
+      await db.update(merchantAuthOtpsTable).set({ attempts: otpRow.attempts + 1 }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
+      req.log.warn({ userId: adminUser.id, purpose: "ADMIN_LOGIN", reason: "mismatch" }, "admin_otp_failed");
+      res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
+      return;
+    }
+
+    await db.update(merchantAuthOtpsTable).set({ consumedAt: new Date() }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
+
+    req.log.info({ userId: adminUser.id, purpose: "ADMIN_LOGIN" }, "admin_otp_verified");
+
+    const token = generateToken({ userId: adminUser.id, role: adminUser.role });
+    const loginIp = requestIp(req);
+
+    db.update(usersTable)
+      .set({ lastLoginAt: new Date(), ...(loginIp ? { lastSeenIp: loginIp } : {}) })
+      .where(eq(usersTable.id, adminUser.id))
+      .catch((err: unknown) => {
+        logger.warn({ err, userId: adminUser.id }, "Failed to update lastLoginAt after admin OTP login");
+      });
+
+    res.json({
+      token,
+      user: {
+        id: adminUser.id,
+        email: adminUser.email,
+        role: adminUser.role,
+        name: adminUser.name,
+        isActive: adminUser.isActive,
+        merchantId: adminUser.merchantId,
+        createdAt: adminUser.createdAt,
+      },
+    });
   } catch (err) {
     next(err);
   }
