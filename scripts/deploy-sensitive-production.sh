@@ -70,6 +70,48 @@ CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 [ "$CURRENT_BRANCH" = "main" ] || fail "Not on main (on '$CURRENT_BRANCH'). Refusing to deploy."
 
 # ---------------------------------------------------------------------------
+# 1b. Auto-recover from a stale merge left by a prior reconciliation attempt.
+#
+#     A previous reconcile workflow may have run `git merge origin/main` on the
+#     VPS, hit a conflict (e.g. on a one-time workflow file), and exited without
+#     cleaning up — leaving .git/MERGE_HEAD present and staged files in the
+#     index. This is safe to abort: all reconciliation merges use -s ours, so
+#     no VPS-only content is lost (it is fully preserved in origin/main's tree).
+# ---------------------------------------------------------------------------
+_GIT_DIR="$(git rev-parse --git-dir 2>/dev/null || echo '.git')"
+if [ -f "$_GIT_DIR/MERGE_HEAD" ]; then
+  log "Stale merge detected (.git/MERGE_HEAD present from prior reconciliation)."
+  log "Aborting merge and restoring working tree to HEAD ($(git rev-parse HEAD))..."
+  git merge --abort
+  log "Merge aborted. Index and working tree restored to pre-merge state."
+fi
+unset _GIT_DIR
+
+# After merge abort, reset any residual staged changes and discard tracked
+# working-tree modifications (e.g. agent-memory or source files staged before
+# the merge was initiated).
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  log "Residual tracked changes after merge abort — resetting index and working tree..."
+  git reset HEAD -- .
+  git checkout -- .
+  log "Index and working tree fully reset to HEAD ($(git rev-parse HEAD))."
+fi
+
+# Remove known-safe untracked paths created by reconciliation tooling.
+# These directories hold no production data; they will be fully restored by
+# the incoming fast-forward from origin/main if they belong there.
+for _rk_path in \
+    ".agents/memory" \
+    ".github/workflows/sed8S3arA" \
+    "attached_assets/screenshots"; do
+  if [ -e "$_rk_path" ]; then
+    log "Removing reconciliation artifact (no production data): $_rk_path"
+    rm -rf -- "$_rk_path"
+  fi
+done
+unset _rk_path
+
+# ---------------------------------------------------------------------------
 # 2. Preflight: fail safely on any local drift before pulling.
 # ---------------------------------------------------------------------------
 log "Checking working tree for tracked local changes..."
