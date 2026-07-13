@@ -86,6 +86,7 @@ import adminTryItPresetsRouter from "./adminTryItPresets";
 import razorpayOrdersRouter from "./razorpayOrders";
 import razorpayWebhookRouter from "./razorpayWebhook";
 import adminRazorpayRouter from "./adminRazorpay";
+import payoutMerchantSignupRouter from "./payoutMerchantSignup";
 
 const router: IRouter = Router();
 
@@ -180,6 +181,8 @@ router.use("/admin/merchant-kyc-settings", merchantKycSettingsRouter);
 router.use("/admin/merchant-kyc", adminMerchantKycRouter);
 
 // Payout merchant module — merchant-facing config, payouts + KYC + admin management
+// Public self-registration — must be mounted BEFORE the auth-guarded payout-merchant router
+router.use("/payout-merchant", payoutMerchantSignupRouter);
 router.use("/payout-merchant/kyc", payoutMerchantKycRouter);
 router.use("/payout-merchant", payoutMerchantRouter);
 router.use("/admin/payout-merchants", adminPayoutMerchantsRouter);

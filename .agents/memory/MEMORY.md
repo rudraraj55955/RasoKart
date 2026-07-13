@@ -52,3 +52,4 @@
 - [Audit log insert kills config PUT routes on fresh DB](audit-logs-missing-fresh-db.md) — every admin system-config PUT writes an audit_logs row after saving; if audit_logs is absent the entire PUT returns 500 even though system_config exists and the write succeeded.
 - [Payout slip frontend/API field mismatch](payout-slip-frontend-api-mismatch.md) — buildSlipData returns flat `merchantBusinessName`/`utrDisplay`/`transactionDateTime`; frontend SlipData type must match exactly or crash. verificationUrl needs a matching /verify-payout/:token route in App.tsx.
 - [CF-Connecting-IP rate limit key](cf-connecting-ip-ratelimit.md) — key rate limiters on CF-Connecting-IP not req.ip behind Cloudflare; per-PoP buckets defeat the limit.
+- [api-server has no direct zod dep](api-server-no-zod.md) — api-server routes never import zod directly; use plain JS validation (if-checks) in any new route file or TypeScript build fails with TS2307.

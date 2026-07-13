@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { useCompanySettings } from "@/lib/company-settings";
@@ -30,6 +31,11 @@ import {
   Key,
   Smartphone,
   Download,
+  Menu,
+  X,
+  SendHorizonal,
+  Banknote,
+  Clock,
 } from "lucide-react";
 import { InstallAppButton } from "@/components/ui/install-app-banner";
 
@@ -115,6 +121,7 @@ const stats = [
 
 export default function Landing() {
   const { companyName, supportPhone, footerText } = useCompanySettings();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
       {/* NAV */}
@@ -130,22 +137,80 @@ export default function Landing() {
             <a href="#settlement" className="transition-colors hover:text-foreground">Settlement</a>
             <Link href="/merchant/api-docs" className="transition-colors hover:text-foreground">API Docs</Link>
             <a href="#plans" className="transition-colors hover:text-foreground">Plans</a>
+            <a href="#payout-portal" className="transition-colors hover:text-foreground">Payout Portal</a>
             <a href="#contact" className="transition-colors hover:text-foreground">Contact</a>
           </nav>
           <div className="flex items-center gap-2">
-            <Link href="/merchant/api-docs">
-              <Button variant="ghost" size="sm" className="md:hidden">API Docs</Button>
+            <Link href="/payout-merchant/login">
+              <Button variant="ghost" size="sm" className="hidden sm:inline-flex gap-1 text-amber-400 hover:text-amber-300 hover:bg-amber-400/10">
+                <SendHorizonal className="h-3.5 w-3.5" />
+                Payout Login
+              </Button>
             </Link>
             <Link href="/merchant">
-              <Button variant="ghost" size="sm">Merchant Login</Button>
+              <Button variant="ghost" size="sm" className="hidden sm:inline-flex">Merchant Login</Button>
             </Link>
             <Link href="/merchant/apply">
-              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <Button size="sm" className="hidden sm:inline-flex bg-primary text-primary-foreground hover:bg-primary/90">
                 Apply Now
               </Button>
             </Link>
+            {/* Hamburger — mobile only */}
+            <button
+              className="flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground sm:hidden"
+              onClick={() => setMobileMenuOpen((o) => !o)}
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile dropdown menu */}
+        {mobileMenuOpen && (
+          <div className="border-t border-border/40 bg-background/95 backdrop-blur-xl sm:hidden">
+            <nav className="mx-auto max-w-7xl space-y-1 px-4 py-3">
+              {[
+                { label: "Services", href: "#services" },
+                { label: "Dashboard", href: "#features" },
+                { label: "Settlement", href: "#settlement" },
+                { label: "Plans", href: "#plans" },
+                { label: "Payout Portal", href: "#payout-portal" },
+                { label: "Contact", href: "#contact" },
+              ].map((link) => (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {link.label}
+                </a>
+              ))}
+              <div className="my-2 border-t border-border/40" />
+              <Link href="/payout-merchant/login" onClick={() => setMobileMenuOpen(false)}>
+                <span className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-amber-400 hover:bg-amber-400/10">
+                  <SendHorizonal className="h-4 w-4" /> Payout Merchant Login
+                </span>
+              </Link>
+              <Link href="/payout-merchant/signup" onClick={() => setMobileMenuOpen(false)}>
+                <span className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-amber-300 hover:bg-amber-400/10">
+                  <Banknote className="h-4 w-4" /> Sign Up for Payouts
+                </span>
+              </Link>
+              <Link href="/merchant" onClick={() => setMobileMenuOpen(false)}>
+                <span className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground">
+                  Merchant Login
+                </span>
+              </Link>
+              <Link href="/merchant/apply" onClick={() => setMobileMenuOpen(false)}>
+                <span className="block rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10">
+                  Apply as Merchant →
+                </span>
+              </Link>
+            </nav>
+          </div>
+        )}
       </header>
 
       {/* HERO */}
@@ -531,6 +596,95 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* PAYOUT PORTAL — dedicated payout merchant section */}
+      <section id="payout-portal" className="relative py-24 bg-gradient-to-b from-card/10 to-background">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute left-0 top-1/3 h-[400px] w-[400px] rounded-full bg-amber-500/8 blur-3xl" />
+          <div className="absolute right-0 bottom-1/3 h-[300px] w-[300px] rounded-full bg-orange-500/6 blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="grid items-center gap-16 lg:grid-cols-2">
+            {/* Visual */}
+            <div className="order-2 lg:order-1">
+              <div className="rounded-2xl border border-amber-400/20 bg-card/40 p-6 backdrop-blur-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-amber-400">Payout Dashboard</span>
+                  <Badge className="border-amber-400/30 bg-amber-400/10 text-amber-400" variant="outline">Live</Badge>
+                </div>
+                <div className="space-y-3">
+                  {[
+                    { label: "Wallet Balance", value: "₹2,40,000", sub: "Available", color: "text-amber-400" },
+                    { label: "Today's Payouts", value: "₹85,400", sub: "12 transfers", color: "text-emerald-400" },
+                    { label: "Pending Payouts", value: "₹14,600", sub: "3 in queue", color: "text-orange-400" },
+                    { label: "Success Rate", value: "98.7%", sub: "Last 30 days", color: "text-cyan-400" },
+                  ].map((row) => (
+                    <div key={row.label} className="flex items-center justify-between rounded-xl border border-border/30 bg-background/30 px-4 py-3">
+                      <div>
+                        <div className="text-xs text-muted-foreground">{row.label}</div>
+                        <div className={`text-lg font-bold ${row.color}`}>{row.value}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">{row.sub}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <div className="flex-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-center text-xs text-amber-400">Send Payout</div>
+                  <div className="flex-1 rounded-lg border border-border/30 bg-primary/10 px-3 py-2 text-center text-xs text-primary">View History</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Copy */}
+            <div className="order-1 lg:order-2">
+              <Badge className="mb-4 border-amber-400/30 bg-amber-400/10 text-amber-400" variant="outline">
+                Payout Portal
+              </Badge>
+              <h2 className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl">
+                Instant Payouts,{" "}
+                <span className="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
+                  Zero Hassle
+                </span>
+              </h2>
+              <p className="mb-6 text-muted-foreground">
+                RasoKart's Payout Portal is purpose-built for businesses that need to disburse funds at
+                scale — salary payments, vendor settlements, commission payouts, and more.
+                Register, complete KYC, and start sending payouts.
+              </p>
+              <div className="mb-8 grid grid-cols-2 gap-3">
+                {[
+                  { icon: Banknote, label: "Bank + UPI transfers" },
+                  { icon: Clock, label: "T+0 instant settlement" },
+                  { icon: CheckCircle2, label: "KYC-verified merchants" },
+                  { icon: Shield, label: "Dual approval workflow" },
+                  { icon: BarChart3, label: "Payout analytics" },
+                  { icon: FileText, label: "Transaction slip & audit" },
+                ].map((f) => (
+                  <div key={f.label} className="flex items-center gap-2 text-sm text-foreground/80">
+                    <f.icon className="h-4 w-4 shrink-0 text-amber-400" />
+                    <span>{f.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/payout-merchant/signup">
+                  <Button className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90">
+                    <Banknote className="h-4 w-4" />
+                    Register as Payout Merchant
+                  </Button>
+                </Link>
+                <Link href="/payout-merchant/login">
+                  <Button variant="outline" className="gap-2 border-amber-400/40 text-amber-400 hover:bg-amber-400/10">
+                    <SendHorizonal className="h-4 w-4" />
+                    Payout Portal Login
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* SECURITY TRUST STRIP */}
       <section className="border-y border-border/40 bg-card/20 py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -612,10 +766,12 @@ export default function Landing() {
               </div>
 
               {/* Portal links */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: "Merchant Portal", href: "/merchant", cta: "Login →", color: "text-cyan-400", bg: "bg-cyan-400/10" },
                   { label: "Apply as Merchant", href: "/merchant/apply", cta: "Get started →", color: "text-emerald-400", bg: "bg-emerald-400/10" },
+                  { label: "Payout Portal", href: "/payout-merchant/login", cta: "Login →", color: "text-amber-400", bg: "bg-amber-400/10" },
+                  { label: "Payout Sign Up", href: "/payout-merchant/signup", cta: "Register →", color: "text-orange-400", bg: "bg-orange-400/10" },
                 ].map((p) => (
                   <Link key={p.label} href={p.href}>
                     <div className={`cursor-pointer rounded-xl border border-border/40 ${p.bg} p-4 text-center transition-all hover:border-border/80`}>
@@ -688,6 +844,8 @@ export default function Landing() {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><Link href="/merchant" className="transition-colors hover:text-foreground">Merchant Login</Link></li>
                 <li><Link href="/merchant/apply" className="transition-colors hover:text-foreground">Apply as Merchant</Link></li>
+                <li><Link href="/payout-merchant/login" className="transition-colors hover:text-foreground text-amber-400/80">Payout Portal Login</Link></li>
+                <li><Link href="/payout-merchant/signup" className="transition-colors hover:text-foreground text-amber-400/60">Payout Sign Up</Link></li>
                 <li><a href="mailto:support@rasokart.com" className="transition-colors hover:text-foreground">Support</a></li>
               </ul>
             </div>

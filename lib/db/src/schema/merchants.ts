@@ -42,6 +42,10 @@ export const merchantsTable = pgTable("merchants", {
   autoPayoutPaused: boolean("auto_payout_paused").notNull().default(false),
   autoPayoutUpdatedBy: text("auto_payout_updated_by"),
   autoPayoutUpdatedAt: timestamp("auto_payout_updated_at", { withTimezone: true }),
+  // Self-registration stage for payout merchants who sign up via the public portal
+  registrationStage: text("registration_stage").notNull().default("REGISTERED"),
+  businessType: text("business_type"),
+  panNumber: text("pan_number"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

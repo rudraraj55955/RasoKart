@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Plus, ChevronLeft, ChevronRight, Wallet, Eye } from "lucide-react";
+import { Users, Plus, ChevronLeft, ChevronRight, Wallet, Eye, ToggleLeft, ToggleRight } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -46,6 +46,23 @@ export default function AdminPayoutMerchants() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ businessName: "", contactName: "", email: "", phone: "", password: "" });
 
+  const { data: selfRegData } = useQuery({
+    queryKey: ["payout-self-registration"],
+    queryFn: () => apiFetch<{ enabled: boolean }>("/api/admin/payout-settings/self-registration"),
+  });
+
+  const toggleSelfReg = useMutation({
+    mutationFn: (enabled: boolean) => apiFetch<{ ok: boolean; enabled: boolean }>("/api/admin/payout-settings/self-registration", {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+    onSuccess: (data) => {
+      toast.success(data.enabled ? "Self-registration enabled" : "Self-registration disabled");
+      qc.invalidateQueries({ queryKey: ["payout-self-registration"] });
+    },
+    onError: (err: any) => toast.error(err.message ?? "Failed to update setting"),
+  });
+
   const { data, isLoading } = useQuery({
     queryKey: ["admin-payout-merchants", page, statusFilter],
     queryFn: () => apiFetch<any>(`/api/admin/payout-merchants?page=${page}&limit=25${statusFilter !== "all" ? `&status=${statusFilter}` : ""}`),
@@ -72,6 +89,8 @@ export default function AdminPayoutMerchants() {
   const merchants = data?.merchants ?? [];
   const totalPages = data?.totalPages ?? 1;
 
+  const selfRegEnabled = selfRegData?.enabled ?? true;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -81,6 +100,32 @@ export default function AdminPayoutMerchants() {
         </div>
         <Button onClick={() => setShowCreate(true)} className="gap-2">
           <Plus className="w-4 h-4" /> New Payout Merchant
+        </Button>
+      </div>
+
+      {/* Self-registration toggle */}
+      <div className="flex items-center justify-between rounded-xl border border-border/40 bg-card/40 px-5 py-3">
+        <div className="flex items-center gap-3">
+          {selfRegEnabled
+            ? <ToggleRight className="h-5 w-5 text-emerald-400" />
+            : <ToggleLeft className="h-5 w-5 text-muted-foreground" />}
+          <div>
+            <p className="text-sm font-medium">Public Self-Registration</p>
+            <p className="text-xs text-muted-foreground">
+              {selfRegEnabled
+                ? "Merchants can register at /payout-merchant/signup"
+                : "Public registration is disabled — admin-only creation"}
+            </p>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant={selfRegEnabled ? "outline" : "default"}
+          className="min-w-[90px] text-xs"
+          disabled={toggleSelfReg.isPending}
+          onClick={() => toggleSelfReg.mutate(!selfRegEnabled)}
+        >
+          {selfRegEnabled ? "Disable" : "Enable"}
         </Button>
       </div>
 

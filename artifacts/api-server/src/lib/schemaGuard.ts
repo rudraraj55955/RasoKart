@@ -841,6 +841,12 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auto_payout_updated_at TIMESTAMPTZ`);
   logger.info({ table: "merchants", migration: "add_auto_payout_cols" }, "schema_guard_column_added");
 
+  // ── merchants: payout merchant self-registration columns ──────────────────
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS registration_stage TEXT NOT NULL DEFAULT 'REGISTERED'`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS business_type TEXT`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS pan_number TEXT`);
+  logger.info({ table: "merchants", migration: "add_payout_merchant_registration_cols" }, "schema_guard_column_added");
+
   // ── users: payout admin permission columns ───────────────────────────────
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_payout_provider_credentials BOOLEAN NOT NULL DEFAULT FALSE`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json JSONB`);

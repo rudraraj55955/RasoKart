@@ -113,4 +113,39 @@ router.patch("/auto-payout", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Self-registration toggle ──────────────────────────────────────────────
+const SELF_REG_KEY = "payout_merchant_self_registration_enabled";
+
+// GET /api/admin/payout-settings/self-registration
+router.get("/self-registration", async (req, res, next) => {
+  try {
+    const [row] = await db.select({ value: systemConfigTable.value }).from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SELF_REG_KEY)).limit(1);
+    const enabled = row ? row.value !== "false" : true;
+    res.json({ enabled });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/admin/payout-settings/self-registration
+router.put("/self-registration", async (req, res, next) => {
+  try {
+    const admin = (req as any).user;
+    const { enabled } = req.body as { enabled: unknown };
+    if (typeof enabled !== "boolean") { res.status(422).json({ error: "enabled must be boolean" }); return; }
+    await db.insert(systemConfigTable)
+      .values({ key: SELF_REG_KEY, value: enabled ? "true" : "false", updatedByEmail: admin.email })
+      .onConflictDoUpdate({ target: systemConfigTable.key, set: { value: enabled ? "true" : "false", updatedByEmail: admin.email } });
+    await db.insert(auditLogsTable).values({
+      adminId: admin.id,
+      adminEmail: admin.email,
+      action: enabled ? "payout_self_registration_enabled" : "payout_self_registration_disabled",
+      targetType: "system_config",
+      targetId: 0,
+      details: JSON.stringify({ enabled }),
+    } as any).catch(() => {});
+    req.log.info({ adminId: admin.id, enabled }, "payout_self_registration_toggle_updated");
+    res.json({ ok: true, enabled });
+  } catch (err) { next(err); }
+});
+
 export default router;

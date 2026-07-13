@@ -152,6 +152,7 @@ import PayoutMerchantWallet from "@/pages/payout-merchant/wallet";
 import PayoutMerchantLedger from "@/pages/payout-merchant/ledger";
 import PayoutMerchantProfile from "@/pages/payout-merchant/profile";
 import PayoutMerchantKyc from "@/pages/payout-merchant/kyc";
+import PayoutMerchantSignup from "@/pages/payout-merchant/signup";
 
 function extractApiError(error: unknown): string | null {
   if (!error) return null;
@@ -406,6 +407,7 @@ function Router() {
       <Route path="/merchant/login" component={SmartMerchantLogin} />
       <Route path="/payout-admin/login" component={PayoutAdminLogin} />
       <Route path="/payout-merchant/login" component={PayoutMerchantLogin} />
+      <Route path="/payout-merchant/signup" component={PayoutMerchantSignup} />
       <Route path="/merchant/register"><Redirect to="/merchant/apply" /></Route>
 
       {/* Admin Routes */}

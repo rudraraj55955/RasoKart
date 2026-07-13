@@ -3,30 +3,31 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { saveAuthAndRedirect } from "@/lib/auth";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Eye, EyeOff } from "lucide-react";
 import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
-import { LoginDebugPanel, INITIAL_LOGIN_DEBUG_STATE, type LoginDebugState } from "@/components/login-debug-panel";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
+  rememberMe: z.boolean().optional(),
 });
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function PayoutMerchantLogin() {
-  const [_, setLocation] = useLocation();
   const [isPending, setIsPending] = useState(false);
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
-  const [debugState, setDebugState] = useState<LoginDebugState>(INITIAL_LOGIN_DEBUG_STATE);
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "", password: "", rememberMe: false },
   });
 
   const onSubmit = async (data: LoginFormValues) => {
@@ -42,32 +43,15 @@ export default function PayoutMerchantLogin() {
       });
 
       if (res.status === 429) {
-        const resetHeader =
-          res.headers.get("RateLimit-Reset") ?? res.headers.get("ratelimit-reset");
+        const resetHeader = res.headers.get("RateLimit-Reset") ?? res.headers.get("ratelimit-reset");
         const seconds = resetHeader ? parseInt(resetHeader, 10) : 60;
         setRateLimitSeconds(Number.isFinite(seconds) && seconds > 0 ? seconds : 60);
-        setDebugState({
-          apiSuccess: false,
-          tokenExists: false,
-          role: "",
-          merchantType: "",
-          targetPath: "/payout-merchant/dashboard",
-          redirectCalled: false,
-        });
         return;
       }
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         const msg = (body as Record<string, unknown>)["message"] as string | undefined;
-        setDebugState({
-          apiSuccess: false,
-          tokenExists: false,
-          role: "",
-          merchantType: "",
-          targetPath: "/payout-merchant/dashboard",
-          redirectCalled: false,
-        });
         toast.error(msg || "Invalid credentials");
         return;
       }
@@ -98,72 +82,23 @@ export default function PayoutMerchantLogin() {
 
       const token = (body["token"] as string | undefined) ?? "";
 
-      const targetPath = "/payout-merchant/dashboard";
-
       if (!(role === "merchant" && merchantType === "PAYOUT_ONLY")) {
-        setDebugState({
-          apiSuccess: true,
-          tokenExists: !!token,
-          role: role || "",
-          merchantType: merchantType || "",
-          targetPath,
-          redirectCalled: false,
-        });
         toast.error("This portal is for Payout merchants only. Please use the regular merchant login.");
         return;
       }
 
       if (!token) {
-        setDebugState({
-          apiSuccess: true,
-          tokenExists: false,
-          role: role || "",
-          merchantType: merchantType || "",
-          targetPath,
-          redirectCalled: false,
-        });
         toast.error("Login failed. Please try again.");
         return;
       }
 
-      // marker: payout-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
-      // Persist token/user to every storage key any guard could read, then
-      // force a REAL full-page navigation (assign + href + replace,
-      // staggered) directly in this success branch — before any return,
-      // not inside a useEffect, not gated on auth-context state resolving.
       toast.success("Welcome to your Payout Portal.");
-      setDebugState({
-        apiSuccess: true,
-        tokenExists: true,
-        role: role || "",
-        merchantType: merchantType || "",
-        targetPath,
-        redirectCalled: false,
-      });
       saveAuthAndRedirect(
         token,
         { ...(rawUser ?? {}), role, merchantType },
-        targetPath,
-        (d) =>
-          setDebugState({
-            apiSuccess: d.apiSuccess,
-            tokenExists: d.tokenPresent,
-            role: d.role,
-            merchantType: d.merchantType,
-            targetPath: d.targetPath,
-            redirectCalled: d.redirectCalled,
-          })
+        "/payout-merchant/dashboard",
       );
-      return;
     } catch {
-      setDebugState({
-        apiSuccess: false,
-        tokenExists: false,
-        role: "",
-        merchantType: "",
-        targetPath: "/payout-merchant/dashboard",
-        redirectCalled: false,
-      });
       toast.error("Network error. Please try again.");
     } finally {
       setIsPending(false);
@@ -182,7 +117,7 @@ export default function PayoutMerchantLogin() {
         </div>
       )}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
           <FormField
             control={form.control}
             name="email"
@@ -209,35 +144,78 @@ export default function PayoutMerchantLogin() {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Password</FormLabel>
+                <div className="flex items-center justify-between">
+                  <FormLabel>Password</FormLabel>
+                  <span className="text-xs text-muted-foreground">
+                    <a href="mailto:support@rasokart.com" className="text-primary hover:underline">
+                      Forgot password?
+                    </a>
+                  </span>
+                </div>
                 <FormControl>
-                  <Input
-                    type="password"
-                    autoComplete="current-password"
-                    placeholder="••••••••"
-                    disabled={rateLimitSeconds !== null}
-                    {...field}
-                  />
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      disabled={rateLimitSeconds !== null}
+                      className="pr-10"
+                      {...field}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword((s) => !s)}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name="rememberMe"
+            render={({ field }) => (
+              <FormItem className="flex items-center gap-2 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={rateLimitSeconds !== null}
+                  />
+                </FormControl>
+                <FormLabel className="text-sm font-normal cursor-pointer">Remember me</FormLabel>
+              </FormItem>
+            )}
+          />
+
           <Button
             type="submit"
             className="w-full"
             disabled={isPending || rateLimitSeconds !== null}
           >
-            {isPending ? "Authenticating..." : "Sign in"}
+            {isPending ? "Signing in..." : "Sign in"}
           </Button>
-          <div className="text-center text-sm text-muted-foreground">
-            <Link href="/" className="text-primary hover:underline">← Back to RasoKart</Link>
-          </div>
-          <div className="text-center text-xs text-muted-foreground/40 pt-2">
-            Login Build: payout-active-login-hardredirect-v3 / live-login-debug-hardredirect-v4
+
+          <div className="text-center text-sm text-muted-foreground space-y-2">
+            <p>
+              New to RasoKart Payouts?{" "}
+              <Link href="/payout-merchant/signup" className="text-primary hover:underline font-medium">
+                Create an account
+              </Link>
+            </p>
+            <p>
+              <Link href="/" className="text-muted-foreground/60 hover:text-muted-foreground text-xs">
+                ← Back to RasoKart
+              </Link>
+            </p>
           </div>
         </form>
-        <LoginDebugPanel state={debugState} />
       </Form>
     </AuthLayout>
   );
