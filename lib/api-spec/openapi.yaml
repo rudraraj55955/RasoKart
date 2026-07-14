@@ -908,6 +908,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/Merchant"
 
+  /merchants/{id}/force-approve:
+    post:
+      operationId: forceApproveMerchant
+      tags: [merchants]
+      summary: "Force approve merchant (Super Admin only) — bypasses KYC validation"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForceApproveInput"
+      responses:
+        "200":
+          description: Merchant force-approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Merchant"
+
+  /merchants/{id}/kyc-check:
+    get:
+      operationId: getMerchantKycCheck
+      tags: [merchants]
+      summary: Check which KYC documents are missing or unapproved for a merchant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: KYC check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycCheckResult"
+
   /merchants/{id}/reject:
     post:
       operationId: rejectMerchant
@@ -12094,6 +12138,18 @@ components:
         planChangeNotifs:
           type: boolean
           description: Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.
+        forceApprovedAt:
+          type: ["string", "null"]
+          description: Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.
+        forceApprovedByEmail:
+          type: ["string", "null"]
+          description: Email of the Super Admin who force-approved this merchant.
+        forceApproveReason:
+          type: ["string", "null"]
+          description: Mandatory override reason provided by the Super Admin when force-approving this merchant.
+        forceApproveKycStatus:
+          type: ["string", "null"]
+          description: JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.
         createdAt:
           type: string
 
@@ -12188,6 +12244,28 @@ components:
           type: ["string", "null"]
         brandColor:
           type: ["string", "null"]
+
+    ForceApproveInput:
+      type: object
+      required: [overrideReason]
+      properties:
+        overrideReason:
+          type: string
+          minLength: 10
+          description: Mandatory reason for bypassing KYC validation. Must be at least 10 characters.
+
+    KycCheckResult:
+      type: object
+      required: [passed, missing]
+      properties:
+        passed:
+          type: boolean
+          description: Whether all required KYC documents are approved.
+        missing:
+          type: array
+          items:
+            type: string
+          description: List of KYC document type codes that are missing or not yet approved.
 
     RejectInput:
       type: object
