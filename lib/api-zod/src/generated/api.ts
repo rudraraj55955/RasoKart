@@ -556,6 +556,10 @@ export const ListMerchantsResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -651,6 +655,10 @@ export const UpdateMerchantProfileResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })
 
@@ -711,6 +719,10 @@ export const GetMerchantResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })
 
@@ -814,7 +826,96 @@ export const ApproveMerchantResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Force approve merchant (Super Admin only) — bypasses KYC validation
+ */
+export const ForceApproveMerchantParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const forceApproveMerchantBodyOverrideReasonMin = 10;
+
+
+
+export const ForceApproveMerchantBody = zod.object({
+  "overrideReason": zod.string().min(forceApproveMerchantBodyOverrideReasonMin).describe('Mandatory reason for bypassing KYC validation. Must be at least 10 characters.')
+})
+
+export const ForceApproveMerchantResponse = zod.object({
+  "id": zod.number(),
+  "businessName": zod.string(),
+  "contactName": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "website": zod.string().nullish(),
+  "status": zod.enum(['pending', 'approved', 'rejected', 'suspended']),
+  "rejectionReason": zod.string().nullish(),
+  "totalDeposits": zod.number().optional(),
+  "totalWithdrawals": zod.number().optional(),
+  "balance": zod.number().optional(),
+  "logoUrl": zod.string().nullish(),
+  "brandColor": zod.string().nullish(),
+  "callbackTimestampWindowSeconds": zod.number().nullish().describe('Per-merchant replay-protection window in seconds. Null means the global default (300 s) is used.'),
+  "callbackSecretSet": zod.boolean().optional().describe('Whether the merchant has configured a callback signing secret.'),
+  "currentPlanName": zod.string().nullish(),
+  "currentPlanStatus": zod.string().nullish(),
+  "currentPlanExpiresAt": zod.string().nullish(),
+  "currentPlanIsExpired": zod.boolean().nullish(),
+  "loginAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled login alert emails. Defaults to true.'),
+  "signatureFailureAlertEmails": zod.boolean().optional().describe('Whether the merchant has enabled signature failure alert emails. Defaults to true.'),
+  "webhookFailureEmails": zod.boolean().optional().describe('Whether the merchant has enabled webhook failure alert emails. Defaults to true.'),
+  "apiKeyGeneratedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key generated notification emails. Defaults to true.'),
+  "apiKeyRevokedEmails": zod.boolean().optional().describe('Whether the merchant has enabled API key revoked notification emails. Defaults to true.'),
+  "reportScheduleChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when an admin changes their report schedule. Defaults to true.'),
+  "settlementStateChangedEmails": zod.boolean().optional().describe('Whether the merchant will receive an email when their settlement request changes state. Defaults to true.'),
+  "planExpiryAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive plan expiry alert emails. Defaults to true.'),
+  "isDemoAccount": zod.boolean().optional().describe('Whether this merchant\'s email is one of the documented demo accounts (merchant@demo.com, merchant2@demo.com, merchant3@demo.com).'),
+  "demoRemovedAt": zod.string().nullish().describe('Timestamp when an admin permanently removed this demo account via the admin portal. Null if not removed.'),
+  "reconciliationAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive reconciliation alert emails. Defaults to true.'),
+  "settlementStateEmails": zod.boolean().optional().describe('Whether the merchant will receive settlement state emails. Defaults to true.'),
+  "reportFailureAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive report failure alert emails. Defaults to true.'),
+  "weeklyDeliveryDigestEmails": zod.boolean().optional().describe('Whether the merchant will receive the weekly delivery digest email. Defaults to true.'),
+  "ekqrSyncAlertEmails": zod.boolean().optional().describe('Whether the merchant will receive EKQR sync alert emails. Defaults to true.'),
+  "planChangeEmails": zod.boolean().optional().describe('Whether the merchant will receive plan change emails. Defaults to true.'),
+  "reconciliationAlertNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications for reconciliation alerts. Defaults to true.'),
+  "planExpiryAlertNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications for plan expiry alerts. Defaults to true.'),
+  "settlementStateNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications for settlement state updates. Defaults to true.'),
+  "signatureFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications for signature failure alerts. Defaults to true.'),
+  "webhookFailureNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications for webhook failure alerts. Defaults to true.'),
+  "reportFailureAlertNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications for report failure alerts. Defaults to true.'),
+  "weeklyDeliveryDigestNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications for the weekly delivery digest. Defaults to true.'),
+  "apiKeyGeneratedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when an API key is generated. Defaults to true.'),
+  "apiKeyRevokedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when an API key is revoked. Defaults to true.'),
+  "loginAlertNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications for new login alerts. Defaults to true.'),
+  "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
+  "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
+  "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Check which KYC documents are missing or unapproved for a merchant
+ */
+export const GetMerchantKycCheckParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetMerchantKycCheckResponse = zod.object({
+  "passed": zod.boolean().describe('Whether all required KYC documents are approved.'),
+  "missing": zod.array(zod.string()).describe('List of KYC document type codes that are missing or not yet approved.')
 })
 
 
@@ -878,6 +979,10 @@ export const RejectMerchantResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })
 
@@ -938,6 +1043,10 @@ export const SuspendMerchantResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })
 
@@ -998,6 +1107,10 @@ export const UnsuspendMerchantResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })
 
@@ -1059,6 +1172,10 @@ export const RemoveDemoAccountResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })
 
@@ -1523,6 +1640,10 @@ export const UpdateMerchantBrandingResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })
 
@@ -1618,6 +1739,10 @@ export const UpdateMerchantCallbackWindowResponse = zod.object({
   "reportScheduleChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their report schedule changes. Defaults to true.'),
   "settlementStateChangedNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their settlement state changes. Defaults to true.'),
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true.'),
+  "forceApprovedAt": zod.string().nullish().describe('Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.'),
+  "forceApprovedByEmail": zod.string().nullish().describe('Email of the Super Admin who force-approved this merchant.'),
+  "forceApproveReason": zod.string().nullish().describe('Mandatory override reason provided by the Super Admin when force-approving this merchant.'),
+  "forceApproveKycStatus": zod.string().nullish().describe('JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.'),
   "createdAt": zod.string()
 })
 
