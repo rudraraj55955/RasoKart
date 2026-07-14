@@ -46,6 +46,11 @@ export const merchantsTable = pgTable("merchants", {
   registrationStage: text("registration_stage").notNull().default("REGISTERED"),
   businessType: text("business_type"),
   panNumber: text("pan_number"),
+  forceApprovedAt: timestamp("force_approved_at", { withTimezone: true }),
+  forceApprovedByAdminId: integer("force_approved_by_admin_id"),
+  forceApprovedByEmail: text("force_approved_by_email"),
+  forceApproveReason: text("force_approve_reason"),
+  forceApproveKycStatus: text("force_approve_kyc_status"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
