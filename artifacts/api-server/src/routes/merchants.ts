@@ -825,6 +825,83 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/merchants/:id/kyc-check
+// Returns which required KYC documents are missing or unapproved. Admin only.
+router.get("/:id/kyc-check", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const [existing] = await db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Merchant not found" }); return; }
+  const kyc = await checkKycApproved(id);
+  res.json({ passed: kyc.passed, missing: kyc.missing });
+});
+
+// POST /api/merchants/:id/force-approve
+// Super Admin only — bypasses KYC validation gate and approves the merchant.
+// Records override reason, missing KYC docs, and full audit trail.
+router.post("/:id/force-approve", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params['id'] as string);
+  const admin = (req as any).user;
+
+  if (!admin.isSuperAdmin) {
+    res.status(403).json({ error: "Only Super Admin can force-approve merchants." });
+    return;
+  }
+
+  const { overrideReason } = req.body as { overrideReason?: string };
+  if (!overrideReason || overrideReason.trim().length < 10) {
+    res.status(422).json({ error: "overrideReason is required and must be at least 10 characters." });
+    return;
+  }
+
+  try {
+    const [existing] = await db.select().from(merchantsTable).where(eq(merchantsTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+    const kyc = await checkKycApproved(id);
+
+    const now = new Date();
+    const [merchant] = await db.update(merchantsTable)
+      .set({
+        status: "approved",
+        verificationStatus: "approved",
+        rejectionReason: null,
+        forceApprovedAt: now,
+        forceApprovedByAdminId: admin.id,
+        forceApprovedByEmail: admin.email,
+        forceApproveReason: overrideReason.trim(),
+        forceApproveKycStatus: JSON.stringify(kyc.missing),
+      })
+      .where(eq(merchantsTable.id, id))
+      .returning();
+    if (!merchant) { res.status(404).json({ error: "Merchant not found" }); return; }
+
+    await db.update(usersTable).set({ isActive: true }).where(eq(usersTable.email, merchant.email));
+
+    await db.insert(auditLogsTable).values({
+      adminId: admin.id,
+      adminEmail: admin.email,
+      action: "merchant_force_approved",
+      targetType: "merchant",
+      targetId: merchant.id,
+      details: JSON.stringify({
+        businessName: merchant.businessName,
+        email: merchant.email,
+        overrideReason: overrideReason.trim(),
+        missingKycDocTypes: kyc.missing,
+        kycWasPassed: kyc.passed,
+      }),
+      ipAddress: req.ip ?? null,
+    });
+
+    req.log.info({ adminId: admin.id, merchantId: id, missingKyc: kyc.missing, kycPassed: kyc.passed }, "Super Admin force-approved merchant");
+    res.json(serializeMerchant(merchant));
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    req.log.error({ adminId: admin?.id, merchantId: id, reason }, "Merchant force-approve failed");
+    res.status(500).json({ error: "Failed to force-approve merchant. Please try again or check server logs." });
+  }
+});
+
 // POST /api/merchants/:id/suspend
 router.post("/:id/suspend", async (req, res) => {
   const id = parseInt(req.params['id'] as string);

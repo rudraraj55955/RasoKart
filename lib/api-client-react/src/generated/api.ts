@@ -137,6 +137,7 @@ import type {
   ExportPlatformProfitLedgerCsvParams,
   ExportVaBalanceAuditCsvParams,
   FlushQuietHoursQueue200,
+  ForceApproveInput,
   GatewayOption,
   GatewayUsage,
   GenerateApiKeyBody,
@@ -189,6 +190,7 @@ import type {
   InvoiceListResponse,
   KnownLoginIp,
   KnownLoginIpListResponse,
+  KycCheckResult,
   KycDocument,
   KycDocumentListResponse,
   KycDocumentSubmitInput,
@@ -2365,6 +2367,155 @@ export const useApproveMerchant = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getApproveMerchantMutationOptions(options));
     }
+
+export const getForceApproveMerchantUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/force-approve`
+}
+
+/**
+ * @summary Force approve merchant (Super Admin only) — bypasses KYC validation
+ */
+export const forceApproveMerchant = async (id: number,
+    forceApproveInput: ForceApproveInput, options?: RequestInit): Promise<Merchant> => {
+
+  return customFetch<Merchant>(getForceApproveMerchantUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      forceApproveInput,)
+  }
+);}
+
+
+
+
+export const getForceApproveMerchantMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof forceApproveMerchant>>, TError,{id: number;data: BodyType<ForceApproveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof forceApproveMerchant>>, TError,{id: number;data: BodyType<ForceApproveInput>}, TContext> => {
+
+const mutationKey = ['forceApproveMerchant'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof forceApproveMerchant>>, {id: number;data: BodyType<ForceApproveInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  forceApproveMerchant(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ForceApproveMerchantMutationResult = NonNullable<Awaited<ReturnType<typeof forceApproveMerchant>>>
+    export type ForceApproveMerchantMutationBody = BodyType<ForceApproveInput>
+    export type ForceApproveMerchantMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Force approve merchant (Super Admin only) — bypasses KYC validation
+ */
+export const useForceApproveMerchant = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof forceApproveMerchant>>, TError,{id: number;data: BodyType<ForceApproveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof forceApproveMerchant>>,
+        TError,
+        {id: number;data: BodyType<ForceApproveInput>},
+        TContext
+      > => {
+      return useMutation(getForceApproveMerchantMutationOptions(options));
+    }
+
+export const getGetMerchantKycCheckUrl = (id: number,) => {
+
+
+
+
+  return `/api/merchants/${id}/kyc-check`
+}
+
+/**
+ * @summary Check which KYC documents are missing or unapproved for a merchant
+ */
+export const getMerchantKycCheck = async (id: number, options?: RequestInit): Promise<KycCheckResult> => {
+
+  return customFetch<KycCheckResult>(getGetMerchantKycCheckUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMerchantKycCheckQueryKey = (id: number,) => {
+    return [
+    `/api/merchants/${id}/kyc-check`
+    ] as const;
+    }
+
+
+export const getGetMerchantKycCheckQueryOptions = <TData = Awaited<ReturnType<typeof getMerchantKycCheck>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantKycCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMerchantKycCheckQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMerchantKycCheck>>> = ({ signal }) => getMerchantKycCheck(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMerchantKycCheck>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMerchantKycCheckQueryResult = NonNullable<Awaited<ReturnType<typeof getMerchantKycCheck>>>
+export type GetMerchantKycCheckQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Check which KYC documents are missing or unapproved for a merchant
+ */
+
+export function useGetMerchantKycCheck<TData = Awaited<ReturnType<typeof getMerchantKycCheck>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMerchantKycCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMerchantKycCheckQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getRejectMerchantUrl = (id: number,) => {
 

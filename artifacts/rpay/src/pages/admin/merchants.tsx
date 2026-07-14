@@ -21,6 +21,8 @@ import {
   useGetKycSummary, useListKycDocuments, useReviewKycDocument,
   useUpdateMerchantEmailPreferences,
   useGetMerchantChargeOverride, useUpdateMerchantChargeOverride,
+  useForceApproveMerchant,
+  useGetMerchantKycCheck,
   getGetMerchantChargeOverrideQueryKey,
   getListMerchantsQueryKey,
   listMerchants,
@@ -31,6 +33,7 @@ import {
 } from "@workspace/api-client-react";
 import { ExportCsvButton, downloadCsvFromUrl } from "@/components/ui/export-csv-button";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth-context";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +49,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, Bell, BellOff, Activity, ExternalLink, ChevronDown, ChevronRight, CheckCircle2, Eye, Mail, Smartphone, Percent, ReceiptText } from "lucide-react";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, Bell, BellOff, Activity, ExternalLink, ChevronDown, ChevronRight, CheckCircle2, Eye, Mail, Smartphone, Percent, ReceiptText, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow, differenceInSeconds } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -341,6 +344,8 @@ function MerchantChargeOverrideSection({
 export default function AdminMerchants() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
+  const { user: authUser } = useAuth();
+  const isSuperAdmin = !!(authUser as any)?.isSuperAdmin;
   const [search, setSearch] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("search") ?? "";
@@ -428,6 +433,11 @@ export default function AdminMerchants() {
   // KYC review state — tracks inline note per document id and pending review action
   const [kycReviewState, setKycReviewState] = useState<Record<number, { action: "approved" | "rejected"; note: string } | null>>({});
   const [kycConfirming, setKycConfirming] = useState<Record<number, boolean>>({});
+
+  // Force-approve modal state (Super Admin only)
+  const [forceApproveTarget, setForceApproveTarget] = useState<{ id: number; name: string } | null>(null);
+  const [forceApproveReason, setForceApproveReason] = useState("");
+  const [forceApproveSubmitting, setForceApproveSubmitting] = useState(false);
 
   // Parse ?open=<merchantId> once on mount (e.g. linked from QR/VA detail panels)
   const [deepLinkId] = useState<number | null>(() => {
@@ -592,6 +602,11 @@ export default function AdminMerchants() {
   const updateWebhookMaxRetriesMutation = useUpdateMerchantWebhookMaxRetries();
   const updateBrandingMutation = useUpdateMerchantBranding();
   const approveMutation = useApproveMerchant();
+  const forceApproveMutation = useForceApproveMerchant();
+  const { data: forceApproveKycData, isFetching: forceApproveKycFetching } = useGetMerchantKycCheck(
+    forceApproveTarget?.id ?? 0,
+    { query: { enabled: !!forceApproveTarget, queryKey: ["getMerchantKycCheck", forceApproveTarget?.id ?? 0] } }
+  );
   const rejectMutation = useRejectMerchant();
   const merchantSuspendMutation = useSuspendMerchant();
   const merchantUnsuspendMutation = useUnsuspendMerchant();
@@ -846,6 +861,28 @@ export default function AdminMerchants() {
       },
       onError: (err) => toast.error(getApiErrorMessage(err, "Failed to approve merchant")),
     });
+  };
+
+  const handleForceApproveSubmit = async () => {
+    if (!forceApproveTarget || forceApproveReason.trim().length < 10) return;
+    setForceApproveSubmitting(true);
+    forceApproveMutation.mutate(
+      { id: forceApproveTarget.id, data: { overrideReason: forceApproveReason.trim() } },
+      {
+        onSuccess: (merchant) => {
+          qc.invalidateQueries({ queryKey: getListMerchantsQueryKey() });
+          toast.success(`${merchant.businessName} force-approved by Super Admin`);
+          setForceApproveTarget(null);
+          setForceApproveReason("");
+          setForceApproveSubmitting(false);
+          setSingleActionResult({ open: true, title: "Merchant Force-Approved", merchantName: merchant.businessName, newStatus: merchant.status, timestamp: new Date().toISOString() });
+        },
+        onError: (err) => {
+          toast.error(getApiErrorMessage(err, "Force approval failed"));
+          setForceApproveSubmitting(false);
+        },
+      }
+    );
   };
 
   const handleSuspend = (id: number) => {
@@ -1885,7 +1922,31 @@ export default function AdminMerchants() {
                       <p className="text-xs text-muted-foreground">{merchant.phone}</p>
                     </div>
                   </TableCell>
-                  <TableCell><StatusBadge status={merchant.status} /></TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <StatusBadge status={merchant.status} />
+                      {merchant.status === "approved" && (merchant as any).forceApprovedAt && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant="outline" className="text-[10px] py-0 px-1.5 text-amber-400 border-amber-500/30 bg-amber-500/10 gap-1 cursor-default w-fit">
+                                <Zap className="w-2.5 h-2.5" />
+                                Super Admin Override
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="text-xs max-w-[220px] space-y-1">
+                              <p className="font-semibold text-amber-400">Manually Approved by Super Admin</p>
+                              <p className="text-muted-foreground">By: {(merchant as any).forceApprovedByEmail}</p>
+                              <p className="text-muted-foreground">On: {format(new Date((merchant as any).forceApprovedAt), "MMM d, yyyy HH:mm")}</p>
+                              {(merchant as any).forceApproveReason && (
+                                <p className="text-muted-foreground italic">"{(merchant as any).forceApproveReason}"</p>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     {merchant.currentPlanName ? (
                       <div className="flex flex-col gap-0.5">
@@ -1947,8 +2008,18 @@ export default function AdminMerchants() {
                       {merchant.status === "pending" && (
                         <>
                           <Button size="sm" variant="ghost" className="text-emerald-500 hover:bg-emerald-500/10" onClick={() => handleApprove(merchant.id)}>
-                            <CheckCircle className="w-4 h-4 mr-1" /> Approve
+                            <CheckCircle className="w-4 h-4 mr-1" /> {isSuperAdmin ? "Approve After KYC" : "Approve"}
                           </Button>
+                          {isSuperAdmin && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-amber-400 hover:bg-amber-500/10"
+                              onClick={() => { setForceApproveTarget({ id: merchant.id, name: merchant.businessName }); setForceApproveReason(""); }}
+                            >
+                              <Zap className="w-4 h-4 mr-1" /> Force Approve
+                            </Button>
+                          )}
                           <Button size="sm" variant="ghost" className="text-rose-500 hover:bg-rose-500/10" onClick={() => { setRejectId(merchant.id); setRejectReason(""); }}>
                             <XCircle className="w-4 h-4 mr-1" /> Reject
                           </Button>
@@ -4041,6 +4112,99 @@ export default function AdminMerchants() {
               </span>
             )}
             <Button onClick={() => handleBulkResultClose(false)}>Dismiss</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Force Approve Modal (Super Admin only) ───────────────────────── */}
+      <Dialog open={!!forceApproveTarget} onOpenChange={(open) => { if (!open && !forceApproveSubmitting) { setForceApproveTarget(null); setForceApproveReason(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-400">
+              <Zap className="w-5 h-5" />
+              Force Approve — Super Admin Override
+            </DialogTitle>
+            <DialogDescription>
+              This will activate <span className="font-semibold text-foreground">{forceApproveTarget?.name}</span> immediately, bypassing KYC document requirements.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <p className="text-sm font-medium text-amber-400">KYC Verification Status</p>
+              </div>
+              {forceApproveKycFetching ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Checking KYC documents…
+                </div>
+              ) : forceApproveKycData?.passed ? (
+                <p className="text-xs text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5" /> All required KYC documents are approved. Normal approval is also available.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-amber-300">Missing or unapproved documents:</p>
+                  <ul className="space-y-1">
+                    {(forceApproveKycData?.missing ?? []).map((doc: string) => (
+                      <li key={doc} className="flex items-center gap-1.5 text-xs text-rose-400">
+                        <XCircle className="w-3 h-3 shrink-0" />
+                        <span className="capitalize font-medium">{doc.replace(/_/g, " ")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="force-approve-reason" className="text-sm font-medium">
+                Override Reason <span className="text-rose-400">*</span>
+              </Label>
+              <Textarea
+                id="force-approve-reason"
+                placeholder="Mandatory reason for bypassing KYC validation (min. 10 characters)…"
+                value={forceApproveReason}
+                onChange={e => setForceApproveReason(e.target.value)}
+                rows={3}
+                className="resize-none text-sm"
+                disabled={forceApproveSubmitting}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {forceApproveReason.trim().length} / 10 minimum characters — this reason is saved to the audit log.
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2.5 text-xs text-rose-400 space-y-1">
+              <p className="font-semibold">Important</p>
+              <ul className="list-disc list-inside space-y-0.5 text-rose-400/80">
+                <li>KYC documents are NOT automatically approved</li>
+                <li>This action is fully recorded in the audit log</li>
+                <li>The merchant can still be suspended or rejected later</li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setForceApproveTarget(null); setForceApproveReason(""); }}
+              disabled={forceApproveSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-500 hover:bg-amber-600 text-black font-semibold gap-1.5"
+              disabled={forceApproveReason.trim().length < 10 || forceApproveSubmitting || forceApproveKycFetching}
+              onClick={handleForceApproveSubmit}
+            >
+              {forceApproveSubmitting ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Force Approving…</>
+              ) : (
+                <><Zap className="w-4 h-4" /> Force Approve — I Accept Responsibility</>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1158,6 +1158,14 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`CREATE INDEX        IF NOT EXISTS razorpay_webhook_logs_created_idx   ON razorpay_webhook_logs(received_at)`);
   logger.info({ table: "razorpay_webhook_logs" }, "schema_guard_table_ensured");
 
+  // ── merchants: super admin force-approve columns ──────────────────────────
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_admin_id INTEGER`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approved_by_email TEXT`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_reason TEXT`);
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_kyc_status TEXT`);
+  logger.info({ table: "merchants", migration: "add_force_approve_cols" }, "schema_guard_column_added");
+
   logger.info("schema_guard_completed");
 }
 

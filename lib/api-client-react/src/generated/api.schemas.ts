@@ -700,6 +700,26 @@ export interface Merchant {
   settlementStateChangedNotifs?: boolean;
   /** Whether the merchant has enabled in-app notifications when their plan is changed. Defaults to true. */
   planChangeNotifs?: boolean;
+  /**
+     * Timestamp when a Super Admin manually force-approved this merchant, bypassing KYC validation.
+     * @nullable
+     */
+  forceApprovedAt?: string | null;
+  /**
+     * Email of the Super Admin who force-approved this merchant.
+     * @nullable
+     */
+  forceApprovedByEmail?: string | null;
+  /**
+     * Mandatory override reason provided by the Super Admin when force-approving this merchant.
+     * @nullable
+     */
+  forceApproveReason?: string | null;
+  /**
+     * JSON-encoded list of KYC document types that were missing or unapproved at the time of force-approval.
+     * @nullable
+     */
+  forceApproveKycStatus?: string | null;
   createdAt: string;
 }
 
@@ -767,6 +787,21 @@ export interface MerchantBrandingInput {
   logoUrl?: string | null;
   /** @nullable */
   brandColor?: string | null;
+}
+
+export interface ForceApproveInput {
+  /**
+     * Mandatory reason for bypassing KYC validation. Must be at least 10 characters.
+     * @minLength 10
+     */
+  overrideReason: string;
+}
+
+export interface KycCheckResult {
+  /** Whether all required KYC documents are approved. */
+  passed: boolean;
+  /** List of KYC document type codes that are missing or not yet approved. */
+  missing: string[];
 }
 
 export interface RejectInput {
