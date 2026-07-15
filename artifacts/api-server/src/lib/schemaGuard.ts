@@ -1222,6 +1222,26 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ keys: ["cashfree_payin_suspended", "cashfree_payout_suspended"] }, "schema_guard_cashfree_suspension_seeded");
 
+  // ── kyc_review_history: append-only audit trail for KYC approve/reject ───
+  // Intentionally no FK cascade on kyc_id so history survives document
+  // re-submission. CREATE TABLE IF NOT EXISTS is fully idempotent; the table
+  // already exists on the dev DB and is absent from production.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS kyc_review_history (
+      id           SERIAL PRIMARY KEY,
+      kyc_id       INTEGER NOT NULL,
+      reviewed_by  INTEGER NOT NULL,
+      status       TEXT    NOT NULL,
+      admin_note   TEXT,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS kyc_review_history_kyc_id_idx
+      ON kyc_review_history(kyc_id)
+  `);
+  logger.info({ table: "kyc_review_history" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 
