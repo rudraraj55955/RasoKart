@@ -6,6 +6,8 @@ import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
 
+const SUSPENDED_MESSAGE = "This payment service is temporarily unavailable. Please use another available method.";
+
 /**
  * GET /api/merchant/cashfree/status
  *
@@ -16,12 +18,18 @@ const router = Router();
 router.get("/cashfree/status", requireAuth, async (req, res, next) => {
   try {
     const rows = await db.select().from(systemConfigTable).where(
-      inArray(systemConfigTable.key, [SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED, SYSTEM_CONFIG_KEYS.CASHFREE_ENV])
+      inArray(systemConfigTable.key, [
+        SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED,
+        SYSTEM_CONFIG_KEYS.CASHFREE_ENV,
+        SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED,
+      ])
     );
     const cfg = new Map(rows.map(r => [r.key, r.value]));
+    const suspended = cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED) === "true";
     res.json({
-      enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED) === "true",
+      enabled: !suspended && cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED) === "true",
       env: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENV) ?? "test",
+      suspended,
     });
   } catch (err) {
     next(err);
@@ -70,9 +78,17 @@ router.post("/cashfree/create-order", requireAuth, async (req, res, next) => {
       SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET,
       SYSTEM_CONFIG_KEYS.CASHFREE_ENV,
       SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED,
+      SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED,
     ];
     const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
     const cfg = new Map(rows.map(r => [r.key, r.value]));
+
+    // Suspension check — blocks all new live order creation
+    if (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED) === "true") {
+      req.log.warn({ merchantId: user.merchantId }, "cashfree_payin_blocked_suspended");
+      res.status(503).json({ error: SUSPENDED_MESSAGE });
+      return;
+    }
 
     if (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED) !== "true") {
       res.status(400).json({ error: "Payment gateway is not enabled" });
@@ -137,15 +153,23 @@ router.post("/cashfree/create-order", requireAuth, async (req, res, next) => {
 
 /**
  * GET /api/merchant/payment/status
- * White-label alias: returns { enabled } only — no provider name or env exposed.
+ * White-label alias: returns { enabled, suspended } — no provider name or env exposed.
+ * When suspended is true, enabled is always false so the payment button is hidden.
  */
 router.get("/payment/status", requireAuth, async (req, res, next) => {
   try {
     const rows = await db.select().from(systemConfigTable).where(
-      inArray(systemConfigTable.key, [SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED])
+      inArray(systemConfigTable.key, [
+        SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED,
+        SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED,
+      ])
     );
     const cfg = new Map(rows.map(r => [r.key, r.value]));
-    res.json({ enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED) === "true" });
+    const suspended = cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED) === "true";
+    res.json({
+      enabled: !suspended && cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED) === "true",
+      suspended,
+    });
   } catch (err) { next(err); }
 });
 
@@ -186,9 +210,17 @@ router.post("/payment/create-order", requireAuth, async (req, res, next) => {
       SYSTEM_CONFIG_KEYS.CASHFREE_CLIENT_SECRET,
       SYSTEM_CONFIG_KEYS.CASHFREE_ENV,
       SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED,
+      SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED,
     ];
     const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
     const cfg = new Map(rows.map(r => [r.key, r.value]));
+
+    // Suspension check — blocks all new live order creation; white-labelled message
+    if (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED) === "true") {
+      req.log.warn({ merchantId: user.merchantId }, "cashfree_payin_blocked_suspended");
+      res.status(503).json({ error: SUSPENDED_MESSAGE });
+      return;
+    }
 
     if (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_ENABLED) !== "true") {
       res.status(400).json({ error: "Payment gateway is not enabled" });

@@ -120,6 +120,11 @@ function CashfreePayinCard({ onConfigure }: { onConfigure: () => void }) {
             <CreditCard className="w-4 h-4 text-violet-400" />
           </div>
           <div className="flex flex-col items-end gap-1">
+            {!isLoading && (data as any)?.suspended && (
+              <Badge className="bg-red-500/15 text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 h-4">
+                Provider Suspended — Risk Review
+              </Badge>
+            )}
             {!isLoading && data && <StatusBadge enabled={data.enabled} />}
             {!isLoading && data && <EnvBadge env={data.env} />}
           </div>
@@ -166,6 +171,11 @@ function CashfreePayoutCard({ onConfigure }: { onConfigure: () => void }) {
             <Landmark className="w-4 h-4 text-blue-400" />
           </div>
           <div className="flex flex-col items-end gap-1">
+            {!isLoading && (data as any)?.suspended && (
+              <Badge className="bg-red-500/15 text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 h-4">
+                Provider Suspended — Risk Review
+              </Badge>
+            )}
             {!isLoading && data && <StatusBadge enabled={data.enabled} />}
             {!isLoading && data && <EnvBadge env={data.env} />}
           </div>

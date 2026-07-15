@@ -12,6 +12,8 @@ import { decryptSecret } from "../helpers/cryptoUtils";
 
 const router = Router();
 
+const PAYOUT_SUSPENDED_MESSAGE = "Payout processing is temporarily suspended. New disbursements cannot be created at this time.";
+
 async function getPayoutConfig() {
   const keys = [
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_CLIENT_ID,
@@ -20,6 +22,7 @@ async function getPayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_SUSPENDED,
   ];
   const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
   const cfg = new Map(rows.map(r => [r.key, r.value]));
@@ -33,6 +36,7 @@ async function getPayoutConfig() {
     clientSecretDecryptOk: decrypted.ok,
     env: (cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENV) ?? "test") as CashfreePayoutEnv,
     enabled: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_ENABLED) === "true",
+    suspended: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_SUSPENDED) === "true",
     providerConfig: {
       baseUrl: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BASE_URL) ?? "",
       apiVersion: cfg.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_API_VERSION) ?? "",
@@ -125,6 +129,10 @@ router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
     }
 
     const cfg = await getPayoutConfig();
+    if (cfg.suspended) {
+      req.log.warn({ initiatedBy: user.email }, "cashfree_payout_blocked_suspended");
+      res.status(503).json({ error: PAYOUT_SUSPENDED_MESSAGE }); return;
+    }
     if (!cfg.enabled) {
       res.status(400).json({ error: "Cashfree Payout is not enabled" }); return;
     }
@@ -202,6 +210,10 @@ router.post("/bulk", requireAuth, requireAdmin, async (req, res, next) => {
     }
 
     const cfg = await getPayoutConfig();
+    if (cfg.suspended) {
+      req.log.warn({ initiatedBy: user.email, rowCount: rows.length }, "cashfree_payout_bulk_blocked_suspended");
+      res.status(503).json({ error: PAYOUT_SUSPENDED_MESSAGE }); return;
+    }
     if (!cfg.enabled) {
       res.status(400).json({ error: "Cashfree Payout is not enabled" }); return;
     }
@@ -310,6 +322,10 @@ router.post("/:id/retry", requireAuth, requireAdmin, async (req, res, next) => {
     }
 
     const cfg = await getPayoutConfig();
+    if (cfg.suspended) {
+      req.log.warn({ payoutId: id }, "cashfree_payout_retry_blocked_suspended");
+      res.status(503).json({ error: PAYOUT_SUSPENDED_MESSAGE }); return;
+    }
     if (!cfg.enabled) {
       res.status(400).json({ error: "Cashfree Payout is not enabled" }); return;
     }

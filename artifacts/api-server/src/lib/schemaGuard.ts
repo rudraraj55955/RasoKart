@@ -1208,6 +1208,20 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "social_provider_settings" }, "schema_guard_table_created");
 
+  // ── Cashfree suspension flags ─────────────────────────────────────────────
+  // Seeded as "true" so that on a fresh deploy the suspension is active by
+  // default. Once an admin explicitly clears the suspension (sets value to
+  // "false" via DB or future admin route) the DO NOTHING clause ensures
+  // server restarts do not revert the cleared value.
+  await db.execute(sql`
+    INSERT INTO system_config (key, value, updated_at, updated_by_email)
+    VALUES
+      ('cashfree_payin_suspended',  'true', NOW(), 'system'),
+      ('cashfree_payout_suspended', 'true', NOW(), 'system')
+    ON CONFLICT (key) DO NOTHING
+  `);
+  logger.info({ keys: ["cashfree_payin_suspended", "cashfree_payout_suspended"] }, "schema_guard_cashfree_suspension_seeded");
+
   logger.info("schema_guard_completed");
 }
 

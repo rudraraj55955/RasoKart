@@ -125,6 +125,11 @@ export const SYSTEM_CONFIG_KEYS = {
   RAZORPAY_MIN_AMOUNT: "razorpay_min_amount",
   RAZORPAY_MAX_AMOUNT: "razorpay_max_amount",
   RAZORPAY_DAILY_LIMIT: "razorpay_daily_limit",
+  // Suspension flags — set to "true" to block all new live transactions for the provider.
+  // Webhooks, status syncs, and read operations continue normally.
+  // Cleared only by explicit admin DB update; server restarts do not revert the flag.
+  CASHFREE_PAYIN_SUSPENDED:  "cashfree_payin_suspended",
+  CASHFREE_PAYOUT_SUSPENDED: "cashfree_payout_suspended",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {
@@ -178,6 +183,8 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT]: "200000",
   [SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT]: "1000000",
   [SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BULK_ENABLED]: "true",
+  [SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED]:  "false",
+  [SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_SUSPENDED]: "false",
   [SYSTEM_CONFIG_KEYS.QUIET_HOURS_FLUSH_INTERVAL_SECONDS]: "60",
   [SYSTEM_CONFIG_KEYS.CREDENTIAL_ROTATION_EXTRA_RECIPIENTS]: "",
   [SYSTEM_CONFIG_KEYS.AUTO_PAYOUT_GLOBAL_ENABLED]: "false",

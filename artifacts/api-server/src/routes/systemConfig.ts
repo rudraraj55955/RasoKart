@@ -1319,6 +1319,7 @@ async function getCashfreeConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT,
     SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT,
     SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED,
   ];
   const [rows, lastUpdated] = await Promise.all([
     db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys)),
@@ -1344,6 +1345,7 @@ async function getCashfreeConfig() {
     minAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_MIN_AMOUNT]),
     maxAmount: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_MAX_AMOUNT]),
     dailyLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_DAILY_LIMIT]),
+    suspended: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYIN_SUSPENDED) ?? "false") === "true",
     ...lastUpdated,
   };
 }
@@ -1551,6 +1553,7 @@ async function getCashfreePayoutConfig() {
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT,
     SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_BULK_ENABLED,
+    SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_SUSPENDED,
   ];
   const [rows, lastUpdated] = await Promise.all([
     db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys)),
@@ -1583,6 +1586,7 @@ async function getCashfreePayoutConfig() {
     minLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MIN_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MIN_LIMIT]),
     maxLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_MAX_LIMIT]),
     dailyLimit: parseFloat(map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_DAILY_LIMIT]),
+    suspended: (map.get(SYSTEM_CONFIG_KEYS.CASHFREE_PAYOUT_SUSPENDED) ?? "false") === "true",
     ...lastUpdated,
   };
 }
