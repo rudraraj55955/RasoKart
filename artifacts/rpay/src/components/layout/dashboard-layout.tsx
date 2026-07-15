@@ -413,6 +413,7 @@ const ADMIN_NAV = [
       { title: "User Roles", icon: UserCog, href: "/admin/user-roles" },
       { title: "Company Branding", icon: Paintbrush, href: "/admin/company-branding" },
       { title: "OTP / SMS Settings", icon: MessageSquare, href: "/admin/otp-settings", superAdminOnly: true },
+      { title: "Social Auth Providers", icon: Shield, href: "/admin/social-providers", superAdminOnly: true as const },
       { title: "Secure ID Provider", icon: ShieldCheck, href: "/admin/secure-id-settings", superAdminOnly: true as const },
       { title: "Merchant Auto KYC Settings", icon: ShieldCheck, href: "/admin/merchant-kyc-settings", superAdminOnly: true as const },
       { title: "Data Hygiene", icon: Trash2, href: "/admin/data-hygiene", superAdminOnly: true as const },

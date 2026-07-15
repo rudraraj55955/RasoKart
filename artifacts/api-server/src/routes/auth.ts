@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable, auditLogsTable, merchantAuthOtpsTable } from "@workspace/db";
+import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable, auditLogsTable, merchantAuthOtpsTable, authProvidersTable, socialProviderSettingsTable } from "@workspace/db";
 import { DbRateLimitStore } from "../lib/rateLimitStore";
 import { eq, and, count, desc } from "drizzle-orm";
 import { generateToken, requireAuth } from "../middlewares/auth";
@@ -12,6 +12,7 @@ import { sendPrefChangeUnknownDeviceEmail } from "../helpers/prefChangeEmail";
 import { createNotification } from "../helpers/notifications";
 import { sendMerchantOtpEmail } from "../helpers/merchantOtpEmail";
 import { sendOtpSms, loadOtpSmsSettings } from "../helpers/sendOtpSms";
+import { verifyGoogleIdToken, isGoogleConfigured } from "../helpers/googleAuth";
 import {
   generateOtp,
   hashOtp,
@@ -1984,6 +1985,312 @@ router.post("/admin/otp/verify", adminOtpVerifyLimiter, async (req, res, next) =
         logger.warn({ err, userId: adminUser.id }, "Failed to update lastLoginAt after admin OTP login");
       });
 
+    res.json({
+      token,
+      user: {
+        id: adminUser.id,
+        email: adminUser.email,
+        role: adminUser.role,
+        name: adminUser.name,
+        isActive: adminUser.isActive,
+        merchantId: adminUser.merchantId,
+        createdAt: adminUser.createdAt,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Social provider list — public endpoint
+// ---------------------------------------------------------------------------
+
+// GET /api/auth/social-providers
+router.get("/social-providers", async (req, res, next) => {
+  try {
+    const rows = await db
+      .select({ provider: socialProviderSettingsTable.provider, enabled: socialProviderSettingsTable.enabled })
+      .from(socialProviderSettingsTable);
+
+    const googleClientId = isGoogleConfigured() ? process.env["GOOGLE_CLIENT_ID"] : null;
+
+    const enabledMap: Record<string, boolean> = {};
+    for (const r of rows) enabledMap[r.provider] = r.enabled;
+
+    res.json({
+      providers: {
+        google: { enabled: !!enabledMap["google"], clientId: enabledMap["google"] ? googleClientId : null },
+        apple: { enabled: !!enabledMap["apple"] },
+        microsoft: { enabled: !!enabledMap["microsoft"] },
+        facebook: { enabled: !!enabledMap["facebook"] },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Google OAuth — merchant login / signup
+// ---------------------------------------------------------------------------
+
+const googleMerchantLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many Google sign-in attempts. Please try again later." },
+  keyGenerator: (req) => `google-merchant:${safeIpKey(req)}`,
+});
+
+// POST /api/auth/merchant/google
+router.post("/merchant/google", googleMerchantLimiter, async (req, res, next) => {
+  try {
+    // Check provider is enabled
+    const [setting] = await db
+      .select({ enabled: socialProviderSettingsTable.enabled })
+      .from(socialProviderSettingsTable)
+      .where(eq(socialProviderSettingsTable.provider, "google"))
+      .limit(1);
+
+    if (!setting?.enabled) {
+      res.status(403).json({ error: "Google sign-in is not enabled." });
+      return;
+    }
+
+    const { idToken, businessName, contactName, phone } = req.body as {
+      idToken?: string;
+      businessName?: string;
+      contactName?: string;
+      phone?: string;
+    };
+
+    if (!idToken || typeof idToken !== "string") {
+      res.status(400).json({ error: "idToken is required" });
+      return;
+    }
+
+    const gp = await verifyGoogleIdToken(idToken);
+    if (!gp) {
+      res.status(401).json({ error: "Google token verification failed. Please try again." });
+      return;
+    }
+
+    const normalizedEmail = gp.email;
+
+    // Check for existing user by Google provider account ID first
+    const [existingProvider] = await db
+      .select({ userId: authProvidersTable.userId })
+      .from(authProvidersTable)
+      .where(
+        and(
+          eq(authProvidersTable.provider, "google"),
+          eq(authProvidersTable.providerAccountId, gp.sub),
+          eq(authProvidersTable.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    let userId: number;
+    let isNewUser = false;
+
+    if (existingProvider) {
+      userId = existingProvider.userId;
+    } else {
+      // Try to find user by email
+      const [existingUser] = await db
+        .select({ id: usersTable.id, isActive: usersTable.isActive, role: usersTable.role })
+        .from(usersTable)
+        .where(eq(usersTable.email, normalizedEmail))
+        .limit(1);
+
+      if (existingUser) {
+        if (!existingUser.isActive) {
+          res.status(401).json({ error: "Account suspended. Please contact support." });
+          return;
+        }
+        if (existingUser.role !== "merchant") {
+          res.status(403).json({ error: "This Google account is not linked to a merchant account." });
+          return;
+        }
+        userId = existingUser.id;
+        // Link provider to existing account
+        await db.insert(authProvidersTable).values({
+          userId,
+          provider: "google",
+          providerAccountId: gp.sub,
+          email: normalizedEmail,
+          displayName: gp.name ?? null,
+          avatarUrl: gp.picture ?? null,
+        }).onConflictDoNothing();
+      } else {
+        // New merchant signup via Google
+        if (!businessName || !contactName || !phone) {
+          // Return flag so frontend knows it needs to collect extra info
+          res.status(202).json({ needsRegistration: true, email: normalizedEmail, name: gp.name });
+          return;
+        }
+
+        const [merchant] = await db.insert(merchantsTable).values({
+          businessName,
+          contactName,
+          email: normalizedEmail,
+          phone,
+          status: "pending",
+        }).returning();
+
+        const [newUser] = await db.insert(usersTable).values({
+          email: normalizedEmail,
+          passwordHash: null,
+          name: contactName,
+          role: "merchant",
+          isActive: true,
+          merchantId: merchant.id,
+          lastLoginMethod: "google",
+        }).returning();
+
+        await db.insert(authProvidersTable).values({
+          userId: newUser.id,
+          provider: "google",
+          providerAccountId: gp.sub,
+          email: normalizedEmail,
+          displayName: gp.name ?? null,
+          avatarUrl: gp.picture ?? null,
+        });
+
+        userId = newUser.id;
+        isNewUser = true;
+      }
+    }
+
+    const fullUser = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1)
+      .then(r => r[0]);
+
+    if (!fullUser) {
+      res.status(500).json({ error: "User not found after Google auth." });
+      return;
+    }
+
+    if (!fullUser.isActive) {
+      res.status(401).json({ error: "Account suspended. Please contact support." });
+      return;
+    }
+
+    // Update lastLoginAt and lastLoginMethod (fire-and-forget)
+    db.update(usersTable)
+      .set({ lastLoginAt: new Date(), lastLoginMethod: "google" })
+      .where(eq(usersTable.id, userId))
+      .catch((err: unknown) => logger.warn({ err, userId }, "Failed to update lastLoginAt after google login"));
+
+    req.log.info({ userId, email: normalizedEmail, isNewUser }, "merchant_google_login_ok");
+
+    const token = generateToken({ userId: fullUser.id, role: fullUser.role });
+    let merchantType: string | null = null;
+    if (fullUser.merchantId) {
+      merchantType = await deriveMerchantTypeSafely(fullUser.merchantId, fullUser.email).catch(() => "NORMAL");
+    }
+
+    res.json({
+      token,
+      isNewUser,
+      user: {
+        id: fullUser.id,
+        email: fullUser.email,
+        role: fullUser.role,
+        name: fullUser.name,
+        isActive: fullUser.isActive,
+        merchantId: fullUser.merchantId,
+        merchantType,
+        createdAt: fullUser.createdAt,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Google OAuth — admin login (existing admins only, never creates)
+// ---------------------------------------------------------------------------
+
+const googleAdminLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many Google sign-in attempts. Please try again later." },
+  keyGenerator: (req) => `google-admin:${safeIpKey(req)}`,
+});
+
+// POST /api/auth/admin/google
+router.post("/admin/google", googleAdminLimiter, async (req, res, next) => {
+  try {
+    const [setting] = await db
+      .select({ enabled: socialProviderSettingsTable.enabled })
+      .from(socialProviderSettingsTable)
+      .where(eq(socialProviderSettingsTable.provider, "google"))
+      .limit(1);
+
+    if (!setting?.enabled) {
+      res.status(403).json({ error: "Google sign-in is not enabled." });
+      return;
+    }
+
+    const { idToken } = req.body as { idToken?: string };
+    if (!idToken || typeof idToken !== "string") {
+      res.status(400).json({ error: "idToken is required" });
+      return;
+    }
+
+    const gp = await verifyGoogleIdToken(idToken);
+    if (!gp) {
+      res.status(401).json({ error: "Google token verification failed. Please try again." });
+      return;
+    }
+
+    const normalizedEmail = gp.email;
+
+    // Admin Google login: ONLY allowed for an existing active admin user
+    const [adminUser] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.email, normalizedEmail), eq(usersTable.role, "admin")))
+      .limit(1);
+
+    // Uniform error to avoid leaking whether an admin email exists
+    const DENY_MSG = "No admin account found for this Google account.";
+    if (!adminUser) {
+      req.log.warn({ email: normalizedEmail }, "admin_google_login_no_user");
+      res.status(401).json({ error: DENY_MSG });
+      return;
+    }
+    if (!adminUser.isActive) {
+      req.log.warn({ userId: adminUser.id }, "admin_google_login_inactive");
+      res.status(401).json({ error: DENY_MSG });
+      return;
+    }
+
+    // Link Google provider if not already linked (first Google login)
+    await db.insert(authProvidersTable).values({
+      userId: adminUser.id,
+      provider: "google",
+      providerAccountId: gp.sub,
+      email: normalizedEmail,
+      displayName: gp.name ?? null,
+      avatarUrl: gp.picture ?? null,
+    }).onConflictDoNothing();
+
+    db.update(usersTable)
+      .set({ lastLoginAt: new Date(), lastLoginMethod: "google" })
+      .where(eq(usersTable.id, adminUser.id))
+      .catch((err: unknown) => logger.warn({ err, userId: adminUser.id }, "Failed to update lastLoginAt after admin google login"));
+
+    req.log.info({ userId: adminUser.id, email: normalizedEmail }, "admin_google_login_ok");
+
+    const token = generateToken({ userId: adminUser.id, role: adminUser.role });
     res.json({
       token,
       user: {

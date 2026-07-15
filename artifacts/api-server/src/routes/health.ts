@@ -114,7 +114,7 @@ router.get("/healthz/deep", async (_req, res) => {
             continue;
           }
 
-          const passwordOk = await bcrypt.compare(cred.password, row.passwordHash);
+          const passwordOk = row.passwordHash ? await bcrypt.compare(cred.password, row.passwordHash) : false;
           const roleOk = row.role === cred.role;
           const activeOk = row.isActive;
 

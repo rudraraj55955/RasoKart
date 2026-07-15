@@ -87,6 +87,7 @@ import razorpayOrdersRouter from "./razorpayOrders";
 import razorpayWebhookRouter from "./razorpayWebhook";
 import adminRazorpayRouter from "./adminRazorpay";
 import payoutMerchantSignupRouter from "./payoutMerchantSignup";
+import socialProvidersRouter from "./socialProviders";
 
 const router: IRouter = Router();
 
@@ -211,5 +212,8 @@ router.use("/admin/dummy-data-cleanup", dummyDataCleanupRouter);
 router.use("/merchant", razorpayOrdersRouter);
 // Admin Razorpay config, orders, webhook-logs — Super Admin only
 router.use("/admin/razorpay", adminRazorpayRouter);
+
+// Social provider admin toggles (Super Admin CRUD)
+router.use("/auth/social-providers", socialProvidersRouter);
 
 export default router;

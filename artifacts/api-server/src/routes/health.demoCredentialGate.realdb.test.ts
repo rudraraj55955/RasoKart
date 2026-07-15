@@ -49,7 +49,7 @@ function get(server: http.Server, path: string): Promise<{ status: number; body:
 describe("GET /api/healthz/deep — demo credential deploy gate (real DB)", () => {
   let server: http.Server;
   const merchant3 = DEMO_CREDENTIALS.find((c) => c.email === "merchant3@demo.com");
-  let originalPasswordHash: string;
+  let originalPasswordHash: string | null;
 
   before(async () => {
     assert.ok(merchant3, "merchant3@demo.com must be present in DEMO_CREDENTIALS for this test");

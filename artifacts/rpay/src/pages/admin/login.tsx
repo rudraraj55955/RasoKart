@@ -13,13 +13,15 @@ import { Button } from "@/components/ui/button";
 import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Eye, EyeOff } from "lucide-react";
-
-const RESEND_COOLDOWN_SECONDS = 60;
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { useSocialProviders } from "@/hooks/useSocialProviders";
 
 function apiUrl(path: string): string {
   const base = (import.meta as any)?.env?.BASE_URL ?? "/";
   return `${base}api${path}`.replace(/\/+/g, "/");
 }
+
+const RESEND_COOLDOWN_SECONDS = 60;
 
 function extractRateLimitSeconds(headers: Headers): number {
   const h = headers.get("RateLimit-Reset") ?? headers.get("ratelimit-reset");
@@ -373,7 +375,60 @@ function OtpLoginTab({
   );
 }
 
-// ---------- Page ----------
+// ---------- Google sign-in section ----------
+
+function AdminGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
+  const { providers, loading } = useSocialProviders();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  if (loading || !providers.google.enabled || !providers.google.clientId) return null;
+
+  const handleCredential = async (idToken: string) => {
+    setBusy(true);
+    try {
+      const r = await fetch(apiUrl("/auth/admin/google"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        toast.error(data.error ?? "Google sign-in failed");
+        setBusy(false);
+        return;
+      }
+      if (data.user?.role !== "admin") {
+        toast.error("This Google account is not authorised for the Admin Portal.");
+        setBusy(false);
+        return;
+      }
+      onSigningIn();
+      queryClient.clear();
+      saveAuthAndRedirect(data.token, data.user, "/admin/dashboard");
+    } catch {
+      toast.error("Google sign-in failed. Please try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="relative flex items-center gap-3 mb-4">
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-xs text-muted-foreground shrink-0">or continue with</span>
+        <div className="flex-1 h-px bg-border" />
+      </div>
+      <GoogleSignInButton
+        clientId={providers.google.clientId!}
+        onCredential={handleCredential}
+        onError={msg => toast.error(msg)}
+        disabled={busy}
+        text="signin_with"
+      />
+    </div>
+  );
+}
 
 export default function AdminLogin() {
   const [tab, setTab] = useState<"password" | "otp">("password");
@@ -402,6 +457,9 @@ export default function AdminLogin() {
           />
         </div>
       )}
+
+      <AdminGoogleSignIn onSigningIn={() => setSigningIn(true)} />
+
       <Tabs value={tab} onValueChange={(v) => setTab(v as "password" | "otp")} className="w-full">
         <TabsList className="grid w-full grid-cols-2 mb-6">
           <TabsTrigger value="password">Password</TabsTrigger>

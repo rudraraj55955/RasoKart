@@ -197,7 +197,7 @@ async function verifyDemoCredentials() {
       continue;
     }
 
-    const passwordOk = await bcrypt.compare(cred.password, row.passwordHash);
+    const passwordOk = row.passwordHash ? await bcrypt.compare(cred.password, row.passwordHash) : false;
     const roleOk = row.role === cred.role;
     const activeOk = row.isActive;
 

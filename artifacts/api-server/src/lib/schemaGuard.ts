@@ -1166,6 +1166,48 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS force_approve_kyc_status TEXT`);
   logger.info({ table: "merchants", migration: "add_force_approve_cols" }, "schema_guard_column_added");
 
+  // ── users: make password_hash nullable, add last_login_method ────────────
+  await db.execute(sql`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_method TEXT`);
+  logger.info({ table: "users", migration: "add_social_auth_cols" }, "schema_guard_column_added");
+
+  // ── auth_providers: OAuth provider linkage ────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS auth_providers (
+      id                  SERIAL PRIMARY KEY,
+      user_id             INTEGER NOT NULL,
+      provider            TEXT NOT NULL,
+      provider_account_id TEXT NOT NULL,
+      email               TEXT,
+      display_name        TEXT,
+      avatar_url          TEXT,
+      linked_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      unlinked_at         TIMESTAMPTZ,
+      is_active           BOOLEAN NOT NULL DEFAULT TRUE
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS auth_providers_user_provider_uniq ON auth_providers(user_id, provider) WHERE is_active = TRUE`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS auth_providers_provider_account_uniq ON auth_providers(provider, provider_account_id) WHERE is_active = TRUE`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS auth_providers_user_id_idx ON auth_providers(user_id)`);
+  logger.info({ table: "auth_providers" }, "schema_guard_table_created");
+
+  // ── social_provider_settings: Super Admin on/off toggles ─────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS social_provider_settings (
+      provider          TEXT PRIMARY KEY,
+      enabled           BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by_email  TEXT
+    )
+  `);
+  // Seed the four known providers as disabled-by-default
+  await db.execute(sql`
+    INSERT INTO social_provider_settings (provider, enabled)
+    VALUES ('google', FALSE), ('apple', FALSE), ('microsoft', FALSE), ('facebook', FALSE)
+    ON CONFLICT (provider) DO NOTHING
+  `);
+  logger.info({ table: "social_provider_settings" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

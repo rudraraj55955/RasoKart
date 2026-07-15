@@ -23,6 +23,13 @@ import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ShieldAlert } from "lucide-react";
 import { SUPPORT_MAILTO } from "@/lib/support-config";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { useSocialProviders } from "@/hooks/useSocialProviders";
+
+function apiUrl(path: string): string {
+  const base = (import.meta as any)?.env?.BASE_URL ?? "/";
+  return `${base}api${path}`.replace(/\/+/g, "/");
+}
 
 const ACCOUNT_SUSPENDED_MESSAGE = "Account suspended. Please contact support.";
 const SAFE_OTP_MESSAGE = "If an account matches that email or mobile number, a login code has been sent.";
@@ -616,6 +623,126 @@ function ForgotPasswordTab({
 
 // ---------- Page ----------
 
+// ---------- Google sign-in section ----------
+
+
+function MerchantGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
+  const { providers, loading } = useSocialProviders();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [needsReg, setNeedsReg] = useState<{ email: string; name?: string } | null>(null);
+  const [regForm, setRegForm] = useState({ businessName: "", contactName: "", phone: "" });
+
+  if (loading || !providers.google.enabled || !providers.google.clientId) return null;
+
+  const handleCredential = async (idToken: string) => {
+    setBusy(true);
+    try {
+      const r = await fetch(apiUrl("/auth/merchant/google"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await r.json();
+      if (r.status === 202 && data.needsRegistration) {
+        setNeedsReg({ email: data.email, name: data.name });
+        setBusy(false);
+        return;
+      }
+      if (!r.ok) {
+        toast.error(data.error ?? "Google sign-in failed");
+        setBusy(false);
+        return;
+      }
+      onSigningIn();
+      queryClient.clear();
+      saveAuthAndRedirect(data.token, data.user, "/merchant/dashboard");
+    } catch {
+      toast.error("Google sign-in failed. Please try again.");
+      setBusy(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    if (!needsReg) return;
+    if (!regForm.businessName || !regForm.contactName || !regForm.phone) {
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch(apiUrl("/auth/merchant/google"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken: "", ...regForm, email: needsReg.email }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        toast.error(data.error ?? "Registration failed");
+        setBusy(false);
+        return;
+      }
+      onSigningIn();
+      queryClient.clear();
+      saveAuthAndRedirect(data.token, data.user, "/merchant/dashboard");
+    } catch {
+      toast.error("Registration failed. Please try again.");
+      setBusy(false);
+    }
+  };
+
+  if (needsReg) {
+    return (
+      <div className="mb-6 space-y-3">
+        <p className="text-sm text-muted-foreground text-center">
+          Complete your account for <span className="text-foreground">{needsReg.email}</span>
+        </p>
+        <Input
+          placeholder="Business name"
+          value={regForm.businessName}
+          onChange={e => setRegForm(f => ({ ...f, businessName: e.target.value }))}
+        />
+        <Input
+          placeholder="Your name"
+          value={regForm.contactName}
+          onChange={e => setRegForm(f => ({ ...f, contactName: e.target.value }))}
+        />
+        <Input
+          placeholder="Phone number"
+          value={regForm.phone}
+          onChange={e => setRegForm(f => ({ ...f, phone: e.target.value }))}
+        />
+        <Button className="w-full" onClick={handleRegister} disabled={busy}>
+          {busy ? "Creating account…" : "Create account"}
+        </Button>
+        <button
+          className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => setNeedsReg(null)}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-6">
+      <div className="relative flex items-center gap-3 mb-4">
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-xs text-muted-foreground shrink-0">or continue with</span>
+        <div className="flex-1 h-px bg-border" />
+      </div>
+      <GoogleSignInButton
+        clientId={providers.google.clientId!}
+        onCredential={handleCredential}
+        onError={msg => toast.error(msg)}
+        disabled={busy}
+        text="continue_with"
+      />
+    </div>
+  );
+}
+
 export default function MerchantLogin() {
   const [tab, setTab] = useState<"password" | "otp" | "forgot">("password");
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
@@ -662,6 +789,8 @@ export default function MerchantLogin() {
           />
         </div>
       )}
+
+      <MerchantGoogleSignIn onSigningIn={() => setSigningIn(true)} />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "password" | "otp" | "forgot")} className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-6">

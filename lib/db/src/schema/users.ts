@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
   name: text("name").notNull(),
   role: text("role").notNull().default("merchant"), // admin | merchant | payout_merchant | payout_admin | payout_super_admin | agent
   isActive: boolean("is_active").notNull().default(true),
@@ -54,6 +54,7 @@ export const usersTable = pgTable("users", {
   lastSeenIp: text("last_seen_ip"),
   passwordUpdatedAt: timestamp("password_updated_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  lastLoginMethod: text("last_login_method"), // password | otp | google | apple | microsoft | facebook
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
