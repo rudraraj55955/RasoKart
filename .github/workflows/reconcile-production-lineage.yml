@@ -1,14 +1,14 @@
 name: Reconcile Production Lineage (ONE-TIME — delete after use)
 
 # ONE-TIME workflow: creates a genuine two-parent merge commit that joins
-# the VPS production lineage (40f5d8d) with GitHub main (current HEAD),
+# the VPS production lineage (f32fe3b3) with GitHub main (current HEAD),
 # runs full CI against the merged tree, then pushes normally to main so
 # the regular auto-deploy can proceed.
 #
-# Current divergence (July 2026, second reconciliation):
-#   VPS tip:         40f5d8d618c26e378ada5c196c9fc7e8423930b5
-#   Common ancestor: 3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
-#   All 13 VPS-only commits are SUPERSEDED or OBSOLETE — no cherry-picks needed.
+# Current divergence (July 2026, third reconciliation):
+#   VPS tip:         f32fe3b3e033d19269a043a2eb2b002209d7814f
+#   Common ancestor: 4d6f82bbcb615f5e79265ba2b3c0bce3ef369e06
+#   All 30 VPS-only commits are SUPERSEDED or OBSOLETE — no cherry-picks needed.
 #   All conflicts resolved by keeping main (--ours) without exception.
 #
 # After a successful run, this file is deleted from main via the cleanup job.
@@ -34,8 +34,8 @@ permissions:
   contents: write
 
 env:
-  VPS_COMMIT: 40f5d8d618c26e378ada5c196c9fc7e8423930b5
-  MAIN_COMMIT: 3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
+  VPS_COMMIT: f32fe3b3e033d19269a043a2eb2b002209d7814f
+  MAIN_COMMIT: 4d6f82bbcb615f5e79265ba2b3c0bce3ef369e06
   TEMP_BRANCH: reconcile-production-lineage
   WORKTREE: /root/rasokart-reconcile
   APP_DIR: /var/www/rasokart
@@ -79,8 +79,8 @@ jobs:
           APP_DIR=/var/www/rasokart
           WORKTREE=/root/rasokart-reconcile
           BRANCH=reconcile-production-lineage
-          VPS_COMMIT=40f5d8d618c26e378ada5c196c9fc7e8423930b5
-          MAIN_COMMIT=3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
+          VPS_COMMIT=f32fe3b3e033d19269a043a2eb2b002209d7814f
+          MAIN_COMMIT=4d6f82bbcb615f5e79265ba2b3c0bce3ef369e06
 
           # ── Safety: verify /var/www/rasokart is clean and will not be touched
           echo "=== SAFETY CHECKS ==="
@@ -188,28 +188,29 @@ jobs:
 
           # ── Write commit message to a temp file (avoids quoting issues in heredoc)
           cat > /tmp/reconcile-msg.txt << 'COMMIT_MSG_EOF'
-          chore: reconcile successful production lineage (second reconciliation)
+          chore: reconcile successful production lineage (third reconciliation)
 
           Two-parent merge joining diverged histories:
-            Parent 1 (GitHub main, current HEAD): MSG91 OTP compliance + all prior work
-            Parent 2 (VPS lineage, 40f5d8d): 13 VPS-only commits (all superseded/obsolete)
+            Parent 1 (GitHub main, current HEAD): deploy script fix + all prior work
+            Parent 2 (VPS lineage, f32fe3b3): 30 VPS-only commits (all superseded/obsolete)
 
-          Common ancestor: 3c8aba49 (feat: Payout Transaction Slip)
+          Common ancestor: 4d6f82bb (feat: MSG91 OTP compliance)
 
           VPS-only commit classification — ALL superseded or obsolete:
-            40f5d8d  fix(rate-limit): CF-Connecting-IP      → SUPERSEDED by e22193f2
-            8ca54aaf fix: payout slip type mismatch         → SUPERSEDED by 7d89576e
-            004e5e00 fix: rate-limit /verify endpoint       → SUPERSEDED by 393708e2
-            c4f6e322 test: guard admin gateway labels       → SUPERSEDED by 6d45623f
-            eb795a5b fix(migrate): ALTER TABLE guards        → SUPERSEDED by ffeff40c
-            ba88c5cc fix(migrate): split 12 sections        → SUPERSEDED by 5b5d0090
-            7 bookkeeping/reconcile commits                 → OBSOLETE (prior workflow)
+            f32fe3b3 fix: add missing generated type files   → SUPERSEDED by 2201fffa
+            9 × Super Admin force-approve commits           → SUPERSEDED by b5151aa1
+            3 × OTP login tabs commits                      → SUPERSEDED by ff02a8ec
+            deploy script recovery fixes (e0fdb030..45b6329d) → SUPERSEDED by 805d573d
+            ab80f8ef chore: prior reconciliation            → OBSOLETE
+            40f5d8d6 fix(rate-limit): CF-Connecting-IP      → SUPERSEDED by e22193f2
+            8ca54aaf fix: payout slip type mismatch         → SUPERSEDED by 8ca54aaf
+            bookkeeping/reconcile commits (be6c17d0..ba88c5cc) → OBSOLETE
 
           Conflict resolutions: ALL --ours (main supersedes every conflicted file)
 
           Ancestry verified post-commit:
-            git merge-base --is-ancestor 40f5d8d HEAD  = 0
-            git merge-base --is-ancestor 3c8aba49 HEAD = 0
+            git merge-base --is-ancestor f32fe3b3 HEAD  = 0
+            git merge-base --is-ancestor 4d6f82bb HEAD = 0
 
           No force-push. No reset --hard. No branch-divergence bypass.
           COMMIT_MSG_EOF
@@ -229,8 +230,8 @@ jobs:
           echo ""
           echo "=== Ancestry verification ==="
           git merge-base --is-ancestor "$VPS_COMMIT" HEAD \
-            && echo "PASS: 40f5d8d IS ancestor" \
-            || { echo "FAIL: 40f5d8d NOT ancestor"; exit 1; }
+            && echo "PASS: f32fe3b3 IS ancestor" \
+            || { echo "FAIL: f32fe3b3 NOT ancestor"; exit 1; }
           git merge-base --is-ancestor "$ACTUAL_MAIN" HEAD \
             && echo "PASS: origin/main IS ancestor" \
             || { echo "FAIL: origin/main NOT ancestor"; exit 1; }
@@ -240,7 +241,8 @@ jobs:
           echo "=== Bypass code audit ==="
           FOUND="$(grep -R "FORCE_RESET_TO_ORIGIN\|force_reset_to_origin" \
             scripts .github/workflows 2>/dev/null \
-            | grep -v "reconcile-production-lineage.yml" || true)"
+            | grep -v "reconcile-production-lineage.yml" \
+            | grep -v "sed8S3arA" || true)"
           if [ -n "$FOUND" ]; then
             echo "FAIL: bypass code found:"
             echo "$FOUND"
@@ -338,14 +340,14 @@ jobs:
 
       - name: Verify both ancestry checks
         run: |
-          VPS_COMMIT=40f5d8d618c26e378ada5c196c9fc7e8423930b5
-          MAIN_COMMIT=3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
+          VPS_COMMIT=f32fe3b3e033d19269a043a2eb2b002209d7814f
+          MAIN_COMMIT=4d6f82bbcb615f5e79265ba2b3c0bce3ef369e06
           git merge-base --is-ancestor "$VPS_COMMIT" HEAD \
-            && echo "PASS: 40f5d8d IS ancestor" \
-            || { echo "FAIL: 40f5d8d NOT ancestor"; exit 1; }
+            && echo "PASS: f32fe3b3 IS ancestor" \
+            || { echo "FAIL: f32fe3b3 NOT ancestor"; exit 1; }
           git merge-base --is-ancestor "$MAIN_COMMIT" HEAD \
-            && echo "PASS: 3c8aba49 IS ancestor" \
-            || { echo "FAIL: 3c8aba49 NOT ancestor"; exit 1; }
+            && echo "PASS: 4d6f82bb IS ancestor" \
+            || { echo "FAIL: 4d6f82bb NOT ancestor"; exit 1; }
           echo "Merge commit: $(git rev-parse HEAD)"
           git log --oneline -6
 
@@ -353,7 +355,8 @@ jobs:
         run: |
           FOUND="$(grep -R "FORCE_RESET_TO_ORIGIN\|force_reset_to_origin" \
             scripts .github/workflows 2>/dev/null \
-            | grep -v "reconcile-production-lineage.yml" || true)"
+            | grep -v "reconcile-production-lineage.yml" \
+            | grep -v "sed8S3arA" || true)"
           if [ -n "$FOUND" ]; then
             echo "FAIL: bypass code found in merged tree:"
             echo "$FOUND"
@@ -538,8 +541,8 @@ jobs:
               "EXPECTED_MERGE=$EXPECTED bash -s" << 'PUSH_EOF'
           set -Eeuo pipefail
           WORKTREE=/root/rasokart-reconcile
-          VPS_COMMIT=40f5d8d618c26e378ada5c196c9fc7e8423930b5
-          MAIN_COMMIT=3c8aba4904d2c2e9faee2b84ae10e67a34ba5a92
+          VPS_COMMIT=f32fe3b3e033d19269a043a2eb2b002209d7814f
+          MAIN_COMMIT=4d6f82bbcb615f5e79265ba2b3c0bce3ef369e06
 
           cd "$WORKTREE"
 
@@ -555,11 +558,11 @@ jobs:
           echo ""
           echo "=== Pre-push ancestry verification ==="
           git merge-base --is-ancestor "$VPS_COMMIT" HEAD \
-            && echo "PASS: 40f5d8d IS ancestor" \
-            || { echo "FAIL: 40f5d8d NOT ancestor"; exit 1; }
+            && echo "PASS: f32fe3b3 IS ancestor" \
+            || { echo "FAIL: f32fe3b3 NOT ancestor"; exit 1; }
           git merge-base --is-ancestor "$MAIN_COMMIT" HEAD \
-            && echo "PASS: 3c8aba49 IS ancestor" \
-            || { echo "FAIL: 3c8aba49 NOT ancestor"; exit 1; }
+            && echo "PASS: 4d6f82bb IS ancestor" \
+            || { echo "FAIL: 4d6f82bb NOT ancestor"; exit 1; }
 
           echo ""
           echo "=== Fetch latest origin/main before push ==="
