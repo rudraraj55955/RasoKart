@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +19,13 @@ const STEPS = [
   { id: 3, label: "Business", icon: FileText },
   { id: 4, label: "Consent", icon: CreditCard },
 ];
+
+const RESEND_COOLDOWN_SECONDS = 60;
+
+function apiBase(): string {
+  const base = (import.meta as any)?.env?.BASE_URL ?? "/";
+  return `${base}api`.replace(/\/+/g, "/").replace(/\/$/, "");
+}
 
 const step1Schema = z.object({
   businessName: z.string().min(2, "Business name must be at least 2 characters"),
@@ -51,10 +58,15 @@ const step4Schema = z.object({
   consentTerms: z.boolean().refine((v) => v, "Terms consent is required"),
 });
 
+const emailOtpSchema = z.object({
+  otp: z.string().length(6, "Enter the 6-digit verification code"),
+});
+
 type Step1 = z.infer<typeof step1Schema>;
 type Step2 = z.infer<typeof step2Schema>;
 type Step3 = z.infer<typeof step3Schema>;
 type Step4 = z.infer<typeof step4Schema>;
+type EmailOtpValues = z.infer<typeof emailOtpSchema>;
 
 interface AllData extends Step1, Omit<Step2, "confirmPassword">, Step3, Step4 {}
 
@@ -84,9 +96,14 @@ function PasswordInput({ field, disabled }: { field: any; disabled?: boolean }) 
 
 export default function PayoutMerchantSignup() {
   const [step, setStep] = useState(1);
+  const [emailVerifying, setEmailVerifying] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [allData, setAllData] = useState<Partial<AllData>>({});
+  const [resendIn, setResendIn] = useState(0);
+  const [resending, setResending] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const form1 = useForm<Step1>({ resolver: zodResolver(step1Schema), defaultValues: { businessName: "", contactName: "", email: "", phone: "" } });
   const form2 = useForm<Step2>({ resolver: zodResolver(step2Schema), defaultValues: { password: "", confirmPassword: "" } });
@@ -95,11 +112,117 @@ export default function PayoutMerchantSignup() {
     defaultValues: { businessType: undefined, panNumber: "", address: "" },
   });
   const form4 = useForm<Step4>({ resolver: zodResolver(step4Schema), defaultValues: { consentKyc: false, consentTerms: false } });
+  const otpForm = useForm<EmailOtpValues>({ resolver: zodResolver(emailOtpSchema), defaultValues: { otp: "" } });
 
-  const handleStep1 = form1.handleSubmit((data) => {
-    setAllData((prev) => ({ ...prev, ...data }));
-    setStep(2);
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  const startCooldown = () => {
+    setResendIn(RESEND_COOLDOWN_SECONDS);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setResendIn((s) => {
+        if (s <= 1) { if (timerRef.current) clearInterval(timerRef.current); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+  };
+
+  const sendEmailOtp = async (email: string): Promise<boolean> => {
+    try {
+      const r = await fetch(`${apiBase()}/auth/signup/send-email-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      if (r.status === 429) {
+        toast.error("Too many requests. Please wait before trying again.");
+        return false;
+      }
+      return true;
+    } catch {
+      toast.error("Network error. Please try again.");
+      return false;
+    }
+  };
+
+  const handleStep1 = form1.handleSubmit(async (data) => {
+    setSendingOtp(true);
+    try {
+      const ok = await sendEmailOtp(data.email);
+      if (!ok) return;
+      setAllData((prev) => ({ ...prev, ...data }));
+      otpForm.reset();
+      setEmailVerifying(true);
+      startCooldown();
+      toast.success("A verification code has been sent to your email.");
+    } finally {
+      setSendingOtp(false);
+    }
   });
+
+  const handleEmailOtp = otpForm.handleSubmit(async (data) => {
+    setIsPending(true);
+    try {
+      const email = (allData.email ?? "").trim().toLowerCase();
+      const r = await fetch(`${apiBase()}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          emailOtp: data.otp,
+          password: "__probe__",
+          businessName: "__probe__",
+          contactName: "__probe__",
+          phone: "__probe__",
+        }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (r.status === 400 && (body as any)?.error?.toLowerCase().includes("verification code")) {
+        toast.error((body as any).error);
+        otpForm.setValue("otp", "");
+        return;
+      }
+      if (r.status === 400 && (body as any)?.error?.toLowerCase().includes("already registered")) {
+        toast.error("This email is already registered. Please log in instead.");
+        setEmailVerifying(false);
+        setStep(1);
+        return;
+      }
+      if (r.status === 429) {
+        toast.error("Too many attempts. Please request a new code.");
+        return;
+      }
+      setAllData((prev) => ({ ...prev, _emailOtp: data.otp } as any));
+      setEmailVerifying(false);
+      setStep(2);
+    } finally {
+      setIsPending(false);
+    }
+  });
+
+  const handleResend = async () => {
+    if (resendIn > 0 || resending) return;
+    setResending(true);
+    try {
+      const email = (allData.email ?? "").trim().toLowerCase();
+      const r = await fetch(`${apiBase()}/auth/signup/send-email-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (r.status === 429) {
+        toast.error("Too many requests. Please wait.");
+        return;
+      }
+      otpForm.setValue("otp", "");
+      startCooldown();
+      toast.success("A new code has been sent.");
+    } catch {
+      startCooldown();
+    } finally {
+      setResending(false);
+    }
+  };
 
   const handleStep2 = form2.handleSubmit((data) => {
     setAllData((prev) => ({ ...prev, password: data.password }));
@@ -117,6 +240,7 @@ export default function PayoutMerchantSignup() {
     if (!payload.email || !payload.password) return;
     setIsPending(true);
     try {
+      const emailOtp = (payload as any)._emailOtp as string | undefined;
       const res = await fetch("/api/payout-merchant/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,6 +255,7 @@ export default function PayoutMerchantSignup() {
           address: payload.address,
           consentKyc: true,
           consentTerms: true,
+          ...(emailOtp ? { emailOtp } : {}),
         }),
       });
 
@@ -180,6 +305,55 @@ export default function PayoutMerchantSignup() {
             <Button className="w-full">Log in to your account</Button>
           </Link>
         </div>
+      </AuthLayout>
+    );
+  }
+
+  if (emailVerifying) {
+    const email = allData.email ?? "";
+    return (
+      <AuthLayout title="Payout Merchant Sign Up" subtitle="Verify your email address">
+        <Form {...otpForm}>
+          <form onSubmit={handleEmailOtp} className="space-y-5">
+            <p className="text-sm text-muted-foreground">
+              Enter the 6-digit code sent to{" "}
+              <span className="font-medium text-foreground">{email}</span>. It expires in 5 minutes.
+            </p>
+            <FormField
+              control={otpForm.control}
+              name="otp"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Verification code</FormLabel>
+                  <FormControl>
+                    <Input inputMode="numeric" maxLength={6} placeholder="123456" autoFocus {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button type="submit" className="w-full" disabled={isPending}>
+              {isPending ? "Verifying…" : "Verify email & continue"}
+            </Button>
+            <div className="flex items-center justify-between text-sm">
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setEmailVerifying(false)}
+              >
+                Change email
+              </button>
+              <button
+                type="button"
+                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
+                disabled={resendIn > 0 || resending}
+                onClick={handleResend}
+              >
+                {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+              </button>
+            </div>
+          </form>
+        </Form>
       </AuthLayout>
     );
   }
@@ -248,8 +422,8 @@ export default function PayoutMerchantSignup() {
                 <FormMessage />
               </FormItem>
             )} />
-            <Button type="submit" className="w-full gap-2">
-              Continue <ArrowRight className="h-4 w-4" />
+            <Button type="submit" className="w-full gap-2" disabled={sendingOtp}>
+              {sendingOtp ? "Sending verification code…" : <><span>Continue</span> <ArrowRight className="h-4 w-4" /></>}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
               Already registered?{" "}
@@ -263,6 +437,10 @@ export default function PayoutMerchantSignup() {
       {step === 2 && (
         <Form {...form2}>
           <form onSubmit={handleStep2} className="space-y-4">
+            <div className="mb-2 flex items-center gap-2 text-xs text-green-400">
+              <span>✓</span>
+              <span>Email verified: <span className="font-medium">{allData.email}</span></span>
+            </div>
             <FormField control={form2.control} name="password" render={({ field }) => (
               <FormItem>
                 <FormLabel>Password</FormLabel>

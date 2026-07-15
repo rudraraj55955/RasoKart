@@ -1,5 +1,13 @@
 import { logger } from "../lib/logger";
 import { sendMail } from "./mailer";
+import { sendMsg91EmailOtp } from "./sendMsg91EmailOtp";
+
+export type OtpEmailPurpose =
+  | "LOGIN"
+  | "PASSWORD_RESET"
+  | "KYC_EMAIL"
+  | "ADMIN_PASSWORD_RESET"
+  | "SIGNUP_VERIFY";
 
 function escapeHtml(str: string): string {
   return str
@@ -66,36 +74,62 @@ function buildOtpEmailHtml(opts: { title: string; subtitle: string; otp: string;
   `.trim();
 }
 
+function purposeLabels(purpose: OtpEmailPurpose): { title: string; subtitle: string; subject: string } {
+  switch (purpose) {
+    case "PASSWORD_RESET":
+    case "ADMIN_PASSWORD_RESET":
+      return {
+        title: "Password Reset Code",
+        subtitle: "Use this code to verify your identity and reset your password.",
+        subject: "Your RasoKart Password Reset Code",
+      };
+    case "KYC_EMAIL":
+      return {
+        title: "Email Verification Code",
+        subtitle: "Use this code to verify your email address as part of KYC verification.",
+        subject: "Your RasoKart Email Verification Code",
+      };
+    case "SIGNUP_VERIFY":
+      return {
+        title: "Verify Your Email",
+        subtitle: "Use this code to verify your email address and complete your registration.",
+        subject: "Verify Your RasoKart Account Email",
+      };
+    case "LOGIN":
+    default:
+      return {
+        title: "Your RasoKart Login Code",
+        subtitle: "Use this code to sign in to your RasoKart account.",
+        subject: "Your RasoKart Login Code",
+      };
+  }
+}
+
 export async function sendMerchantOtpEmail(opts: {
   to: string;
   otp: string;
-  purpose: "LOGIN" | "PASSWORD_RESET" | "KYC_EMAIL";
+  purpose: OtpEmailPurpose;
+  toName?: string;
 }): Promise<boolean> {
-  const { to, otp, purpose } = opts;
-  const isReset = purpose === "PASSWORD_RESET";
-  const isKycEmail = purpose === "KYC_EMAIL";
+  const { to, otp, purpose, toName } = opts;
+  const { title, subtitle, subject } = purposeLabels(purpose);
 
-  const title = isReset ? "Password Reset Code" : isKycEmail ? "Email Verification Code" : "Your RasoKart Login Code";
-  const subtitle = isReset
-    ? "Use this code to verify your identity and reset your password."
-    : isKycEmail
-      ? "Use this code to verify your email address as part of KYC verification."
-      : "Use this code to sign in to your RasoKart merchant account.";
-  const subject = isReset ? "Your RasoKart Password Reset Code" : isKycEmail ? "Your RasoKart Email Verification Code" : "Your RasoKart Login Code";
-
-  const html = buildOtpEmailHtml({
-    title,
-    subtitle,
+  const msg91Sent = await sendMsg91EmailOtp({
+    to,
+    toName: toName ?? to.split("@")[0],
     otp,
-    expiryMinutes: 5,
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "MSG91 email OTP dispatch error");
+    return false;
   });
 
-  const sent = await sendMail({
-    to,
-    subject,
-    html,
-  }).catch((err: unknown) => {
-    logger.warn({ err }, "Failed to send merchant OTP email");
+  if (msg91Sent) return true;
+
+  logger.info({ to, purpose }, "MSG91 unavailable; falling back to SMTP");
+
+  const html = buildOtpEmailHtml({ title, subtitle, otp, expiryMinutes: 5 });
+  const sent = await sendMail({ to, subject, html }).catch((err: unknown) => {
+    logger.warn({ err }, "SMTP fallback OTP email failed");
     return false;
   });
 

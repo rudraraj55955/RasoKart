@@ -375,6 +375,247 @@ function OtpLoginTab({
   );
 }
 
+// ---------- Forgot password tab ----------
+
+const forgotEmailSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+const forgotResetSchema = z.object({
+  otp: z.string().length(6, "Enter the 6-digit code"),
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+  confirmPassword: z.string().min(1, "Please confirm your password"),
+}).refine((d) => d.newPassword === d.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+type ForgotEmailValues = z.infer<typeof forgotEmailSchema>;
+type ForgotResetValues = z.infer<typeof forgotResetSchema>;
+
+function ForgotPasswordTab({ onBack }: { onBack: () => void }) {
+  const [stage, setStage] = useState<"email" | "reset" | "done">("email");
+  const [email, setEmail] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const emailForm = useForm<ForgotEmailValues>({
+    resolver: zodResolver(forgotEmailSchema),
+    defaultValues: { email: "" },
+  });
+  const resetForm = useForm<ForgotResetValues>({
+    resolver: zodResolver(forgotResetSchema),
+    defaultValues: { otp: "", newPassword: "", confirmPassword: "" },
+  });
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  const startCooldown = () => {
+    setResendIn(RESEND_COOLDOWN_SECONDS);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setResendIn((s) => {
+        if (s <= 1) { if (timerRef.current) clearInterval(timerRef.current); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+  };
+
+  const sendCode = async (data: ForgotEmailValues) => {
+    setSending(true);
+    try {
+      const r = await fetch(apiUrl("/auth/admin/password/forgot"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: data.email }),
+      });
+      if (r.status === 429) {
+        toast.error("Too many requests. Please wait before trying again.");
+        return;
+      }
+      setEmail(data.email);
+      setStage("reset");
+      resetForm.reset();
+      startCooldown();
+      toast.success("If this admin account exists, a password reset code has been sent.");
+    } catch {
+      setEmail(data.email);
+      setStage("reset");
+      startCooldown();
+      toast.success("If this admin account exists, a password reset code has been sent.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const resend = async () => {
+    if (resendIn > 0 || resending) return;
+    setResending(true);
+    try {
+      const r = await fetch(apiUrl("/auth/admin/password/forgot"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (r.status === 429) {
+        toast.error("Too many requests. Please wait.");
+        return;
+      }
+      resetForm.setValue("otp", "");
+      startCooldown();
+      toast.success("A new code has been sent.");
+    } catch {
+      startCooldown();
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const doReset = async (data: ForgotResetValues) => {
+    setResetting(true);
+    try {
+      const r = await fetch(apiUrl("/auth/admin/password/reset"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp: data.otp, newPassword: data.newPassword }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        toast.error((body as any)?.error ?? "Failed to reset password. Please try again.");
+        if (r.status !== 429) resetForm.setValue("otp", "");
+        return;
+      }
+      setStage("done");
+    } catch {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  if (stage === "done") {
+    return (
+      <div className="space-y-6 text-center">
+        <div className="text-green-400 text-4xl">✓</div>
+        <div>
+          <p className="text-sm font-medium text-foreground">Password reset successfully</p>
+          <p className="text-xs text-muted-foreground mt-1">You can now sign in with your new password.</p>
+        </div>
+        <Button className="w-full" onClick={onBack}>Back to sign in</Button>
+      </div>
+    );
+  }
+
+  if (stage === "email") {
+    return (
+      <Form {...emailForm}>
+        <form onSubmit={emailForm.handleSubmit(sendCode)} className="space-y-6">
+          <p className="text-sm text-muted-foreground">
+            Enter your admin email and we'll send a one-time code to reset your password.
+          </p>
+          <FormField
+            control={emailForm.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Admin email</FormLabel>
+                <FormControl>
+                  <Input type="email" autoComplete="email" placeholder="admin@rasokart.com" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" className="w-full" disabled={sending}>
+            {sending ? "Sending code…" : "Send reset code"}
+          </Button>
+          <button type="button" className="w-full text-sm text-muted-foreground hover:text-foreground" onClick={onBack}>
+            ← Back to sign in
+          </button>
+        </form>
+      </Form>
+    );
+  }
+
+  return (
+    <Form {...resetForm}>
+      <form onSubmit={resetForm.handleSubmit(doReset)} className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Enter the 6-digit code sent to <span className="font-medium text-foreground">{email}</span> and choose a new password.
+        </p>
+        <FormField
+          control={resetForm.control}
+          name="otp"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Verification code</FormLabel>
+              <FormControl>
+                <Input inputMode="numeric" maxLength={6} placeholder="123456" autoFocus {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={resetForm.control}
+          name="newPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>New password</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Input type={showNew ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" className="pr-10" {...field} />
+                  <button type="button" tabIndex={-1} className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground" onClick={() => setShowNew((s) => !s)}>
+                    {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={resetForm.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Confirm new password</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Input type={showConfirm ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" className="pr-10" {...field} />
+                  <button type="button" tabIndex={-1} className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground" onClick={() => setShowConfirm((s) => !s)}>
+                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit" className="w-full" disabled={resetting}>
+          {resetting ? "Resetting…" : "Reset password"}
+        </Button>
+        <div className="flex items-center justify-between text-sm">
+          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setStage("email")}>
+            Change email
+          </button>
+          <button
+            type="button"
+            className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
+            disabled={resendIn > 0 || resending}
+            onClick={resend}
+          >
+            {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+          </button>
+        </div>
+      </form>
+    </Form>
+  );
+}
+
 // ---------- Google sign-in section ----------
 
 function AdminGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
@@ -431,7 +672,7 @@ function AdminGoogleSignIn({ onSigningIn }: { onSigningIn: () => void }) {
 }
 
 export default function AdminLogin() {
-  const [tab, setTab] = useState<"password" | "otp">("password");
+  const [tab, setTab] = useState<"password" | "otp" | "forgot">("password");
   const [rateLimitSeconds, setRateLimitSeconds] = useState<number | null>(null);
   const [signingIn, setSigningIn] = useState(false);
 
@@ -460,10 +701,11 @@ export default function AdminLogin() {
 
       <AdminGoogleSignIn onSigningIn={() => setSigningIn(true)} />
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as "password" | "otp")} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "password" | "otp" | "forgot")} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 mb-6">
           <TabsTrigger value="password">Password</TabsTrigger>
           <TabsTrigger value="otp">OTP</TabsTrigger>
+          <TabsTrigger value="forgot">Forgot</TabsTrigger>
         </TabsList>
 
         <TabsContent value="password">
@@ -478,6 +720,10 @@ export default function AdminLogin() {
             onRateLimited={setRateLimitSeconds}
             onSigningIn={() => setSigningIn(true)}
           />
+        </TabsContent>
+
+        <TabsContent value="forgot">
+          <ForgotPasswordTab onBack={() => setTab("password")} />
         </TabsContent>
       </Tabs>
     </AuthLayout>

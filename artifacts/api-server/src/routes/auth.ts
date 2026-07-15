@@ -475,30 +475,154 @@ router.get("/notif-reminder-unsubscribe", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Signup email OTP verification (pre-registration step)
+// ---------------------------------------------------------------------------
+
+const signupEmailOtpLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many verification requests. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    return `signup-email-otp:${safeIpKey(req)}:${email}`;
+  },
+});
+
+const SAFE_SIGNUP_OTP_MESSAGE = "If this email is available, a verification code has been sent.";
+
+// POST /api/auth/signup/send-email-otp
+router.post("/signup/send-email-otp", signupEmailOtpLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body as { email?: string };
+    if (!email || typeof email !== "string") {
+      res.status(400).json({ error: "email is required" });
+      return;
+    }
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const [alreadyExists] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, normalizedEmail))
+      .limit(1);
+    if (alreadyExists) {
+      res.json({ message: SAFE_SIGNUP_OTP_MESSAGE });
+      return;
+    }
+
+    const identifierHash = hashIdentifier(normalizedEmail);
+    const ip = requestIp(req);
+    const ipHash = hashIp(ip);
+
+    const [existingOtp] = await db
+      .select({ id: merchantAuthOtpsTable.id, createdAt: merchantAuthOtpsTable.createdAt, resendCount: merchantAuthOtpsTable.resendCount })
+      .from(merchantAuthOtpsTable)
+      .where(and(
+        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+        eq(merchantAuthOtpsTable.purpose, "SIGNUP_VERIFY"),
+      ))
+      .orderBy(desc(merchantAuthOtpsTable.createdAt))
+      .limit(1);
+
+    if (existingOtp && Date.now() - existingOtp.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
+      res.json({ message: SAFE_SIGNUP_OTP_MESSAGE });
+      return;
+    }
+
+    const otp = generateOtp();
+    const otpHash = await hashOtp(otp);
+    const resendCount = existingOtp ? existingOtp.resendCount + 1 : 0;
+
+    await db.insert(merchantAuthOtpsTable).values({
+      merchantId: null,
+      identifierHash,
+      otpHash,
+      purpose: "SIGNUP_VERIFY",
+      expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
+      attempts: 0,
+      resendCount,
+      ipHash,
+    });
+
+    req.log.info({ purpose: "SIGNUP_VERIFY" }, "signup_email_otp_created");
+
+    const sent = await sendMerchantOtpEmail({ to: normalizedEmail, otp, purpose: "SIGNUP_VERIFY" }).catch((err: unknown) => {
+      req.log.warn({ err, purpose: "SIGNUP_VERIFY" }, "signup_email_otp_send_error");
+      return false;
+    });
+    req.log.info({ purpose: "SIGNUP_VERIFY", sent }, "signup_email_otp_sent");
+
+    res.json({ message: SAFE_SIGNUP_OTP_MESSAGE });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/auth/register
 router.post("/register", async (req, res, next) => {
   try {
-    const { email, password, businessName, contactName, phone, website } = req.body;
+    const { email, password, businessName, contactName, phone, website, emailOtp } = req.body;
     if (!email || !password || !businessName || !contactName || !phone) {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
-    const existing = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase())).limit(1);
+
+    const normalizedEmail = (email as string).toLowerCase().trim();
+
+    if (!emailOtp || typeof emailOtp !== "string") {
+      res.status(400).json({ error: "Email verification code is required. Please verify your email first." });
+      return;
+    }
+
+    const identifierHash = hashIdentifier(normalizedEmail);
+    const [otpRow] = await db
+      .select()
+      .from(merchantAuthOtpsTable)
+      .where(and(
+        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+        eq(merchantAuthOtpsTable.purpose, "SIGNUP_VERIFY"),
+      ))
+      .orderBy(desc(merchantAuthOtpsTable.createdAt))
+      .limit(1);
+
+    if (!otpRow || otpRow.consumedAt || otpRow.expiresAt.getTime() < Date.now()) {
+      res.status(400).json({ error: "Email verification code is invalid or expired. Please request a new one." });
+      return;
+    }
+
+    if (otpRow.attempts >= OTP_MAX_ATTEMPTS) {
+      res.status(429).json({ error: "Too many verification attempts. Please request a new code." });
+      return;
+    }
+
+    const otpValid = await verifyOtpHash(emailOtp, otpRow.otpHash);
+    if (!otpValid) {
+      await db.update(merchantAuthOtpsTable).set({ attempts: otpRow.attempts + 1 }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
+      res.status(400).json({ error: "Incorrect verification code. Please try again." });
+      return;
+    }
+
+    const existing = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
     if (existing.length > 0) {
       res.status(400).json({ error: "Email already registered" });
       return;
     }
+
+    await db.update(merchantAuthOtpsTable).set({ consumedAt: new Date() }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
+
     const passwordHash = await bcrypt.hash(password, 10);
     const [merchant] = await db.insert(merchantsTable).values({
       businessName,
       contactName,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       phone,
       website: website || null,
       status: "pending",
     }).returning();
     const [user] = await db.insert(usersTable).values({
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       passwordHash,
       name: contactName,
       role: "merchant",
@@ -2303,6 +2427,177 @@ router.post("/admin/google", googleAdminLimiter, async (req, res, next) => {
         createdAt: adminUser.createdAt,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Admin / Super-Admin forgot password (OTP-based)
+// ---------------------------------------------------------------------------
+
+const adminPasswordForgotLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many requests. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    return `admin-pwd-forgot:${safeIpKey(req)}:${email}`;
+  },
+});
+
+const adminPasswordResetLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many attempts. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    return `admin-pwd-reset:${safeIpKey(req)}:${email}`;
+  },
+});
+
+const SAFE_ADMIN_PASSWORD_RESET_MESSAGE = "If this admin account exists, a password reset code has been sent.";
+
+// POST /api/auth/admin/password/forgot
+router.post("/admin/password/forgot", adminPasswordForgotLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body as { email?: string };
+    if (!email || typeof email !== "string") {
+      res.status(400).json({ error: "email is required" });
+      return;
+    }
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const [adminUser] = await db
+      .select({ id: usersTable.id, isActive: usersTable.isActive })
+      .from(usersTable)
+      .where(and(eq(usersTable.email, normalizedEmail), eq(usersTable.role, "admin")))
+      .limit(1);
+
+    if (!adminUser || !adminUser.isActive) {
+      req.log.info({ purpose: "ADMIN_PASSWORD_RESET", hasUser: false }, "admin_pwd_reset_requested");
+      res.json({ message: SAFE_ADMIN_PASSWORD_RESET_MESSAGE });
+      return;
+    }
+
+    const identifierHash = hashIdentifier(normalizedEmail);
+    const ip = requestIp(req);
+    const ipHash = hashIp(ip);
+
+    const [existing] = await db
+      .select({ id: merchantAuthOtpsTable.id, createdAt: merchantAuthOtpsTable.createdAt, resendCount: merchantAuthOtpsTable.resendCount })
+      .from(merchantAuthOtpsTable)
+      .where(and(
+        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+        eq(merchantAuthOtpsTable.purpose, "ADMIN_PASSWORD_RESET"),
+      ))
+      .orderBy(desc(merchantAuthOtpsTable.createdAt))
+      .limit(1);
+
+    if (existing && Date.now() - existing.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
+      res.json({ message: SAFE_ADMIN_PASSWORD_RESET_MESSAGE });
+      return;
+    }
+
+    const otp = generateOtp();
+    const otpHash = await hashOtp(otp);
+    const resendCount = existing ? existing.resendCount + 1 : 0;
+
+    await db.insert(merchantAuthOtpsTable).values({
+      merchantId: null,
+      identifierHash,
+      otpHash,
+      purpose: "ADMIN_PASSWORD_RESET",
+      expiresAt: new Date(Date.now() + OTP_EXPIRY_MS),
+      attempts: 0,
+      resendCount,
+      ipHash,
+    });
+
+    req.log.info({ purpose: "ADMIN_PASSWORD_RESET", userId: adminUser.id }, "admin_pwd_reset_otp_created");
+
+    const sent = await sendMerchantOtpEmail({ to: normalizedEmail, otp, purpose: "ADMIN_PASSWORD_RESET" }).catch((err: unknown) => {
+      req.log.warn({ err, purpose: "ADMIN_PASSWORD_RESET" }, "admin_pwd_reset_email_error");
+      return false;
+    });
+    req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent }, "admin_pwd_reset_otp_sent");
+
+    res.json({ message: SAFE_ADMIN_PASSWORD_RESET_MESSAGE });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/auth/admin/password/reset
+router.post("/admin/password/reset", adminPasswordResetLimiter, async (req, res, next) => {
+  try {
+    const { email, otp, newPassword } = req.body as { email?: string; otp?: string; newPassword?: string };
+    if (!email || !otp || !newPassword || typeof email !== "string" || typeof otp !== "string" || typeof newPassword !== "string") {
+      res.status(400).json({ error: "email, otp, and newPassword are required" });
+      return;
+    }
+
+    const passwordError = validatePasswordStrength(newPassword);
+    if (passwordError) {
+      res.status(400).json({ error: passwordError });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const [adminUser] = await db
+      .select({ id: usersTable.id, isActive: usersTable.isActive })
+      .from(usersTable)
+      .where(and(eq(usersTable.email, normalizedEmail), eq(usersTable.role, "admin")))
+      .limit(1);
+
+    if (!adminUser) {
+      req.log.warn({ purpose: "ADMIN_PASSWORD_RESET" }, "admin_pwd_reset_failed_no_user");
+      res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
+      return;
+    }
+
+    const identifierHash = hashIdentifier(normalizedEmail);
+    const [otpRow] = await db
+      .select()
+      .from(merchantAuthOtpsTable)
+      .where(and(
+        eq(merchantAuthOtpsTable.identifierHash, identifierHash),
+        eq(merchantAuthOtpsTable.purpose, "ADMIN_PASSWORD_RESET"),
+      ))
+      .orderBy(desc(merchantAuthOtpsTable.createdAt))
+      .limit(1);
+
+    if (!otpRow || otpRow.consumedAt || otpRow.expiresAt.getTime() < Date.now()) {
+      req.log.warn({ userId: adminUser.id, purpose: "ADMIN_PASSWORD_RESET", reason: "no_active_otp" }, "admin_pwd_reset_failed");
+      res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
+      return;
+    }
+
+    if (otpRow.attempts >= OTP_MAX_ATTEMPTS) {
+      req.log.warn({ userId: adminUser.id, purpose: "ADMIN_PASSWORD_RESET" }, "admin_pwd_reset_rate_limited");
+      res.status(429).json({ error: "Too many attempts. Please request a new code." });
+      return;
+    }
+
+    const valid = await verifyOtpHash(otp, otpRow.otpHash);
+    if (!valid) {
+      await db.update(merchantAuthOtpsTable).set({ attempts: otpRow.attempts + 1 }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
+      req.log.warn({ userId: adminUser.id, purpose: "ADMIN_PASSWORD_RESET", reason: "mismatch" }, "admin_pwd_reset_failed");
+      res.status(400).json({ error: "Invalid or expired code. Please request a new one." });
+      return;
+    }
+
+    await db.update(merchantAuthOtpsTable).set({ consumedAt: new Date() }).where(eq(merchantAuthOtpsTable.id, otpRow.id));
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await db.update(usersTable)
+      .set({ passwordHash, passwordUpdatedAt: new Date() })
+      .where(eq(usersTable.id, adminUser.id));
+
+    req.log.info({ userId: adminUser.id, purpose: "ADMIN_PASSWORD_RESET" }, "admin_pwd_reset_ok");
+    res.json({ message: "Your password has been reset successfully. Please log in with your new password." });
   } catch (err) {
     next(err);
   }
