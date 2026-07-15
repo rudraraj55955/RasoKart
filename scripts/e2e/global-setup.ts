@@ -22,6 +22,25 @@ import {
 const BASE = "http://localhost:80";
 const API = `${BASE}/api`;
 
+/**
+ * Wait for the API server to be ready before attempting any requests.
+ * The validation workflow starts in parallel with the API server; without this
+ * the first login attempt races with server startup and gets a 502.
+ */
+async function waitForServer(timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${API}/healthz`);
+      if (res.ok) return;
+    } catch {
+      // server not yet listening
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  throw new Error("API server did not become ready within 30 seconds");
+}
+
 async function login(email: string, password: string): Promise<string> {
   const res = await fetch(`${API}/auth/login`, {
     method: "POST",
@@ -125,6 +144,7 @@ async function snapshotMerchantSettings(merchantToken: string): Promise<void> {
 const isMerchantRun = process.argv.some((arg) => arg.includes("merchant-settings-persistence"));
 
 export default async function globalSetup(): Promise<void> {
+  await waitForServer();
   const adminToken = await login("admin@rasokart.com", "Admin@123456");
   writeFileSync(ADMIN_TOKEN_CACHE_PATH, JSON.stringify({ token: adminToken }));
 

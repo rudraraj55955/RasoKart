@@ -31,6 +31,25 @@ const BASE_URL = "http://localhost:80/api";
 const ADMIN_EMAIL = process.env["VERIFY_ADMIN_EMAIL"] ?? "admin@rasokart.com";
 const ADMIN_PASSWORD = process.env["VERIFY_ADMIN_PASSWORD"] ?? "Admin@123456";
 
+/**
+ * Wait for the API server to be ready before attempting any requests.
+ * The validation workflow starts in parallel with the API server; without this
+ * the first login attempt races with server startup and gets a 502.
+ */
+async function waitForServer(timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/healthz`);
+      if (res.ok) return;
+    } catch {
+      // server not yet listening
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  throw new Error("API server did not become ready within 30 seconds");
+}
+
 async function getAdminToken(): Promise<string> {
   const res = await fetch(`${BASE_URL}/auth/login`, {
     method: "POST",
@@ -104,6 +123,8 @@ async function checkRoundTrip(
 
 async function run() {
   console.log("=== RasoKart Settings Persistence Verification ===\n");
+
+  await waitForServer();
 
   let token: string;
   try {
