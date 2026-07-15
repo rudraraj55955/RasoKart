@@ -199,6 +199,11 @@ async function run() {
   let allOk = true;
   for (const row of allRows) {
     const password = row.email === ADMIN_EMAIL ? ADMIN_PASSWORD : MERCHANT_PASSWORD;
+    if (!row.hash) {
+      console.log(`  ✗ FAIL | ${row.email} | passwordHash is null`);
+      allOk = false;
+      continue;
+    }
     const ok = await bcrypt.compare(password, row.hash);
     const label = ok ? "✓ PASS" : "✗ FAIL";
     const roleOk = row.email === ADMIN_EMAIL ? row.role === "admin" : row.role === "merchant";

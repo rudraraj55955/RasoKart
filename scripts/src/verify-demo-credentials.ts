@@ -48,6 +48,11 @@ async function run() {
       continue;
     }
 
+    if (!row.passwordHash) {
+      allOk = false;
+      console.error(`✗ FAIL | ${cred.email} | passwordHash is null`);
+      continue;
+    }
     const passwordOk = await bcrypt.compare(cred.password, row.passwordHash);
     const roleOk = row.role === cred.role;
     const ok = passwordOk && roleOk && row.isActive;
