@@ -111,6 +111,17 @@ for _rk_path in \
 done
 unset _rk_path
 
+# The rm-rf loop above may have removed tracked files inside those directories
+# (e.g. auto-generated screenshots that were committed to git).  Restore any
+# such tracked deletions so the hard guard below stays clean; the subsequent
+# git merge will then apply whatever the remote has for those paths.
+_deleted_tracked=$(git status --porcelain --untracked-files=no | awk '$0 ~ /^ D / {print $2}')
+if [ -n "$_deleted_tracked" ]; then
+  log "Restoring tracked files deleted by reconciliation cleanup (will be updated by merge)..."
+  echo "$_deleted_tracked" | xargs -I{} git checkout -- {} 2>/dev/null || true
+fi
+unset _deleted_tracked
+
 # ---------------------------------------------------------------------------
 # 2. Preflight: fail safely on any local drift before pulling.
 # ---------------------------------------------------------------------------
