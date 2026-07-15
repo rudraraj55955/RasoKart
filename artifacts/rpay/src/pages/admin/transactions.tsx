@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
-import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants, useGetPaymentLink, useListSavedFilters, useCreateSavedFilter, useDeleteSavedFilter } from "@workspace/api-client-react";
+import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants, useGetPaymentLink, useListSavedFilters, useCreateSavedFilter, useDeleteSavedFilter, useListGatewayOptions } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -818,17 +818,6 @@ function RecordPaymentDialog({ open, onClose, onSuccess }: { open: boolean; onCl
   );
 }
 
-const PROVIDERS = [
-  { value: "google_pay",    label: "QR Network F" },
-  { value: "phonepe",       label: "QR Network A" },
-  { value: "paytm",         label: "QR Network B" },
-  { value: "bharat_pe",     label: "QR Network C (alt)" },
-  { value: "bharatpe",      label: "QR Network C" },
-  { value: "yono_sbi",      label: "QR Network D" },
-  { value: "hdfc_smarthub", label: "QR Network E" },
-  { value: "upi_id",        label: "UPI" },
-] as const;
-
 export default function AdminTransactions() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -853,6 +842,9 @@ export default function AdminTransactions() {
   const smartInputRef = useRef<HTMLInputElement>(null);
 
   // Saved filters state
+  const { data: gatewayOptionsData } = useListGatewayOptions();
+  const gatewayOptions = Array.isArray(gatewayOptionsData) ? gatewayOptionsData : [];
+
   const { data: savedFiltersData } = useListSavedFilters();
   const savedFilters: SavedFilterItem[] = (savedFiltersData?.data ?? []) as SavedFilterItem[];
   const { mutateAsync: createSavedFilterMutation, isPending: isSavingFilter } = useCreateSavedFilter();
@@ -1337,7 +1329,7 @@ export default function AdminTransactions() {
                 <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Providers" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Providers</SelectItem>
-                  {PROVIDERS.map(p => (
+                  {gatewayOptions.map(p => (
                     <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
                   ))}
                 </SelectContent>

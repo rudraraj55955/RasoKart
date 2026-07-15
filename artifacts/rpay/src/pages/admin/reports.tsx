@@ -23,6 +23,7 @@ import {
   useSnoozeBadge,
   getGetMeQueryKey,
   useGetMe,
+  useListGatewayOptions,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -147,15 +148,6 @@ const DATE_PRESETS = [
       return { from: format(startOfMonth(prev), "yyyy-MM-dd"), to: format(endOfMonth(prev), "yyyy-MM-dd") };
     },
   },
-];
-
-const PROVIDERS = [
-  { value: "phonepe", label: "QR Network A" },
-  { value: "paytm", label: "QR Network B" },
-  { value: "bharatpe", label: "QR Network C" },
-  { value: "yono_sbi", label: "QR Network D" },
-  { value: "hdfc_smarthub", label: "QR Network E" },
-  { value: "upi_id", label: "UPI ID" },
 ];
 
 function fmt(amount: number) {
@@ -3114,6 +3106,9 @@ export default function AdminReports() {
   const setTxMerchantId       = (v: string) => setFilter({ txMerchant: v === "all" ? null : v });
   const setTxActivePreset     = (v: string | null) => setFilter({ txPreset: v });
 
+  const { data: gatewayOptionsData } = useListGatewayOptions();
+  const gatewayOptions = Array.isArray(gatewayOptionsData) ? gatewayOptionsData : [];
+
   // Settlement filters — derived from URL
   const stlDateFrom    = _qp.get("stlFrom")    ?? format(startOfMonth(new Date()), "yyyy-MM-dd");
   const stlDateTo      = _qp.get("stlTo")      ?? format(new Date(), "yyyy-MM-dd");
@@ -3997,7 +3992,7 @@ export default function AdminReports() {
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All providers</SelectItem>
-                      {PROVIDERS.map((p) => (
+                      {gatewayOptions.map((p) => (
                         <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
                       ))}
                     </SelectContent>

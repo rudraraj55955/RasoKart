@@ -808,6 +808,72 @@ export async function seed() {
     }
   }
 
+  // ── Connection-linked demo deposits — merchant-scoped guard ───────────────
+  // Seeds deposits that have a non-null connectionId so the "Payment Gateway"
+  // badge on the deposit detail panel and the gateway column on the deposits
+  // table resolve to a real label (payinGatewayLabel) end-to-end.
+  //
+  // This cannot be handled by the connectionId backfill above because the
+  // backfill's temporal guard (connection.created_at <= transaction.created_at)
+  // never matches seed data: connections are inserted at "now" but transactions
+  // are backdated up to 30 days, so the backfill always skips them.
+  if (m2) {
+    const [connLinkedCount] = await db
+      .select({ c: count() })
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.merchantId, m2.id), sql`${transactionsTable.connectionId} IS NOT NULL`));
+
+    if (connLinkedCount.c === 0) {
+      const connRows = await db
+        .select({ id: merchantConnectionsTable.id, provider: merchantConnectionsTable.provider })
+        .from(merchantConnectionsTable)
+        .where(and(
+          eq(merchantConnectionsTable.merchantId, m2.id),
+          eq(merchantConnectionsTable.isActive, true),
+        ));
+
+      const gpConn = connRows.find(c => c.provider === "google_pay");
+      const ppConn = connRows.find(c => c.provider === "phonepe");
+
+      const CONN_LINKED_DEPOSITS: Array<{
+        connectionId: number;
+        amount: string;
+        status: "success" | "failed" | "pending";
+        utr: string;
+        description: string;
+        daysAgo: number;
+      }> = [];
+
+      if (gpConn) {
+        CONN_LINKED_DEPOSITS.push(
+          { connectionId: gpConn.id, amount: "4750.00", status: "success", utr: `GPDEMO${Date.now()}1`, description: "Deposit via Google Pay", daysAgo: 3 },
+          { connectionId: gpConn.id, amount: "1200.50", status: "success", utr: `GPDEMO${Date.now()}2`, description: "Deposit via Google Pay", daysAgo: 1 },
+        );
+      }
+      if (ppConn) {
+        CONN_LINKED_DEPOSITS.push(
+          { connectionId: ppConn.id, amount: "8900.00", status: "success", utr: `PPDEMO${Date.now()}1`, description: "Deposit via PhonePe", daysAgo: 7 },
+          { connectionId: ppConn.id, amount: "320.75", status: "failed",  utr: `PPDEMO${Date.now()}2`, description: "Deposit via PhonePe", daysAgo: 2 },
+        );
+      }
+
+      for (const d of CONN_LINKED_DEPOSITS) {
+        await db.insert(transactionsTable).values({
+          merchantId: m2.id,
+          type: "deposit",
+          status: d.status,
+          amount: d.amount,
+          currency: "INR",
+          connectionId: d.connectionId,
+          utr: d.utr,
+          description: d.description,
+          createdAt: new Date(Date.now() - d.daysAgo * 86400000),
+        });
+      }
+      logger.info("Connection-linked demo deposits seeded");
+    }
+  }
+
   // ── Notifications ─────────────────────────────────────────────────────────
   const notifCount = await db.select({ c: count() }).from(notificationsTable);
   if (notifCount[0].c === 0) {

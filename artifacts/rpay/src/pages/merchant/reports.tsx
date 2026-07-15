@@ -19,6 +19,7 @@ import {
   getGetTransactionReportCountQueryOptions,
   getGetSettlementReportCountQueryOptions,
   useGetReportScheduleHistory,
+  useListGatewayOptions,
 } from "@workspace/api-client-react";
 import { AllFiltersSheet } from "@/components/merchant/all-filters-sheet";
 import { useQueryClient } from "@tanstack/react-query";
@@ -117,15 +118,6 @@ function getThisMonthDefault(): { from: string; to: string } {
   const now = new Date();
   return { from: format(startOfMonth(now), "yyyy-MM-dd"), to: format(now, "yyyy-MM-dd") };
 }
-
-const PROVIDERS = [
-  { value: "phonepe",       label: "QR Network A" },
-  { value: "paytm",         label: "QR Network B" },
-  { value: "bharatpe",      label: "QR Network C" },
-  { value: "yono_sbi",      label: "QR Network D" },
-  { value: "hdfc_smarthub", label: "QR Network E" },
-  { value: "upi_id",        label: "UPI ID" },
-];
 
 interface ReportsFilterData {
   dateFrom?: string;
@@ -1205,6 +1197,9 @@ export default function MerchantReports() {
     setActiveTab(tab);
     try { localStorage.setItem(ACTIVE_REPORT_TAB_KEY, tab); } catch {}
   }, []);
+
+  const { data: gatewayOptionsData } = useListGatewayOptions();
+  const gatewayOptions = Array.isArray(gatewayOptionsData) ? gatewayOptionsData : [];
 
   // Transaction filter state
   const [txDateFrom, setTxDateFrom] = useState(() => {
@@ -2559,7 +2554,7 @@ export default function MerchantReports() {
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All providers</SelectItem>
-                      {PROVIDERS.map((p) => (
+                      {gatewayOptions.map((p) => (
                         <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
                       ))}
                     </SelectContent>
