@@ -1,9 +1,18 @@
 import { logger } from "../lib/logger";
 
-const MSG91_EMAIL_OTP_ENDPOINT = "https://control.msg91.com/api/v5/email/otp";
+const MSG91_EMAIL_ENDPOINT = "https://control.msg91.com/api/v5/email/send";
 const VERIFIED_SENDER_DOMAIN = "notify.rasokart.com";
 const DEFAULT_FROM_NAME = "RasoKart";
 const OTP_EXPIRY_MINUTES = 10;
+
+function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at === -1) return "***";
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (local.length <= 2) return `${local[0] ?? ""}***@${domain}`;
+  return `${local[0]}${"*".repeat(Math.min(local.length - 2, 5))}${local[local.length - 1]}@${domain}`;
+}
 
 export interface EmailOtpResult {
   sent: boolean;
@@ -81,22 +90,47 @@ export async function sendMsg91EmailOtp(opts: {
   }
 
   const fromName = process.env["MSG91_FROM_NAME"] || DEFAULT_FROM_NAME;
-  const domain = process.env["MSG91_EMAIL_DOMAIN"] || VERIFIED_SENDER_DOMAIN;
-  const fromAddress = `${fromName} <${fromEmail}>`;
 
-  const body: Record<string, unknown> = {
+  // POST /api/v5/email/send
+  // - `from` must be an object {name, email}, not a string
+  // - per-recipient `variables` must be nested inside the `to` array item
+  // - template variables confirmed from global_otp template: otp, purpose_label, expiry_minutes
+  // - `domain` is not a field on /email/send (removed)
+  // - top-level OTP / OTP_EXPIRY fields do not exist on /email/send (removed)
+  const body = {
     template_id: templateId,
-    domain,
-    from: fromAddress,
-    to: [{ name: opts.toName || opts.to.split("@")[0], email: opts.to }],
-    OTP: opts.otp,
-    OTP_EXPIRY: OTP_EXPIRY_MINUTES,
-    variables: { otp: opts.otp },
+    from: {
+      name: fromName,
+      email: fromEmail,
+    },
+    to: [
+      {
+        name: opts.toName || opts.to.split("@")[0],
+        email: opts.to,
+        variables: {
+          otp: opts.otp,
+          purpose_label: "Login",
+          expiry_minutes: String(OTP_EXPIRY_MINUTES),
+        },
+      },
+    ],
   };
+
+  // Safe diagnostic: log endpoint + non-sensitive request fields only
+  logger.info(
+    {
+      endpoint: MSG91_EMAIL_ENDPOINT,
+      template_id: templateId,
+      from_email: fromEmail,
+      from_name: fromName,
+      to_masked: maskEmail(opts.to),
+    },
+    "MSG91 email OTP request dispatched",
+  );
 
   let resp: Response;
   try {
-    resp = await fetch(MSG91_EMAIL_OTP_ENDPOINT, {
+    resp = await fetch(MSG91_EMAIL_ENDPOINT, {
       method: "POST",
       headers: {
         "authkey": authKey,
@@ -104,6 +138,7 @@ export async function sendMsg91EmailOtp(opts: {
         "Accept": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
   } catch (err: unknown) {
     logger.warn({ err }, "MSG91 email OTP network error");
@@ -113,10 +148,20 @@ export async function sendMsg91EmailOtp(opts: {
   let data: unknown;
   try { data = await resp.json(); } catch { data = null; }
 
+  const requestId = (data as Record<string, unknown> | null)?.["request_id"] as string | undefined;
+
   if (!resp.ok) {
     const errMsg = (data as Record<string, unknown> | null)?.["message"] as string | undefined;
+    // Safe log: status code, request_id from MSG91, masked recipient — no auth key, no OTP
     logger.warn(
-      { status: resp.status, body: data, templateId, senderDomain: domain },
+      {
+        httpStatus: resp.status,
+        requestId: requestId ?? null,
+        toMasked: maskEmail(opts.to),
+        templateId,
+        msg91ErrorMessage: errMsg ?? null,
+        msg91ResponseType: (data as Record<string, unknown> | null)?.["type"] ?? null,
+      },
       "MSG91 email OTP non-ok response",
     );
     return {
@@ -131,7 +176,13 @@ export async function sendMsg91EmailOtp(opts: {
   if (type === "error") {
     const msg = (data as Record<string, unknown>)?.["message"] as string | undefined;
     logger.warn(
-      { msg, templateId, senderDomain: domain },
+      {
+        httpStatus: resp.status,
+        requestId: requestId ?? null,
+        toMasked: maskEmail(opts.to),
+        templateId,
+        msg91ErrorMessage: msg ?? null,
+      },
       "MSG91 email OTP error response",
     );
     return {
@@ -142,6 +193,9 @@ export async function sendMsg91EmailOtp(opts: {
     };
   }
 
-  logger.info({ to: opts.to, templateId }, "MSG91 email OTP sent successfully");
+  logger.info(
+    { toMasked: maskEmail(opts.to), templateId, httpStatus: resp.status, requestId: requestId ?? null },
+    "MSG91 email OTP sent successfully",
+  );
   return { sent: true, statusCode: resp.status, providerResponse: data };
 }
