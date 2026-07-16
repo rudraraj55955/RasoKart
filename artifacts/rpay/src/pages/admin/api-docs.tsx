@@ -955,8 +955,10 @@ function TryItPanel({
   const [shareExpiryMinutes, setShareExpiryMinutes] = useState<number | null>(
     suggestedExpiryMinutes ?? null
   );
+  const [showShareWarning, setShowShareWarning] = useState(false);
+  const [shareCredentialWarnings, setShareCredentialWarnings] = useState<string[]>([]);
 
-  const handleShare = useCallback(() => {
+  const doShare = useCallback(() => {
     const expiresAt =
       shareExpiryMinutes != null
         ? new Date(Date.now() + shareExpiryMinutes * 60 * 1000).toISOString()
@@ -977,6 +979,20 @@ function TryItPanel({
     setTimeout(() => setShareCopied(false), 2000);
     setShareOpen(false);
   }, [method, path, pathValues, queryParams, body, shareExpiryMinutes, shareStripToken, localToken]);
+
+  const handleShare = useCallback(() => {
+    const filteredParams = queryParams
+      .filter((row) => row.key.trim().length > 0)
+      .map((row) => ({ key: row.key, value: row.value }));
+    const warnings = collectCredentialWarnings(filteredParams, body, pathValues);
+    if (warnings.length > 0) {
+      setShareCredentialWarnings(warnings);
+      setShareOpen(false);
+      setShowShareWarning(true);
+      return;
+    }
+    doShare();
+  }, [queryParams, body, pathValues, doShare]);
 
   const prettyBody = useMemo(() => {
     if (!response) return "";
@@ -1542,6 +1558,57 @@ function TryItPanel({
           )}
         </div>
       )}
+      <Dialog open={showShareWarning} onOpenChange={setShowShareWarning}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-400">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              Possible credential in share link
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground pt-1">
+              The following field{shareCredentialWarnings.length > 1 ? "s" : ""} look{shareCredentialWarnings.length === 1 ? "s" : ""} like a token or API key:
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="mt-1 space-y-1 pl-1">
+            {shareCredentialWarnings.map((w) => (
+              <li key={w} className="flex items-center gap-2 text-xs font-mono text-amber-300">
+                <AlertTriangle className="w-3 h-3 shrink-0 text-amber-400" />
+                {w}
+              </li>
+            ))}
+          </ul>
+          {presetLoadWarnings && (
+            <p className="text-xs text-amber-400/80 mt-2 flex items-start gap-1.5">
+              <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+              These values were loaded from a preset — double-check that you intended to share them.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            Share links encode everything you've typed here into the URL. Anyone with the link will be able to see these values. Remove them before sharing, or continue only if you're sure this is safe.
+          </p>
+          <div className="flex gap-2 mt-3 justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowShareWarning(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-1.5"
+              onClick={() => {
+                setShowShareWarning(false);
+                doShare();
+              }}
+            >
+              <Share2 className="w-3 h-3" />
+              Share anyway
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

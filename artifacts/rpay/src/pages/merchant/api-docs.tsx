@@ -1843,6 +1843,12 @@ function TryItPanel({
               </li>
             ))}
           </ul>
+          {presetLoadWarnings && (
+            <p className="text-xs text-amber-400/80 mt-2 flex items-start gap-1.5">
+              <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+              These values were loaded from a preset — double-check that you intended to share them.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground mt-2">
             Share links encode everything you've typed here into the URL. Anyone with the link will be able to see these values. Remove them before sharing, or continue only if you're sure this is safe.
           </p>
