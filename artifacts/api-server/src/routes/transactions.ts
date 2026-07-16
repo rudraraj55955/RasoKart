@@ -38,9 +38,12 @@ async function expirePaymentLinks() {
  * filter, or page — so the same provider always maps to the same letter.
  */
 async function getStableProviderToLabel(merchantId: number): Promise<Map<string, string>> {
+  // Use COALESCE so that legacy rows (connectionId = NULL, provider set directly)
+  // are included alongside joined-connection rows. Both map to the same stable
+  // letter label as long as the provider string is the same.
   const rows = await db
     .select({
-      connectionProvider: merchantConnectionsTable.provider,
+      effectiveProvider: sql<string>`COALESCE(${merchantConnectionsTable.provider}, ${transactionsTable.provider})`,
       firstUsed: sql<string>`MIN(${transactionsTable.createdAt})`,
     })
     .from(transactionsTable)
@@ -48,14 +51,14 @@ async function getStableProviderToLabel(merchantId: number): Promise<Map<string,
     .where(
       and(
         eq(transactionsTable.merchantId, merchantId),
-        sql`${merchantConnectionsTable.provider} IS NOT NULL`
+        sql`COALESCE(${merchantConnectionsTable.provider}, ${transactionsTable.provider}) IS NOT NULL`
       )
     )
-    .groupBy(merchantConnectionsTable.provider)
-    .orderBy(sql`MIN(${transactionsTable.createdAt}) ASC, ${merchantConnectionsTable.provider} ASC`);
+    .groupBy(sql`COALESCE(${merchantConnectionsTable.provider}, ${transactionsTable.provider})`)
+    .orderBy(sql`MIN(${transactionsTable.createdAt}) ASC, COALESCE(${merchantConnectionsTable.provider}, ${transactionsTable.provider}) ASC`);
 
   return new Map<string, string>(
-    rows.map((r, i) => [r.connectionProvider!, `Payment Gateway ${String.fromCharCode(65 + i)}`])
+    rows.map((r, i) => [r.effectiveProvider, `Payment Gateway ${String.fromCharCode(65 + i)}`])
   );
 }
 
@@ -225,13 +228,13 @@ router.get("/", async (req, res, next) => {
       // switch that code path to call getStableProviderToLabel() instead of
       // relying on this per-filter shortcut.
       const allProviderRows = await db
-        .selectDistinct({ connectionProvider: merchantConnectionsTable.provider })
+        .selectDistinct({ effectiveProvider: sql<string>`COALESCE(${merchantConnectionsTable.provider}, ${transactionsTable.provider})` })
         .from(transactionsTable)
         .leftJoin(merchantConnectionsTable, eq(transactionsTable.connectionId, merchantConnectionsTable.id))
-        .where(and(where, sql`${merchantConnectionsTable.provider} IS NOT NULL`));
+        .where(and(where, sql`COALESCE(${merchantConnectionsTable.provider}, ${transactionsTable.provider}) IS NOT NULL`));
 
       const uniqueProviders = allProviderRows
-        .map(r => r.connectionProvider)
+        .map(r => r.effectiveProvider)
         .filter((p): p is string => Boolean(p))
         .sort();
       providerToLabel = new Map<string, string>(
@@ -247,7 +250,12 @@ router.get("/", async (req, res, next) => {
         // Omit raw connectionProvider from merchant-facing responses — only
         // admins need the raw key. Merchants get the white-label label instead.
         connectionProvider: isMerchantUser ? undefined : (r.connectionProvider ?? null),
-        payinGatewayLabel: r.connectionProvider ? (providerToLabel.get(r.connectionProvider) ?? null) : null,
+        payinGatewayLabel: (() => {
+          // Use connection provider if available; fall back to the direct
+          // provider field for legacy rows that have no connectionId.
+          const effectiveProvider = r.connectionProvider ?? r.transaction.provider ?? null;
+          return effectiveProvider ? (providerToLabel.get(effectiveProvider) ?? null) : null;
+        })(),
       })),
       total,
       page: pageNum,
@@ -747,11 +755,14 @@ router.get("/:id", async (req, res, next) => {
 
     // Use the same stable first-seen ordering as the list route so that a
     // provider's label never changes when new gateways are added later.
+    // Fall back to the direct transactions.provider field for legacy rows
+    // that have no connectionId but do have a provider value.
+    const effectiveProvider = r.connectionProvider ?? r.transaction.provider ?? null;
     let payinGatewayLabel: string | null = null;
-    if (r.connectionProvider) {
+    if (effectiveProvider) {
       if (isMerchantUser) {
         const labelMap = await getStableProviderToLabel(r.transaction.merchantId!);
-        payinGatewayLabel = labelMap.get(r.connectionProvider) ?? null;
+        payinGatewayLabel = labelMap.get(effectiveProvider) ?? null;
       } else {
         // Admin sees raw provider key; label is a fallback only.
         payinGatewayLabel = `Payment Gateway A`;
