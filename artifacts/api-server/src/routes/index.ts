@@ -49,6 +49,7 @@ import providerIntegrationsRouter from "./providerIntegrations";
 import upiGatewaysRouter from "./upiGateways";
 import rasokartServicesRouter from "./rasokartServices";
 import otpSettingsRouter from "./otpSettings";
+import otpEmailSettingsRouter from "./otpEmailSettings";
 import smsLogsRouter from "./smsLogs";
 import onboardingRouter from "./onboarding";
 import adminOnboardingRouter from "./adminOnboarding";
@@ -170,8 +171,9 @@ router.use("/admin/platform-profit", platformProfitRouter);
 router.use("/account-statement", accountStatementRouter);
 router.use("/merchant/tryit-presets", tryItPresetsRouter);
 router.use("/admin/tryit-presets", adminTryItPresetsRouter);
-// Admin OTP/SMS settings and SMS delivery logs
+// Admin OTP/SMS settings, Email OTP settings, and SMS delivery logs
 router.use("/admin/otp-settings", otpSettingsRouter);
+router.use("/admin/otp-email-settings", otpEmailSettingsRouter);
 router.use("/admin/sms-logs", smsLogsRouter);
 // Merchant automated onboarding (Secure ID flow)
 router.use("/onboarding", onboardingRouter);

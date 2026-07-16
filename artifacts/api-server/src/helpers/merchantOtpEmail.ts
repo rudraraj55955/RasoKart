@@ -114,18 +114,18 @@ export async function sendMerchantOtpEmail(opts: {
   const { to, otp, purpose, toName } = opts;
   const { title, subtitle, subject } = purposeLabels(purpose);
 
-  const msg91Sent = await sendMsg91EmailOtp({
+  const msg91Result = await sendMsg91EmailOtp({
     to,
     toName: toName ?? to.split("@")[0],
     otp,
   }).catch((err: unknown) => {
     logger.warn({ err }, "MSG91 email OTP dispatch error");
-    return false;
+    return { sent: false as const, errorReason: "Unexpected dispatch error" };
   });
 
-  if (msg91Sent) return true;
+  if (msg91Result.sent) return true;
 
-  logger.info({ to, purpose }, "MSG91 unavailable; falling back to SMTP");
+  logger.info({ to, purpose, errorReason: msg91Result.errorReason }, "MSG91 unavailable; falling back to SMTP");
 
   const html = buildOtpEmailHtml({ title, subtitle, otp, expiryMinutes: 10 });
   const sent = await sendMail({ to, subject, html }).catch((err: unknown) => {

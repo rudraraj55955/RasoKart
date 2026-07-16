@@ -1440,6 +1440,21 @@ async function migrate() {
     UPDATE otp_sms_settings SET otp_expiry_seconds = 600 WHERE otp_expiry_seconds = 300;
   `);
 
+  // ── Section 17: otp_email_settings table ─────────────────────────────────
+  // Separate table for MSG91 Email OTP config (env-var based — no keys stored).
+  // Singleton row (id=1) inserted on first access if missing.
+  await runSection("otp-email-settings-table", sql`
+    CREATE TABLE IF NOT EXISTS otp_email_settings (
+      id                  INTEGER PRIMARY KEY,
+      otp_expiry_seconds  INTEGER NOT NULL DEFAULT 600,
+      otp_login_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
+      test_verified_at    TIMESTAMPTZ,
+      updated_by_email    TEXT,
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    INSERT INTO otp_email_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }

@@ -1258,6 +1258,19 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "webhook_failure_alert_logs" }, "schema_guard_table_created");
 
+  // ── otp_email_settings (Email OTP provider config — singleton id=1) ────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS otp_email_settings (
+      id                  INTEGER PRIMARY KEY,
+      otp_expiry_seconds  INTEGER NOT NULL DEFAULT 600,
+      otp_login_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
+      test_verified_at    TIMESTAMPTZ,
+      updated_by_email    TEXT,
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "otp_email_settings" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 
