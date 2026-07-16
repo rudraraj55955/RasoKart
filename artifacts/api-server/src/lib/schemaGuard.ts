@@ -1244,6 +1244,20 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "kyc_review_history" }, "schema_guard_table_created");
 
+  // ── webhook_failure_alert_logs ──────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS webhook_failure_alert_logs (
+      id               SERIAL PRIMARY KEY,
+      sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      merchant_id      INTEGER NOT NULL,
+      failed_url       TEXT NOT NULL,
+      attempt_count    INTEGER NOT NULL,
+      recipient_count  INTEGER NOT NULL DEFAULT 0,
+      recipient_emails JSONB NOT NULL DEFAULT '[]'
+    )
+  `);
+  logger.info({ table: "webhook_failure_alert_logs" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 
