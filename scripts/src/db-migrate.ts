@@ -1432,6 +1432,14 @@ async function migrate() {
       ON withdrawals(slip_verification_token) WHERE slip_verification_token IS NOT NULL;
   `);
 
+  // ── Section 16: OTP expiry 5 min → 10 min ────────────────────────────────
+  // Updates the otp_expiry_seconds column default and any existing rows that
+  // still have the old 300-second default. Idempotent — safe to re-run.
+  await runSection("otp-expiry-10min", sql`
+    ALTER TABLE otp_sms_settings ALTER COLUMN otp_expiry_seconds SET DEFAULT 600;
+    UPDATE otp_sms_settings SET otp_expiry_seconds = 600 WHERE otp_expiry_seconds = 300;
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }

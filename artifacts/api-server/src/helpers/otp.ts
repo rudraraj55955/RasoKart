@@ -4,7 +4,7 @@ import crypto from "crypto";
 const OTP_LENGTH = 6;
 const HMAC_SECRET = process.env["SESSION_SECRET"] || "rasokart-secret-key-change-in-production";
 
-export const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+export const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds
 

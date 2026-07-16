@@ -50,8 +50,8 @@ const DEFAULT_SETTINGS = {
   dltEntityId: null,
   dltTemplateId: null,
   destinationCountry: "IN",
-  otpTemplateText: "Your login OTP is ##OTP##. Valid for 5 minutes. Do not share.",
-  otpExpirySeconds: 300,
+  otpTemplateText: "Your login OTP is ##OTP##. Valid for 10 minutes. Do not share.",
+  otpExpirySeconds: 600,
   maxResendCount: 3,
   maxVerifyAttempts: 5,
   otpLoginEnabled: false,
@@ -105,7 +105,7 @@ router.put("/", requireSuperAdmin, async (req, res, next) => {
     const finalDltTemplateId = dltTemplateId !== undefined ? (dltTemplateId ? String(dltTemplateId).trim() : null) : (existing?.dltTemplateId ?? null);
     const finalTemplateText = otpTemplateText !== undefined
       ? String(otpTemplateText).trim()
-      : (existing?.otpTemplateText ?? "Your login OTP is ##OTP##. Valid for 5 minutes. Do not share.");
+      : (existing?.otpTemplateText ?? "Your login OTP is ##OTP##. Valid for 10 minutes. Do not share.");
     const finalOtpLoginEnabled = otpLoginEnabled !== undefined ? Boolean(otpLoginEnabled) : (existing?.otpLoginEnabled ?? false);
 
     // ── India mandatory fields ───────────────────────────────────────────────

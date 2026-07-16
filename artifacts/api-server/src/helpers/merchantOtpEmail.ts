@@ -127,7 +127,7 @@ export async function sendMerchantOtpEmail(opts: {
 
   logger.info({ to, purpose }, "MSG91 unavailable; falling back to SMTP");
 
-  const html = buildOtpEmailHtml({ title, subtitle, otp, expiryMinutes: 5 });
+  const html = buildOtpEmailHtml({ title, subtitle, otp, expiryMinutes: 10 });
   const sent = await sendMail({ to, subject, html }).catch((err: unknown) => {
     logger.warn({ err }, "SMTP fallback OTP email failed");
     return false;

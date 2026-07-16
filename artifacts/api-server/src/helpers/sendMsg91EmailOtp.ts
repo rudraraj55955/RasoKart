@@ -5,7 +5,7 @@ const COMPANY_NAME = "Nickey Collection Private Limited";
 const FROM_ADDRESS = "RasoKart <no-reply@notify.rasokart.com>";
 const DOMAIN = "notify.rasokart.com";
 const TEMPLATE_ID = "global_otp";
-const OTP_EXPIRY_MINUTES = 5;
+const OTP_EXPIRY_MINUTES = 10;
 
 export async function sendMsg91EmailOtp(opts: {
   to: string;
