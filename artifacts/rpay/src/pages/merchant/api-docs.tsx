@@ -1368,7 +1368,46 @@ function TryItPanel({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Saved Presets</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs text-muted-foreground">Saved Presets</Label>
+              {(() => {
+                const endpointCount = presets.length;
+                const totalCount = countAllPresets(loadAllPresets());
+                const endpointNearLimit = endpointCount >= MAX_PRESETS_PER_ENDPOINT - 3;
+                const totalNearLimit = totalCount >= MAX_TOTAL_PRESETS - 3;
+                if (!endpointNearLimit && !totalNearLimit) return null;
+                return (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {endpointNearLimit && (
+                      <span
+                        className={`flex items-center gap-1 text-[10px] font-mono ${
+                          endpointCount >= MAX_PRESETS_PER_ENDPOINT
+                            ? "text-rose-400"
+                            : "text-amber-400"
+                        }`}
+                        title="Presets used for this endpoint"
+                      >
+                        <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                        {endpointCount}/{MAX_PRESETS_PER_ENDPOINT} this endpoint
+                      </span>
+                    )}
+                    {totalNearLimit && (
+                      <span
+                        className={`flex items-center gap-1 text-[10px] font-mono ${
+                          totalCount >= MAX_TOTAL_PRESETS
+                            ? "text-rose-400"
+                            : "text-amber-400"
+                        }`}
+                        title="Total presets used across all endpoints"
+                      >
+                        <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                        {totalCount}/{MAX_TOTAL_PRESETS} total
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
             {presets.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {presets.map((preset) => (
