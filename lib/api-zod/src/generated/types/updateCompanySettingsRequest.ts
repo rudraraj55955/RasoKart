@@ -15,4 +15,5 @@ export interface UpdateCompanySettingsRequest {
   whatsappPhone?: string | null;
   companyAddress?: string | null;
   footerText?: string | null;
+  grievanceOfficerName?: string | null;
 }

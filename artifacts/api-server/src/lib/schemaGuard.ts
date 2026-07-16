@@ -62,6 +62,8 @@ async function runGuard(): Promise<void> {
     )
   `);
   logger.info({ table: "company_settings" }, "schema_guard_table_created");
+  await db.execute(sql`ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS grievance_officer_name TEXT`);
+
   await db.execute(sql`
     INSERT INTO company_settings (id, company_name, support_phone)
     SELECT 1, 'Nickey Collection Private Limited', '9358774496'

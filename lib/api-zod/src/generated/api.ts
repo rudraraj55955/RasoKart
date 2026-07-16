@@ -8221,7 +8221,8 @@ export const GetPublicCompanySettingsResponse = zod.object({
   "supportEmail": zod.string().nullish(),
   "whatsappPhone": zod.string().nullish(),
   "companyAddress": zod.string().nullish(),
-  "footerText": zod.string().nullish()
+  "footerText": zod.string().nullish(),
+  "grievanceOfficerName": zod.string().nullish()
 })
 
 
@@ -8236,6 +8237,7 @@ export const GetAdminCompanySettingsResponse = zod.object({
   "whatsappPhone": zod.string().nullish(),
   "companyAddress": zod.string().nullish(),
   "footerText": zod.string().nullish(),
+  "grievanceOfficerName": zod.string().nullish(),
   "updatedBy": zod.number().nullish(),
   "updatedByEmail": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
@@ -8256,7 +8258,8 @@ export const UpdateAdminCompanySettingsBody = zod.object({
   "supportEmail": zod.string().nullish(),
   "whatsappPhone": zod.string().nullish(),
   "companyAddress": zod.string().nullish(),
-  "footerText": zod.string().nullish()
+  "footerText": zod.string().nullish(),
+  "grievanceOfficerName": zod.string().nullish()
 })
 
 export const UpdateAdminCompanySettingsResponse = zod.object({
@@ -8267,6 +8270,7 @@ export const UpdateAdminCompanySettingsResponse = zod.object({
   "whatsappPhone": zod.string().nullish(),
   "companyAddress": zod.string().nullish(),
   "footerText": zod.string().nullish(),
+  "grievanceOfficerName": zod.string().nullish(),
   "updatedBy": zod.number().nullish(),
   "updatedByEmail": zod.string().nullish(),
   "createdAt": zod.coerce.date(),

@@ -14,6 +14,7 @@ export interface CompanySettings {
   whatsappPhone?: string | null;
   companyAddress?: string | null;
   footerText?: string | null;
+  grievanceOfficerName?: string | null;
   updatedBy?: number | null;
   updatedByEmail?: string | null;
   createdAt: Date;

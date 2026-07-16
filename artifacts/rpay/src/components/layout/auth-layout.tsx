@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { InstallAppBanner } from "@/components/ui/install-app-banner";
 import { useCompanySettings } from "@/lib/company-settings";
@@ -38,6 +38,11 @@ export function AuthLayout({ children, title, subtitle }: { children: ReactNode,
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           Operated by {companyName} · Support: {supportPhone}
+        </p>
+        <p className="mt-2 text-center text-xs text-muted-foreground/60">
+          <Link href="/privacy-policy" className="hover:text-muted-foreground transition-colors underline underline-offset-2">
+            Privacy Policy
+          </Link>
         </p>
       </div>
     </div>

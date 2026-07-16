@@ -39,6 +39,7 @@ router.get("/public/company-settings", async (req, res) => {
       whatsappPhone: settings.whatsappPhone,
       companyAddress: settings.companyAddress,
       footerText: settings.footerText,
+      grievanceOfficerName: settings.grievanceOfficerName,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to load public company settings");
@@ -59,6 +60,7 @@ router.get("/admin/company-settings", requireAuth, requireAdmin, async (req, res
       whatsappPhone: settings.whatsappPhone,
       companyAddress: settings.companyAddress,
       footerText: settings.footerText,
+      grievanceOfficerName: settings.grievanceOfficerName,
       updatedBy: settings.updatedBy,
       updatedByEmail,
       createdAt: settings.createdAt.toISOString(),
@@ -74,7 +76,7 @@ router.get("/admin/company-settings", requireAuth, requireAdmin, async (req, res
 router.patch("/admin/company-settings", requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const user = (req as any).user;
-    const { companyName, supportPhone, supportEmail, whatsappPhone, companyAddress, footerText } = req.body ?? {};
+    const { companyName, supportPhone, supportEmail, whatsappPhone, companyAddress, footerText, grievanceOfficerName } = req.body ?? {};
 
     if (typeof companyName !== "string" || companyName.trim().length === 0) {
       res.status(400).json({ error: "Company name is required" });
@@ -98,6 +100,7 @@ router.patch("/admin/company-settings", requireAuth, requireSuperAdmin, async (r
       whatsappPhone: whatsappPhone ? String(whatsappPhone).trim() : null,
       companyAddress: companyAddress ? String(companyAddress).trim() : null,
       footerText: footerText ? String(footerText).trim() : null,
+      grievanceOfficerName: grievanceOfficerName ? String(grievanceOfficerName).trim() : null,
     };
 
     const changedFields = (Object.keys(nextValues) as (keyof typeof nextValues)[]).filter(
@@ -132,6 +135,7 @@ router.patch("/admin/company-settings", requireAuth, requireSuperAdmin, async (r
       whatsappPhone: updated.whatsappPhone,
       companyAddress: updated.companyAddress,
       footerText: updated.footerText,
+      grievanceOfficerName: updated.grievanceOfficerName,
       updatedBy: updated.updatedBy,
       updatedByEmail: user.email,
       createdAt: updated.createdAt.toISOString(),

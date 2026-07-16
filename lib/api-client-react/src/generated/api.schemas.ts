@@ -12,6 +12,7 @@ export interface CompanySettingsPublic {
   whatsappPhone?: string | null;
   companyAddress?: string | null;
   footerText?: string | null;
+  grievanceOfficerName?: string | null;
 }
 
 export interface DummyDataFinding {
@@ -66,6 +67,7 @@ export interface CompanySettings {
   whatsappPhone?: string | null;
   companyAddress?: string | null;
   footerText?: string | null;
+  grievanceOfficerName?: string | null;
   updatedBy?: number | null;
   updatedByEmail?: string | null;
   createdAt: string;
@@ -81,6 +83,7 @@ export interface UpdateCompanySettingsRequest {
   whatsappPhone?: string | null;
   companyAddress?: string | null;
   footerText?: string | null;
+  grievanceOfficerName?: string | null;
 }
 
 export interface KycUploadUrlRequest {

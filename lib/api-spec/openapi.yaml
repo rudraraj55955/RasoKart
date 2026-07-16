@@ -11221,6 +11221,9 @@ components:
         footerText:
           type: string
           nullable: true
+        grievanceOfficerName:
+          type: string
+          nullable: true
 
     DummyDataFinding:
       type: object
@@ -11335,6 +11338,9 @@ components:
         footerText:
           type: string
           nullable: true
+        grievanceOfficerName:
+          type: string
+          nullable: true
         updatedBy:
           type: integer
           nullable: true
@@ -11368,6 +11374,9 @@ components:
           type: string
           nullable: true
         footerText:
+          type: string
+          nullable: true
+        grievanceOfficerName:
           type: string
           nullable: true
 

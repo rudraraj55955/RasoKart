@@ -12,5 +12,6 @@ export function useCompanySettings() {
     whatsappPhone: data?.whatsappPhone || undefined,
     companyAddress: data?.companyAddress || undefined,
     footerText: data?.footerText || undefined,
+    grievanceOfficerName: data?.grievanceOfficerName || undefined,
   };
 }

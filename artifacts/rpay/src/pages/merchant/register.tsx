@@ -378,6 +378,13 @@ export default function MerchantRegister() {
               Sign in
             </Link>
           </div>
+
+          <p className="text-center text-xs text-muted-foreground/60 mt-2">
+            By submitting this application, you agree to our{" "}
+            <Link href="/privacy-policy" className="hover:text-muted-foreground transition-colors underline underline-offset-2">
+              Privacy Policy
+            </Link>
+          </p>
         </form>
       </Form>
     </AuthLayout>

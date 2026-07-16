@@ -13,4 +13,5 @@ export interface CompanySettingsPublic {
   whatsappPhone?: string | null;
   companyAddress?: string | null;
   footerText?: string | null;
+  grievanceOfficerName?: string | null;
 }

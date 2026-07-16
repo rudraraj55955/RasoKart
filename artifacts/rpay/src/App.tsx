@@ -23,6 +23,7 @@ import PayoutVerifyPublic from "@/pages/payout-verify-public";
 // Landing Page
 import Landing from "@/pages/landing";
 import UpiCollectionApi from "@/pages/upi-collection-api";
+import PrivacyPolicy from "@/pages/privacy-policy";
 
 // Auth Pages
 import AdminLogin from "@/pages/admin/login";
@@ -538,6 +539,7 @@ function Router() {
       <Route path="/payout-merchant"><Redirect to="/payout-merchant/dashboard" /></Route>
       <Route path="/api-docs"><Redirect to="/merchant/api-docs" /></Route>
 
+      <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/upi-collection-api"><PublicPage component={UpiCollectionApi} /></Route>
 
       <Route path="/pay/:slug" component={PayPage} />

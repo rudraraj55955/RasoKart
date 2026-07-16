@@ -876,7 +876,7 @@ export default function Landing() {
               {" "}Support: {supportPhone}
             </span>
             <div className="flex gap-6">
-              <span className="cursor-pointer transition-colors hover:text-foreground">Privacy Policy</span>
+              <Link href="/privacy-policy" className="transition-colors hover:text-foreground">Privacy Policy</Link>
               <span className="cursor-pointer transition-colors hover:text-foreground">Terms of Service</span>
               <span className="cursor-pointer transition-colors hover:text-foreground">Refund Policy</span>
             </div>

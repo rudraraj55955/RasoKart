@@ -10,6 +10,7 @@ export const companySettingsTable = pgTable("company_settings", {
   whatsappPhone: text("whatsapp_phone"),
   companyAddress: text("company_address"),
   footerText: text("footer_text"),
+  grievanceOfficerName: text("grievance_officer_name"),
   updatedBy: integer("updated_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

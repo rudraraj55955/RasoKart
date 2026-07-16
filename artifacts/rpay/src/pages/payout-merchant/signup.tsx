@@ -586,7 +586,7 @@ export default function PayoutMerchantSignup() {
                     I agree to the{" "}
                     <span className="text-primary">Terms of Service</span>
                     {" "}and{" "}
-                    <span className="text-primary">Privacy Policy</span>
+                    <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Privacy Policy</a>
                     {" "}of RasoKart.
                   </FormLabel>
                   <FormMessage />

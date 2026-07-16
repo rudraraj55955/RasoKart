@@ -26,6 +26,7 @@ interface FormState {
   whatsappPhone: string;
   companyAddress: string;
   footerText: string;
+  grievanceOfficerName: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -35,6 +36,7 @@ const EMPTY_FORM: FormState = {
   whatsappPhone: "",
   companyAddress: "",
   footerText: "",
+  grievanceOfficerName: "",
 };
 
 export default function AdminCompanyBranding() {
@@ -56,6 +58,7 @@ export default function AdminCompanyBranding() {
         whatsappPhone: settings.whatsappPhone ?? "",
         companyAddress: settings.companyAddress ?? "",
         footerText: settings.footerText ?? "",
+        grievanceOfficerName: (settings as any).grievanceOfficerName ?? "",
       });
       setInitialized(true);
     }
@@ -107,6 +110,7 @@ export default function AdminCompanyBranding() {
         whatsappPhone: form.whatsappPhone.trim() || null,
         companyAddress: form.companyAddress.trim() || null,
         footerText: form.footerText.trim() || null,
+        grievanceOfficerName: form.grievanceOfficerName.trim() || null,
       } as any,
     });
   }
@@ -186,6 +190,18 @@ export default function AdminCompanyBranding() {
               <div className="space-y-1.5">
                 <Label htmlFor="footerText">Footer Text</Label>
                 <Textarea id="footerText" placeholder="Optional custom footer note" rows={2} {...field("footerText")} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="grievanceOfficerName">Grievance Officer Name</Label>
+                <Input
+                  id="grievanceOfficerName"
+                  placeholder="e.g. Rahul Sharma"
+                  {...field("grievanceOfficerName")}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Displayed on the public Privacy Policy page. Leave blank to show a generic contact notice.
+                </p>
               </div>
 
               {settings?.updatedByEmail && (
