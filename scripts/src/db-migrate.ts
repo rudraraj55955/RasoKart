@@ -1435,9 +1435,23 @@ async function migrate() {
   // ── Section 16: OTP expiry 5 min → 10 min ────────────────────────────────
   // Updates the otp_expiry_seconds column default and any existing rows that
   // still have the old 300-second default. Idempotent — safe to re-run.
+  //
+  // otp_sms_settings is created by schemaGuard at server startup, not by
+  // db-migrate, so it does not exist on a fresh CI database. The DO block
+  // skips the ALTER/UPDATE when the table is absent — on a fresh DB the
+  // CREATE TABLE in schemaGuard already sets the default to 600, so there
+  // is nothing to backfill.
   await runSection("otp-expiry-10min", sql`
-    ALTER TABLE otp_sms_settings ALTER COLUMN otp_expiry_seconds SET DEFAULT 600;
-    UPDATE otp_sms_settings SET otp_expiry_seconds = 600 WHERE otp_expiry_seconds = 300;
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'otp_sms_settings'
+      ) THEN
+        ALTER TABLE otp_sms_settings ALTER COLUMN otp_expiry_seconds SET DEFAULT 600;
+        UPDATE otp_sms_settings SET otp_expiry_seconds = 600 WHERE otp_expiry_seconds = 300;
+      END IF;
+    END $$;
   `);
 
   // ── Section 17: otp_email_settings table ─────────────────────────────────
