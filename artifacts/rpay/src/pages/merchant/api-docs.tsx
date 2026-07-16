@@ -57,7 +57,10 @@ import {
   LinkIcon,
   Download,
   Upload,
+  Search,
+  ArrowUpDown,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 
 function CodeBlock({ code, language = "bash" }: { code: string; language?: string }) {
@@ -663,6 +666,27 @@ function deletePresetGlobal(key: string, id: string) {
     all[key] = next;
   } else {
     delete all[key];
+  }
+  saveAllPresets(all);
+}
+
+function deleteManyPresetsGlobal(items: { key: string; id: string }[]) {
+  if (items.length === 0) return;
+  const all = loadAllPresets();
+  const grouped = new Map<string, Set<string>>();
+  for (const { key, id } of items) {
+    if (!grouped.has(key)) grouped.set(key, new Set());
+    grouped.get(key)!.add(id);
+  }
+  for (const [key, ids] of grouped.entries()) {
+    const presets = all[key];
+    if (!Array.isArray(presets)) continue;
+    const next = presets.filter((p) => !ids.has(p.id));
+    if (next.length > 0) {
+      all[key] = next;
+    } else {
+      delete all[key];
+    }
   }
   saveAllPresets(all);
 }
@@ -1992,6 +2016,8 @@ function parsePresetsExportFile(raw: string): PresetsExportFile | null {
   }
 }
 
+type PresetSortOrder = "endpoint" | "name-asc" | "name-desc" | "newest" | "oldest";
+
 function ManagePresetsDialog({
   open,
   onOpenChange,
@@ -2005,6 +2031,9 @@ function ManagePresetsDialog({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sortOrder, setSortOrder] = useState<PresetSortOrder>("endpoint");
+  const [filterText, setFilterText] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(() => {
@@ -2014,9 +2043,99 @@ function ManagePresetsDialog({
   useEffect(() => {
     if (!open) return;
     refresh();
+    setSelected(new Set());
+    setFilterText("");
     window.addEventListener(PRESETS_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(PRESETS_CHANGED_EVENT, refresh);
   }, [open, refresh]);
+
+  const visiblePresets = useMemo(() => {
+    const q = filterText.trim().toLowerCase();
+    let list = q
+      ? presets.filter(
+          (item) =>
+            item.preset.name.toLowerCase().includes(q) ||
+            item.path.toLowerCase().includes(q) ||
+            item.method.toLowerCase().includes(q)
+        )
+      : presets;
+    const sorted = [...list];
+    switch (sortOrder) {
+      case "name-asc":
+        sorted.sort((a, b) => a.preset.name.localeCompare(b.preset.name));
+        break;
+      case "name-desc":
+        sorted.sort((a, b) => b.preset.name.localeCompare(a.preset.name));
+        break;
+      case "newest":
+        sorted.sort((a, b) => {
+          const ta = parseInt(a.preset.id.split("-")[0] ?? "0", 10);
+          const tb = parseInt(b.preset.id.split("-")[0] ?? "0", 10);
+          return tb - ta;
+        });
+        break;
+      case "oldest":
+        sorted.sort((a, b) => {
+          const ta = parseInt(a.preset.id.split("-")[0] ?? "0", 10);
+          const tb = parseInt(b.preset.id.split("-")[0] ?? "0", 10);
+          return ta - tb;
+        });
+        break;
+      case "endpoint":
+      default:
+        sorted.sort((a, b) => (a.key === b.key ? 0 : a.key < b.key ? -1 : 1));
+        break;
+    }
+    return sorted;
+  }, [presets, filterText, sortOrder]);
+
+  useEffect(() => {
+    const visibleIds = new Set(visiblePresets.map((item) => `${item.key}::${item.preset.id}`));
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (visibleIds.has(id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visiblePresets]);
+
+  const allVisibleSelected =
+    visiblePresets.length > 0 &&
+    visiblePresets.every((item) => selected.has(`${item.key}::${item.preset.id}`));
+  const someSelected = selected.size > 0;
+
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(visiblePresets.map((item) => `${item.key}::${item.preset.id}`)));
+    }
+  };
+
+  const toggleSelect = (item: FlatPreset) => {
+    const cid = `${item.key}::${item.preset.id}`;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(cid)) {
+        next.delete(cid);
+      } else {
+        next.add(cid);
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDelete = () => {
+    const items = [...selected].map((cid) => {
+      const sepIdx = cid.indexOf("::");
+      return { key: cid.slice(0, sepIdx), id: cid.slice(sepIdx + 2) };
+    });
+    deleteManyPresetsGlobal(items);
+    setSelected(new Set());
+    toast.success(`Deleted ${items.length} preset${items.length === 1 ? "" : "s"}`);
+  };
 
   const startEditing = (item: FlatPreset) => {
     setEditingId(item.preset.id);
@@ -2043,8 +2162,6 @@ function ManagePresetsDialog({
       toast.error("No presets to export.");
       return;
     }
-    // Defense-in-depth: scrub any credential-shaped values before they ever leave
-    // the browser in an exported file, even though presets don't intentionally store tokens today.
     const file: PresetsExportFile = {
       version: 1,
       exportedAt: new Date().toISOString(),
@@ -2073,8 +2190,6 @@ function ManagePresetsDialog({
           toast.error("Could not read the file.");
           return;
         }
-        // Note: imported files are trusted as-is (no re-scrub) — exports are already
-        // scrubbed of credential-shaped values, so importing a foreign export is safe.
         const parsed = parsePresetsExportFile(raw);
         if (!parsed) {
           toast.error("Invalid presets file. Make sure you're importing a file exported from this page.");
@@ -2157,8 +2272,8 @@ function ManagePresetsDialog({
         <DialogHeader>
           <DialogTitle>Manage saved presets</DialogTitle>
           <DialogDescription>
-            All "Try it" presets saved across every endpoint on this page. Rename or delete them
-            here — changes sync immediately to the endpoint panels below.
+            All "Try it" presets saved across every endpoint on this page. Select multiple to delete
+            them at once, or rename/delete individually.
           </DialogDescription>
         </DialogHeader>
 
@@ -2224,70 +2339,161 @@ function ManagePresetsDialog({
             No presets saved yet. Save one from any "Try it" panel to see it here.
           </p>
         ) : (
-          <div className="max-h-[60vh] overflow-y-auto space-y-1.5 -mx-1 px-1">
-            {presets.map((item) => (
-              <div
-                key={`${item.key}::${item.preset.id}`}
-                className="flex items-center gap-2 rounded-lg border border-border/50 bg-black/20 px-3 py-2"
-              >
-                <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  {editingId === item.preset.id ? (
-                    <Input
-                      autoFocus
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          commitRename(item);
-                        } else if (e.key === "Escape") {
-                          setEditingId(null);
-                        }
-                      }}
-                      onBlur={() => commitRename(item)}
-                      className="h-7 text-xs bg-black/40"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => startEditing(item)}
-                      className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-primary transition-colors text-left truncate"
-                      title="Click to rename"
-                    >
-                      <Star className="w-3 h-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{item.preset.name}</span>
-                    </button>
-                  )}
-                  <div className="flex items-center gap-1.5">
-                    <Badge className={`text-[10px] font-bold shrink-0 ${methodColors[item.method] ?? ""}`}>
-                      {item.method}
-                    </Badge>
-                    <code className="text-[11px] font-mono text-muted-foreground truncate">
-                      {item.path}
-                    </code>
-                  </div>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                  onClick={() => startEditing(item)}
-                  aria-label={`Rename preset ${item.preset.name}`}
+          <>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  placeholder="Filter by name or endpoint…"
+                  className="h-8 text-xs pl-8 bg-black/30"
+                />
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground" />
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as PresetSortOrder)}
+                  className="h-8 rounded-md border border-input bg-black/30 px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 >
-                  <Save className="w-3.5 h-3.5" />
+                  <option value="endpoint">By endpoint</option>
+                  <option value="name-asc">Name A → Z</option>
+                  <option value="name-desc">Name Z → A</option>
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                </select>
+              </div>
+            </div>
+
+            {someSelected && (
+              <div className="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2">
+                <span className="text-xs text-rose-300 flex-1">
+                  {selected.size} preset{selected.size === 1 ? "" : "s"} selected
+                </span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={handleBulkDelete}
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Delete {selected.size === 1 ? "1 preset" : `${selected.size} presets`}
                 </Button>
                 <Button
-                  size="icon"
+                  size="sm"
                   variant="ghost"
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-rose-400"
-                  onClick={() => handleDelete(item)}
-                  aria-label={`Delete preset ${item.preset.name}`}
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => setSelected(new Set())}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  Clear
                 </Button>
               </div>
-            ))}
-          </div>
+            )}
+
+            {visiblePresets.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No presets match your filter.
+              </p>
+            ) : (
+              <div className="max-h-[52vh] overflow-y-auto space-y-1.5 -mx-1 px-1">
+                <div className="flex items-center gap-2 px-3 pb-1">
+                  <Checkbox
+                    id="select-all-presets"
+                    checked={allVisibleSelected}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all visible presets"
+                  />
+                  <label
+                    htmlFor="select-all-presets"
+                    className="text-xs text-muted-foreground cursor-pointer select-none"
+                  >
+                    {allVisibleSelected ? "Deselect all" : "Select all"}
+                    {filterText.trim() && visiblePresets.length < presets.length
+                      ? ` (${visiblePresets.length} visible)`
+                      : ""}
+                  </label>
+                </div>
+
+                {visiblePresets.map((item) => {
+                  const cid = `${item.key}::${item.preset.id}`;
+                  const isSelected = selected.has(cid);
+                  return (
+                    <div
+                      key={cid}
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+                        isSelected
+                          ? "border-primary/40 bg-primary/5"
+                          : "border-border/50 bg-black/20"
+                      }`}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(item)}
+                        aria-label={`Select preset ${item.preset.name}`}
+                        className="shrink-0"
+                      />
+                      <div className="flex flex-col gap-1 min-w-0 flex-1">
+                        {editingId === item.preset.id ? (
+                          <Input
+                            autoFocus
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                commitRename(item);
+                              } else if (e.key === "Escape") {
+                                setEditingId(null);
+                              }
+                            }}
+                            onBlur={() => commitRename(item)}
+                            className="h-7 text-xs bg-black/40"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditing(item)}
+                            className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-primary transition-colors text-left truncate"
+                            title="Click to rename"
+                          >
+                            <Star className="w-3 h-3 shrink-0 text-muted-foreground" />
+                            <span className="truncate">{item.preset.name}</span>
+                          </button>
+                        )}
+                        <div className="flex items-center gap-1.5">
+                          <Badge className={`text-[10px] font-bold shrink-0 ${methodColors[item.method] ?? ""}`}>
+                            {item.method}
+                          </Badge>
+                          <code className="text-[11px] font-mono text-muted-foreground truncate">
+                            {item.path}
+                          </code>
+                        </div>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => startEditing(item)}
+                        aria-label={`Rename preset ${item.preset.name}`}
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-rose-400"
+                        onClick={() => handleDelete(item)}
+                        aria-label={`Delete preset ${item.preset.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>
