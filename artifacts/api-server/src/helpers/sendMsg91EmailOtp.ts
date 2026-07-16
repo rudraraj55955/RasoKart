@@ -1,8 +1,7 @@
 import { logger } from "../lib/logger";
 
 const MSG91_EMAIL_OTP_ENDPOINT = "https://control.msg91.com/api/v5/email/otp";
-const DEFAULT_TEMPLATE_ID = "global_otp";
-const DEFAULT_FROM_EMAIL = "no-reply@notify.rasokart.com";
+const VERIFIED_SENDER_DOMAIN = "notify.rasokart.com";
 const DEFAULT_FROM_NAME = "RasoKart";
 const OTP_EXPIRY_MINUTES = 10;
 
@@ -17,33 +16,38 @@ export interface EmailOtpConfig {
   authKeySet: boolean;
   authKeyMasked: string | null;
   templateId: string;
-  templateIdSource: "env" | "default";
+  templateIdSet: boolean;
+  templateIdSource: "env" | "not-set";
   fromEmail: string;
-  fromEmailSource: "env" | "default";
+  fromEmailSet: boolean;
+  fromEmailSource: "env" | "not-set";
   fromName: string;
   fromNameSource: "env" | "default";
   senderDomain: string;
+  domainSource: "env" | "default";
   fromAddress: string;
 }
 
 export function getEmailOtpConfig(): EmailOtpConfig {
   const authKey = process.env["MSG91_AUTH_KEY"];
-  const templateId = process.env["MSG91_EMAIL_TEMPLATE_ID"] || DEFAULT_TEMPLATE_ID;
-  const fromEmail = process.env["MSG91_FROM_EMAIL"] || DEFAULT_FROM_EMAIL;
+  const templateId = process.env["MSG91_EMAIL_TEMPLATE_ID"] || null;
+  const fromEmail = process.env["MSG91_FROM_EMAIL"] || null;
   const fromName = process.env["MSG91_FROM_NAME"] || DEFAULT_FROM_NAME;
-  const atIndex = fromEmail.indexOf("@");
-  const senderDomain = atIndex !== -1 ? fromEmail.slice(atIndex + 1) : DEFAULT_FROM_EMAIL.split("@")[1]!;
+  const domain = process.env["MSG91_EMAIL_DOMAIN"] || VERIFIED_SENDER_DOMAIN;
   return {
     authKeySet: !!authKey,
     authKeyMasked: authKey ? "••••••••••••••••" : null,
-    templateId,
-    templateIdSource: process.env["MSG91_EMAIL_TEMPLATE_ID"] ? "env" : "default",
-    fromEmail,
-    fromEmailSource: process.env["MSG91_FROM_EMAIL"] ? "env" : "default",
+    templateId: templateId ?? "(not set — add MSG91_EMAIL_TEMPLATE_ID to .env)",
+    templateIdSet: !!templateId,
+    templateIdSource: templateId ? "env" : "not-set",
+    fromEmail: fromEmail ?? "(not set — add MSG91_FROM_EMAIL to .env)",
+    fromEmailSet: !!fromEmail,
+    fromEmailSource: fromEmail ? "env" : "not-set",
     fromName,
     fromNameSource: process.env["MSG91_FROM_NAME"] ? "env" : "default",
-    senderDomain,
-    fromAddress: `${fromName} <${fromEmail}>`,
+    senderDomain: domain,
+    domainSource: process.env["MSG91_EMAIL_DOMAIN"] ? "env" : "default",
+    fromAddress: fromEmail ? `${fromName} <${fromEmail}>` : `${fromName} <(not configured)>`,
   };
 }
 
@@ -58,12 +62,32 @@ export async function sendMsg91EmailOtp(opts: {
     return { sent: false, errorReason: "MSG91_AUTH_KEY environment variable not set on server" };
   }
 
-  const cfg = getEmailOtpConfig();
+  const templateId = process.env["MSG91_EMAIL_TEMPLATE_ID"] || null;
+  if (!templateId) {
+    logger.error("MSG91_EMAIL_TEMPLATE_ID not set — refusing to send without an approved template ID");
+    return {
+      sent: false,
+      errorReason: "MSG91_EMAIL_TEMPLATE_ID not configured. Set it to the exact approved template ID from MSG91 → Email → Templates.",
+    };
+  }
+
+  const fromEmail = process.env["MSG91_FROM_EMAIL"] || null;
+  if (!fromEmail) {
+    logger.error("MSG91_FROM_EMAIL not set — refusing to send without a verified sender address");
+    return {
+      sent: false,
+      errorReason: "MSG91_FROM_EMAIL not configured. Set it to the verified sender email for notify.rasokart.com in MSG91.",
+    };
+  }
+
+  const fromName = process.env["MSG91_FROM_NAME"] || DEFAULT_FROM_NAME;
+  const domain = process.env["MSG91_EMAIL_DOMAIN"] || VERIFIED_SENDER_DOMAIN;
+  const fromAddress = `${fromName} <${fromEmail}>`;
 
   const body: Record<string, unknown> = {
-    template_id: cfg.templateId,
-    domain: cfg.senderDomain,
-    from: cfg.fromAddress,
+    template_id: templateId,
+    domain,
+    from: fromAddress,
     to: [{ name: opts.toName || opts.to.split("@")[0], email: opts.to }],
     OTP: opts.otp,
     OTP_EXPIRY: OTP_EXPIRY_MINUTES,
@@ -92,7 +116,7 @@ export async function sendMsg91EmailOtp(opts: {
   if (!resp.ok) {
     const errMsg = (data as Record<string, unknown> | null)?.["message"] as string | undefined;
     logger.warn(
-      { status: resp.status, body: data, templateId: cfg.templateId, senderDomain: cfg.senderDomain },
+      { status: resp.status, body: data, templateId, senderDomain: domain },
       "MSG91 email OTP non-ok response",
     );
     return {
@@ -107,7 +131,7 @@ export async function sendMsg91EmailOtp(opts: {
   if (type === "error") {
     const msg = (data as Record<string, unknown>)?.["message"] as string | undefined;
     logger.warn(
-      { msg, templateId: cfg.templateId, senderDomain: cfg.senderDomain },
+      { msg, templateId, senderDomain: domain },
       "MSG91 email OTP error response",
     );
     return {
@@ -118,6 +142,6 @@ export async function sendMsg91EmailOtp(opts: {
     };
   }
 
-  logger.info({ to: opts.to, templateId: cfg.templateId }, "MSG91 email OTP sent successfully");
+  logger.info({ to: opts.to, templateId }, "MSG91 email OTP sent successfully");
   return { sent: true, statusCode: resp.status, providerResponse: data };
 }

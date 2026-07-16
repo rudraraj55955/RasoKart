@@ -23,12 +23,15 @@ interface EmailOtpSettings {
   authKeySet: boolean;
   authKeyMasked: string | null;
   templateId: string;
-  templateIdSource: "env" | "default";
+  templateIdSet: boolean;
+  templateIdSource: "env" | "not-set";
   fromEmail: string;
-  fromEmailSource: "env" | "default";
+  fromEmailSet: boolean;
+  fromEmailSource: "env" | "not-set";
   fromName: string;
   fromNameSource: "env" | "default";
   senderDomain: string;
+  domainSource: "env" | "default";
   fromAddress: string;
   otpExpirySeconds: number;
   resendCooldownSeconds: number;
@@ -54,11 +57,18 @@ interface TestResult {
 
 type TestStep = "idle" | "sent" | "verified";
 
-function SourceBadge({ source }: { source: "env" | "default" }) {
+function SourceBadge({ source }: { source: "env" | "default" | "not-set" }) {
   if (source === "env") {
     return (
       <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-500/30 ml-2">
         from env
+      </Badge>
+    );
+  }
+  if (source === "not-set") {
+    return (
+      <Badge variant="outline" className="text-xs bg-red-500/10 text-red-400 border-red-500/30 ml-2">
+        NOT SET
       </Badge>
     );
   }
@@ -126,6 +136,10 @@ export default function AdminOtpEmailSettings() {
     }
     if (otpLoginEnabled && !settings?.authKeySet) {
       toast.error("MSG91_AUTH_KEY is not configured on the server.");
+      return;
+    }
+    if (otpLoginEnabled && (!settings?.templateIdSet || !settings?.fromEmailSet)) {
+      toast.error("MSG91_EMAIL_TEMPLATE_ID and MSG91_FROM_EMAIL must be set before enabling Email OTP Login.");
       return;
     }
     setSaving(true);
@@ -215,6 +229,9 @@ export default function AdminOtpEmailSettings() {
   }
 
   const cfg = settings;
+  const missingRequired = !cfg?.templateIdSet || !cfg?.fromEmailSet;
+  const canSendTest = !!cfg?.authKeySet && !!cfg?.templateIdSet && !!cfg?.fromEmailSet;
+  const canEnableLogin = !!cfg?.testVerified && !!cfg?.authKeySet && !!cfg?.templateIdSet && !!cfg?.fromEmailSet;
 
   return (
     <div className="space-y-6">
@@ -251,7 +268,7 @@ export default function AdminOtpEmailSettings() {
           <CardDescription className="text-zinc-400">
             These values are read from environment variables on the VPS. To change them, update
             <code className="mx-1 bg-zinc-800 px-1 rounded text-orange-300 text-xs">/var/www/rasokart/.env</code>
-            and restart PM2 with <code className="bg-zinc-800 px-1 rounded text-orange-300 text-xs">--update-env</code>.
+            and restart PM2 with <code className="bg-zinc-800 px-1 rounded text-orange-300 text-xs">pm2 restart rasokart-api --update-env</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-1">
@@ -261,39 +278,62 @@ export default function AdminOtpEmailSettings() {
             status="ok"
           />
           <StatusRow
-            label="Auth Key (MSG91_AUTH_KEY)"
-            value={cfg?.authKeySet ? "Configured ••••••••••••••••" : "Not set — add MSG91_AUTH_KEY to .env"}
+            label="MSG91_AUTH_KEY"
+            value={cfg?.authKeySet ? "Configured ••••••••••••••••" : "NOT SET — add to .env"}
             status={cfg?.authKeySet ? "ok" : "error"}
           />
+
+          {/* Template ID — required, no fallback */}
           <div className="flex items-start gap-2 py-1.5">
-            <span className="text-sm text-zinc-400 w-40 shrink-0">Template ID</span>
-            <span className="flex items-center text-sm text-white">
-              <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-orange-300 text-xs font-mono">{cfg?.templateId}</code>
-              <span className="ml-1 text-xs text-zinc-500">(MSG91_EMAIL_TEMPLATE_ID)</span>
+            <span className="text-sm text-zinc-400 w-40 shrink-0">MSG91_EMAIL_TEMPLATE_ID</span>
+            <span className="flex items-center flex-wrap gap-1 text-sm">
+              {cfg?.templateIdSet
+                ? <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-orange-300 text-xs font-mono">{cfg.templateId}</code>
+                : <span className="text-red-400 text-xs flex items-center gap-1">
+                    <XCircle className="h-3.5 w-3.5 shrink-0" />
+                    Required — get exact ID from MSG91 → Email → Templates
+                  </span>
+              }
               {cfg && <SourceBadge source={cfg.templateIdSource} />}
             </span>
           </div>
+
+          {/* From Email — required, no fallback */}
           <div className="flex items-start gap-2 py-1.5">
-            <span className="text-sm text-zinc-400 w-40 shrink-0">Sender Email</span>
-            <span className="flex items-center text-sm text-white">
-              <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-orange-300 text-xs font-mono">{cfg?.fromEmail}</code>
-              <span className="ml-1 text-xs text-zinc-500">(MSG91_FROM_EMAIL)</span>
+            <span className="text-sm text-zinc-400 w-40 shrink-0">MSG91_FROM_EMAIL</span>
+            <span className="flex items-center flex-wrap gap-1 text-sm">
+              {cfg?.fromEmailSet
+                ? <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-orange-300 text-xs font-mono">{cfg.fromEmail}</code>
+                : <span className="text-red-400 text-xs flex items-center gap-1">
+                    <XCircle className="h-3.5 w-3.5 shrink-0" />
+                    Required — use verified sender for notify.rasokart.com
+                  </span>
+              }
               {cfg && <SourceBadge source={cfg.fromEmailSource} />}
             </span>
           </div>
+
+          {/* From Name */}
           <div className="flex items-start gap-2 py-1.5">
-            <span className="text-sm text-zinc-400 w-40 shrink-0">Sender Name</span>
+            <span className="text-sm text-zinc-400 w-40 shrink-0">MSG91_FROM_NAME</span>
             <span className="flex items-center text-sm text-white">
               <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-orange-300 text-xs font-mono">{cfg?.fromName}</code>
-              <span className="ml-1 text-xs text-zinc-500">(MSG91_FROM_NAME)</span>
               {cfg && <SourceBadge source={cfg.fromNameSource} />}
             </span>
           </div>
-          <StatusRow
-            label="Sender Domain"
-            value={cfg?.senderDomain ?? "—"}
-            status="ok"
-          />
+
+          {/* Sender Domain */}
+          <div className="flex items-start gap-2 py-1.5">
+            <span className="text-sm text-zinc-400 w-40 shrink-0">MSG91_EMAIL_DOMAIN</span>
+            <span className="flex items-center text-sm text-white">
+              <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-orange-300 text-xs font-mono">{cfg?.senderDomain}</code>
+              {cfg && <SourceBadge source={cfg.domainSource} />}
+              {cfg?.domainSource === "default" && (
+                <span className="ml-2 text-xs text-zinc-500">(notify.rasokart.com is verified — optional to override)</span>
+              )}
+            </span>
+          </div>
+
           <StatusRow
             label="OTP Expiry"
             value={cfg ? `${cfg.otpExpirySeconds / 60} minutes (${cfg.otpExpirySeconds}s)` : "—"}
@@ -305,43 +345,50 @@ export default function AdminOtpEmailSettings() {
             status="ok"
           />
 
+          {/* Missing auth key */}
           {!cfg?.authKeySet && (
             <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 space-y-1">
               <p className="font-medium flex items-center gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5" /> MSG91_AUTH_KEY not configured
               </p>
-              <p>SSH into the VPS and run:</p>
-              <code className="block bg-black/40 rounded px-2 py-1 font-mono text-amber-300">
-                echo 'MSG91_AUTH_KEY=&lt;your_key&gt;' &gt;&gt; /var/www/rasokart/.env
-              </code>
+              <p>SSH into the VPS and add it to <code className="text-amber-300">/var/www/rasokart/.env</code>, then:</p>
               <code className="block bg-black/40 rounded px-2 py-1 font-mono text-amber-300">
                 pm2 restart rasokart-api --update-env
               </code>
             </div>
           )}
 
-          {cfg?.authKeySet && (cfg.templateIdSource === "default" || cfg.fromEmailSource === "default") && (
-            <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 space-y-1">
+          {/* Missing required env vars (template ID or from email) */}
+          {cfg?.authKeySet && missingRequired && (
+            <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 space-y-2">
               <p className="font-medium flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" /> Using default values — likely cause of delivery failure
+                <AlertTriangle className="h-3.5 w-3.5" /> Required env vars missing — email OTP will be refused until set
               </p>
-              <p>Set these env vars on the VPS to match your MSG91 account:</p>
-              {cfg.templateIdSource === "default" && (
+              <p>Add the following to <code className="text-amber-300">/var/www/rasokart/.env</code> on the VPS:</p>
+              {!cfg.templateIdSet && (
                 <code className="block bg-black/40 rounded px-2 py-1 font-mono text-amber-300">
-                  MSG91_EMAIL_TEMPLATE_ID=&lt;your_template_id&gt;
+                  MSG91_EMAIL_TEMPLATE_ID=&lt;exact_id_from_MSG91_Templates&gt;
                 </code>
               )}
-              {cfg.fromEmailSource === "default" && (
+              {!cfg.fromEmailSet && (
                 <code className="block bg-black/40 rounded px-2 py-1 font-mono text-amber-300">
-                  MSG91_FROM_EMAIL=&lt;verified@yourdomain.com&gt;
+                  MSG91_FROM_EMAIL=&lt;verified_sender@notify.rasokart.com&gt;
                 </code>
               )}
               <code className="block bg-black/40 rounded px-2 py-1 font-mono text-amber-300">
                 MSG91_FROM_NAME=RasoKart
               </code>
               <code className="block bg-black/40 rounded px-2 py-1 font-mono text-amber-300">
+                MSG91_EMAIL_DOMAIN=notify.rasokart.com
+              </code>
+              <code className="block bg-black/40 rounded px-2 py-1 font-mono text-amber-300">
                 pm2 restart rasokart-api --update-env
               </code>
+              <Separator className="bg-red-500/20" />
+              <p className="text-zinc-400">
+                <span className="font-medium text-zinc-300">Where to find the template ID:</span>{" "}
+                MSG91 dashboard → Email → Templates → click your OTP template → copy the Template ID shown at the top.
+              </p>
             </div>
           )}
         </CardContent>
@@ -368,14 +415,26 @@ export default function AdminOtpEmailSettings() {
               {!cfg?.authKeySet && (
                 <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
                   <XCircle className="h-3 w-3 shrink-0" />
-                  MSG91_AUTH_KEY must be configured before enabling.
+                  MSG91_AUTH_KEY must be set before enabling.
+                </p>
+              )}
+              {cfg?.authKeySet && !cfg?.templateIdSet && (
+                <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                  <XCircle className="h-3 w-3 shrink-0" />
+                  MSG91_EMAIL_TEMPLATE_ID must be set before enabling.
+                </p>
+              )}
+              {cfg?.authKeySet && !cfg?.fromEmailSet && (
+                <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                  <XCircle className="h-3 w-3 shrink-0" />
+                  MSG91_FROM_EMAIL must be set before enabling.
                 </p>
               )}
             </div>
             <Switch
               checked={otpLoginEnabled}
-              onCheckedChange={(cfg?.testVerified && cfg?.authKeySet) ? setOtpLoginEnabled : undefined}
-              disabled={!isSuperAdmin || !cfg?.testVerified || !cfg?.authKeySet}
+              onCheckedChange={canEnableLogin ? setOtpLoginEnabled : undefined}
+              disabled={!isSuperAdmin || !canEnableLogin}
             />
           </div>
 
@@ -404,6 +463,7 @@ export default function AdminOtpEmailSettings() {
                 <CardTitle className="text-base text-white">Send Test Email OTP</CardTitle>
                 <CardDescription className="text-zinc-400">
                   Send a real OTP via MSG91 to confirm delivery before enabling Email OTP Login.
+                  Requires all three env vars (AUTH_KEY, TEMPLATE_ID, FROM_EMAIL) to be set on the VPS.
                 </CardDescription>
               </div>
               {testStep === "verified" && (
@@ -414,10 +474,21 @@ export default function AdminOtpEmailSettings() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {!canSendTest && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 space-y-1">
+                <p className="font-medium flex items-center gap-1.5">
+                  <XCircle className="h-3.5 w-3.5" /> Cannot send test OTP — configure missing env vars on the VPS first
+                </p>
+                {!cfg?.authKeySet && <p>• MSG91_AUTH_KEY is not set</p>}
+                {!cfg?.templateIdSet && <p>• MSG91_EMAIL_TEMPLATE_ID is not set</p>}
+                {!cfg?.fromEmailSet && <p>• MSG91_FROM_EMAIL is not set</p>}
+              </div>
+            )}
+
             {testStep === "idle" || testStep === "verified" ? (
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <Label className="text-zinc-300 text-xs mb-1.5 block">Recipient Email (your real inbox)</Label>
+                  <Label className="text-zinc-300 text-xs mb-1.5 block">Recipient Email (your real Gmail inbox)</Label>
                   <Input
                     type="email"
                     placeholder="you@gmail.com"
@@ -429,8 +500,8 @@ export default function AdminOtpEmailSettings() {
                 <div className="flex items-end">
                   <Button
                     onClick={handleTest}
-                    disabled={testing || !cfg?.authKeySet}
-                    className="bg-zinc-700 hover:bg-zinc-600 text-white"
+                    disabled={testing || !canSendTest}
+                    className="bg-zinc-700 hover:bg-zinc-600 text-white disabled:opacity-40"
                   >
                     {testing
                       ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -445,10 +516,11 @@ export default function AdminOtpEmailSettings() {
               <div className="space-y-3">
                 <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-300">
                   <p>Test OTP sent to <strong>{testEmailUsed}</strong>. Check your inbox (and spam folder).</p>
+                  <p className="text-xs mt-1 text-blue-400">Also check MSG91 → Logs to confirm the request was accepted.</p>
                 </div>
                 <div className="flex gap-3">
                   <div className="flex-1">
-                    <Label className="text-zinc-300 text-xs mb-1.5 block">Enter the 6-digit code</Label>
+                    <Label className="text-zinc-300 text-xs mb-1.5 block">Enter the 6-digit code from your inbox</Label>
                     <Input
                       type="text"
                       inputMode="numeric"
@@ -483,7 +555,7 @@ export default function AdminOtpEmailSettings() {
               </div>
             )}
 
-            {/* MSG91 Response Details (shown on failure or always after test) */}
+            {/* MSG91 Response Details */}
             {lastTestResult && (
               <div className={`rounded-lg border p-4 space-y-3 text-xs ${lastTestResult.ok
                 ? "border-green-500/30 bg-green-500/10"
@@ -551,12 +623,14 @@ export default function AdminOtpEmailSettings() {
 
                 {!lastTestResult.ok && (
                   <div className="text-zinc-400 space-y-1">
-                    <p className="font-medium text-zinc-300">Common fixes:</p>
+                    <p className="font-medium text-zinc-300">Diagnostic checklist:</p>
                     <ul className="list-disc list-inside space-y-0.5 text-zinc-500">
-                      <li>Verify the Template ID exists in MSG91 → Email → Templates</li>
-                      <li>Verify the sender domain is verified in MSG91 → Email → Domains</li>
                       <li>Check MSG91 → Logs → Failed Requests for the exact rejection reason</li>
-                      <li>Confirm MSG91_AUTH_KEY matches your account → Settings → API</li>
+                      <li>Verify the Template ID in MSG91 → Email → Templates (must be exact)</li>
+                      <li>Verify the sender domain in MSG91 → Email → Domains (notify.rasokart.com)</li>
+                      <li>Check MSG91 → Email → Suppressions for blocked addresses</li>
+                      <li>Confirm outbound IP 167.233.77.68 is whitelisted in MSG91 → Settings → IP Security</li>
+                      <li>Confirm MSG91_AUTH_KEY belongs to the RasoKartOTP key (Email OTP API rule)</li>
                     </ul>
                   </div>
                 )}
