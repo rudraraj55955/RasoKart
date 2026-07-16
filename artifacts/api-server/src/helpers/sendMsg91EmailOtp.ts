@@ -91,22 +91,23 @@ export async function sendMsg91EmailOtp(opts: {
 
   const fromName = process.env["MSG91_FROM_NAME"] || DEFAULT_FROM_NAME;
 
-  // POST /api/v5/email/send
-  // - `from` must be an object {name, email}, not a string
-  // - per-recipient `variables` must be nested inside the `to` array item
-  // - template variables confirmed from global_otp template: otp, purpose_label, expiry_minutes
-  // - `domain` is not a field on /email/send (removed)
-  // - top-level OTP / OTP_EXPIRY fields do not exist on /email/send (removed)
+  const domain = process.env["MSG91_EMAIL_DOMAIN"] || VERIFIED_SENDER_DOMAIN;
+
+  // Official MSG91 /api/v5/email/send payload shape:
+  //   recipients[]  — top-level array; each item has to[] + variables{}
+  //   from          — {name, email} object
+  //   domain        — verified sender domain (required at top level)
+  //   template_id   — pre-approved template slug
+  // Template variables in global_otp: otp, purpose_label, expiry_minutes
   const body = {
-    template_id: templateId,
-    from: {
-      name: fromName,
-      email: fromEmail,
-    },
-    to: [
+    recipients: [
       {
-        name: opts.toName || opts.to.split("@")[0],
-        email: opts.to,
+        to: [
+          {
+            name: opts.toName || opts.to.split("@")[0],
+            email: opts.to,
+          },
+        ],
         variables: {
           otp: opts.otp,
           purpose_label: "Login",
@@ -114,6 +115,12 @@ export async function sendMsg91EmailOtp(opts: {
         },
       },
     ],
+    from: {
+      name: fromName,
+      email: fromEmail,
+    },
+    domain,
+    template_id: templateId,
   };
 
   // Safe diagnostic: log endpoint + non-sensitive request fields only
