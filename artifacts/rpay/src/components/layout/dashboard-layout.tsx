@@ -227,7 +227,6 @@ function MerchantSidebar() {
         { title: "Dynamic QR", icon: QrCode, href: "/merchant/qr-codes", locked: false, lockReason: null },
         { title: "Payment Links", icon: Link2, href: "/merchant/payment-links", locked: false, lockReason: null },
         { title: "Plans & Pricing", icon: Package, href: "/merchant/products", locked: false, lockReason: null },
-        { title: "Branding", icon: Paintbrush, href: "/merchant/branding", locked: false, lockReason: null },
       ],
     },
     {

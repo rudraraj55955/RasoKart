@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Paintbrush, Save, ShieldAlert, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { getApiErrorMessage } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 import {
   useGetMe,
   useGetAdminCompanySettings,
@@ -41,8 +43,19 @@ const EMPTY_FORM: FormState = {
 
 export default function AdminCompanyBranding() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const { data: me } = useGetMe();
   const isSuperAdmin = me?.isSuperAdmin === true;
+
+  // Belt-and-suspenders: redirect any non-admin who somehow bypasses AdminRoute
+  useEffect(() => {
+    if (!user) return;
+    if (user.role !== "admin") {
+      const dest = user.role === "payout_merchant" ? "/payout-merchant/dashboard" : "/merchant/dashboard";
+      setLocation(dest, { replace: true } as Parameters<typeof setLocation>[1]);
+    }
+  }, [user, setLocation]);
 
   const { data: settings, isLoading } = useGetAdminCompanySettings();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
