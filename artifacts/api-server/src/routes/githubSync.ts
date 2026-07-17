@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { spawn, execSync } from "child_process";
 import { logger } from "../lib/logger";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
-import { db, systemSettingsTable, auditLogsTable } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { db, systemSettingsTable, auditLogsTable, usersTable } from "@workspace/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { runGithubSyncLogCleanup, getLastGithubSyncLogCleanupResult } from "../helpers/githubSyncLogCleanupScheduler";
+import { sendMail } from "../helpers/mailer";
 
 const router = Router();
 router.use(requireAuth);
@@ -28,6 +29,167 @@ const GITHUB_REPO = process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
 const DEFAULT_FAILURE_THRESHOLD = 3;
 const DEFAULT_RENOTIFY_INTERVAL = 10;
 const DEFAULT_DIVERGE_ACTION = "alert_only";
+
+const DIVERGENCE_STATE_FILE = new URL("../../../.github-sync-divergence-state.json", import.meta.url).pathname;
+
+interface DivergenceState {
+  diverged: boolean;
+  consecutivePollsDiverged: number;
+  firstDetectedAt: string | null;
+  lastEmailSentPollCount: number;
+}
+
+function readDivergenceState(): DivergenceState {
+  try {
+    const raw = readFileSync(DIVERGENCE_STATE_FILE, "utf-8");
+    return JSON.parse(raw) as DivergenceState;
+  } catch {
+    return { diverged: false, consecutivePollsDiverged: 0, firstDetectedAt: null, lastEmailSentPollCount: 0 };
+  }
+}
+
+function writeDivergenceState(state: DivergenceState): void {
+  try {
+    writeFileSync(DIVERGENCE_STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
+  } catch (err) {
+    logger.warn({ err }, "GITHUB_SYNC: Could not write divergence state file — divergence emails may repeat until the file is writable");
+  }
+}
+
+function buildDivergenceAlertHtml(opts: { repo: string; remoteAheadBy: number; firstDetectedAt: string }): string {
+  const { repo, remoteAheadBy, firstDetectedAt } = opts;
+  const timestamp = new Date().toISOString();
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #78350f; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — GitHub Remote Has Diverged</h1>
+      <p style="margin: 4px 0 0; color: #fde68a; font-size: 13px;">The remote branch has commits that are not present locally</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #d97706; font-size: 14px; font-weight: 600;">
+        &#x26A0;&#xFE0F; Remote <strong>${repo}</strong> is ahead by <strong>${remoteAheadBy} commit${remoteAheadBy === 1 ? "" : "s"}</strong> that would be overwritten by the next scheduled push.
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        Someone pushed directly to GitHub between scheduled sync runs. No action has been taken yet — this alert is sent the moment divergence is first detected by the admin dashboard poll. Review and resolve the divergence before the next scheduled sync.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Repository</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${repo}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Remote commits ahead</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #d97706; font-weight: 600;">${remoteAheadBy}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">First detected</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">${firstDetectedAt}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Alert sent at</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">${timestamp}</td>
+        </tr>
+      </table>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        To change how the scheduled sync handles diverged history, update the <strong>On diverged remote</strong> setting in Admin Settings → GitHub Sync.
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This alert was sent automatically by RasoKart when the admin dashboard detected remote divergence. To stop receiving these emails, update your notification preferences in Admin Settings.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+async function maybeNotifyDivergenceTransition(opts: {
+  nowDiverged: boolean;
+  remoteAheadBy: number;
+  repo: string;
+}): Promise<void> {
+  const { nowDiverged, remoteAheadBy, repo } = opts;
+  const state = readDivergenceState();
+
+  if (!nowDiverged) {
+    if (state.diverged) {
+      writeDivergenceState({ diverged: false, consecutivePollsDiverged: 0, firstDetectedAt: null, lastEmailSentPollCount: 0 });
+    }
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const consecutivePollsDiverged = state.diverged ? state.consecutivePollsDiverged + 1 : 1;
+  const firstDetectedAt = state.diverged ? (state.firstDetectedAt ?? now) : now;
+
+  let renotifyInterval = DEFAULT_RENOTIFY_INTERVAL;
+  try {
+    const rows = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(inArray(systemSettingsTable.key, ["github_sync_renotify_interval"]));
+    const raw = rows[0]?.value;
+    const parsed = parseInt(raw ?? "", 10);
+    if (Number.isFinite(parsed) && parsed > 0) renotifyInterval = parsed;
+  } catch {
+  }
+
+  const isFirstDetection = consecutivePollsDiverged === 1;
+  const onRenotifyCadence =
+    consecutivePollsDiverged > 1 &&
+    (consecutivePollsDiverged - state.lastEmailSentPollCount) % renotifyInterval === 0;
+
+  const newState: DivergenceState = {
+    diverged: true,
+    consecutivePollsDiverged,
+    firstDetectedAt,
+    lastEmailSentPollCount: isFirstDetection || onRenotifyCadence ? consecutivePollsDiverged : state.lastEmailSentPollCount,
+  };
+  writeDivergenceState(newState);
+
+  if (!isFirstDetection && !onRenotifyCadence) return;
+
+  try {
+    const admins = await db
+      .select({ email: usersTable.email })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.role, "admin"),
+          eq(usersTable.isActive, true),
+          eq(usersTable.githubSyncFailureAlertEmails, true),
+        ),
+      );
+
+    if (admins.length === 0) {
+      logger.info("GITHUB_SYNC: No admins opted in to sync alert emails — skipping divergence transition alert");
+      return;
+    }
+
+    const subject = `[RasoKart] ⚠ GitHub Remote Diverged — ${remoteAheadBy} commit${remoteAheadBy === 1 ? "" : "s"} ahead on ${repo}`;
+    const html = buildDivergenceAlertHtml({ repo, remoteAheadBy, firstDetectedAt });
+
+    const results = await Promise.allSettled(
+      admins.map(a => sendMail({ to: a.email, subject, html })),
+    );
+
+    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const failed = results.length - sent;
+    logger.info(
+      { sent, failed, remoteAheadBy, consecutivePollsDiverged },
+      "GITHUB_SYNC: Divergence transition alert email dispatched",
+    );
+  } catch (err) {
+    logger.error({ err }, "GITHUB_SYNC: Failed to send divergence transition alert emails");
+  }
+}
 
 let syncRunInProgress = false;
 
@@ -273,9 +435,16 @@ router.get("/divergence", (req, res) => {
       const out = execSync(`git rev-list --count HEAD..${REMOTE_NAME}/main`, { cwd: REPO_ROOT, stdio: "pipe" }).toString().trim();
       remoteAheadBy = parseInt(out, 10) || 0;
     } catch {
+      maybeNotifyDivergenceTransition({ nowDiverged: false, remoteAheadBy: 0, repo: GITHUB_REPO }).catch(
+        (err: unknown) => req.log.error({ err }, "GITHUB_SYNC: divergence state reset failed"),
+      );
       res.json({ checked: true, diverged: false, repo: GITHUB_REPO, reason: "Remote branch does not exist yet — this will be the first push" });
       return;
     }
+
+    maybeNotifyDivergenceTransition({ nowDiverged: remoteAheadBy > 0, remoteAheadBy, repo: GITHUB_REPO }).catch(
+      (err: unknown) => req.log.error({ err }, "GITHUB_SYNC: divergence transition notification failed"),
+    );
 
     res.json({
       checked: true,
