@@ -1271,6 +1271,16 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "otp_email_settings" }, "schema_guard_table_created");
 
+  // ── notifications: cleanup_failure_repeated dedup index ─────────────────
+  // Prevents duplicate cleanup-failure alerts for the same admin on the same
+  // calendar day when cleanup is triggered more than once (manual + cron).
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_cleanup_failure_repeated_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'dedupeKey')))
+      WHERE type = 'cleanup_failure_repeated'
+  `);
+  logger.info({ index: "notifications_cleanup_failure_repeated_dedup_idx" }, "schema_guard_index_created");
+
   logger.info("schema_guard_completed");
 }
 

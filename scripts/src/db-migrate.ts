@@ -1314,6 +1314,9 @@ async function migrate() {
     CREATE UNIQUE INDEX IF NOT EXISTS notifications_delivery_rate_alert_dedup_idx
       ON notifications(user_id, type, ((metadata->>'dedupeKey')))
       WHERE type = 'report_delivery_low_success_rate';
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_cleanup_failure_repeated_dedup_idx
+      ON notifications(user_id, type, ((metadata->>'dedupeKey')))
+      WHERE type = 'cleanup_failure_repeated';
 
     -- ── reconciliation_runs ───────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS reconciliation_runs (

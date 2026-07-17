@@ -201,7 +201,7 @@ async function main() {
   // Startup sweep: remove any orphaned .github-sync-logs/ files whose id is
   // not present in the current history (e.g. from a mid-write crash or manual
   // history edit) so they don't accumulate indefinitely on disk.
-  runGithubSyncLogCleanup().catch((err) => {
+  runGithubSyncLogCleanup({ source: "manual" }).catch((err) => {
     logger.warn({ err }, "Startup GitHub sync log cleanup sweep failed");
   });
 

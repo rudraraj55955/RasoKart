@@ -29,7 +29,8 @@ export type NotificationType =
   | "report_delivery_low_success_rate"
   | "preference_change_unknown_device"
   | "gateway_failover_exhausted"
-  | "gateway_recovered";
+  | "gateway_recovered"
+  | "cleanup_failure_repeated";
 
 type InAppPrefField = keyof Pick<
   typeof usersTable.$inferSelect,

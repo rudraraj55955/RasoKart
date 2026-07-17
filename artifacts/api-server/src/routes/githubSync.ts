@@ -310,7 +310,7 @@ router.get("/cleanup-logs/last", async (req, res, next) => {
 router.post("/cleanup-logs", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const result = await runGithubSyncLogCleanup();
+    const result = await runGithubSyncLogCleanup({ source: "manual" });
 
     try {
       await db.insert(auditLogsTable).values({

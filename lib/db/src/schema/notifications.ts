@@ -105,6 +105,17 @@ export const notificationsTable = pgTable("notifications", {
       sql`((metadata->>'dedupeKey'))`,
     )
     .where(sql`type = 'report_delivery_low_success_rate'`),
+  // Dedup index: at most one cleanup_failure_repeated alert per admin user per
+  // calendar day (dedupeKey = "cleanup_failure_repeated_<YYYY-MM-DD>").
+  // onConflictDoNothing() in runGithubSyncLogCleanup() relies on this so
+  // a manual re-run on the same day does not send a second alert.
+  uniqueIndex("notifications_cleanup_failure_repeated_dedup_idx")
+    .on(
+      sql`"user_id"`,
+      sql`"type"`,
+      sql`((metadata->>'dedupeKey'))`,
+    )
+    .where(sql`type = 'cleanup_failure_repeated'`),
 ]);
 
 export type Notification = typeof notificationsTable.$inferSelect;

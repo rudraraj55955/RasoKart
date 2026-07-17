@@ -2,10 +2,18 @@ import cron from "node-cron";
 import { readFileSync, readdirSync, unlinkSync } from "fs";
 import { fileURLToPath } from "url";
 import { logger } from "../lib/logger";
-import { eq } from "drizzle-orm";
-import { db, systemSettingsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
+import { db, notificationsTable, systemSettingsTable, usersTable } from "@workspace/db";
 
 const LAST_CLEANUP_SETTING_KEY = "github_sync_last_cleanup";
+const FAILURE_STREAK_SETTING_KEY = "github_sync_cleanup_failure_streak";
+
+/**
+ * Number of consecutive scheduled nightly runs that must report errors > 0
+ * before admins are notified.  Each subsequent failing night re-alerts (deduped
+ * per calendar day) so the problem doesn't go unnoticed while it persists.
+ */
+const CONSECUTIVE_FAILURE_THRESHOLD = 3;
 
 const HISTORY_FILE = fileURLToPath(
   new URL("../../../../.github-sync-history.json", import.meta.url),
@@ -17,6 +25,11 @@ const LOG_DIR = fileURLToPath(
 interface GithubSyncHistoryEntry {
   id: string;
   hasLog?: boolean;
+}
+
+interface FailureStreak {
+  count: number;
+  lastFailedDate: string;
 }
 
 async function persistLastCleanupResult(result: { deleted: number; errors: number; ranAt: string }): Promise<void> {
@@ -62,7 +75,95 @@ export async function getLastGithubSyncLogCleanupResult(): Promise<{ deleted: nu
   }
 }
 
-export async function runGithubSyncLogCleanup(): Promise<{ deleted: number; errors: number }> {
+async function readFailureStreak(): Promise<FailureStreak> {
+  try {
+    const [row] = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, FAILURE_STREAK_SETTING_KEY))
+      .limit(1);
+
+    if (!row?.value) {
+      return { count: 0, lastFailedDate: "" };
+    }
+
+    const parsed = JSON.parse(row.value);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof parsed.count === "number" &&
+      typeof parsed.lastFailedDate === "string"
+    ) {
+      return parsed as FailureStreak;
+    }
+    return { count: 0, lastFailedDate: "" };
+  } catch (err) {
+    logger.error({ err }, "Failed to read GitHub sync cleanup failure streak");
+    return { count: 0, lastFailedDate: "" };
+  }
+}
+
+async function persistFailureStreak(streak: FailureStreak): Promise<void> {
+  try {
+    await db
+      .insert(systemSettingsTable)
+      .values({ key: FAILURE_STREAK_SETTING_KEY, value: JSON.stringify(streak), updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: systemSettingsTable.key,
+        set: { value: JSON.stringify(streak), updatedAt: new Date() },
+      });
+  } catch (err) {
+    logger.error({ err }, "Failed to persist GitHub sync cleanup failure streak");
+  }
+}
+
+async function notifyAdminsOfRepeatedCleanupFailure(streak: FailureStreak, errors: number): Promise<void> {
+  try {
+    const adminUsers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+
+    if (adminUsers.length === 0) {
+      logger.warn("Cleanup failure alert: no active admin users — skipping notifications");
+      return;
+    }
+
+    const dedupeKey = `cleanup_failure_repeated_${streak.lastFailedDate}`;
+    const appDomain = process.env["APP_DOMAIN"] ?? "https://rasokart.com";
+
+    const rows = adminUsers.map(u => ({
+      userId: u.id,
+      type: "cleanup_failure_repeated" as const,
+      title: "Log Cleanup Failing Repeatedly",
+      body: `The nightly GitHub sync log cleanup has reported file-deletion errors for ${streak.count} consecutive night${streak.count === 1 ? "" : "s"} (${errors} error${errors === 1 ? "" : "s"} tonight). This may indicate a filesystem permission issue. Check the server logs and the Settings → GitHub Sync panel for details.`,
+      metadata: {
+        consecutiveFailures: streak.count,
+        errorsTonight: errors,
+        lastFailedDate: streak.lastFailedDate,
+        dedupeKey,
+        settingsUrl: `${appDomain}/admin/settings`,
+      },
+    }));
+
+    const inserted = await db
+      .insert(notificationsTable)
+      .values(rows)
+      .onConflictDoNothing()
+      .returning({ id: notificationsTable.id });
+
+    if (inserted.length > 0) {
+      logger.warn(
+        { consecutiveFailures: streak.count, errorsTonight: errors, adminCount: adminUsers.length },
+        "Admin notification sent: log cleanup has been failing repeatedly",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to send admin notification for repeated cleanup failures");
+  }
+}
+
+export async function runGithubSyncLogCleanup(opts?: { source?: "scheduled" | "manual" }): Promise<{ deleted: number; errors: number }> {
   let history: GithubSyncHistoryEntry[] = [];
   try {
     const raw = readFileSync(HISTORY_FILE, "utf-8");
@@ -108,12 +209,37 @@ export async function runGithubSyncLogCleanup(): Promise<{ deleted: number; erro
 
   await persistLastCleanupResult({ deleted, errors, ranAt: new Date().toISOString() });
 
+  // Streak tracking and admin alerts are only meaningful for the scheduled
+  // nightly run.  Manual triggers (admin button, startup sweep) can fail for
+  // transient reasons and should not advance the "N consecutive nights"
+  // counter that drives the alert.
+  if (opts?.source === "scheduled") {
+    const todayDate = new Date().toISOString().slice(0, 10);
+    const streak = await readFailureStreak();
+
+    if (errors > 0) {
+      // Only count each calendar day once (guards against the cron firing twice
+      // in edge cases or a restart overlapping with the scheduled window).
+      const newCount = streak.lastFailedDate === todayDate ? streak.count : streak.count + 1;
+      const updatedStreak: FailureStreak = { count: newCount, lastFailedDate: todayDate };
+      await persistFailureStreak(updatedStreak);
+
+      if (newCount >= CONSECUTIVE_FAILURE_THRESHOLD) {
+        await notifyAdminsOfRepeatedCleanupFailure(updatedStreak, errors);
+      }
+    } else if (streak.count > 0) {
+      // Clean scheduled run — reset the streak.
+      await persistFailureStreak({ count: 0, lastFailedDate: "" });
+      logger.info({ previousStreak: streak.count }, "GitHub sync log cleanup failure streak reset");
+    }
+  }
+
   return { deleted, errors };
 }
 
 export function initGithubSyncLogCleanupScheduler(): void {
   cron.schedule("0 3 * * *", () => {
-    runGithubSyncLogCleanup().catch((err) => {
+    runGithubSyncLogCleanup({ source: "scheduled" }).catch((err) => {
       logger.error({ err }, "GitHub sync log cleanup scheduler failed");
     });
   });
