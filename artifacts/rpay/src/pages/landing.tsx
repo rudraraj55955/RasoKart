@@ -5,6 +5,12 @@ import { useCompanySettings } from "@/lib/company-settings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   QrCode,
   Landmark,
   Wallet,
@@ -123,14 +129,17 @@ export default function Landing() {
   const { companyName, supportPhone, footerText } = useCompanySettings();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased">
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground antialiased">
       {/* NAV */}
       <header className="fixed inset-x-0 top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3">
+          {/* Logo — always routes home */}
+          <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
             <RasoKartLogo size={36} />
             <span className="text-xl font-bold tracking-tight">RasoKart</span>
-          </div>
+          </Link>
+
+          {/* Desktop nav — only at md+ (768px+) */}
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
             <a href="#services" className="transition-colors hover:text-foreground">Services</a>
             <a href="#features" className="transition-colors hover:text-foreground">Dashboard</a>
@@ -140,112 +149,122 @@ export default function Landing() {
             <a href="#payout-portal" className="transition-colors hover:text-foreground">Payout Portal</a>
             <a href="#contact" className="transition-colors hover:text-foreground">Contact</a>
           </nav>
+
           <div className="flex items-center gap-2">
+            {/* CTA buttons — desktop only (md+) */}
             <Link href="/payout-merchant/login">
-              <Button variant="ghost" size="sm" className="hidden sm:inline-flex gap-1 text-amber-400 hover:text-amber-300 hover:bg-amber-400/10">
+              <Button variant="ghost" size="sm" className="hidden md:inline-flex gap-1 text-amber-400 hover:text-amber-300 hover:bg-amber-400/10">
                 <SendHorizonal className="h-3.5 w-3.5" />
                 Payout Login
               </Button>
             </Link>
             <Link href="/merchant">
-              <Button variant="ghost" size="sm" className="hidden sm:inline-flex">Merchant Login</Button>
+              <Button variant="ghost" size="sm" className="hidden md:inline-flex">Merchant Login</Button>
             </Link>
             <Link href="/merchant/apply">
-              <Button size="sm" className="hidden sm:inline-flex bg-primary text-primary-foreground hover:bg-primary/90">
+              <Button size="sm" className="hidden md:inline-flex bg-primary text-primary-foreground hover:bg-primary/90">
                 Apply Now
               </Button>
             </Link>
-            {/* Hamburger — mobile only */}
+
+            {/* Hamburger — mobile only (below md = below 768px) */}
             <button
-              className="flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground sm:hidden"
-              onClick={() => setMobileMenuOpen((o) => !o)}
-              aria-label="Toggle menu"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground md:hidden"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open navigation menu"
             >
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              <Menu className="h-5 w-5" />
             </button>
           </div>
         </div>
-
-        {/* Mobile dropdown menu */}
-        {mobileMenuOpen && (
-          <div className="border-t border-border/40 bg-background/95 backdrop-blur-xl sm:hidden">
-            <nav className="mx-auto max-w-7xl space-y-1 px-4 py-3">
-              {[
-                { label: "Services", href: "#services" },
-                { label: "Dashboard", href: "#features" },
-                { label: "Settlement", href: "#settlement" },
-                { label: "Plans", href: "#plans" },
-                { label: "Payout Portal", href: "#payout-portal" },
-                { label: "Contact", href: "#contact" },
-              ].map((link) => (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {link.label}
-                </a>
-              ))}
-              <div className="my-2 border-t border-border/40" />
-              <Link href="/payout-merchant/login" onClick={() => setMobileMenuOpen(false)}>
-                <span className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-amber-400 hover:bg-amber-400/10">
-                  <SendHorizonal className="h-4 w-4" /> Payout Merchant Login
-                </span>
-              </Link>
-              <Link href="/payout-merchant/signup" onClick={() => setMobileMenuOpen(false)}>
-                <span className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-amber-300 hover:bg-amber-400/10">
-                  <Banknote className="h-4 w-4" /> Sign Up for Payouts
-                </span>
-              </Link>
-              <Link href="/merchant" onClick={() => setMobileMenuOpen(false)}>
-                <span className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground">
-                  Merchant Login
-                </span>
-              </Link>
-              <Link href="/merchant/apply" onClick={() => setMobileMenuOpen(false)}>
-                <span className="block rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10">
-                  Apply as Merchant →
-                </span>
-              </Link>
-            </nav>
-          </div>
-        )}
       </header>
+
+      {/* Mobile navigation drawer — Sheet renders in a portal, works on all widths below md */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="right" className="flex w-72 flex-col border-l border-border/40 bg-background/95 p-0 backdrop-blur-xl">
+          <SheetHeader className="border-b border-border/40 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <RasoKartLogo size={28} />
+              <SheetTitle className="text-lg font-bold">RasoKart</SheetTitle>
+            </div>
+          </SheetHeader>
+          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
+            {[
+              { label: "Services", href: "#services" },
+              { label: "Dashboard", href: "#features" },
+              { label: "Settlement", href: "#settlement" },
+              { label: "API Docs", href: "/merchant/api-docs" },
+              { label: "Plans", href: "#plans" },
+              { label: "Payout Portal", href: "#payout-portal" },
+              { label: "Contact", href: "#contact" },
+            ].map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="flex min-h-[44px] items-center rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {link.label}
+              </a>
+            ))}
+            <div className="my-2 border-t border-border/40" />
+            <Link href="/payout-merchant/login" onClick={() => setMobileMenuOpen(false)}>
+              <span className="flex min-h-[44px] items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-amber-400 transition-colors hover:bg-amber-400/10">
+                <SendHorizonal className="h-4 w-4 shrink-0" /> Payout Merchant Login
+              </span>
+            </Link>
+            <Link href="/payout-merchant/signup" onClick={() => setMobileMenuOpen(false)}>
+              <span className="flex min-h-[44px] items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-amber-300 transition-colors hover:bg-amber-400/10">
+                <Banknote className="h-4 w-4 shrink-0" /> Sign Up for Payouts
+              </span>
+            </Link>
+            <Link href="/merchant" onClick={() => setMobileMenuOpen(false)}>
+              <span className="flex min-h-[44px] items-center rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
+                Merchant Login
+              </span>
+            </Link>
+            <Link href="/merchant/apply" onClick={() => setMobileMenuOpen(false)}>
+              <span className="flex min-h-[44px] items-center rounded-lg px-3 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10">
+                Apply as Merchant →
+              </span>
+            </Link>
+          </nav>
+        </SheetContent>
+      </Sheet>
 
       {/* HERO */}
       <section className="relative flex min-h-screen items-center overflow-hidden pt-16">
-        {/* glow blobs */}
+        {/* glow blobs — clipped so they can't cause horizontal overflow */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 left-1/4 h-[600px] w-[600px] rounded-full bg-cyan-500/10 blur-3xl" />
           <div className="absolute bottom-0 right-1/4 h-[500px] w-[500px] rounded-full bg-violet-500/10 blur-3xl" />
         </div>
 
-        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:py-32">
-          <div className="max-w-3xl">
+        <div className="relative mx-auto w-full max-w-7xl px-4 py-24 sm:px-6 lg:py-32">
+          <div className="min-w-0 max-w-3xl">
             <Badge className="mb-6 border-cyan-400/30 bg-cyan-400/10 text-cyan-400" variant="outline">
               India's Leading Payment Infrastructure
             </Badge>
-            <h1 className="mb-6 text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
+            <h1 className="mb-6 text-4xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
               Collect Smarter,{" "}
               <span className="bg-gradient-to-r from-cyan-400 to-violet-400 bg-clip-text text-transparent">
                 Settle Faster
               </span>
             </h1>
-            <p className="mb-10 max-w-2xl text-lg text-muted-foreground sm:text-xl">
+            <p className="mb-10 max-w-2xl text-base text-muted-foreground sm:text-xl">
               RasoKart provides enterprise-grade QR, UPI, and virtual account collection infrastructure
               with real-time reconciliation, instant payouts, and a powerful merchant dashboard — all
               from a single platform.
             </p>
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
               <Link href="/merchant/apply">
-                <Button size="lg" className="gap-2 bg-gradient-to-r from-cyan-500 to-violet-500 text-white hover:opacity-90">
+                <Button size="lg" className="w-full gap-2 bg-gradient-to-r from-cyan-500 to-violet-500 text-white hover:opacity-90 sm:w-auto">
                   Apply as Merchant
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
               <Link href="/merchant">
-                <Button size="lg" variant="outline" className="gap-2 border-border/60">
+                <Button size="lg" variant="outline" className="w-full gap-2 border-border/60 sm:w-auto">
                   Merchant Login
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -253,12 +272,12 @@ export default function Landing() {
             </div>
           </div>
 
-          {/* Stats row */}
-          <div className="mt-20 grid grid-cols-2 gap-6 sm:grid-cols-4">
+          {/* Stats grid — 2 cols on mobile, 4 cols on sm+ */}
+          <div className="mt-16 grid grid-cols-2 gap-4 sm:mt-20 sm:grid-cols-4 sm:gap-6">
             {stats.map((s) => (
-              <div key={s.label} className="rounded-2xl border border-border/40 bg-card/40 p-5 backdrop-blur-sm">
-                <div className="text-2xl font-bold text-foreground sm:text-3xl">{s.value}</div>
-                <div className="mt-1 text-sm text-muted-foreground">{s.label}</div>
+              <div key={s.label} className="min-w-0 rounded-2xl border border-border/40 bg-card/40 p-4 backdrop-blur-sm sm:p-5">
+                <div className="text-xl font-bold leading-none text-foreground sm:text-2xl">{s.value}</div>
+                <div className="mt-1.5 text-xs text-muted-foreground sm:text-sm">{s.label}</div>
               </div>
             ))}
           </div>
