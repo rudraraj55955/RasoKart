@@ -139,8 +139,8 @@ export default function Landing() {
             <span className="text-xl font-bold tracking-tight">RasoKart</span>
           </Link>
 
-          {/* Desktop nav — only at md+ (768px+) */}
-          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
+          {/* Desktop nav — only at lg+ (1024px+); 768px has too many items to fit without overflow */}
+          <nav className="hidden items-center gap-6 text-sm text-muted-foreground lg:flex">
             <a href="#services" className="transition-colors hover:text-foreground">Services</a>
             <a href="#features" className="transition-colors hover:text-foreground">Dashboard</a>
             <a href="#settlement" className="transition-colors hover:text-foreground">Settlement</a>
@@ -151,25 +151,25 @@ export default function Landing() {
           </nav>
 
           <div className="flex items-center gap-2">
-            {/* CTA buttons — desktop only (md+) */}
+            {/* CTA buttons — desktop only (lg+ = 1024px+) */}
             <Link href="/payout-merchant/login">
-              <Button variant="ghost" size="sm" className="hidden md:inline-flex gap-1 text-amber-400 hover:text-amber-300 hover:bg-amber-400/10">
+              <Button variant="ghost" size="sm" className="hidden lg:inline-flex gap-1 text-amber-400 hover:text-amber-300 hover:bg-amber-400/10">
                 <SendHorizonal className="h-3.5 w-3.5" />
                 Payout Login
               </Button>
             </Link>
             <Link href="/merchant">
-              <Button variant="ghost" size="sm" className="hidden md:inline-flex">Merchant Login</Button>
+              <Button variant="ghost" size="sm" className="hidden lg:inline-flex">Merchant Login</Button>
             </Link>
             <Link href="/merchant/apply">
-              <Button size="sm" className="hidden md:inline-flex bg-primary text-primary-foreground hover:bg-primary/90">
+              <Button size="sm" className="hidden lg:inline-flex bg-primary text-primary-foreground hover:bg-primary/90">
                 Apply Now
               </Button>
             </Link>
 
-            {/* Hamburger — mobile only (below md = below 768px) */}
+            {/* Hamburger — below lg (below 1024px) */}
             <button
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground md:hidden"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground lg:hidden"
               onClick={() => setMobileMenuOpen(true)}
               aria-label="Open navigation menu"
             >
