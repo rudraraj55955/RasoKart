@@ -170,12 +170,12 @@ export default function AdminPlans() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Plans</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Plans</h1>
           <p className="text-muted-foreground mt-1">Manage subscription plans, feature limits, and fees</p>
         </div>
-        <Button onClick={openCreate} size="sm"><PlusCircle className="w-4 h-4 mr-2" />Create Plan</Button>
+        <Button onClick={openCreate} size="sm" className="w-full sm:w-auto"><PlusCircle className="w-4 h-4 mr-2" />Create Plan</Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -183,82 +183,139 @@ export default function AdminPlans() {
         <Input className="pl-9" placeholder="Search plans..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Plan</TableHead>
-                <TableHead className="text-right">Monthly</TableHead>
-                <TableHead className="text-right">Yearly</TableHead>
-                <TableHead className="text-right">Setup</TableHead>
-                <TableHead className="text-right">DQR</TableHead>
-                <TableHead className="text-right">VA</TableHead>
-                <TableHead className="text-right">Settlement</TableHead>
-                <TableHead className="text-center">API</TableHead>
-                <TableHead className="text-center">WH</TableHead>
-                <TableHead className="text-center">Provider</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                [1,2,3,4,5,6].map(i => (
-                  <TableRow key={i}>
-                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {isLoading ? (
+          [1,2,3].map(i => (
+            <Card key={i}><CardContent className="p-4"><div className="h-24 bg-muted/50 animate-pulse rounded" /></CardContent></Card>
+          ))
+        ) : filteredPlans?.length === 0 ? (
+          <p className="text-center text-muted-foreground py-10">No plans found</p>
+        ) : filteredPlans?.map(plan => (
+          <Card key={plan.id}>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold">{plan.name}</p>
+                  {plan.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{plan.description}</p>}
+                </div>
+                <Badge variant={plan.isActive ? "outline" : "secondary"} className={`shrink-0 ${plan.isActive ? "text-emerald-400 border-emerald-500/30" : ""}`}>
+                  {plan.isActive ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-medium">Monthly</p>
+                  <p className="font-mono font-semibold">{plan.monthlyFee === "0" ? <span className="text-emerald-400">Free</span> : `₹${parseInt(plan.monthlyFee).toLocaleString()}`}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-medium">Yearly</p>
+                  <p className="font-mono text-muted-foreground">{plan.yearlyFee === "0" ? "—" : `₹${parseInt(plan.yearlyFee).toLocaleString()}`}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-medium">Settlement</p>
+                  <p className="font-mono">{plan.settlementFee}%</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-medium">Dynamic QR</p>
+                  <p className="font-mono"><LimitCell value={plan.dynamicQrLimit} /></p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs border-t border-border/30 pt-2">
+                <span className={plan.apiAccess ? "text-emerald-400" : "text-muted-foreground/50"}>API {plan.apiAccess ? "✓" : "✗"}</span>
+                <span className={plan.webhookAccess ? "text-emerald-400" : "text-muted-foreground/50"}>Webhook {plan.webhookAccess ? "✓" : "✗"}</span>
+                <span className={plan.providerAccess ? "text-emerald-400" : "text-muted-foreground/50"}>Provider {plan.providerAccess ? "✓" : "✗"}</span>
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button size="sm" variant="outline" className="h-8" onClick={() => openEdit(plan)}><Pencil className="w-3.5 h-3.5 mr-1" />Edit</Button>
+                <Button size="sm" variant="ghost" className="h-8 text-rose-500 hover:text-rose-400 hover:bg-rose-500/10" onClick={() => handleDelete(plan.id, plan.name)}><Trash2 className="w-3.5 h-3.5 mr-1" />Delete</Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block">
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plan</TableHead>
+                    <TableHead className="text-right">Monthly</TableHead>
+                    <TableHead className="text-right">Yearly</TableHead>
+                    <TableHead className="text-right">Setup</TableHead>
+                    <TableHead className="text-right">DQR</TableHead>
+                    <TableHead className="text-right">VA</TableHead>
+                    <TableHead className="text-right">Settlement</TableHead>
+                    <TableHead className="text-center">API</TableHead>
+                    <TableHead className="text-center">WH</TableHead>
+                    <TableHead className="text-center">Provider</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))
-              ) : filteredPlans?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-10">No plans found</TableCell>
-                </TableRow>
-              ) : filteredPlans?.map(plan => (
-                <TableRow key={plan.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{plan.name}</p>
-                      {plan.description && <p className="text-xs text-muted-foreground mt-0.5 max-w-xs truncate">{plan.description}</p>}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm">
-                    {plan.monthlyFee === "0" ? <span className="text-emerald-400">Free</span> : `₹${parseInt(plan.monthlyFee).toLocaleString()}`}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                    {plan.yearlyFee === "0" ? "—" : `₹${parseInt(plan.yearlyFee).toLocaleString()}`}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm text-muted-foreground">
-                    {plan.setupFee === "0" ? "—" : `₹${parseInt(plan.setupFee).toLocaleString()}`}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.dynamicQrLimit} /></TableCell>
-                  <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.virtualAccountLimit} /></TableCell>
-                  <TableCell className="text-right font-mono text-sm">{plan.settlementFee}%</TableCell>
-                  <TableCell className="text-center">
-                    {plan.apiAccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" /> : <XCircle className="w-4 h-4 text-muted-foreground mx-auto" />}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {plan.webhookAccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" /> : <XCircle className="w-4 h-4 text-muted-foreground mx-auto" />}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {plan.providerAccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" /> : <XCircle className="w-4 h-4 text-muted-foreground mx-auto" />}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant={plan.isActive ? "outline" : "secondary"} className={plan.isActive ? "text-emerald-400 border-emerald-500/30" : ""}>
-                      {plan.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(plan)}><Pencil className="w-3.5 h-3.5" /></Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500 hover:text-rose-400" onClick={() => handleDelete(plan.id, plan.name)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    [1,2,3,4,5,6].map(i => (
+                      <TableRow key={i}>
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
+                      </TableRow>
+                    ))
+                  ) : filteredPlans?.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={12} className="text-center text-muted-foreground py-10">No plans found</TableCell>
+                    </TableRow>
+                  ) : filteredPlans?.map(plan => (
+                    <TableRow key={plan.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{plan.name}</p>
+                          {plan.description && <p className="text-xs text-muted-foreground mt-0.5 max-w-xs truncate">{plan.description}</p>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {plan.monthlyFee === "0" ? <span className="text-emerald-400">Free</span> : `₹${parseInt(plan.monthlyFee).toLocaleString()}`}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                        {plan.yearlyFee === "0" ? "—" : `₹${parseInt(plan.yearlyFee).toLocaleString()}`}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                        {plan.setupFee === "0" ? "—" : `₹${parseInt(plan.setupFee).toLocaleString()}`}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.dynamicQrLimit} /></TableCell>
+                      <TableCell className="text-right font-mono text-sm"><LimitCell value={plan.virtualAccountLimit} /></TableCell>
+                      <TableCell className="text-right font-mono text-sm">{plan.settlementFee}%</TableCell>
+                      <TableCell className="text-center">
+                        {plan.apiAccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" /> : <XCircle className="w-4 h-4 text-muted-foreground mx-auto" />}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {plan.webhookAccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" /> : <XCircle className="w-4 h-4 text-muted-foreground mx-auto" />}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {plan.providerAccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" /> : <XCircle className="w-4 h-4 text-muted-foreground mx-auto" />}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={plan.isActive ? "outline" : "secondary"} className={plan.isActive ? "text-emerald-400 border-emerald-500/30" : ""}>
+                          {plan.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(plan)}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500 hover:text-rose-400" onClick={() => handleDelete(plan.id, plan.name)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[calc(100dvh-4rem)] overflow-y-auto">

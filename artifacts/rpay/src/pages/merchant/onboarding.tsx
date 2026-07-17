@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -281,16 +281,13 @@ export default function MerchantOnboarding() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   if (pageLoading) return (
-    <DashboardLayout>
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-      </div>
-    </DashboardLayout>
+    <div className="flex items-center justify-center h-64">
+      <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
+    </div>
   );
 
   if (!onboardingEnabled && step === 0) return (
-    <DashboardLayout>
-      <div className="max-w-2xl mx-auto p-6 space-y-4">
+    <div className="max-w-2xl mx-auto p-6 space-y-4">
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <ShieldCheck className="w-7 h-7 text-indigo-400" /> Secure Business Onboarding
         </h1>
@@ -302,7 +299,6 @@ export default function MerchantOnboarding() {
           </AlertDescription>
         </Alert>
       </div>
-    </DashboardLayout>
   );
 
   const panVerified  = verifyStatus["panStatus"]    === "VERIFIED";
@@ -311,8 +307,7 @@ export default function MerchantOnboarding() {
   const mandatoryMet = panVerified && aadhaarVerified && bankVerified;
 
   return (
-    <DashboardLayout>
-      <div className="max-w-2xl mx-auto space-y-5 p-4">
+    <div className="max-w-2xl mx-auto space-y-5 p-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <ShieldCheck className="w-7 h-7 text-indigo-400" />
@@ -824,6 +819,5 @@ export default function MerchantOnboarding() {
           </Card>
         )}
       </div>
-    </DashboardLayout>
   );
 }

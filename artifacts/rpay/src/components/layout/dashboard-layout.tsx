@@ -3,10 +3,10 @@ import { useAuth } from "@/lib/auth-context";
 import { Spinner } from "@/components/ui/spinner";
 import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule, useGetGithubSyncStatus, useGetGithubSyncDivergence } from "@workspace/api-client-react";
 
-import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, Mail, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, Mail, ChevronDown, ChevronUp, Trash2, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
@@ -594,6 +594,73 @@ function AdminSidebar() {
   );
 }
 
+function MobileHeader({
+  publicMode,
+  isAdmin,
+  isPayoutMerchant,
+  portalLabel,
+  portalName,
+  user,
+}: {
+  publicMode: boolean;
+  isAdmin: boolean;
+  isPayoutMerchant: boolean;
+  portalLabel: string;
+  portalName: string;
+  user: ReturnType<typeof useAuth>["user"];
+}) {
+  const { openMobile, setOpenMobile, toggleSidebar } = useSidebar();
+  const [location] = useLocation();
+
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [location, setOpenMobile]);
+
+  useEffect(() => {
+    if (openMobile) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [openMobile]);
+
+  const logoHref = publicMode ? "/"
+    : isAdmin ? "/admin/dashboard"
+    : isPayoutMerchant ? "/payout-merchant/dashboard"
+    : "/merchant/dashboard";
+
+  return (
+    <header
+      className="md:hidden sticky top-0 z-40 flex items-center gap-2 h-14 border-b border-border/50 bg-background/95 backdrop-blur shrink-0"
+      style={{ paddingLeft: "12px", paddingRight: "12px" }}
+    >
+      <button
+        type="button"
+        onClick={toggleSidebar}
+        className="h-11 w-11 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        aria-label={openMobile ? "Close navigation menu" : "Open navigation menu"}
+        aria-expanded={openMobile}
+      >
+        {openMobile ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
+      <Link
+        href={logoHref}
+        className="flex items-center gap-2 flex-1 min-w-0 min-h-[44px]"
+      >
+        <RasoKartLogo size={22} className="shrink-0" />
+        <span className="font-semibold text-sm truncate">{portalLabel}</span>
+      </Link>
+      {!publicMode && user && <NotificationBell isAdmin={isAdmin} />}
+      <InstallAppButton
+        appName={portalName}
+        variant="ghost"
+        className="h-9 w-9 !p-0 shrink-0 text-muted-foreground hover:text-foreground [&>span]:hidden"
+      />
+    </header>
+  );
+}
+
 const DEPLOY_SYNC_ALERT_DISMISS_KEY = "rasokart_deploy_sync_alert_dismissed";
 
 function GithubSyncAdminAlert() {
@@ -720,6 +787,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
   }
 
   const isAdmin = user?.role === UserRole.admin;
+  const isPayoutMerchant = !isAdmin && (user as any)?.merchantType === "PAYOUT_ONLY";
   const portalName = location.startsWith("/admin") ? "RasoKart Admin"
     : location.startsWith("/merchant") ? "RasoKart Merchant"
     : location.startsWith("/agent") ? "RasoKart Agent"
@@ -802,23 +870,15 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
         </Sidebar>
 
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Mobile top header — hamburger + branding + optional notification bell */}
-          <header className="md:hidden sticky top-0 z-40 flex items-center gap-2 h-14 px-3 border-b border-border/50 bg-background/95 backdrop-blur shrink-0">
-            <SidebarTrigger className="h-10 w-10 shrink-0" />
-            <Link
-              href={publicMode ? "/" : isAdmin ? "/admin/dashboard" : "/merchant/dashboard"}
-              className="flex items-center gap-2 flex-1 min-w-0 min-h-[44px]"
-            >
-              <RasoKartLogo size={22} className="shrink-0" />
-              <span className="font-semibold text-sm truncate">{portalLabel}</span>
-            </Link>
-            {!publicMode && user && <NotificationBell isAdmin={isAdmin} />}
-            <InstallAppButton
-              appName={portalName}
-              variant="ghost"
-              className="h-9 w-9 !p-0 shrink-0 text-muted-foreground hover:text-foreground [&>span]:hidden"
-            />
-          </header>
+          {/* Mobile top header — proper 3-line hamburger + branding */}
+          <MobileHeader
+            publicMode={publicMode}
+            isAdmin={isAdmin}
+            isPayoutMerchant={isPayoutMerchant}
+            portalLabel={portalLabel}
+            portalName={portalName}
+            user={user}
+          />
 
           {/* Page content */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -185,7 +185,7 @@ export default function AdminMerchantOnboarding() {
   // ── Detail View ────────────────────────────────────────────────────────────
   if (selectedId !== null) {
     return (
-      <DashboardLayout>
+      <>
         <div className="max-w-3xl mx-auto space-y-5 p-4">
           <Button variant="ghost" className="text-neutral-400 hover:text-white -ml-2" onClick={() => { setSelectedId(null); setKycDetail(null); }}>
             <ChevronLeft className="w-4 h-4 mr-1" /> Back to list
@@ -400,14 +400,13 @@ export default function AdminMerchantOnboarding() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </DashboardLayout>
+      </>
     );
   }
 
   // ── List View ──────────────────────────────────────────────────────────────
   return (
-    <DashboardLayout>
-      <div className="max-w-5xl mx-auto space-y-5 p-4">
+    <div className="max-w-5xl mx-auto space-y-5 p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -512,6 +511,5 @@ export default function AdminMerchantOnboarding() {
           </>
         )}
       </div>
-    </DashboardLayout>
   );
 }

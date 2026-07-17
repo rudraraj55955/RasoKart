@@ -76,6 +76,81 @@ export default function AdminPayoutBeneficiaries() {
         <p className="text-muted-foreground mt-1">Saved merchant beneficiaries used for payouts</p>
       </div>
 
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        <Select value={localStatus} onValueChange={setLocalStatus}>
+          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="disabled">Disabled</SelectItem>
+          </SelectContent>
+        </Select>
+        {isLoading ? (
+          [1,2,3].map(i => <Card key={i}><CardContent className="p-4"><div className="h-20 bg-muted/50 animate-pulse rounded" /></CardContent></Card>)
+        ) : isError ? (
+          <div className="text-center py-10 text-destructive text-sm">Failed to load beneficiaries</div>
+        ) : filteredData?.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground text-sm">No beneficiaries found</div>
+        ) : filteredData?.map(b => {
+          const dest = b.payoutMode === "UPI" ? (b.upiIdMasked ?? "—") : `${b.bankName ?? "—"} ···${b.bankAccountLast4 ?? ""}`;
+          return (
+            <Card key={b.id}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm">{b.merchantName || "—"}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{b.label || "—"}{b.usedInSuccessfulPayout && <Lock className="inline-block w-3 h-3 ml-1 text-muted-foreground" />}</p>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-xs shrink-0">{b.payoutMode}</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Destination</p>
+                    <p className="text-muted-foreground text-xs truncate">{dest}</p>
+                    {b.accountHolder && <p className="text-xs text-muted-foreground/70 truncate">{b.accountHolder}</p>}
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Local Status</p>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${b.localStatus === "active" ? "text-emerald-400 bg-emerald-500/10" : "text-rose-400 bg-rose-500/10"}`}>
+                      {b.localStatus === "active" ? "Active" : "Disabled"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Provider</p>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${b.providerStatus === "created" ? "text-emerald-400 bg-emerald-500/10" : b.providerStatus === "failed" ? "text-rose-400 bg-rose-500/10" : "text-muted-foreground bg-muted/30"}`}>
+                      {b.providerStatus === "created" ? "Registered" : b.providerStatus === "failed" ? "Failed" : "Not Registered"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Created</p>
+                    <p className="text-xs text-muted-foreground">{format(new Date(b.createdAt), "MMM d, yyyy")}</p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-1.5 pt-1 border-t border-border/30">
+                  {b.providerStatus !== "created" && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-amber-500 hover:text-amber-400 hover:bg-amber-500/10" onClick={() => handleRetry(b.id)} disabled={retryMutation.isPending}>
+                      <RotateCcw className="w-3 h-3 mr-1" />Retry
+                    </Button>
+                  )}
+                  {b.localStatus === "active" ? (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-rose-500 hover:text-rose-400 hover:bg-rose-500/10" onClick={() => handleDisable(b.id)} disabled={disableMutation.isPending}>
+                      <Ban className="w-3 h-3 mr-1" />Disable
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10" onClick={() => handleEnable(b.id)} disabled={enableMutation.isPending}>
+                      <CheckCircle2 className="w-3 h-3 mr-1" />Enable
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block">
       <Card>
         <CardHeader className="pb-4">
           <Select
@@ -239,6 +314,7 @@ export default function AdminPayoutBeneficiaries() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

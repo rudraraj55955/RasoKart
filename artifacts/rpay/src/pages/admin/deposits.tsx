@@ -185,6 +185,75 @@ function AdminPayinOrdersPanel() {
 
   return (
     <div className="space-y-4">
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        <div className="flex flex-col gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input className="pl-8" placeholder="Search by order ID or merchant..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+          </div>
+          <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+            <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="CREATED">Created</SelectItem>
+              <SelectItem value="PENDING">Pending</SelectItem>
+              <SelectItem value="PAID">Paid</SelectItem>
+              <SelectItem value="FAILED">Failed</SelectItem>
+              <SelectItem value="EXPIRED">Expired</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}><CardContent className="p-4"><div className="h-16 bg-muted/50 animate-pulse rounded" /></CardContent></Card>
+          ))
+        ) : !rows.length ? (
+          <div className="text-center text-muted-foreground py-10 text-sm">No UPI deposit orders found</div>
+        ) : rows.map(r => (
+          <Card key={r.id}>
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-mono text-xs text-muted-foreground">{r.publicOrderId ?? `#${r.id}`}</p>
+                  <p className="font-semibold text-sm mt-0.5">{r.merchantName ?? `Merchant #${r.merchantId}`}</p>
+                </div>
+                <StatusBadge status={r.status === "PAID" ? "success" : r.status === "FAILED" || r.status === "EXPIRED" ? "failed" : "pending"} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-medium">Amount</p>
+                  <p className="font-mono font-semibold text-emerald-400">₹{Number(r.amount).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-medium">UTR</p>
+                  <p className="font-mono text-xs">{r.utr ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-medium">Paid At</p>
+                  <p className="text-xs text-muted-foreground">{r.paidAt ? format(new Date(r.paidAt), "MMM d, HH:mm") : "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-medium">Created</p>
+                  <p className="text-xs text-muted-foreground">{format(new Date(r.createdAt), "MMM d, HH:mm")}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {data && data.total > 20 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{data.total} total</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</Button>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 20 >= data.total}>Next</Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block">
       <Card>
         <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-1 items-center gap-2">
@@ -285,6 +354,7 @@ function AdminPayinOrdersPanel() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

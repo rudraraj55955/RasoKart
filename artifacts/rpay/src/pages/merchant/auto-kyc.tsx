@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -182,8 +182,7 @@ export default function MerchantAutoKyc() {
   const showResultStep = status?.aadhaarVerified && status?.mobileVerified && status?.emailVerified && !isApproved;
 
   return (
-    <DashboardLayout>
-      <div className="max-w-2xl mx-auto space-y-6 py-4">
+    <div className="max-w-2xl mx-auto space-y-6 py-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <ShieldCheck className="h-6 w-6 text-emerald-500" />
@@ -338,6 +337,5 @@ export default function MerchantAutoKyc() {
           </div>
         )}
       </div>
-    </DashboardLayout>
   );
 }

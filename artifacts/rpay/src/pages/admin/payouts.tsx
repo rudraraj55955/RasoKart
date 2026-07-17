@@ -353,6 +353,90 @@ export default function AdminPayouts() {
         </Card>
       </div>
 
+      {/* Mobile cards — status filter + card list */}
+      <div className="md:hidden space-y-3">
+        <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
+          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="pending">Pending Approval</SelectItem>
+            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
+          </SelectContent>
+        </Select>
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}><CardContent className="p-4"><div className="h-20 bg-muted/50 animate-pulse rounded" /></CardContent></Card>
+          ))
+        ) : isError ? (
+          <div className="text-center py-10 text-destructive text-sm">Failed to load payouts</div>
+        ) : data?.data?.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground text-sm">No payouts found</div>
+        ) : data?.data?.map(w => {
+          const ds = getDisplayStatus(w.status as PayoutStatus, w.transferStatus as TransferStatus);
+          const beneficiary = w.payoutMode === "UPI" ? w.upiId ?? "—" : `${w.bankName} ···${(w.bankAccount ?? "").slice(-4)}`;
+          return (
+            <Card key={w.id}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm">{w.merchantName || "—"}</p>
+                    <p className="font-mono font-bold text-base text-emerald-400">₹{Number(w.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+                  </div>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0 ${ds.color}`}>{ds.label}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Mode</p>
+                    <Badge variant="outline" className="font-mono text-xs">{w.payoutMode}</Badge>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Beneficiary</p>
+                    <p className="text-xs text-muted-foreground truncate">{beneficiary}</p>
+                  </div>
+                  {w.utr && (
+                    <div className="col-span-2">
+                      <p className="text-[10px] uppercase text-muted-foreground font-medium">UTR</p>
+                      <p className="font-mono text-xs">{w.utr}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Date</p>
+                    <p className="text-xs text-muted-foreground">{format(new Date(w.createdAt), "MMM d, yyyy")}</p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-1.5 pt-1 border-t border-border/30">
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-foreground" onClick={() => setDetailId(w.id)}>
+                    <Eye className="w-3 h-3 mr-1" />Details
+                  </Button>
+                  {w.status === "pending" && (
+                    <>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-emerald-500 hover:bg-emerald-500/10" onClick={() => { setConfirmApproveId(w.id); setConfirmApproveAmount(Number(w.amount)); }} disabled={approveMutation.isPending}>
+                        <CheckCircle className="w-3 h-3 mr-1" />Approve
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-rose-500 hover:bg-rose-500/10" onClick={() => openRejectModal(w.id)}>
+                        <XCircle className="w-3 h-3 mr-1" />Reject
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {data && data.total > 20 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{data.total} total</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</Button>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page * 20 >= data.total}>Next</Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block">
       <Card>
         <CardHeader className="pb-4">
           <Select
@@ -667,6 +751,7 @@ export default function AdminPayouts() {
           </div>
         </div>
       )}
+      </div>
 
       {/* Approve confirmation dialog */}
       <Dialog open={!!confirmApproveId} onOpenChange={() => setConfirmApproveId(null)}>

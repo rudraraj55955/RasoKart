@@ -96,12 +96,12 @@ export default function AdminInvoices() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Invoices</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Invoices</h1>
           <p className="text-muted-foreground mt-1">{total} total invoices</p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
+        <Button size="sm" className="w-full sm:w-auto" onClick={() => setCreateOpen(true)}>
           <PlusCircle className="w-4 h-4 mr-2" />Create Invoice
         </Button>
       </div>
@@ -112,7 +112,7 @@ export default function AdminInvoices() {
           <Input className="pl-9" placeholder="Search merchant..." value={merchantFilter} onChange={e => setMerchantFilter(e.target.value)} />
         </div>
         <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-[150px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="draft">Draft</SelectItem>
@@ -123,83 +123,153 @@ export default function AdminInvoices() {
         </Select>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice #</TableHead>
-                <TableHead>Merchant</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                [1,2,3,4,5].map(i => (
-                  <TableRow key={i}>
-                    {[1,2,3,4,5,6,7,8,9].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
-                  </TableRow>
-                ))
-              ) : invoices.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center py-10">
-                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                      <Receipt className="w-8 h-8 opacity-30" />
-                      <p className="text-sm">No invoices yet</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : invoices
-                  .filter(inv => !merchantFilter || (inv.merchantName ?? "").toLowerCase().includes(merchantFilter.toLowerCase()))
-                  .map(inv => (
-                <TableRow key={inv.id}>
-                  <TableCell className="font-mono text-xs">{inv.invoiceNumber}</TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="text-sm font-medium">{inv.merchantName ?? `Merchant #${inv.merchantId}`}</p>
+      {/* Mobile cards */}
+      {(() => {
+        const filteredInvoices = invoices.filter(inv => !merchantFilter || (inv.merchantName ?? "").toLowerCase().includes(merchantFilter.toLowerCase()));
+        return (
+          <div className="md:hidden space-y-3">
+            {isLoading ? (
+              [1,2,3].map(i => <Card key={i}><CardContent className="p-4"><div className="h-20 bg-muted/50 animate-pulse rounded" /></CardContent></Card>)
+            ) : filteredInvoices.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 text-muted-foreground py-10">
+                <Receipt className="w-8 h-8 opacity-30" />
+                <p className="text-sm">No invoices yet</p>
+              </div>
+            ) : filteredInvoices.map(inv => (
+              <Card key={inv.id}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-muted-foreground">{inv.invoiceNumber}</p>
+                      <p className="font-semibold text-sm mt-0.5">{inv.merchantName ?? `Merchant #${inv.merchantId}`}</p>
                       {inv.merchantEmail && <p className="text-xs text-muted-foreground">{inv.merchantEmail}</p>}
                     </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{inv.planName ?? "—"}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{inv.period ?? "—"}</TableCell>
-                  <TableCell className="text-right font-mono text-sm font-semibold">₹{parseFloat(inv.amount).toLocaleString()}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {inv.dueDate ? format(new Date(inv.dueDate), "MMM d, yyyy") : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={`text-xs ${STATUS_STYLE[inv.status] ?? ""}`}>
+                    <Badge variant="outline" className={`text-xs shrink-0 ${STATUS_STYLE[inv.status] ?? ""}`}>
                       {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                     </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {format(new Date(inv.createdAt), "MMM d, yyyy")}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground font-medium">Amount</p>
+                      <p className="font-mono font-semibold">₹{parseFloat(inv.amount).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground font-medium">Plan</p>
+                      <p className="text-muted-foreground truncate">{inv.planName ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground font-medium">Period</p>
+                      <p className="text-muted-foreground">{inv.period ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground font-medium">Due</p>
+                      <p className="text-muted-foreground">{inv.dueDate ? format(new Date(inv.dueDate), "MMM d, yyyy") : "—"}</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t border-border/30">
+                    <span className="text-xs text-muted-foreground">{format(new Date(inv.createdAt), "MMM d, yyyy")}</span>
+                    <div className="flex gap-1">
                       {(inv.status === "issued" || inv.status === "draft") && (
-                        <Button size="sm" variant="ghost" className="text-emerald-500 hover:bg-emerald-500/10" onClick={() => handleMarkPaid(inv.id)}>
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />Paid
+                        <Button size="sm" variant="ghost" className="h-7 text-emerald-500 hover:bg-emerald-500/10 text-xs" onClick={() => handleMarkPaid(inv.id)}>
+                          <CheckCircle2 className="w-3 h-3 mr-1" />Paid
                         </Button>
                       )}
                       {inv.status !== "void" && inv.status !== "paid" && (
-                        <Button size="sm" variant="ghost" className="text-rose-500 hover:bg-rose-500/10" onClick={() => handleVoid(inv.id)}>
-                          <Ban className="w-3.5 h-3.5 mr-1" />Void
+                        <Button size="sm" variant="ghost" className="h-7 text-rose-500 hover:bg-rose-500/10 text-xs" onClick={() => handleVoid(inv.id)}>
+                          <Ban className="w-3 h-3 mr-1" />Void
                         </Button>
                       )}
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Desktop table */}
+      <div className="hidden md:block">
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Merchant</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Period</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Due</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    [1,2,3,4,5].map(i => (
+                      <TableRow key={i}>
+                        {[1,2,3,4,5,6,7,8,9].map(j => <TableCell key={j}><div className="h-4 bg-muted/50 animate-pulse rounded" /></TableCell>)}
+                      </TableRow>
+                    ))
+                  ) : invoices.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-10">
+                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                          <Receipt className="w-8 h-8 opacity-30" />
+                          <p className="text-sm">No invoices yet</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : invoices
+                      .filter(inv => !merchantFilter || (inv.merchantName ?? "").toLowerCase().includes(merchantFilter.toLowerCase()))
+                      .map(inv => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-mono text-xs">{inv.invoiceNumber}</TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium">{inv.merchantName ?? `Merchant #${inv.merchantId}`}</p>
+                          {inv.merchantEmail && <p className="text-xs text-muted-foreground">{inv.merchantEmail}</p>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{inv.planName ?? "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{inv.period ?? "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-sm font-semibold">₹{parseFloat(inv.amount).toLocaleString()}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {inv.dueDate ? format(new Date(inv.dueDate), "MMM d, yyyy") : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={`text-xs ${STATUS_STYLE[inv.status] ?? ""}`}>
+                          {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {format(new Date(inv.createdAt), "MMM d, yyyy")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {(inv.status === "issued" || inv.status === "draft") && (
+                            <Button size="sm" variant="ghost" className="text-emerald-500 hover:bg-emerald-500/10" onClick={() => handleMarkPaid(inv.id)}>
+                              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />Paid
+                            </Button>
+                          )}
+                          {inv.status !== "void" && inv.status !== "paid" && (
+                            <Button size="sm" variant="ghost" className="text-rose-500 hover:bg-rose-500/10" onClick={() => handleVoid(inv.id)}>
+                              <Ban className="w-3.5 h-3.5 mr-1" />Void
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {totalPages > 1 && (
         <div className="flex justify-center items-center gap-3 text-sm">

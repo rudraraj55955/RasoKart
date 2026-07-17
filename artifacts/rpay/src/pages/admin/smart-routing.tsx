@@ -21,7 +21,7 @@ import {
   ShieldCheck, Zap, Settings2, ChevronsDown, Shield, FlaskConical, Loader2,
   Copy, Download, Info, CheckCircle,
 } from "lucide-react";
-import { DashboardLayout } from "@/components/layout/dashboard-layout";
+
 import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -745,9 +745,9 @@ export default function AdminSmartRouting() {
   const activeConfig = configs[0] ?? null;
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
+    <>
+    <div className="space-y-6">
+      {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -1949,6 +1949,6 @@ export default function AdminSmartRouting() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </>
   );
 }
