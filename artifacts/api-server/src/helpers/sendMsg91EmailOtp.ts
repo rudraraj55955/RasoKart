@@ -109,9 +109,8 @@ export async function sendMsg91EmailOtp(opts: {
           },
         ],
         variables: {
+          company_name: fromName,
           otp: opts.otp,
-          purpose_label: "Login",
-          expiry_minutes: String(OTP_EXPIRY_MINUTES),
         },
       },
     ],
