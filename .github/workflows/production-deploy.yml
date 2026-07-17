@@ -200,6 +200,10 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter @workspace/scripts exec playwright install --with-deps chromium
 
+      - name: Run critical smoke tests (API health, auth, mobile header, access-control)
+        working-directory: scripts
+        run: npx playwright test --config=playwright.config.ts e2e/smoke-tests.spec.ts
+
       - name: Run settings-persistence e2e suites
         working-directory: scripts
         run: npx playwright test --config=playwright.config.ts e2e/settings-persistence.spec.ts e2e/merchant-settings-persistence.spec.ts

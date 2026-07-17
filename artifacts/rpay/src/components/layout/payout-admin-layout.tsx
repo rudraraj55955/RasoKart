@@ -57,7 +57,7 @@ export function PayoutAdminLayout({ children }: PayoutAdminLayoutProps) {
     <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-screen w-full bg-background">
         <Sidebar collapsible="icon" className="border-r border-border/50">
-          <SidebarHeader className="border-b border-border/40 px-3 py-3">
+          <SidebarHeader className="border-b border-border/40 px-3 py-3 hidden md:flex flex-col">
             <Link href="/payout-admin/dashboard" className="flex items-center gap-2 min-w-0">
               <RasoKartLogo className="h-7 w-auto shrink-0" />
               <div className="min-w-0 flex-1 overflow-hidden">

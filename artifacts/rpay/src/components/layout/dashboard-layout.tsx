@@ -803,7 +803,7 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
     <SidebarProvider>
       <div className="flex min-h-screen bg-background w-full">
         <Sidebar collapsible="offcanvas" variant="sidebar" className="border-r border-border/50">
-          <SidebarHeader className="p-4 flex flex-row items-center gap-2">
+          <SidebarHeader className="p-4 flex-row items-center gap-2 hidden md:flex">
             <Link
               href={publicMode ? "/" : isAdmin ? "/admin/dashboard" : "/merchant/dashboard"}
               className="flex items-center gap-2 flex-1 min-w-0"
