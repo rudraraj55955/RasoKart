@@ -737,11 +737,16 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
       <div className="flex min-h-screen bg-background w-full">
         <Sidebar collapsible="offcanvas" variant="sidebar" className="border-r border-border/50">
           <SidebarHeader className="p-4 flex flex-row items-center gap-2">
-            <RasoKartLogo size={32} className="shrink-0" />
-            <div className="flex flex-col flex-1 min-w-0">
-              <span className="font-bold text-sm tracking-wide">RasoKart</span>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{portalLabel}</span>
-            </div>
+            <Link
+              href={publicMode ? "/" : isAdmin ? "/admin/dashboard" : "/merchant/dashboard"}
+              className="flex items-center gap-2 flex-1 min-w-0"
+            >
+              <RasoKartLogo size={32} className="shrink-0" />
+              <div className="flex flex-col min-w-0">
+                <span className="font-bold text-sm tracking-wide">RasoKart</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{portalLabel}</span>
+              </div>
+            </Link>
             {!publicMode && user && <NotificationBell isAdmin={isAdmin} />}
           </SidebarHeader>
           <SidebarContent>
@@ -800,10 +805,13 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
           {/* Mobile top header — hamburger + branding + optional notification bell */}
           <header className="md:hidden sticky top-0 z-40 flex items-center gap-2 h-14 px-3 border-b border-border/50 bg-background/95 backdrop-blur shrink-0">
             <SidebarTrigger className="h-10 w-10 shrink-0" />
-            <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Link
+              href={publicMode ? "/" : isAdmin ? "/admin/dashboard" : "/merchant/dashboard"}
+              className="flex items-center gap-2 flex-1 min-w-0 min-h-[44px]"
+            >
               <RasoKartLogo size={22} className="shrink-0" />
               <span className="font-semibold text-sm truncate">{portalLabel}</span>
-            </div>
+            </Link>
             {!publicMode && user && <NotificationBell isAdmin={isAdmin} />}
             <InstallAppButton
               appName={portalName}
