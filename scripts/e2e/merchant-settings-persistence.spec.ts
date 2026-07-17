@@ -29,6 +29,10 @@
  *     admin bug class)
  *   - Merchant profile business name (profile.tsx — local draft state guarded
  *     by an `editing` flag)
+ *   - Merchant profile contact name (profile.tsx — same editing-flag guard)
+ *   - Merchant profile phone number (profile.tsx — same editing-flag guard)
+ *   - Merchant profile website URL (profile.tsx — same editing-flag guard;
+ *     read-only view renders as an <a> link, not a plain text node)
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -216,4 +220,70 @@ test("Merchant profile business name persists after page reload", async ({ page 
 
   // Confirm the read-only view (not just an unsaved edit box) reflects the canary.
   await expect(page.getByText(canary)).toBeVisible();
+});
+
+test("Merchant profile contact name persists after page reload", async ({ page }) => {
+  const baseline = "Baseline Contact Person";
+  await apiPatch(token, "/merchants/me", { contactName: baseline });
+
+  await goToMerchantPage(page, token, "/merchant/profile");
+
+  await page.getByRole("button", { name: /edit profile/i }).click();
+  await expect(page.locator("#contact-name")).toHaveValue(baseline, { timeout: 8_000 });
+
+  const canary = "Canary Contact Reload";
+  await page.locator("#contact-name").fill(canary);
+
+  await page.getByRole("button", { name: /save changes/i }).click();
+  await expect(page.getByText(/profile updated successfully/i)).toBeVisible({ timeout: 6_000 });
+
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+
+  // After reload editing=false, contact name appears in the read-only <p> element.
+  await expect(page.getByText(canary)).toBeVisible({ timeout: 8_000 });
+});
+
+test("Merchant profile phone number persists after page reload", async ({ page }) => {
+  const baseline = "+91 90000 00001";
+  await apiPatch(token, "/merchants/me", { phone: baseline });
+
+  await goToMerchantPage(page, token, "/merchant/profile");
+
+  await page.getByRole("button", { name: /edit profile/i }).click();
+  await expect(page.locator("#phone")).toHaveValue(baseline, { timeout: 8_000 });
+
+  const canary = "+91 99999 12345";
+  await page.locator("#phone").fill(canary);
+
+  await page.getByRole("button", { name: /save changes/i }).click();
+  await expect(page.getByText(/profile updated successfully/i)).toBeVisible({ timeout: 6_000 });
+
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+
+  // After reload editing=false, phone appears in the read-only <p> element.
+  await expect(page.getByText(canary)).toBeVisible({ timeout: 8_000 });
+});
+
+test("Merchant profile website URL persists after page reload", async ({ page }) => {
+  const baseline = "https://baseline.example.com";
+  await apiPatch(token, "/merchants/me", { website: baseline });
+
+  await goToMerchantPage(page, token, "/merchant/profile");
+
+  await page.getByRole("button", { name: /edit profile/i }).click();
+  await expect(page.locator("#website")).toHaveValue(baseline, { timeout: 8_000 });
+
+  const canary = "https://canary-reload-check.example.com";
+  await page.locator("#website").fill(canary);
+
+  await page.getByRole("button", { name: /save changes/i }).click();
+  await expect(page.getByText(/profile updated successfully/i)).toBeVisible({ timeout: 6_000 });
+
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+
+  // After reload editing=false, website renders as an <a> link whose text is the URL itself.
+  await expect(page.getByText(canary)).toBeVisible({ timeout: 8_000 });
 });
