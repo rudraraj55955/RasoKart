@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { AuthLayout } from "@/components/layout/auth-layout";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { OtpCodeInput } from "@/components/ui/otp-code-input";
 import { Button } from "@/components/ui/button";
 import { RateLimitBanner } from "@/components/ui/rate-limit-banner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -338,12 +339,14 @@ function OtpLoginTab({
             <FormItem>
               <FormLabel>Verification code</FormLabel>
               <FormControl>
-                <Input
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="123456"
+                <OtpCodeInput
+                  placeholder="------"
                   autoFocus
-                  {...field}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
                 />
               </FormControl>
               <FormMessage />
@@ -553,7 +556,15 @@ function ForgotPasswordTab({ onBack }: { onBack: () => void }) {
             <FormItem>
               <FormLabel>Verification code</FormLabel>
               <FormControl>
-                <Input inputMode="numeric" maxLength={6} placeholder="123456" autoFocus {...field} />
+                <OtpCodeInput
+                  placeholder="------"
+                  autoFocus
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -705,7 +716,7 @@ export default function AdminLogin() {
         <TabsList className="grid w-full grid-cols-3 mb-6">
           <TabsTrigger value="password">Password</TabsTrigger>
           <TabsTrigger value="otp">OTP</TabsTrigger>
-          <TabsTrigger value="forgot">Forgot</TabsTrigger>
+          <TabsTrigger value="forgot">Forgot Password</TabsTrigger>
         </TabsList>
 
         <TabsContent value="password">
