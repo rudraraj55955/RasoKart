@@ -3,7 +3,11 @@
  *
  * Verifies that KPI dashboard cards are clickable and navigate to the correct
  * destination with URL-persisted filters and visible filter chips.
- * Roles covered: Admin, Merchant, Payout Admin, Payout Merchant, Agent.
+ * Roles covered: Admin, Merchant, Payout Admin.
+ *
+ * Also verifies:
+ *   - Refresh persistence: direct navigation to a filtered URL shows the chip.
+ *   - Clear-filter reset: clicking the chip X removes the filter from the URL.
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -60,6 +64,32 @@ test.describe("Admin KPI navigation", () => {
     await card.click();
     await expect(page).toHaveURL(/\/admin\/transactions/, { timeout: 8000 });
   });
+
+  // ── Refresh persistence ────────────────────────────────────────────────────
+
+  test("filter chip appears when navigating directly to filtered URL (refresh persistence)", async ({ page }) => {
+    await injectToken(page, adminToken);
+    await page.goto(`${BASE}/admin/transactions?status=pending`);
+    // The filter chip should be rendered from the URL param — no click required
+    await expect(page.getByText(/status.*pending/i)).toBeVisible({ timeout: 10000 });
+    expect(page.url()).toContain("status=pending");
+  });
+
+  // ── Clear-filter reset ─────────────────────────────────────────────────────
+
+  test("clicking chip X clears the status filter from the URL", async ({ page }) => {
+    await injectToken(page, adminToken);
+    await page.goto(`${BASE}/admin/transactions?status=pending`);
+    // Wait for the chip to appear
+    const chip = page.locator("button").filter({ hasText: /pending/i }).first();
+    await expect(chip).toBeVisible({ timeout: 10000 });
+    // Click the X inside the chip (the button itself is the chip with the X icon)
+    await chip.click();
+    // URL should no longer contain the status filter
+    await expect(page).not.toHaveURL(/status=pending/, { timeout: 5000 });
+    // Chip should be gone
+    await expect(chip).not.toBeVisible({ timeout: 3000 });
+  });
 });
 
 // ── Merchant KPI cards ───────────────────────────────────────────────────────
@@ -107,5 +137,14 @@ test.describe("Payout Admin KPI navigation", () => {
     await card.click();
     await expect(page).toHaveURL(/status=PENDING_ADMIN_APPROVAL/, { timeout: 8000 });
     await expect(page.getByText(/Pending Approval/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  // ── Refresh persistence ────────────────────────────────────────────────────
+
+  test("payout-admin filter chip appears on direct URL navigation (refresh persistence)", async ({ page }) => {
+    await injectToken(page, adminToken);
+    await page.goto(`${BASE}/payout-admin/payouts?status=PENDING_ADMIN_APPROVAL`);
+    await expect(page.getByText(/Pending Approval/i)).toBeVisible({ timeout: 10000 });
+    expect(page.url()).toContain("status=PENDING_ADMIN_APPROVAL");
   });
 });

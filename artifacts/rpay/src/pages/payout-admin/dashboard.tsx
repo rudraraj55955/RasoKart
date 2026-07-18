@@ -4,9 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
-  Users, ArrowRightLeft, Clock, CheckCircle2, TrendingUp, UserCog, ChevronRight, Activity,
+  Users, ArrowRightLeft, Clock, TrendingUp, UserCog, ChevronRight, Activity,
 } from "lucide-react";
 import { getToken } from "@/lib/auth";
+import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
+import { PAYOUT_ADMIN_KPI_ROUTES } from "@/lib/kpi-routes";
 
 interface DashboardStats {
   payoutMerchantCount: number;
@@ -43,7 +45,7 @@ export default function PayoutAdminDashboard() {
       icon: Users,
       color: "text-primary",
       bg: "bg-primary/10",
-      href: "/payout-admin/payout-merchants",
+      href: PAYOUT_ADMIN_KPI_ROUTES.payoutMerchants,
     },
     {
       label: "Pending Approval",
@@ -51,7 +53,7 @@ export default function PayoutAdminDashboard() {
       icon: Clock,
       color: "text-amber-400",
       bg: "bg-amber-500/10",
-      href: "/payout-admin/payouts?status=PENDING_ADMIN_APPROVAL",
+      href: PAYOUT_ADMIN_KPI_ROUTES.pendingApproval,
     },
     {
       label: "Today's Payouts",
@@ -59,7 +61,7 @@ export default function PayoutAdminDashboard() {
       icon: ArrowRightLeft,
       color: "text-emerald-400",
       bg: "bg-emerald-500/10",
-      href: "/payout-admin/payouts",
+      href: PAYOUT_ADMIN_KPI_ROUTES.todayPayouts,
     },
     {
       label: "Today's Volume",
@@ -67,7 +69,7 @@ export default function PayoutAdminDashboard() {
       icon: TrendingUp,
       color: "text-cyan-400",
       bg: "bg-cyan-500/10",
-      href: "/payout-admin/payouts",
+      href: PAYOUT_ADMIN_KPI_ROUTES.todayVolume,
     },
     {
       label: "Active Agents",
@@ -75,7 +77,7 @@ export default function PayoutAdminDashboard() {
       icon: UserCog,
       color: "text-violet-400",
       bg: "bg-violet-500/10",
-      href: "/payout-admin/agents",
+      href: PAYOUT_ADMIN_KPI_ROUTES.activeAgents,
     },
   ];
 
@@ -107,27 +109,11 @@ export default function PayoutAdminDashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <KpiGrid cols={5}>
         {statCards.map((card) => (
-          <Link key={card.label} href={card.href}>
-            <Card className="border-border/50 cursor-pointer hover:border-border/80 transition-colors">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{card.label}</p>
-                    <p className={`text-2xl font-bold ${loading ? "animate-pulse text-muted-foreground" : card.color}`}>
-                      {loading ? "..." : card.value}
-                    </p>
-                  </div>
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.bg}`}>
-                    <card.icon className={`h-5 w-5 ${card.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
+          <KpiCard key={card.label} {...card} loading={loading} />
         ))}
-      </div>
+      </KpiGrid>
 
       <Card className="border-border/50">
         <CardHeader className="pb-3">

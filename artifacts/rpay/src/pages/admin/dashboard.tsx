@@ -141,19 +141,21 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </Link>
-          <Card className="border-border/50 bg-card/50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                  <Activity className="w-4 h-4 text-emerald-500" />
+          <Link href="/admin/deposits">
+            <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <Activity className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Net Balance</p>
+                    <p className="text-xl font-bold font-mono">₹{Number(stats.totalBalance ?? 0).toLocaleString()}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Net Balance</p>
-                  <p className="text-xl font-bold font-mono">₹{Number(stats.totalBalance ?? 0).toLocaleString()}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
           <Link href="/admin/transactions?status=failed">
             <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
               <CardContent className="pt-4 pb-4">

@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { getToken } from "@/lib/auth";
+import { KpiCard, KpiGrid } from "@/components/ui/kpi-card";
+import { AGENT_KPI_ROUTES } from "@/lib/kpi-routes";
 
 interface AgentDashboardStats {
   totalMerchantsOnboarded: number;
@@ -76,12 +78,12 @@ export default function AgentDashboard() {
   }
 
   const statCards = [
-    { label: "Total Merchants",   value: stats?.totalMerchantsOnboarded ?? "—", icon: Users,       color: "text-primary",     bg: "bg-primary/10",     href: "/agent/payout-merchants" },
-    { label: "Pending",           value: stats?.pendingMerchants ?? "—",         icon: Clock,        color: "text-amber-400",   bg: "bg-amber-500/10",   href: "/agent/payout-merchants?status=pending" },
-    { label: "Active",            value: stats?.approvedMerchants ?? "—",        icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", href: "/agent/payout-merchants?status=approved" },
-    { label: "Rejected",          value: stats?.rejectedMerchants ?? "—",        icon: AlertCircle,  color: "text-rose-400",    bg: "bg-rose-500/10",    href: "/agent/payout-merchants?status=rejected" },
-    { label: "Commission Earned", value: stats ? `₹${stats.totalCommissionEarned.toLocaleString()}` : "—", icon: TrendingUp, color: "text-cyan-400",   bg: "bg-cyan-500/10",   href: "/agent/commission" },
-    { label: "Withdrawable",      value: stats ? `₹${stats.withdrawableCommission.toLocaleString()}` : "—", icon: Wallet,    color: "text-violet-400", bg: "bg-violet-500/10", href: "/agent/commission" },
+    { label: "Total Merchants",   value: stats?.totalMerchantsOnboarded ?? "—", icon: Users,       color: "text-primary",     bg: "bg-primary/10",     href: AGENT_KPI_ROUTES.totalMerchants },
+    { label: "Pending",           value: stats?.pendingMerchants ?? "—",         icon: Clock,        color: "text-amber-400",   bg: "bg-amber-500/10",   href: AGENT_KPI_ROUTES.pending },
+    { label: "Active",            value: stats?.approvedMerchants ?? "—",        icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", href: AGENT_KPI_ROUTES.active },
+    { label: "Rejected",          value: stats?.rejectedMerchants ?? "—",        icon: AlertCircle,  color: "text-rose-400",    bg: "bg-rose-500/10",    href: AGENT_KPI_ROUTES.rejected },
+    { label: "Commission Earned", value: stats ? `₹${stats.totalCommissionEarned.toLocaleString()}` : "—", icon: TrendingUp, color: "text-cyan-400",   bg: "bg-cyan-500/10",   href: AGENT_KPI_ROUTES.commissionEarned },
+    { label: "Withdrawable",      value: stats ? `₹${stats.withdrawableCommission.toLocaleString()}` : "—", icon: Wallet,    color: "text-violet-400", bg: "bg-violet-500/10", href: AGENT_KPI_ROUTES.withdrawable },
   ];
 
   return (
@@ -91,32 +93,11 @@ export default function AgentDashboard() {
         <p className="text-muted-foreground">Your merchant onboarding overview</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {statCards.map((card) => {
-          const cardEl = (
-            <Card className={`border-border/50 ${card.href ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{card.label}</p>
-                    <p className={`text-2xl font-bold ${loading ? "animate-pulse text-muted-foreground" : card.color}`}>
-                      {loading ? "…" : card.value}
-                    </p>
-                  </div>
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.bg}`}>
-                    <card.icon className={`h-5 w-5 ${card.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-          return card.href ? (
-            <Link key={card.label} href={card.href}>{cardEl}</Link>
-          ) : (
-            <div key={card.label}>{cardEl}</div>
-          );
-        })}
-      </div>
+      <KpiGrid cols={3}>
+        {statCards.map((card) => (
+          <KpiCard key={card.label} {...card} loading={loading} />
+        ))}
+      </KpiGrid>
 
       <Card className="border-border/50">
         <CardHeader className="flex flex-row items-center justify-between pb-3">

@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { TrendingUp, ArrowDownLeft, QrCode, Building2, CreditCard, Infinity, AlertTriangle, ChevronRight, Lock, Plug, Link2, Hash, ShieldAlert, BadgeCheck, X, BellOff } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format, differenceInDays } from "date-fns";
+import { MERCHANT_KPI_ROUTES } from "@/lib/kpi-routes";
 import { Link } from "wouter";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
@@ -295,7 +296,7 @@ export default function MerchantDashboard() {
             value={`₹${stats.todayDepositAmount.toLocaleString()}`}
             icon={<TrendingUp className="w-4 h-4 text-primary" />}
             description={`${stats.todayDeposits} payment${stats.todayDeposits !== 1 ? "s" : ""} today`}
-            href={`/merchant/transactions?from=${format(new Date(), "yyyy-MM-dd")}&to=${format(new Date(), "yyyy-MM-dd")}`}
+            href={MERCHANT_KPI_ROUTES.todayDeposits()}
           />
           <StatCard
             title="Total Deposits"

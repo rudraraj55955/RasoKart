@@ -108,8 +108,12 @@ export default function PayoutMerchantPayouts() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["payout-merchant-payouts", page, urlFilters.status],
-    queryFn: () => apiFetch<any>(`/api/payout-merchant/payouts?page=${page}&limit=25`),
+    queryKey: ["payout-merchant-payouts", urlFilters.status ? 1 : page, urlFilters.status],
+    queryFn: () => {
+      const queryPage = urlFilters.status ? 1 : page;
+      const queryLimit = urlFilters.status ? 200 : 25;
+      return apiFetch<any>(`/api/payout-merchant/payouts?page=${queryPage}&limit=${queryLimit}`);
+    },
   });
 
   const { data: bens } = useQuery({
