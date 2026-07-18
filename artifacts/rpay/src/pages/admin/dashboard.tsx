@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useGetDashboardStats, useGetDashboardChart, useGetDashboardMerchantVolumes, useGetDashboardNotifications, useGetDashboardRisk, useGetDashboardReconSummary, useGetDashboardProviderVolumes, useGetGithubSyncStatus, useGetGithubSyncHistory, useGetDashboardWebhookHealth, useGetEkqrWebhookStats, useGetMerchantsEmailOptOutStats } from "@workspace/api-client-react";
 import { StatCard } from "@/components/ui/stat-card";
+import { ADMIN_KPI_ROUTES } from "@/lib/kpi-routes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowDownLeft, ArrowUpRight, Activity, Clock, Store, AlertTriangle, Bell, TrendingDown, ShieldAlert, ChevronRight, CheckCircle2, XCircle, GitCompareArrows, Zap, Github, Webhook, Radio, MailX } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Legend } from "recharts";
@@ -84,34 +85,34 @@ export default function AdminDashboard() {
             title="Total Deposits"
             value={`₹${Number(stats.totalDeposits).toLocaleString()}`}
             icon={<ArrowDownLeft className="w-4 h-4 text-emerald-500" />}
-            href="/admin/deposits"
+            href={ADMIN_KPI_ROUTES.totalDeposits}
           />
           <StatCard
             title="Total Payouts"
             value={`₹${Number(stats.totalWithdrawals).toLocaleString()}`}
             icon={<ArrowUpRight className="w-4 h-4 text-rose-500" />}
-            href="/admin/transactions?type=withdrawal"
+            href={ADMIN_KPI_ROUTES.withdrawals}
           />
           <StatCard
             title="Success Rate"
             value={`${((stats.successTransactions / Math.max(1, stats.successTransactions + stats.failedTransactions)) * 100).toFixed(1)}%`}
             icon={<Activity className="w-4 h-4 text-primary" />}
             description={`${stats.successTransactions} successful · ${stats.failedTransactions} failed`}
-            href="/admin/transactions?status=success"
+            href={ADMIN_KPI_ROUTES.successTx}
           />
           <StatCard
             title="Pending Actions"
             value={stats.pendingTransactions + stats.pendingMerchants}
             icon={<Clock className="w-4 h-4 text-amber-500" />}
             description={`${stats.pendingTransactions} txns · ${stats.pendingMerchants} merchants`}
-            href="/admin/transactions?status=pending"
+            href={ADMIN_KPI_ROUTES.pendingActions}
           />
         </div>
       ) : null}
 
       {stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link href="/admin/merchants">
+          <Link href={ADMIN_KPI_ROUTES.totalMerchants}>
             <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">
@@ -126,7 +127,7 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </Link>
-          <Link href="/admin/merchants?status=pending">
+          <Link href={ADMIN_KPI_ROUTES.pendingMerchants}>
             <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">
@@ -141,7 +142,7 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </Link>
-          <Link href="/admin/deposits">
+          <Link href={ADMIN_KPI_ROUTES.netBalance}>
             <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">
@@ -156,7 +157,7 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </Link>
-          <Link href="/admin/transactions?status=failed">
+          <Link href={ADMIN_KPI_ROUTES.failedTx}>
             <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">

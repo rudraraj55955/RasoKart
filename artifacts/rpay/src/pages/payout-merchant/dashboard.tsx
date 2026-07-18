@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ArrowRightLeft, Wallet, CheckCircle2, Clock, XCircle, TrendingUp, ChevronRight, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
+import { PAYOUT_MERCHANT_KPI_ROUTES } from "@/lib/kpi-routes";
 import { format } from "date-fns";
 
 async function apiFetch<T>(url: string): Promise<T> {
@@ -88,7 +89,7 @@ export default function PayoutMerchantDashboard() {
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href="/payout-merchant/wallet">
+        <Link href={PAYOUT_MERCHANT_KPI_ROUTES.availableBalance}>
           <Card className="bg-card border-border/50 cursor-pointer hover:border-border/80 transition-colors">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -102,7 +103,7 @@ export default function PayoutMerchantDashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Link href="/payout-merchant/payouts?status=Sent">
+        <Link href={PAYOUT_MERCHANT_KPI_ROUTES.totalSent}>
           <Card className="bg-card border-border/50 cursor-pointer hover:border-border/80 transition-colors">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -114,7 +115,7 @@ export default function PayoutMerchantDashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Link href="/payout-merchant/payouts?status=Processing">
+        <Link href={PAYOUT_MERCHANT_KPI_ROUTES.pending}>
           <Card className="bg-card border-border/50 cursor-pointer hover:border-border/80 transition-colors">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -126,7 +127,7 @@ export default function PayoutMerchantDashboard() {
             </CardContent>
           </Card>
         </Link>
-        <Link href="/payout-merchant/payouts?status=Failed">
+        <Link href={PAYOUT_MERCHANT_KPI_ROUTES.failed}>
           <Card className="bg-card border-border/50 cursor-pointer hover:border-border/80 transition-colors">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">

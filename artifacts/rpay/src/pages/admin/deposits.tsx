@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useCrossTabSync } from "@/hooks/use-cross-tab-sync";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { useListTransactions, useListAdminPayinOrders } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -361,10 +362,9 @@ function AdminPayinOrdersPanel() {
 
 export default function AdminDeposits() {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState(() => {
-    const raw = new URLSearchParams(window.location.search).get("status") ?? "";
-    return ["all", "success", "pending", "failed"].includes(raw) ? raw : "all";
-  });
+  const urlFilters = useUrlFilters({ status: { default: "all", allow: ["all", "success", "pending", "failed"] } });
+  const { status } = urlFilters;
+  function setStatus(v: string) { urlFilters.set("status", v); }
   const [merchantId, setMerchantId] = useState("");
   const [page, setPage] = useState(1);
 
@@ -403,13 +403,6 @@ export default function AdminDeposits() {
       setTimeout(() => renameInputRef.current?.focus(), 50);
     }
   }, [renamingId]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (status && status !== "all") params.set("status", status); else params.delete("status");
-    const next = params.toString();
-    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
-  }, [status]);
 
   const activeStatus = smartFilter?.txStatus ?? (status !== "all" ? status : undefined);
   const activeDateFrom = smartFilter?.dateFrom ?? undefined;

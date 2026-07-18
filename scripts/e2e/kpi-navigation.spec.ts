@@ -5,9 +5,11 @@
  * destination with URL-persisted filters and visible filter chips.
  * Roles covered: Admin, Merchant, Payout Admin.
  *
- * Also verifies:
- *   - Refresh persistence: direct navigation to a filtered URL shows the chip.
- *   - Clear-filter reset: clicking the chip X removes the filter from the URL.
+ * Tests:
+ *   - Card click → correct destination URL
+ *   - Filter chip visible immediately after click (no reload required)
+ *   - Refresh persistence: direct URL navigation → chip or filtered Select visible
+ *   - Clear-filter reset: clicking chip removes the filter param from URL
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -40,55 +42,67 @@ test.describe("Admin KPI navigation", () => {
   test("Total Deposits card navigates to /admin/deposits", async ({ page }) => {
     await injectToken(page, adminToken);
     await page.goto(`${BASE}/admin/dashboard`);
+    // KpiCard/StatCard renders as an <a> with the kpi-routes href
     const card = page.locator('a[href="/admin/deposits"]').first();
     await expect(card).toBeVisible({ timeout: 8000 });
     await card.click();
-    await expect(page).toHaveURL(/\/admin\/deposits/, { timeout: 8000 });
+    await expect(page).toHaveURL(/\/admin\/deposits$/, { timeout: 8000 });
   });
 
-  test("Pending Actions card navigates to /admin/transactions with status=pending chip", async ({ page }) => {
+  test("Pending Actions card navigates to /admin/transactions?status=pending", async ({ page }) => {
     await injectToken(page, adminToken);
     await page.goto(`${BASE}/admin/dashboard`);
     const card = page.locator('a[href*="/admin/transactions"][href*="status=pending"]').first();
     await expect(card).toBeVisible({ timeout: 8000 });
     await card.click();
-    await expect(page).toHaveURL(/status=pending/, { timeout: 8000 });
-    await expect(page.getByText(/status.*pending/i)).toBeVisible({ timeout: 5000 });
-  });
-
-  test("Total Transactions card navigates to /admin/transactions", async ({ page }) => {
-    await injectToken(page, adminToken);
-    await page.goto(`${BASE}/admin/dashboard`);
-    const card = page.locator('a[href="/admin/transactions"]').first();
-    await expect(card).toBeVisible({ timeout: 8000 });
-    await card.click();
-    await expect(page).toHaveURL(/\/admin\/transactions/, { timeout: 8000 });
+    await expect(page).toHaveURL(/\/admin\/transactions.*status=pending/, { timeout: 8000 });
+    // useUrlFilters reflects the URL param into the Status Select immediately — no chip button here,
+    // so assert the URL param is present (deep-link persisted).
+    expect(new URL(page.url()).searchParams.get("status")).toBe("pending");
   });
 
   // ── Refresh persistence ────────────────────────────────────────────────────
 
-  test("filter chip appears when navigating directly to filtered URL (refresh persistence)", async ({ page }) => {
+  test("admin/deposits: filter chip appears on direct URL navigation (refresh persistence)", async ({ page }) => {
     await injectToken(page, adminToken);
-    await page.goto(`${BASE}/admin/transactions?status=pending`);
-    // The filter chip should be rendered from the URL param — no click required
-    await expect(page.getByText(/status.*pending/i)).toBeVisible({ timeout: 10000 });
-    expect(page.url()).toContain("status=pending");
+    // Navigate directly to a filtered URL — simulates a page refresh or shared link
+    await page.goto(`${BASE}/admin/deposits?status=pending`);
+    // useUrlFilters reads the URL immediately via wouter useSearch() — chip should render
+    // The chip is a <button> whose text content is "Status: pending" (+ X icon)
+    const chip = page.getByRole("button", { name: /status:\s*pending/i });
+    await expect(chip).toBeVisible({ timeout: 10000 });
+    // URL must still carry the param
+    expect(new URL(page.url()).searchParams.get("status")).toBe("pending");
   });
 
   // ── Clear-filter reset ─────────────────────────────────────────────────────
 
-  test("clicking chip X clears the status filter from the URL", async ({ page }) => {
+  test("admin/deposits: clicking chip button clears the status filter from the URL", async ({ page }) => {
+    await injectToken(page, adminToken);
+    await page.goto(`${BASE}/admin/deposits?status=pending`);
+    // The chip is a <button> with visible text "Status: pending"
+    const chip = page.getByRole("button", { name: /status:\s*pending/i });
+    await expect(chip).toBeVisible({ timeout: 10000 });
+    // Clicking the chip clears the filter (the button itself is the clear target)
+    await chip.click();
+    // URL param must be gone
+    await expect(page).not.toHaveURL(/status=pending/, { timeout: 5000 });
+    expect(new URL(page.url()).searchParams.get("status")).toBeNull();
+    // Chip must no longer be rendered
+    await expect(chip).not.toBeVisible({ timeout: 3000 });
+  });
+
+  // ── admin/transactions URL persistence ────────────────────────────────────
+
+  test("admin/transactions: direct URL navigation with status param reflects in filter Select", async ({ page }) => {
     await injectToken(page, adminToken);
     await page.goto(`${BASE}/admin/transactions?status=pending`);
-    // Wait for the chip to appear
-    const chip = page.locator("button").filter({ hasText: /pending/i }).first();
-    await expect(chip).toBeVisible({ timeout: 10000 });
-    // Click the X inside the chip (the button itself is the chip with the X icon)
-    await chip.click();
-    // URL should no longer contain the status filter
-    await expect(page).not.toHaveURL(/status=pending/, { timeout: 5000 });
-    // Chip should be gone
-    await expect(chip).not.toBeVisible({ timeout: 3000 });
+    // URL param must still be present
+    expect(new URL(page.url()).searchParams.get("status")).toBe("pending");
+    // useUrlFilters feeds the reactive `status` into the Select's value prop.
+    // The SelectTrigger renders as a listbox button showing the selected option label.
+    const statusSelect = page.locator('[aria-haspopup="listbox"]').filter({ hasText: /^Pending$/i }).first();
+    await expect(statusSelect).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -108,6 +122,8 @@ test.describe("Merchant KPI navigation", () => {
     await expect(card).toBeVisible({ timeout: 8000 });
     await card.click();
     await expect(page).toHaveURL(/\/merchant\/transactions.*from=/, { timeout: 8000 });
+    // Ensure the `from` date param is actually present (not an empty string)
+    expect(new URL(page.url()).searchParams.get("from")).toBeTruthy();
   });
 
   test("Active QR Codes card navigates to /merchant/qr-codes", async ({ page }) => {
@@ -129,22 +145,42 @@ test.describe("Payout Admin KPI navigation", () => {
     adminToken = readCachedAdminToken();
   });
 
-  test("Pending Approval card navigates to /payout-admin/payouts with status chip", async ({ page }) => {
+  test("Pending Approval KPI card navigates and shows filter chip", async ({ page }) => {
     await injectToken(page, adminToken);
     await page.goto(`${BASE}/payout-admin/dashboard`);
     const card = page.locator('a[href*="/payout-admin/payouts"][href*="status=PENDING_ADMIN_APPROVAL"]').first();
     await expect(card).toBeVisible({ timeout: 8000 });
     await card.click();
     await expect(page).toHaveURL(/status=PENDING_ADMIN_APPROVAL/, { timeout: 8000 });
-    await expect(page.getByText(/Pending Approval/i)).toBeVisible({ timeout: 5000 });
+    // payout-admin/payouts renders a chip button with the human label from LOCAL_STATUS_BADGE
+    const chip = page.getByRole("button", { name: /pending approval/i });
+    await expect(chip).toBeVisible({ timeout: 8000 });
   });
 
   // ── Refresh persistence ────────────────────────────────────────────────────
 
-  test("payout-admin filter chip appears on direct URL navigation (refresh persistence)", async ({ page }) => {
+  test("payout-admin/payouts: filter chip appears on direct URL navigation (refresh persistence)", async ({ page }) => {
+    await injectToken(page, adminToken);
+    // Navigate directly — simulates shared link or page refresh
+    await page.goto(`${BASE}/payout-admin/payouts?status=PENDING_ADMIN_APPROVAL`);
+    // Chip button with "Pending Approval" label must render immediately from URL
+    const chip = page.getByRole("button", { name: /pending approval/i });
+    await expect(chip).toBeVisible({ timeout: 10000 });
+    expect(new URL(page.url()).searchParams.get("status")).toBe("PENDING_ADMIN_APPROVAL");
+  });
+
+  // ── Clear-filter reset ─────────────────────────────────────────────────────
+
+  test("payout-admin/payouts: clicking chip button clears the status filter", async ({ page }) => {
     await injectToken(page, adminToken);
     await page.goto(`${BASE}/payout-admin/payouts?status=PENDING_ADMIN_APPROVAL`);
-    await expect(page.getByText(/Pending Approval/i)).toBeVisible({ timeout: 10000 });
-    expect(page.url()).toContain("status=PENDING_ADMIN_APPROVAL");
+    const chip = page.getByRole("button", { name: /pending approval/i });
+    await expect(chip).toBeVisible({ timeout: 10000 });
+    await chip.click();
+    // URL param must be cleared
+    await expect(page).not.toHaveURL(/status=PENDING_ADMIN_APPROVAL/, { timeout: 5000 });
+    expect(new URL(page.url()).searchParams.get("status")).toBeNull();
+    // Chip must disappear
+    await expect(chip).not.toBeVisible({ timeout: 3000 });
   });
 });

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { Link } from "wouter";
 import { useListTransactions, useSearchByUtr, useGetTransaction, useAdminCreateTransaction, useAdminUpdateTransaction, useListPaymentLinks, useListMerchants, useGetPaymentLink, useListSavedFilters, useCreateSavedFilter, useDeleteSavedFilter, useListGatewayOptions } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -822,15 +823,17 @@ export default function AdminTransactions() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [utrSearch, setUtrSearch] = useState("");
-  const [type, setType] = useState(() => {
-    const raw = new URLSearchParams(window.location.search).get("type") ?? "";
-    return ["all", "deposit", "withdrawal"].includes(raw) ? raw : "all";
+  const urlFilters = useUrlFilters({
+    type:     { default: "all", allow: ["all", "deposit", "withdrawal"] },
+    status:   { default: "all", allow: ["all", "success", "pending", "failed"] },
+    provider: { default: "all" },
   });
-  const [status, setStatus] = useState(() => {
-    const raw = new URLSearchParams(window.location.search).get("status") ?? "";
-    return ["all", "success", "pending", "failed"].includes(raw) ? raw : "all";
-  });
-  const [provider, setProvider] = useState(() => new URLSearchParams(window.location.search).get("provider") ?? "all");
+  const type     = urlFilters.type as "all" | "deposit" | "withdrawal";
+  const status   = urlFilters.status as "all" | "success" | "pending" | "failed";
+  const provider = urlFilters.provider;
+  function setType(v: string)     { urlFilters.set("type", v); }
+  function setStatus(v: string)   { urlFilters.set("status", v); }
+  function setProvider(v: string) { urlFilters.set("provider", v); }
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -859,16 +862,6 @@ export default function AdminTransactions() {
   const [saveFilterName, setSaveFilterName] = useState("");
   const [saveFilterNameError, setSaveFilterNameError] = useState("");
   const saveNameInputRef = useRef<HTMLInputElement>(null);
-
-  // Sync type, status, provider filters to URL for deep-link navigation
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (type && type !== "all") params.set("type", type); else params.delete("type");
-    if (status && status !== "all") params.set("status", status); else params.delete("status");
-    if (provider && provider !== "all") params.set("provider", provider); else params.delete("provider");
-    const next = params.toString();
-    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
-  }, [type, status, provider]);
 
   useEffect(() => {
     if (showSaveInput) setTimeout(() => saveNameInputRef.current?.focus(), 50);

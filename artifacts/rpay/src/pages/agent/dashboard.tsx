@@ -78,12 +78,12 @@ export default function AgentDashboard() {
   }
 
   const statCards = [
-    { label: "Total Merchants",   value: stats?.totalMerchantsOnboarded ?? "—", icon: Users,       color: "text-primary",     bg: "bg-primary/10",     href: AGENT_KPI_ROUTES.totalMerchants },
-    { label: "Pending",           value: stats?.pendingMerchants ?? "—",         icon: Clock,        color: "text-amber-400",   bg: "bg-amber-500/10",   href: AGENT_KPI_ROUTES.pending },
-    { label: "Active",            value: stats?.approvedMerchants ?? "—",        icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", href: AGENT_KPI_ROUTES.active },
-    { label: "Rejected",          value: stats?.rejectedMerchants ?? "—",        icon: AlertCircle,  color: "text-rose-400",    bg: "bg-rose-500/10",    href: AGENT_KPI_ROUTES.rejected },
-    { label: "Commission Earned", value: stats ? `₹${stats.totalCommissionEarned.toLocaleString()}` : "—", icon: TrendingUp, color: "text-cyan-400",   bg: "bg-cyan-500/10",   href: AGENT_KPI_ROUTES.commissionEarned },
-    { label: "Withdrawable",      value: stats ? `₹${stats.withdrawableCommission.toLocaleString()}` : "—", icon: Wallet,    color: "text-violet-400", bg: "bg-violet-500/10", href: AGENT_KPI_ROUTES.withdrawable },
+    { title: "Total Merchants",   value: stats?.totalMerchantsOnboarded ?? "—", icon: Users,       color: "text-primary",     bg: "bg-primary/10",     href: AGENT_KPI_ROUTES.totalMerchants },
+    { title: "Pending",           value: stats?.pendingMerchants ?? "—",         icon: Clock,        color: "text-amber-400",   bg: "bg-amber-500/10",   href: AGENT_KPI_ROUTES.pending },
+    { title: "Active",            value: stats?.approvedMerchants ?? "—",        icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", href: AGENT_KPI_ROUTES.active },
+    { title: "Rejected",          value: stats?.rejectedMerchants ?? "—",        icon: AlertCircle,  color: "text-rose-400",    bg: "bg-rose-500/10",    href: AGENT_KPI_ROUTES.rejected },
+    { title: "Commission Earned", value: stats ? `₹${stats.totalCommissionEarned.toLocaleString()}` : "—", icon: TrendingUp, color: "text-cyan-400",   bg: "bg-cyan-500/10",   href: AGENT_KPI_ROUTES.commissionEarned },
+    { title: "Withdrawable",      value: stats ? `₹${stats.withdrawableCommission.toLocaleString()}` : "—", icon: Wallet,    color: "text-violet-400", bg: "bg-violet-500/10", href: AGENT_KPI_ROUTES.withdrawable },
   ];
 
   return (
@@ -95,7 +95,7 @@ export default function AgentDashboard() {
 
       <KpiGrid cols={3}>
         {statCards.map((card) => (
-          <KpiCard key={card.label} {...card} loading={loading} />
+          <KpiCard key={card.title} {...card} isLoading={loading} />
         ))}
       </KpiGrid>
 

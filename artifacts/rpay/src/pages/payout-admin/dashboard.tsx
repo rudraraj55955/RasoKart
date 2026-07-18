@@ -40,7 +40,7 @@ export default function PayoutAdminDashboard() {
 
   const statCards = [
     {
-      label: "Payout Merchants",
+      title: "Payout Merchants",
       value: stats?.payoutMerchantCount ?? "—",
       icon: Users,
       color: "text-primary",
@@ -48,7 +48,7 @@ export default function PayoutAdminDashboard() {
       href: PAYOUT_ADMIN_KPI_ROUTES.payoutMerchants,
     },
     {
-      label: "Pending Approval",
+      title: "Pending Approval",
       value: stats?.pendingPayoutCount ?? "—",
       icon: Clock,
       color: "text-amber-400",
@@ -56,7 +56,7 @@ export default function PayoutAdminDashboard() {
       href: PAYOUT_ADMIN_KPI_ROUTES.pendingApproval,
     },
     {
-      label: "Today's Payouts",
+      title: "Today's Payouts",
       value: stats?.todayPayoutCount ?? "—",
       icon: ArrowRightLeft,
       color: "text-emerald-400",
@@ -64,7 +64,7 @@ export default function PayoutAdminDashboard() {
       href: PAYOUT_ADMIN_KPI_ROUTES.todayPayouts,
     },
     {
-      label: "Today's Volume",
+      title: "Today's Volume",
       value: stats ? `₹${Number(stats.todayPayoutVolume).toLocaleString()}` : "—",
       icon: TrendingUp,
       color: "text-cyan-400",
@@ -72,7 +72,7 @@ export default function PayoutAdminDashboard() {
       href: PAYOUT_ADMIN_KPI_ROUTES.todayVolume,
     },
     {
-      label: "Active Agents",
+      title: "Active Agents",
       value: stats?.activeAgentCount ?? "—",
       icon: UserCog,
       color: "text-violet-400",
@@ -111,7 +111,7 @@ export default function PayoutAdminDashboard() {
 
       <KpiGrid cols={5}>
         {statCards.map((card) => (
-          <KpiCard key={card.label} {...card} loading={loading} />
+          <KpiCard key={card.title} {...card} isLoading={loading} />
         ))}
       </KpiGrid>
 
