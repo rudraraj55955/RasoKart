@@ -326,6 +326,9 @@ function EkqrConfigPanel() {
   const [ekqrEnabled, setEkqrEnabled] = useState<boolean | null>(null);
   const [ekqrEnv, setEkqrEnv] = useState<"test" | "live" | null>(null);
   const [ekqrWebhookSecret, setEkqrWebhookSecret] = useState("");
+  const [ekqrMinAmount, setEkqrMinAmount] = useState("");
+  const [ekqrMaxAmount, setEkqrMaxAmount] = useState("");
+  const [ekqrDailyLimit, setEkqrDailyLimit] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -334,7 +337,8 @@ function EkqrConfigPanel() {
   const currentEnabled = ekqrEnabled !== null ? ekqrEnabled : (ekqrConfig?.enabled ?? false);
   const currentEnv: "test" | "live" = ekqrEnv !== null ? ekqrEnv : ((ekqrConfig as any)?.env ?? "test");
   const unchanged = ekqrApiKey === "" && ekqrWebhookSecret === ""
-    && ekqrEnabled === null && ekqrEnv === null;
+    && ekqrEnabled === null && ekqrEnv === null
+    && ekqrMinAmount === "" && ekqrMaxAmount === "" && ekqrDailyLimit === "";
 
   const { guardSave, dialog: disableGuardDialog } = useDisableGatewayGuard("ekqr", undefined, {
     apiKeySet: ekqrConfig?.apiKeySet,
@@ -344,9 +348,10 @@ function EkqrConfigPanel() {
   const { mutate: saveConfig, isPending: saving } = useUpdateEkqrConfig({
     mutation: {
       onSuccess: () => {
-        toast.success("UPI Gateway settings saved");
+        toast.success("EkQR settings saved");
         setEkqrApiKey(""); setEkqrWebhookSecret("");
         setEkqrEnabled(null); setEkqrEnv(null);
+        setEkqrMinAmount(""); setEkqrMaxAmount(""); setEkqrDailyLimit("");
         qc.invalidateQueries({ queryKey: getGetEkqrConfigQueryKey() });
       },
       onError: (err: Error) => toast.error(err.message),
@@ -383,6 +388,9 @@ function EkqrConfigPanel() {
     const body: Record<string, unknown> = { enabled: currentEnabled, env: currentEnv };
     if (ekqrApiKey.trim()) body.apiKey = ekqrApiKey.trim();
     if (ekqrWebhookSecret !== "") body.webhookSecret = ekqrWebhookSecret.trim();
+    if (ekqrMinAmount.trim()) body.minAmount = parseFloat(ekqrMinAmount);
+    if (ekqrMaxAmount.trim()) body.maxAmount = parseFloat(ekqrMaxAmount);
+    if (ekqrDailyLimit.trim()) body.dailyLimit = parseFloat(ekqrDailyLimit);
     const willDisable = computeWillDisable(ekqrConfig?.enabled ?? false, currentEnabled);
     guardSave(willDisable, () => saveConfig({ data: body as any }));
   }
@@ -532,6 +540,50 @@ function EkqrConfigPanel() {
         )}
       </div>
 
+      {/* Amount Limits */}
+      <div className="rounded-lg border border-border/40 overflow-hidden">
+        <div className="p-3 bg-muted/10">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Amount Limits</p>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Min Amount (₹)</Label>
+              <Input
+                type="number"
+                className="h-9 text-xs"
+                placeholder={String((ekqrConfig as any)?.minAmount ?? 1)}
+                value={ekqrMinAmount}
+                onChange={e => setEkqrMinAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Max Amount (₹)</Label>
+              <Input
+                type="number"
+                className="h-9 text-xs"
+                placeholder={String((ekqrConfig as any)?.maxAmount ?? 200000)}
+                value={ekqrMaxAmount}
+                onChange={e => setEkqrMaxAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Daily Limit (₹)</Label>
+              <Input
+                type="number"
+                className="h-9 text-xs"
+                placeholder={String((ekqrConfig as any)?.dailyLimit ?? 1000000)}
+                value={ekqrDailyLimit}
+                onChange={e => setEkqrDailyLimit(e.target.value)}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Controls the minimum and maximum transaction amounts and the total daily collection cap for this gateway.
+          </p>
+        </div>
+      </div>
+
       {/* Test result banners */}
       {testResult && (
         <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-md border ${
@@ -572,6 +624,7 @@ function EkqrConfigPanel() {
           <Button size="sm" variant="ghost" onClick={() => {
             setEkqrApiKey(""); setEkqrWebhookSecret("");
             setEkqrEnabled(null); setEkqrEnv(null);
+            setEkqrMinAmount(""); setEkqrMaxAmount(""); setEkqrDailyLimit("");
             setTestResult(null); setWebhookTestResult(null);
           }} disabled={saving}>
             Cancel
