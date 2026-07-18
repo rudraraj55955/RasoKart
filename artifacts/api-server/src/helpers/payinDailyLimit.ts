@@ -13,8 +13,16 @@ import { eq, and, gte, sql } from "drizzle-orm";
  *    before `paid_at` existed/was populated are still counted
  *  - COALESCE(SUM(...), 0) plus a numeric fallback below guarantees this
  *    NEVER throws or returns NaN when a merchant has zero matching rows
+ *
+ * @param providerKey - When provided, only counts orders dispatched via that
+ *   specific provider (e.g. "upigateway" for EKQR daily-limit checks).
+ *   When omitted, counts across all providers (used for the global payin limit).
  */
-export async function getMerchantDailyPaidTotal(merchantId: number, startOfDay: Date): Promise<number> {
+export async function getMerchantDailyPaidTotal(
+  merchantId: number,
+  startOfDay: Date,
+  providerKey?: string,
+): Promise<number> {
   const [row] = await db
     .select({ total: sql<string>`COALESCE(SUM(${cashfreePaymentOrdersTable.amount}), 0)` })
     .from(cashfreePaymentOrdersTable)
@@ -22,6 +30,7 @@ export async function getMerchantDailyPaidTotal(merchantId: number, startOfDay: 
       eq(cashfreePaymentOrdersTable.merchantId, merchantId),
       eq(cashfreePaymentOrdersTable.status, PAYIN_ORDER_STATUS.PAID),
       gte(sql`COALESCE(${cashfreePaymentOrdersTable.paidAt}, ${cashfreePaymentOrdersTable.createdAt})`, startOfDay),
+      ...(providerKey ? [eq(cashfreePaymentOrdersTable.providerKey, providerKey)] : []),
     ));
   const total = Number(row?.total ?? 0);
   return Number.isFinite(total) ? total : 0;

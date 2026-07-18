@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, cashfreePaymentOrdersTable, providerIntegrationsTable, PAYIN_ORDER_STATUS, routingLogsTable, notificationsTable, usersTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { db, cashfreePaymentOrdersTable, providerIntegrationsTable, PAYIN_ORDER_STATUS, routingLogsTable, notificationsTable, usersTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { eq, and, gte, sql, inArray } from "drizzle-orm";
 import { cashfreeCreateOrder, cashfreeGetOrder } from "../helpers/cashfree";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { requireAuth } from "../middlewares/auth";
@@ -226,6 +226,52 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
           providerSkipReasons[decision.providerKey] = "skipped: not configured or disabled";
           excludedProviders.push(decision.providerKey);
           continue;
+        }
+
+        // ── EKQR / UPIGateway provider-level amount and daily-volume limits ──
+        // Read admin-configured EKQR limits from system_config and enforce them
+        // before dispatching. Mirrors the Cashfree min/max/daily enforcement at
+        // the top of this route — returns 422 with a clear message so the
+        // merchant never sees a raw provider error for an admin-controlled limit.
+        {
+          const ekqrLimitRows = await db
+            .select({ key: systemConfigTable.key, value: systemConfigTable.value })
+            .from(systemConfigTable)
+            .where(inArray(systemConfigTable.key, [
+              SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT,
+              SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT,
+              SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT,
+            ]));
+          const ekqrLimitMap = new Map(ekqrLimitRows.map(r => [r.key, r.value]));
+          const _parsedMin = parseFloat(ekqrLimitMap.get(SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT]);
+          const _parsedMax = parseFloat(ekqrLimitMap.get(SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT]);
+          const _parsedDaily = parseFloat(ekqrLimitMap.get(SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT]);
+          const ekqrMinAmount = Number.isFinite(_parsedMin) ? _parsedMin : 1;
+          const ekqrMaxAmount = Number.isFinite(_parsedMax) ? _parsedMax : 200000;
+          const ekqrDailyLimit = Number.isFinite(_parsedDaily) ? _parsedDaily : 1000000;
+
+          if (depositAmount < ekqrMinAmount || depositAmount > ekqrMaxAmount) {
+            req.log.warn({ event: "payin_ekqr_amount_limit_rejected", merchantId, depositAmount, ekqrMinAmount, ekqrMaxAmount }, "payin_ekqr_amount_limit_rejected");
+            res.status(422).json({ error: `Amount must be between ₹${ekqrMinAmount} and ₹${ekqrMaxAmount} for this payment method.` });
+            return;
+          }
+
+          const ekqrStartOfDay = new Date();
+          ekqrStartOfDay.setHours(0, 0, 0, 0);
+          let ekqrDailyTotal: number;
+          try {
+            ekqrDailyTotal = await getMerchantDailyPaidTotal(merchantId, ekqrStartOfDay, decision.providerKey);
+          } catch {
+            req.log.error({ event: "payin_ekqr_daily_limit_check_failed", merchantId }, "payin_ekqr_daily_limit_check_failed");
+            genericFailure();
+            return;
+          }
+
+          if (ekqrDailyTotal + depositAmount > ekqrDailyLimit) {
+            req.log.warn({ event: "payin_ekqr_daily_limit_rejected", merchantId, ekqrDailyTotal, depositAmount, ekqrDailyLimit }, "payin_ekqr_daily_limit_rejected");
+            res.status(422).json({ error: "Daily deposit limit reached for this payment method. Please try again tomorrow or contact support." });
+            return;
+          }
         }
 
         const ugPublicOrderId = `RKPAYIN_${merchantId}_${Date.now()}`;
