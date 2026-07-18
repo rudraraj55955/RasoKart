@@ -27,49 +27,35 @@ jobs:
             set -e
             APP_DIR="/var/www/rasokart"
 
-            # ── Load DATABASE_URL from the live PM2 process environment ───────
-            # The ecosystem.config.cjs on the VPS has real credentials edited
-            # in-place and is NOT committed to the repo (it contains a placeholder).
-            # We extract the DATABASE_URL from the running PM2 process env — this
-            # is the only reliable way in a non-login SSH shell.
-            export DATABASE_URL=$(pm2 env rasokart-api 2>/dev/null \
-              | grep -E '^DATABASE_URL' \
-              | head -1 \
-              | sed 's/^DATABASE_URL[[:space:]]*=[[:space:]]*//' \
-              | tr -d '"' \
-              | tr -d "'" \
-              || true)
+            # ── Load credentials BEFORE git pull overwrites ecosystem.config.cjs ──
+            # The real credentials live only in the VPS-local ecosystem.config.cjs.
+            # git reset --hard will replace it with the repo placeholder, so we must
+            # read the values first, then restore the file after the pull.
+            ECOSYSTEM="$APP_DIR/ecosystem.config.cjs"
 
-            # Fallback: parse from the ecosystem.config.cjs on disk via node
-            if [ -z "$DATABASE_URL" ]; then
-              export DATABASE_URL=$(node -e "
-                try {
-                  const c = require('$APP_DIR/ecosystem.config.cjs');
-                  const u = (c.apps[0].env || {}).DATABASE_URL || '';
-                  process.stdout.write(u);
-                } catch(e) { process.stdout.write(''); }
-              " 2>/dev/null || true)
-            fi
+            export DATABASE_URL=$(node -e "
+              try {
+                const c = require('$ECOSYSTEM');
+                process.stdout.write((c.apps[0].env || {}).DATABASE_URL || '');
+              } catch(e) { process.stdout.write(''); }
+            " 2>/dev/null || true)
 
-            # Fallback 2: pm2 show (different output format)
-            if [ -z "$DATABASE_URL" ] || echo "$DATABASE_URL" | grep -q "CHANGE_THIS"; then
-              export DATABASE_URL=$(pm2 show rasokart-api 2>/dev/null \
-                | grep DATABASE_URL \
-                | awk -F'│' '{print $3}' \
-                | tr -d '[:space:]' \
-                || true)
-            fi
+            export SESSION_SECRET=$(node -e "
+              try {
+                const c = require('$ECOSYSTEM');
+                process.stdout.write((c.apps[0].env || {}).SESSION_SECRET || '');
+              } catch(e) { process.stdout.write(''); }
+            " 2>/dev/null || true)
 
-            if [ -z "$DATABASE_URL" ] || echo "$DATABASE_URL" | grep -q "CHANGE_THIS"; then
-              echo "ERROR: Could not obtain a real DATABASE_URL from PM2 or ecosystem config."
-              echo "Please add VPS_DATABASE_URL as a GitHub secret in the production-sensitive environment."
+            if [ -z "$DATABASE_URL" ] || echo "$DATABASE_URL" | grep -qiE "CHANGE_THIS|placeholder|your_"; then
+              echo "ERROR: ecosystem.config.cjs does not contain real credentials."
+              echo "Please edit $ECOSYSTEM on the VPS and set DATABASE_URL to the real connection string."
               exit 1
             fi
-            echo "DATABASE_URL loaded (length=${#DATABASE_URL}, prefix=$(echo $DATABASE_URL | cut -c1-20)...)"
-            export SESSION_SECRET=$(pm2 env rasokart-api 2>/dev/null \
-              | grep -E '^SESSION_SECRET' | head -1 \
-              | sed 's/^SESSION_SECRET[[:space:]]*=[[:space:]]*//' \
-              | tr -d '"' | tr -d "'" || true)
+            echo "DATABASE_URL loaded (length=${#DATABASE_URL}, prefix=$(echo "$DATABASE_URL" | cut -c1-22)...)"
+
+            # Back up the live ecosystem.config.cjs so we can restore it after git pull
+            cp "$ECOSYSTEM" /tmp/rasokart_ecosystem_live.cjs
 
             # ── [1/9] Backup ──────────────────────────────────────────────────
             echo "=== [1/9] Create rollback backup ==="
@@ -87,6 +73,11 @@ jobs:
             COMMIT_SHORT=$(git rev-parse --short HEAD)
             COMMIT_FULL=$(git rev-parse HEAD)
             echo "Deployed commit: $COMMIT_FULL ($COMMIT_SHORT)"
+
+            # Restore the live ecosystem.config.cjs (git reset --hard overwrote it
+            # with the repo placeholder — the real credentials must be preserved)
+            cp /tmp/rasokart_ecosystem_live.cjs "$ECOSYSTEM"
+            echo "ecosystem.config.cjs restored with live credentials"
 
             # ── [3/9] Install ─────────────────────────────────────────────────
             echo "=== [3/9] Install dependencies ==="
