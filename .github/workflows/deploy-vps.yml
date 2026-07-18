@@ -1,0 +1,88 @@
+name: Deploy to VPS (rasokart.com)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Hetzner VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            set -e
+
+            echo "=== [1/8] Create rollback backup ==="
+            BACKUP_DIR="/home/rasokart/backups/$(date +%Y%m%d_%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            # DB backup
+            pg_dump "$DATABASE_URL" --no-password -Fc -f "$BACKUP_DIR/rasokart_db.dump" 2>/dev/null || \
+              PGPASSWORD="$PGPASSWORD" pg_dump -h localhost -U rasokart_user rasokart -Fc -f "$BACKUP_DIR/rasokart_db.dump"
+            # App dist backup
+            cp -r /home/rasokart/app/artifacts/rpay/dist "$BACKUP_DIR/rpay_dist" 2>/dev/null || true
+            echo "Backup created at $BACKUP_DIR"
+
+            echo "=== [2/8] Pull latest main branch ==="
+            cd /home/rasokart/app
+            git fetch origin main
+            git reset --hard origin/main
+            echo "Now at: $(git rev-parse --short HEAD)"
+
+            echo "=== [3/8] Install dependencies (frozen lockfile) ==="
+            pnpm install --frozen-lockfile
+
+            echo "=== [4/8] Run database migrations (schemaGuard) ==="
+            pnpm --filter @workspace/scripts run db-migrate
+
+            echo "=== [5/8] Build API server ==="
+            pnpm --filter @workspace/api-server run build
+
+            echo "=== [6/8] Restart PM2 API service ==="
+            pm2 restart rasokart-api
+            sleep 5
+
+            echo "=== [7/8] Build frontend production bundle ==="
+            BASE_PATH=/ pnpm --filter @workspace/rpay run build
+
+            echo "=== [8/8] Deep health check ==="
+            sleep 3
+            HEALTH=$(curl -sf https://rasokart.com/api/healthz/deep)
+            echo "Health response: $HEALTH"
+            STATUS=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "parse_error")
+            if [ "$STATUS" != "ok" ]; then
+              echo "HEALTH CHECK FAILED: $STATUS"
+              exit 1
+            fi
+            echo "Deploy complete. Health: $STATUS"
+
+      - name: Verify policy API routes
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            echo "=== Verifying new API routes ==="
+            for path in /api/public/contact /api/healthz; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "https://rasokart.com$path")
+              echo "$CODE $path"
+            done
+
+            echo "=== Verifying policy pages ==="
+            for path in /privacy-policy /terms-and-conditions /merchant-agreement /cookie-policy /disclaimer; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "https://rasokart.com$path")
+              echo "$CODE $path"
+            done
