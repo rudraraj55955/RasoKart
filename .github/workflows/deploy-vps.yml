@@ -26,64 +26,85 @@ jobs:
           script: |
             set -e
             APP_DIR="/var/www/rasokart"
-
-            # ── Load credentials BEFORE git pull overwrites ecosystem.config.cjs ──
-            # The real credentials live only in the VPS-local ecosystem.config.cjs.
-            # git reset --hard will replace it with the repo placeholder, so we must
-            # read the values first, then restore the file after the pull.
             ECOSYSTEM="$APP_DIR/ecosystem.config.cjs"
+            ENV_FILE="/home/rasokart/shared/.env.production"
 
-            export DATABASE_URL=$(node -e "
-              try {
-                const c = require('$ECOSYSTEM');
-                process.stdout.write((c.apps[0].env || {}).DATABASE_URL || '');
-              } catch(e) { process.stdout.write(''); }
-            " 2>/dev/null || true)
+            # ── Load production credentials ──────────────────────────────────
+            # Real credentials live only on the VPS — never in git.
+            # The canonical source is $ENV_FILE (outside the repo).
+            # On first deploy it is bootstrapped from ecosystem.config.cjs.
+            #
+            # set +x prevents bash from tracing commands so no credential
+            # values appear anywhere in the workflow logs.
+            set +x
 
-            export SESSION_SECRET=$(node -e "
-              try {
-                const c = require('$ECOSYSTEM');
-                process.stdout.write((c.apps[0].env || {}).SESSION_SECRET || '');
-              } catch(e) { process.stdout.write(''); }
-            " 2>/dev/null || true)
+            if [ ! -f "$ENV_FILE" ]; then
+              mkdir -p "$(dirname "$ENV_FILE")"
+              node -e "
+            const fs = require('fs');
+            try {
+              const c = require('$ECOSYSTEM');
+              const env = c.apps[0].env || {};
+              const lines = Object.entries(env)
+                .filter(([k,v]) => v && !String(v).match(/CHANGE_THIS|REPLACE_WITH|placeholder/i))
+                .map(([k,v]) => k + '=' + String(v).replace(/[\n\r]/g,''))
+                .join('\n');
+              fs.writeFileSync('$ENV_FILE', lines + '\n');
+            } catch(e) {
+              process.stderr.write('Bootstrap error: ' + e.message + '\n');
+              process.exit(1);
+            }
+            "
+              chmod 600 "$ENV_FILE"
+              echo "Bootstrapped $ENV_FILE from ecosystem.config.cjs"
+            fi
 
-            if [ -z "$DATABASE_URL" ] || echo "$DATABASE_URL" | grep -qiE "CHANGE_THIS|placeholder|your_"; then
-              echo "ERROR: ecosystem.config.cjs does not contain real credentials."
-              echo "Please edit $ECOSYSTEM on the VPS and set DATABASE_URL to the real connection string."
+            # Source the env file — values never echoed, never traced
+            # shellcheck disable=SC1090
+            source "$ENV_FILE"
+
+            # Validate presence only — never print the value itself
+            if [ -z "$DATABASE_URL" ] || [ "${#DATABASE_URL}" -lt 20 ]; then
+              echo "ERROR: DATABASE_URL is missing or too short in $ENV_FILE"
+              echo "On VPS: add DATABASE_URL=<connection-string> to $ENV_FILE then chmod 600 $ENV_FILE"
               exit 1
             fi
-            echo "DATABASE_URL loaded (length=${#DATABASE_URL}, prefix=$(echo "$DATABASE_URL" | cut -c1-22)...)"
+            if [ -z "$SESSION_SECRET" ]; then
+              echo "WARNING: SESSION_SECRET not in $ENV_FILE — will rely on ecosystem.config.cjs"
+            fi
 
-            # Back up the live ecosystem.config.cjs so we can restore it after git pull
-            cp "$ECOSYSTEM" /tmp/rasokart_ecosystem_live.cjs
+            echo "=== Credentials loaded from $ENV_FILE ==="
 
             # ── [1/9] Backup ──────────────────────────────────────────────────
             echo "=== [1/9] Create rollback backup ==="
             BACKUP_DIR="/var/www/rasokart-backups/$(date +%Y%m%d_%H%M%S)"
             mkdir -p "$BACKUP_DIR"
             pg_dump "$DATABASE_URL" -Fc -f "$BACKUP_DIR/rasokart_db.dump" \
-              && echo "DB backup OK" || echo "WARNING: pg_dump failed (non-fatal)"
+              && echo "DB backup OK" || echo "WARNING: pg_dump failed (non-fatal, continuing)"
             ls -dt /var/www/rasokart-backups/*/ 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
 
             # ── [2/9] Pull ────────────────────────────────────────────────────
             echo "=== [2/9] Pull latest main branch ==="
             cd "$APP_DIR"
+            # Back up ecosystem.config.cjs before git reset --hard replaces it
+            # with the placeholder version from the repo
+            cp "$ECOSYSTEM" /tmp/rasokart_ecosystem_live.cjs
             git fetch origin main
             git reset --hard origin/main
+            # Restore the live credentials file
+            cp /tmp/rasokart_ecosystem_live.cjs "$ECOSYSTEM"
+            echo "ecosystem.config.cjs restored with live credentials"
             COMMIT_SHORT=$(git rev-parse --short HEAD)
             COMMIT_FULL=$(git rev-parse HEAD)
             echo "Deployed commit: $COMMIT_FULL ($COMMIT_SHORT)"
-
-            # Restore the live ecosystem.config.cjs (git reset --hard overwrote it
-            # with the repo placeholder — the real credentials must be preserved)
-            cp /tmp/rasokart_ecosystem_live.cjs "$ECOSYSTEM"
-            echo "ecosystem.config.cjs restored with live credentials"
 
             # ── [3/9] Install ─────────────────────────────────────────────────
             echo "=== [3/9] Install dependencies ==="
             pnpm install --frozen-lockfile
 
             # ── [4/9] Migrate ─────────────────────────────────────────────────
+            # DATABASE_URL is exported from the sourced env file above and
+            # inherited by the pnpm child process — no need to pass it explicitly
             echo "=== [4/9] Run database migrations ==="
             pnpm --filter @workspace/scripts run db-migrate
 
@@ -92,6 +113,7 @@ jobs:
             pnpm --filter @workspace/api-server run build
 
             # ── [6/9] Restart PM2 ─────────────────────────────────────────────
+            # PM2 reads the restored ecosystem.config.cjs which has real credentials
             echo "=== [6/9] Restart PM2 ==="
             pm2 restart rasokart-api
             sleep 6
