@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { getToken } from "@/lib/auth";
@@ -95,7 +96,7 @@ export default function PayoutMerchantPayouts() {
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState(() => new URLSearchParams(window.location.search).get("status") ?? "");
+  const urlFilters = useUrlFilters({ status: { default: "", allow: ["Sent", "Processing", "Failed", "Reversed"] } });
   const [showCreate, setShowCreate] = useState(false);
   const [slipPayoutId, setSlipPayoutId] = useState<number | null>(null);
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string>("");
@@ -107,7 +108,7 @@ export default function PayoutMerchantPayouts() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["payout-merchant-payouts", page],
+    queryKey: ["payout-merchant-payouts", page, urlFilters.status],
     queryFn: () => apiFetch<any>(`/api/payout-merchant/payouts?page=${page}&limit=25`),
   });
 
@@ -172,15 +173,10 @@ export default function PayoutMerchantPayouts() {
     });
   };
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (statusFilter) params.set("status", statusFilter); else params.delete("status");
-    const next = params.toString();
-    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
-  }, [statusFilter]);
+  useEffect(() => { setPage(1); }, [urlFilters.status]);
 
   const allPayouts: any[] = data?.payouts ?? [];
-  const filteredPayouts = statusFilter ? allPayouts.filter((p: any) => p.displayStatus === statusFilter) : allPayouts;
+  const filteredPayouts = urlFilters.status ? allPayouts.filter((p: any) => p.displayStatus === urlFilters.status) : allPayouts;
   const totalPages = data?.totalPages ?? 1;
 
   return (
@@ -195,14 +191,14 @@ export default function PayoutMerchantPayouts() {
         </Button>
       </div>
 
-      {statusFilter && (
+      {urlFilters.status && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Active filter:</span>
           <button
-            onClick={() => setStatusFilter("")}
+            onClick={() => urlFilters.set("status", "")}
             className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/30 text-xs px-2.5 py-1 hover:bg-primary/20 transition-colors"
           >
-            Status: {statusFilter}
+            Status: {urlFilters.status}
             <X className="w-3 h-3 ml-0.5" />
           </button>
         </div>
@@ -234,8 +230,8 @@ export default function PayoutMerchantPayouts() {
           ) : filteredPayouts.length === 0 ? (
             <div className="py-14 text-center">
               <ArrowRightLeft className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">{statusFilter ? `No ${statusFilter.toLowerCase()} payouts` : "No payouts yet"}</p>
-              {!statusFilter && <Button className="mt-4" onClick={openCreateDialog}>Send First Payout</Button>}
+              <p className="text-sm text-muted-foreground">{urlFilters.status ? `No ${urlFilters.status.toLowerCase()} payouts` : "No payouts yet"}</p>
+              {!urlFilters.status && <Button className="mt-4" onClick={openCreateDialog}>Send First Payout</Button>}
             </div>
           ) : (
             <>

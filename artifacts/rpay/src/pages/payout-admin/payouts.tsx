@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, X } from "lucide-react";
 import { getToken } from "@/lib/auth";
 import { format } from "date-fns";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 
 interface Payout {
   id: number;
@@ -45,6 +46,9 @@ const TRANSFER_STATUS_BADGE: Record<string, { label: string; className: string }
 export default function PayoutAdminPayouts() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [loading, setLoading] = useState(true);
+  const urlFilters = useUrlFilters({
+    status: { default: "", allow: ["PENDING_ADMIN_APPROVAL", "APPROVED", "REJECTED", "CREATED"] },
+  });
 
   useEffect(() => {
     fetchPayouts()
@@ -53,6 +57,10 @@ export default function PayoutAdminPayouts() {
       .finally(() => setLoading(false));
   }, []);
 
+  const visiblePayouts = urlFilters.status
+    ? payouts.filter((p) => p.localStatus === urlFilters.status)
+    : payouts;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-1">
@@ -60,18 +68,31 @@ export default function PayoutAdminPayouts() {
         <p className="text-muted-foreground">All payout requests across merchants</p>
       </div>
 
+      {urlFilters.status && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Active filter:</span>
+          <button
+            onClick={() => urlFilters.set("status", "")}
+            className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/30 text-xs px-2.5 py-1 hover:bg-primary/20 transition-colors"
+          >
+            {LOCAL_STATUS_BADGE[urlFilters.status]?.label ?? urlFilters.status}
+            <X className="w-3 h-3 ml-0.5" />
+          </button>
+        </div>
+      )}
+
       <Card className="border-border/50">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-semibold">
             <ArrowRightLeft className="h-4 w-4 text-primary" />
             Recent Payouts
-            <Badge variant="outline" className="ml-1 text-xs">{payouts.length}</Badge>
+            <Badge variant="outline" className="ml-1 text-xs">{visiblePayouts.length}</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="py-12 text-center text-sm text-muted-foreground">Loading…</div>
-          ) : payouts.length === 0 ? (
+          ) : visiblePayouts.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">No payouts found.</div>
           ) : (
             <div className="overflow-x-auto">
@@ -88,7 +109,7 @@ export default function PayoutAdminPayouts() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                  {payouts.map((p) => {
+                  {visiblePayouts.map((p) => {
                     const localBadge = LOCAL_STATUS_BADGE[p.localStatus ?? ""] ?? { label: p.localStatus ?? "—", className: "bg-muted text-muted-foreground" };
                     const transferBadge = p.transferStatus ? TRANSFER_STATUS_BADGE[p.transferStatus] : null;
                     return (

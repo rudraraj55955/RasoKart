@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -36,7 +37,7 @@ export default function AgentPayoutMerchants() {
   const [merchants, setMerchants] = useState<AgentMerchant[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState(() => new URLSearchParams(window.location.search).get("status") ?? "");
+  const urlFilters = useUrlFilters({ status: { default: "", allow: ["pending", "approved", "rejected", "suspended"] } });
 
   useEffect(() => {
     fetchMerchants()
@@ -45,17 +46,10 @@ export default function AgentPayoutMerchants() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (statusFilter) params.set("status", statusFilter); else params.delete("status");
-    const next = params.toString();
-    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
-  }, [statusFilter]);
-
   const filtered = merchants.filter((m) => {
     const q = search.toLowerCase();
     const matchesSearch = m.businessName?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q);
-    const matchesStatus = !statusFilter || m.status === statusFilter;
+    const matchesStatus = !urlFilters.status || m.status === urlFilters.status;
     return matchesSearch && matchesStatus;
   });
 
@@ -76,14 +70,14 @@ export default function AgentPayoutMerchants() {
         />
       </div>
 
-      {statusFilter && (
+      {urlFilters.status && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Active filter:</span>
           <button
-            onClick={() => setStatusFilter("")}
+            onClick={() => urlFilters.set("status", "")}
             className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/30 text-xs px-2.5 py-1 hover:bg-primary/20 transition-colors capitalize"
           >
-            Status: {STATUS_BADGE[statusFilter]?.label ?? statusFilter}
+            Status: {STATUS_BADGE[urlFilters.status]?.label ?? urlFilters.status}
             <X className="w-3 h-3 ml-0.5" />
           </button>
         </div>

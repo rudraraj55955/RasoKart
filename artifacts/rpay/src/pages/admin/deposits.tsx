@@ -361,7 +361,10 @@ function AdminPayinOrdersPanel() {
 
 export default function AdminDeposits() {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState(() => new URLSearchParams(window.location.search).get("status") ?? "all");
+  const [status, setStatus] = useState(() => {
+    const raw = new URLSearchParams(window.location.search).get("status") ?? "";
+    return ["all", "success", "pending", "failed"].includes(raw) ? raw : "all";
+  });
   const [merchantId, setMerchantId] = useState("");
   const [page, setPage] = useState(1);
 

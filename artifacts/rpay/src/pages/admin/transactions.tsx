@@ -822,8 +822,14 @@ export default function AdminTransactions() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [utrSearch, setUtrSearch] = useState("");
-  const [type, setType] = useState(() => new URLSearchParams(window.location.search).get("type") ?? "all");
-  const [status, setStatus] = useState(() => new URLSearchParams(window.location.search).get("status") ?? "all");
+  const [type, setType] = useState(() => {
+    const raw = new URLSearchParams(window.location.search).get("type") ?? "";
+    return ["all", "deposit", "withdrawal"].includes(raw) ? raw : "all";
+  });
+  const [status, setStatus] = useState(() => {
+    const raw = new URLSearchParams(window.location.search).get("status") ?? "";
+    return ["all", "success", "pending", "failed"].includes(raw) ? raw : "all";
+  });
   const [provider, setProvider] = useState(() => new URLSearchParams(window.location.search).get("provider") ?? "all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");

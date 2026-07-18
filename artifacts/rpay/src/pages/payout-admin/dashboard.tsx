@@ -51,7 +51,7 @@ export default function PayoutAdminDashboard() {
       icon: Clock,
       color: "text-amber-400",
       bg: "bg-amber-500/10",
-      href: "/payout-admin/payouts",
+      href: "/payout-admin/payouts?status=PENDING_ADMIN_APPROVAL",
     },
     {
       label: "Today's Payouts",

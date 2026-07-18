@@ -295,7 +295,7 @@ export default function MerchantDashboard() {
             value={`₹${stats.todayDepositAmount.toLocaleString()}`}
             icon={<TrendingUp className="w-4 h-4 text-primary" />}
             description={`${stats.todayDeposits} payment${stats.todayDeposits !== 1 ? "s" : ""} today`}
-            href="/merchant/transactions"
+            href={`/merchant/transactions?from=${format(new Date(), "yyyy-MM-dd")}&to=${format(new Date(), "yyyy-MM-dd")}`}
           />
           <StatCard
             title="Total Deposits"
