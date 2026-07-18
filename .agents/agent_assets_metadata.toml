@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "IxS5rOrBbkaPGCnJZ5G7Z"
+uri = "file://screenshots/live-onboarding.jpg"
+type = "image"
+title = "rasokart.com — Merchant Onboarding (LIVE) — 1 header ✓"
+
+[[outputs]]
+id = "HvdPmSktOOU4yS-1PYpTh"
+uri = "file://screenshots/live-kyc.jpg"
+type = "image"
+title = "rasokart.com — Merchant Auto KYC (LIVE) — 1 header ✓"

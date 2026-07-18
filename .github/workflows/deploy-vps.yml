@@ -21,7 +21,6 @@ jobs:
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           port: ${{ secrets.VPS_PORT }}
           known_hosts: ${{ secrets.VPS_KNOWN_HOSTS }}
-          script_stop: true
           command_timeout: 20m
           script: |
             set -e
@@ -38,39 +37,49 @@ jobs:
             # values appear anywhere in the workflow logs.
             set +x
 
-            if [ ! -f "$ENV_FILE" ]; then
-              mkdir -p "$(dirname "$ENV_FILE")"
-              node -e "
-            const fs = require('fs');
-            try {
-              const c = require('$ECOSYSTEM');
-              const env = c.apps[0].env || {};
-              const lines = Object.entries(env)
-                .filter(([k,v]) => v && !String(v).match(/CHANGE_THIS|REPLACE_WITH|placeholder/i))
-                .map(([k,v]) => k + '=' + String(v).replace(/[\n\r]/g,''))
-                .join('\n');
-              fs.writeFileSync('$ENV_FILE', lines + '\n');
-            } catch(e) {
-              process.stderr.write('Bootstrap error: ' + e.message + '\n');
-              process.exit(1);
-            }
-            "
-              chmod 600 "$ENV_FILE"
-              echo "Bootstrapped $ENV_FILE from ecosystem.config.cjs"
+            # $ENV_FILE is the canonical credential source — never committed to git.
+            # Bootstrapped once from PM2 process state on first deploy; re-bootstrapped
+            # if the file contains a stale/placeholder DATABASE_URL from a prior failed run.
+
+            # Invalidate stale file: if existing file has placeholder or short DATABASE_URL, remove it.
+            if [ -f "$ENV_FILE" ]; then
+              _EXISTING_DB=$(grep '^DATABASE_URL=' "$ENV_FILE" | head -1 | sed "s/^DATABASE_URL=//;s/'//g")
+              if [ -z "$_EXISTING_DB" ] || [ "${#_EXISTING_DB}" -lt 20 ] \
+                || echo "$_EXISTING_DB" | grep -qi 'CHANGE_THIS\|REPLACE_WITH\|placeholder'; then
+                echo "Stale/placeholder DATABASE_URL found in $ENV_FILE — removing for re-bootstrap"
+                rm -f "$ENV_FILE"
+              fi
             fi
 
-            # Source the env file — values never echoed, never traced
+            if [ ! -f "$ENV_FILE" ]; then
+              mkdir -p "$(dirname "$ENV_FILE")"
+              echo "Bootstrapping $ENV_FILE from running PM2 process (pm2 jlist)..."
+              pm2 jlist > /tmp/_rk_pm2.json 2>/dev/null || echo '[]' > /tmp/_rk_pm2.json
+              # Python extractor — base64-encoded (no heredoc/YAML indentation conflict).
+              # Writes DATABASE_URL and SESSION_SECRET in single-quoted form so special
+              # characters in Postgres URLs (# $ etc) survive bash sourcing.
+              echo 'aW1wb3J0IHN5cyxqc29uLG9zLHJlCm91dCxqbGlzdD1zeXMuYXJndlsxXSxzeXMuYXJndlsyXQpkZWYgY2xlYW4odik6IHJldHVybiByZS5zdWIociJbXG5cclx4MDBdIiwiIixzdHIodikpLnN0cmlwKCkKZGVmIGJhZCh2KTogcmV0dXJuIG5vdCB2IG9yIGJvb2wocmUuc2VhcmNoKHIiQ0hBTkdFX1RISVN8UkVQTEFDRV9XSVRIfHBsYWNlaG9sZGVyIixzdHIodikscmUuSSkpCmRlZiBxKHYpOiByZXR1cm4gIiciICsgdi5yZXBsYWNlKCInIiwiJ1xcJyciKSArICInIgp0cnk6CiAgZm9yIHAgaW4ganNvbi5sb2FkKG9wZW4oamxpc3QpKToKICAgIGlmIHAuZ2V0KCJuYW1lIikhPSJyYXNva2FydC1hcGkiOiBjb250aW51ZQogICAgZT1wLmdldCgicG0yX2VudiIse30pCiAgICBkZWYgcGljayhrLGU9ZSk6CiAgICAgIGZvciBzIGluIFtlLGUuZ2V0KCJlbnYiLHt9KSxlLmdldCgiZW52X3Byb2R1Y3Rpb24iLHt9KV06CiAgICAgICAgdj1zLmdldChrLCIiKQogICAgICAgIGlmIHYgYW5kIG5vdCBiYWQodik6IHJldHVybiBjbGVhbih2KQogICAgICByZXR1cm4gIiIKICAgIGRiPXBpY2soIkRBVEFCQVNFX1VSTCIpCiAgICBzcz1waWNrKCJTRVNTSU9OX1NFQ1JFVCIpCiAgICBpZiBkYiBhbmQgbGVuKGRiKT4yMDoKICAgICAgb3MubWFrZWRpcnMob3MucGF0aC5kaXJuYW1lKG91dCksZXhpc3Rfb2s9VHJ1ZSkKICAgICAgZj1vcGVuKG91dCwidyIpCiAgICAgIGYud3JpdGUoIk5PREVfRU5WPXByb2R1Y3Rpb25cbiIpCiAgICAgIGYud3JpdGUoIlBPUlQ9MzAwMFxuIikKICAgICAgZi53cml0ZSgiREFUQUJBU0VfVVJMPSIrcShkYikrIlxuIikKICAgICAgaWYgc3M6IGYud3JpdGUoIlNFU1NJT05fU0VDUkVUPSIrcShzcykrIlxuIikKICAgICAgZi5jbG9zZSgpOyBvcy5jaG1vZChvdXQsMG82MDApCiAgICAgIHByaW50KCJCb290c3RyYXAgT0s6IHdyb3RlICIrb3V0KyIgZnJvbSBQTTIgcHJvY2VzcyIpCiAgICAgIHN5cy5leGl0KDApCmV4Y2VwdCBFeGNlcHRpb24gYXMgZXg6CiAgc3lzLnN0ZGVyci53cml0ZSgiRXJyb3I6ICIrc3RyKGV4KSsiXG4iKQpwcmludCgiRVJST1I6IERBVEFCQVNFX1VSTCBub3QgZm91bmQgaW4gUE0yIHByb2Nlc3MgKHJhc29rYXJ0LWFwaSkiKQpwcmludCgiU1NIIGludG8gVlBTIGFuZCBjcmVhdGUgIitzeXMuYXJndlsxXSsiIHdpdGggTk9ERV9FTlYgUE9SVCBEQVRBQkFTRV9VUkwgU0VTU0lPTl9TRUNSRVQiKQpzeXMuZXhpdCgxKQo=' | base64 -d > /tmp/_rk_pm2_extract.py
+              python3 /tmp/_rk_pm2_extract.py "$ENV_FILE" /tmp/_rk_pm2.json
+              BOOT_RC=$?
+              rm -f /tmp/_rk_pm2.json /tmp/_rk_pm2_extract.py
+              [ $BOOT_RC -eq 0 ] || exit 1
+            fi
+
+            # Source the env file — values never echoed, never traced.
+            # set -a auto-exports every variable so child processes (pnpm, tsx, pg_dump)
+            # inherit DATABASE_URL and SESSION_SECRET without an explicit export line.
+            set -a
             # shellcheck disable=SC1090
-            source "$ENV_FILE"
+            . "$ENV_FILE"
+            set +a
 
             # Validate presence only — never print the value itself
             if [ -z "$DATABASE_URL" ] || [ "${#DATABASE_URL}" -lt 20 ]; then
               echo "ERROR: DATABASE_URL is missing or too short in $ENV_FILE"
-              echo "On VPS: add DATABASE_URL=<connection-string> to $ENV_FILE then chmod 600 $ENV_FILE"
               exit 1
             fi
             if [ -z "$SESSION_SECRET" ]; then
-              echo "WARNING: SESSION_SECRET not in $ENV_FILE — will rely on ecosystem.config.cjs"
+              echo "WARNING: SESSION_SECRET not in $ENV_FILE"
             fi
 
             echo "=== Credentials loaded from $ENV_FILE ==="
