@@ -25,6 +25,23 @@ import Landing from "@/pages/landing";
 import UpiCollectionApi from "@/pages/upi-collection-api";
 import PrivacyPolicy from "@/pages/privacy-policy";
 
+// Legal / Policy Pages
+import TermsAndConditions from "@/pages/terms-and-conditions";
+import RefundCancellationPolicy from "@/pages/refund-cancellation-policy";
+import ServiceDeliveryPolicy from "@/pages/service-delivery-policy";
+import ContactUs from "@/pages/contact-us";
+import GrievanceRedressalPolicy from "@/pages/grievance-redressal-policy";
+import PricingFeesSettlementPolicy from "@/pages/pricing-fees-settlement-policy";
+import MerchantAgreementPage from "@/pages/merchant-agreement";
+import ProhibitedBusinesses from "@/pages/prohibited-businesses";
+import KycAmlPolicy from "@/pages/kyc-aml-policy";
+import PaymentPayoutSettlementPolicy from "@/pages/payment-payout-settlement-policy";
+import ChargebackDisputePolicy from "@/pages/chargeback-dispute-policy";
+import CookiePolicyPage from "@/pages/cookie-policy";
+import SecurityPolicyPage from "@/pages/security-policy";
+import DisclaimerPage from "@/pages/disclaimer";
+import AdminLegalPages from "@/pages/admin/legal-pages";
+
 // Auth Pages
 import AdminLogin from "@/pages/admin/login";
 import MerchantLogin from "@/pages/merchant/login";
@@ -478,6 +495,7 @@ function Router() {
       <Route path="/admin/payout-merchants"><AdminRoute component={AdminPayoutMerchants} /></Route>
       <Route path="/admin/payout-wallet-loads"><AdminRoute component={AdminPayoutWalletLoads} /></Route>
       <Route path="/admin/api-docs"><AdminRoute component={AdminApiDocs} /></Route>
+      <Route path="/admin/legal-pages"><AdminRoute component={AdminLegalPages} /></Route>
 
       {/* Legacy/broken payout routes — redirect to canonical page */}
       <Route path="/admin/cashfree-payout"><Redirect to="/admin/payout-gateway" /></Route>
@@ -542,6 +560,20 @@ function Router() {
       <Route path="/api-docs"><Redirect to="/merchant/api-docs" /></Route>
 
       <Route path="/privacy-policy" component={PrivacyPolicy} />
+      <Route path="/terms-and-conditions" component={TermsAndConditions} />
+      <Route path="/refund-cancellation-policy" component={RefundCancellationPolicy} />
+      <Route path="/service-delivery-policy" component={ServiceDeliveryPolicy} />
+      <Route path="/contact-us" component={ContactUs} />
+      <Route path="/grievance-redressal-policy" component={GrievanceRedressalPolicy} />
+      <Route path="/pricing-fees-settlement-policy" component={PricingFeesSettlementPolicy} />
+      <Route path="/merchant-agreement" component={MerchantAgreementPage} />
+      <Route path="/prohibited-businesses" component={ProhibitedBusinesses} />
+      <Route path="/kyc-aml-policy" component={KycAmlPolicy} />
+      <Route path="/payment-payout-settlement-policy" component={PaymentPayoutSettlementPolicy} />
+      <Route path="/chargeback-dispute-policy" component={ChargebackDisputePolicy} />
+      <Route path="/cookie-policy" component={CookiePolicyPage} />
+      <Route path="/security-policy" component={SecurityPolicyPage} />
+      <Route path="/disclaimer" component={DisclaimerPage} />
       <Route path="/upi-collection-api"><PublicPage component={UpiCollectionApi} /></Route>
 
       <Route path="/pay/:slug" component={PayPage} />

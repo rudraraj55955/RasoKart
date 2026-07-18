@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
 import { useCompanySettings } from "@/lib/company-settings";
+import { SiteFooter } from "@/components/ui/site-footer";
 import {
   Shield,
   Database,
@@ -544,6 +545,7 @@ export default function PrivacyPolicy() {
           </main>
         </div>
       </div>
+      <SiteFooter />
     </div>
   );
 }

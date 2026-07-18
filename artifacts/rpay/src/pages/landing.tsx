@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
+import { CookieConsent } from "@/components/ui/cookie-consent";
 import { useCompanySettings } from "@/lib/company-settings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -894,10 +895,12 @@ export default function Landing() {
               © {new Date().getFullYear()} Powered by RasoKart. Operated by {companyName}. All rights reserved.
               {" "}Support: {supportPhone}
             </span>
-            <div className="flex gap-6">
+            <div className="flex flex-wrap gap-x-6 gap-y-1.5 justify-center sm:justify-end">
               <Link href="/privacy-policy" className="transition-colors hover:text-foreground">Privacy Policy</Link>
-              <span className="cursor-pointer transition-colors hover:text-foreground">Terms of Service</span>
-              <span className="cursor-pointer transition-colors hover:text-foreground">Refund Policy</span>
+              <Link href="/terms-and-conditions" className="transition-colors hover:text-foreground">Terms of Service</Link>
+              <Link href="/refund-cancellation-policy" className="transition-colors hover:text-foreground">Refund Policy</Link>
+              <Link href="/merchant-agreement" className="transition-colors hover:text-foreground">Merchant Agreement</Link>
+              <Link href="/contact-us" className="transition-colors hover:text-foreground">Contact</Link>
             </div>
           </div>
           {footerText && (
@@ -905,6 +908,7 @@ export default function Landing() {
           )}
         </div>
       </footer>
+      <CookieConsent />
     </div>
   );
 }

@@ -1281,6 +1281,57 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ index: "notifications_cleanup_failure_repeated_dedup_idx" }, "schema_guard_index_created");
 
+  // ── policy_acceptances ────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS policy_acceptances (
+      id              SERIAL PRIMARY KEY,
+      user_id         INTEGER,
+      merchant_id     INTEGER,
+      policy_slug     TEXT NOT NULL,
+      policy_version  TEXT NOT NULL DEFAULT '1.0',
+      ip_address      TEXT,
+      user_agent      TEXT,
+      accepted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS policy_acceptances_user_idx
+      ON policy_acceptances (user_id, policy_slug)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS policy_acceptances_merchant_idx
+      ON policy_acceptances (merchant_id, policy_slug)
+  `);
+  logger.info({ table: "policy_acceptances" }, "schema_guard_table_created");
+
+  // ── contact_submissions ───────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS contact_submissions (
+      id          SERIAL PRIMARY KEY,
+      name        TEXT NOT NULL,
+      email       TEXT NOT NULL,
+      phone       TEXT,
+      subject     TEXT NOT NULL,
+      category    TEXT NOT NULL DEFAULT 'general',
+      message     TEXT NOT NULL,
+      ticket_ref  TEXT,
+      ip_address  TEXT,
+      user_agent  TEXT,
+      status      TEXT NOT NULL DEFAULT 'open',
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS contact_submissions_email_idx
+      ON contact_submissions (email, created_at)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS contact_submissions_status_idx
+      ON contact_submissions (status, created_at)
+  `);
+  logger.info({ table: "contact_submissions" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

@@ -89,6 +89,8 @@ import razorpayWebhookRouter from "./razorpayWebhook";
 import adminRazorpayRouter from "./adminRazorpay";
 import payoutMerchantSignupRouter from "./payoutMerchantSignup";
 import socialProvidersRouter from "./socialProviders";
+import publicContactRouter from "./publicContact";
+import policyAcceptanceRouter from "./policyAcceptance";
 
 const router: IRouter = Router();
 
@@ -217,5 +219,11 @@ router.use("/admin/razorpay", adminRazorpayRouter);
 
 // Social provider admin toggles (Super Admin CRUD)
 router.use("/auth/social-providers", socialProvidersRouter);
+
+// Public contact form + admin submissions view
+router.use(publicContactRouter);
+
+// Policy acceptance recording + admin view
+router.use(policyAcceptanceRouter);
 
 export default router;

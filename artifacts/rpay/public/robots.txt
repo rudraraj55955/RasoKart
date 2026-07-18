@@ -2,3 +2,14 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /admin/
+Disallow: /merchant/
+Disallow: /payout-merchant/
+Disallow: /payout-admin/
+Disallow: /agent/
+Disallow: /checkout/
+Disallow: /pay/
+Disallow: /qr-pay/
+Disallow: /va-pay/
+Disallow: /upi-collection-api/
+
+Sitemap: https://rasokart.com/sitemap.xml

@@ -89,3 +89,5 @@ export * from "./payoutWalletLoadOrders";
 export * from "./razorpayPayments";
 export * from "./authProviders";
 export * from "./otpEmailSettings";
+export * from "./policyAcceptances";
+export * from "./contactSubmissions";

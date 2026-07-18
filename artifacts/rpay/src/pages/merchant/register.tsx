@@ -379,12 +379,29 @@ export default function MerchantRegister() {
             </Link>
           </div>
 
-          <p className="text-center text-xs text-muted-foreground/60 mt-2">
-            By submitting this application, you agree to our{" "}
-            <Link href="/privacy-policy" className="hover:text-muted-foreground transition-colors underline underline-offset-2">
-              Privacy Policy
-            </Link>
-          </p>
+          <div className="flex items-start gap-2.5 mt-3 px-1">
+            <input
+              type="checkbox"
+              id="termsCheck"
+              required
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary cursor-pointer"
+            />
+            <label htmlFor="termsCheck" className="text-xs text-muted-foreground/70 leading-relaxed cursor-pointer">
+              I have read and agree to the{" "}
+              <Link href="/terms-and-conditions" className="text-primary hover:underline underline-offset-2" target="_blank">
+                Terms & Conditions
+              </Link>
+              ,{" "}
+              <Link href="/merchant-agreement" className="text-primary hover:underline underline-offset-2" target="_blank">
+                Merchant Agreement
+              </Link>
+              , and{" "}
+              <Link href="/privacy-policy" className="text-primary hover:underline underline-offset-2" target="_blank">
+                Privacy Policy
+              </Link>
+              .
+            </label>
+          </div>
         </form>
       </Form>
     </AuthLayout>
