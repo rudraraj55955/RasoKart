@@ -443,6 +443,22 @@ function ForgotPasswordTab({
     };
   }, []);
 
+  // DEV-only test hook: lets Playwright set the OTP value directly in RHF's
+  // internal _formValues store without going through the DOM input.  React 19's
+  // concurrent scheduler defers state updates that originate outside event
+  // handlers, so the Controller may not re-render the DOM — but handleSubmit
+  // reads _formValues (a plain JS ref), not the DOM, so the submitted data is
+  // still correct.  The API success response is the authoritative verification.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as Record<string, unknown>).__testForgotSetOtp = (value: string) => {
+      resetForm.setValue("otp", value, { shouldDirty: true, shouldValidate: false });
+    };
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__testForgotSetOtp;
+    };
+  }, [resetForm]);
+
   const startCooldown = () => {
     setResendIn(RESEND_COOLDOWN_SECONDS);
     if (timerRef.current) clearInterval(timerRef.current);

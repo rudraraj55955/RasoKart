@@ -161,52 +161,112 @@ test("OTP login: request code → seed known hash → enter code → verify → 
 
 // ── Test group 3: forgot-password flow ────────────────────────────────────────
 
-test("forgot password: UI tab transition verified; API reset works; sign in with new password → dashboard", async ({
+test("forgot password: request reset → seed OTP → reset via UI form → sign in with new password → dashboard", async ({
   page,
 }) => {
   const TEMP_PASS = "TempReset@8811";
   const RESET_OTP = "381967";
 
-  // ── UI contract: Forgot Password tab → reset-entry stage visible ──────────
+  // ── Request reset ────────────────────────────────────────────────────────
   await page.goto(`${BASE}/merchant/login`);
   await page.getByRole("tab", { name: "Forgot Password", exact: true }).click();
   await page.getByLabel("Email or mobile number").fill(MERCHANT3_EMAIL);
   await page.getByRole("button", { name: "Send reset code" }).click();
 
-  // The UI must transition to the OTP entry stage (proof the request was sent)
+  // Wait for the reset-entry stage (OTP input must appear)
   const otpInput = page.locator('input[autocomplete="one-time-code"]');
   await expect(otpInput).toBeVisible({ timeout: 10_000 });
 
-  // ── API contract: seed known OTP then call the reset endpoint directly ────
-  // The OTP input in the reset form uses autoFocus + a custom RHF onChange
-  // that rejects Playwright's programmatic fills via React 19's controlled-
-  // input reconciliation.  The security contract is exercised at the API level
-  // (same approach as test 6).  The "sign in with new password" UI step below
-  // proves the reset actually propagated to the DB.
+  // Seed a known OTP so the UI's verify request can succeed
   seedOtp(MERCHANT3_EMAIL, RESET_OTP, "PASSWORD_RESET");
-  const resetResp = await apiPost("/auth/merchant/password/reset", {
-    identifier: MERCHANT3_EMAIL,
-    otp: RESET_OTP,
-    newPassword: TEMP_PASS,
+
+  // ── Fill the reset form ───────────────────────────────────────────────────
+  // Setting the OTP in a React 19 concurrent-mode controlled input reliably
+  // from Playwright is non-trivial:
+  //
+  //   - fill() / pressSequentially(): React reverts the DOM value to its
+  //     controlled state ("") in headless Chromium because the Playwright
+  //     input events are not trusted by React's event delegation system.
+  //   - nativeInputValueSetter + dispatchEvent(change): React's synthetic
+  //     onChange fires and calls field.onChange("381967"), but the resulting
+  //     _formValues update is a deferred/low-priority concurrent update.
+  //     When a higher-priority event (fill on another field) arrives before
+  //     the deferred update commits, React discards it.
+  //   - Fiber memoizedProps.onChange + ReactDOM.flushSync: flushSync executes
+  //     field.onChange but the RHF Controller subscription uses a plain-JS
+  //     BehaviorSubject; the setState notification is dispatched outside
+  //     React's scheduler, so flushSync cannot capture it — the DOM never
+  //     updates even though _formValues is set correctly.
+  //
+  // Solution: ForgotPasswordTab exposes window.__testForgotSetOtp in DEV
+  // builds.  It calls resetForm.setValue() directly, which synchronously
+  // writes to RHF's internal _formValues ref.  handleSubmit reads from
+  // _formValues (not the DOM), so the submitted data is always correct even
+  // if the Controller has not yet re-rendered the DOM input.  The API
+  // accepting the OTP is the authoritative proof that the value was set.
+  await page.evaluate((value: string) => {
+    const fn = (window as unknown as Record<string, unknown>).__testForgotSetOtp;
+    if (typeof fn !== "function")
+      throw new Error(
+        "__testForgotSetOtp not found on window — is the app in DEV mode?",
+      );
+    (fn as (v: string) => void)(value);
+  }, RESET_OTP);
+
+  // Fill the password fields via normal UI interactions.
+  await page.locator('input[name="newPassword"]').fill(TEMP_PASS);
+  await page.locator('input[name="confirmPassword"]').fill(TEMP_PASS);
+
+  // Verify the password fields are set in the DOM (standard controlled inputs).
+  const pwSnapshot = await page.evaluate(() => {
+    const sel = (s: string) =>
+      (document.querySelector(s) as HTMLInputElement | null)?.value ?? null;
+    return {
+      newPassword: sel('input[name="newPassword"]'),
+      confirmPassword: sel('input[name="confirmPassword"]'),
+    };
   });
-  if (!resetResp.ok) {
+  if (
+    pwSnapshot.newPassword !== TEMP_PASS ||
+    pwSnapshot.confirmPassword !== TEMP_PASS
+  )
     throw new Error(
-      `Password reset API returned ${resetResp.status}: ${await resetResp.text()}`,
+      `Password fields not set correctly before submit: ${JSON.stringify(pwSnapshot)}`,
+    );
+
+  // ── Submit the UI form ────────────────────────────────────────────────────
+  // Intercept the reset request before clicking to capture the response body
+  // regardless of timing (avoids a race between click and waitForResponse setup).
+  const resetRespPromise = page.waitForResponse(
+    (r) =>
+      r.url().includes("/auth/merchant/password/reset") &&
+      r.request().method() === "POST",
+    { timeout: 20_000 },
+  );
+  await page.getByRole("button", { name: "Reset password" }).click();
+  const resetResp = await resetRespPromise;
+
+  if (!resetResp.ok()) {
+    const body = await resetResp.json().catch(() => ({ error: "unknown" }));
+    throw new Error(
+      `Password reset API returned ${resetResp.status()}: ${JSON.stringify(body)}`,
     );
   }
 
-  // ── UI contract: sign in with the new password and land on dashboard ──────
-  await page.goto(`${BASE}/merchant/login`);
-  // Password tab is active by default; use name-based selectors to avoid
-  // strict-mode violations from the tab panels also matching getByLabel().
+  // Successful reset — onDone() switches the active tab to "Password"
+  await expect(
+    page.getByRole("tab", { name: "Password", exact: true }),
+  ).toHaveAttribute("data-state", "active", { timeout: 10_000 });
+
+  // ── Sign in with new password ─────────────────────────────────────────────
   await page.locator('input[name="email"]').fill(MERCHANT3_EMAIL);
   await page.locator('input[name="password"]').fill(TEMP_PASS);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/merchant\/dashboard/, { timeout: 15_000 });
 
   // ── Cleanup: restore merchant3's original password ────────────────────────
-  // Seed a restore OTP directly (no /forgot call — avoids the 60-s cooldown
-  // that would still be active from the "Send reset code" click above).
+  // Seed restore OTP directly — avoids the 60 s cooldown still active from
+  // the "Send reset code" click at the top of this test.
   const RESTORE_OTP = "924516";
   seedOtp(MERCHANT3_EMAIL, RESTORE_OTP, "PASSWORD_RESET");
   const restoreResp = await apiPost("/auth/merchant/password/reset", {
