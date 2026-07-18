@@ -457,17 +457,32 @@ async function run() {
         console.log(`  ✗ ${alert.name}: ${sendResult.error}`);
       } else {
         const stats = sendResult.data?.stats;
-        const passed = stats?.sent > 0;
-        sendResults.push({
-          name: alert.name,
-          passed,
-          detail: passed
-            ? `sent=${stats.sent} attempted=${stats.attempted} failed=${stats.failed}`
-            : `stats.sent=0 (stats: ${JSON.stringify(stats)})`,
-        });
+        const sentList: string[] = sendResult.data?.recipients?.sent ?? [];
+        const statsOk = (stats?.sent ?? 0) > 0;
+        const recipientsOk = sentList.length > 0;
+        const adminInList = sentList.includes(ADMIN_EMAIL);
+        const passed = statsOk && recipientsOk && adminInList;
+
+        let detail: string;
+        if (!statsOk) {
+          detail = `stats.sent=0 (stats: ${JSON.stringify(stats)})`;
+        } else if (!recipientsOk) {
+          detail = `recipients.sent is empty — all admins may have opted out`;
+        } else if (!adminInList) {
+          detail =
+            `recipients.sent does not include expected admin ${ADMIN_EMAIL} ` +
+            `(got: ${sentList.join(", ") || "(none)"})`;
+        } else {
+          detail =
+            `sent=${stats.sent} attempted=${stats.attempted} failed=${stats.failed} ` +
+            `recipients.sent=[${sentList.join(", ")}]`;
+        }
+
+        sendResults.push({ name: alert.name, passed, detail });
         console.log(
           `  ${passed ? "✓" : "✗"} ${alert.name}: ` +
-            `sent=${stats?.sent ?? "?"} attempted=${stats?.attempted ?? "?"} failed=${stats?.failed ?? "?"}`,
+            `sent=${stats?.sent ?? "?"} attempted=${stats?.attempted ?? "?"} failed=${stats?.failed ?? "?"} ` +
+            `recipients.sent=${JSON.stringify(sentList)}`,
         );
       }
     }
