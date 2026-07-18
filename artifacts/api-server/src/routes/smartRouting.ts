@@ -37,6 +37,23 @@ import { simulateRouting } from "../helpers/smartRouter";
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
+/**
+ * Returns the lowest unused enabled-rule priority > conflictingPriority for the given config.
+ * Pass excludeId to ignore a specific rule (used during PUT to exclude the rule being edited).
+ */
+async function getNextFreePriority(configId: number, conflictingPriority: number, excludeId?: number): Promise<number> {
+  const conditions = excludeId !== undefined
+    ? and(eq(routingRulesTable.configId, configId), eq(routingRulesTable.isEnabled, true), ne(routingRulesTable.id, excludeId))
+    : and(eq(routingRulesTable.configId, configId), eq(routingRulesTable.isEnabled, true));
+  // limit(1000) keeps us compatible with the test mocks that only make .where().limit() awaitable,
+  // and is a safe ceiling — no real config will have 1000 enabled rules.
+  const rows = await db.select({ priority: routingRulesTable.priority }).from(routingRulesTable).where(conditions).limit(1000);
+  const used = new Set(rows.map(r => r.priority));
+  let candidate = conflictingPriority + 1;
+  while (used.has(candidate)) candidate++;
+  return candidate;
+}
+
 // ── Configs ───────────────────────────────────────────────────────────────────
 
 /** GET /api/smart-routing/configs */
@@ -150,8 +167,10 @@ router.post("/configs/:id/rules", async (req, res, next) => {
         eq(routingRulesTable.isEnabled, true),
       )).limit(1);
     if (conflicting) {
+      const suggestedPriority = await getNextFreePriority(configId, effectivePriority);
       res.status(409).json({
         error: `Priority ${effectivePriority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so your new rule would be silently ignored. Use a different priority number.`,
+        suggestedPriority,
       });
       return;
     }
@@ -204,10 +223,12 @@ router.post("/configs/:id/rules", async (req, res, next) => {
           .from(routingRulesTable)
           .where(and(eq(routingRulesTable.configId, cid), eq(routingRulesTable.priority, p), eq(routingRulesTable.isEnabled, true)))
           .limit(1);
+        const suggestedPriority = await getNextFreePriority(cid, p);
         res.status(409).json({
           error: conflict
             ? `Priority ${p} is already used by rule for "${conflict.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so your new rule would be silently ignored. Use a different priority number.`
             : `Priority ${p} is already used by an enabled rule in this config. Use a different priority number.`,
+          suggestedPriority,
         });
       } catch {
         res.status(409).json({ error: "A priority conflict was detected. Use a different priority number." });
@@ -243,8 +264,10 @@ router.put("/rules/:id", async (req, res, next) => {
             ne(routingRulesTable.id, id),
           )).limit(1);
         if (conflicting) {
+          const suggestedPriority = await getNextFreePriority(existing.configId, priority, id);
           res.status(409).json({
             error: `Priority ${priority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`,
+            suggestedPriority,
           });
           return;
         }
@@ -262,8 +285,10 @@ router.put("/rules/:id", async (req, res, next) => {
           ne(routingRulesTable.id, id),
         )).limit(1);
       if (conflicting) {
+        const suggestedPriority = await getNextFreePriority(existing.configId, effectivePriority, id);
         res.status(409).json({
           error: `Priority ${effectivePriority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`,
+          suggestedPriority,
         });
         return;
       }
@@ -331,10 +356,12 @@ router.put("/rules/:id", async (req, res, next) => {
             )).limit(1);
           conflict = c;
         }
+        const suggestedPriority = rule ? await getNextFreePriority(rule.configId, effectivePriority, ruleId) : undefined;
         res.status(409).json({
           error: conflict
             ? `Priority ${effectivePriority} is already used by rule for "${conflict.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`
             : `Priority ${effectivePriority} is already used by another enabled rule in this config. Use a different priority number.`,
+          ...(suggestedPriority !== undefined ? { suggestedPriority } : {}),
         });
       } catch {
         res.status(409).json({ error: "A priority conflict was detected. Use a different priority number." });

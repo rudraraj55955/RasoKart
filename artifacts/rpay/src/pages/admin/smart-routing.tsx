@@ -224,6 +224,15 @@ function buildSimulateReportText(result: SimulateResult) {
   return lines.join("\n");
 }
 
+class ApiError extends Error {
+  suggestedPriority?: number;
+  constructor(message: string, opts?: { suggestedPriority?: number }) {
+    super(message);
+    this.name = "ApiError";
+    if (opts?.suggestedPriority !== undefined) this.suggestedPriority = opts.suggestedPriority;
+  }
+}
+
 async function apiReq(path: string, method = "GET", body?: unknown) {
   const r = await fetch(`/api/smart-routing${path}`, {
     method,
@@ -232,7 +241,7 @@ async function apiReq(path: string, method = "GET", body?: unknown) {
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({ error: r.statusText }));
-    throw new Error((err as any).error ?? r.statusText);
+    throw new ApiError((err as any).error ?? r.statusText, { suggestedPriority: (err as any).suggestedPriority });
   }
   return r.json();
 }
@@ -443,6 +452,7 @@ export default function AdminSmartRouting() {
   const [rfFallbackOnly, setRfFallbackOnly] = useState(false);
   const [rfMaxRetries, setRfMaxRetries] = useState(1);
   const [rfNotes, setRfNotes] = useState("");
+  const [ruleSuggestedPriority, setRuleSuggestedPriority] = useState<number | null>(null);
 
   // Form state — alert settings
   const [alertThreshold, setAlertThreshold] = useState<number>(5);
@@ -562,7 +572,12 @@ export default function AdminSmartRouting() {
       setRuleDialogOpen(false);
       toast.success(editingRule ? "Rule updated" : "Rule added");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      if (e instanceof ApiError && e.suggestedPriority !== undefined) {
+        setRuleSuggestedPriority(e.suggestedPriority);
+      }
+      toast.error(e.message);
+    },
   });
 
   const deleteRuleM = useMutation({
@@ -598,6 +613,7 @@ export default function AdminSmartRouting() {
     setRfProviderKey("cashfree_payin");
     setRfPriority(1); setRfWeight(100); setRfMinAmount(""); setRfMaxAmount(""); setRfModes([]);
     setRfEnabled(true); setRfFallbackOnly(false); setRfMaxRetries(1); setRfNotes("");
+    setRuleSuggestedPriority(null);
     setRuleDialogOpen(true);
   }
 
@@ -609,6 +625,7 @@ export default function AdminSmartRouting() {
     setRfModes(rule.allowedPaymentModes ? JSON.parse(rule.allowedPaymentModes) : []);
     setRfEnabled(rule.isEnabled); setRfFallbackOnly(rule.isFallbackOnly ?? false);
     setRfMaxRetries(rule.maxRetries ?? 1); setRfNotes(rule.notes ?? "");
+    setRuleSuggestedPriority(null);
     setRuleDialogOpen(true);
   }
 
@@ -1618,7 +1635,7 @@ export default function AdminSmartRouting() {
                 <Label className="text-zinc-400 text-sm mb-1.5 block">Priority</Label>
                 <Input
                   type="number" min={1} value={rfPriority}
-                  onChange={e => setRfPriority(parseInt(e.target.value) || 1)}
+                  onChange={e => { setRfPriority(parseInt(e.target.value) || 1); setRuleSuggestedPriority(null); }}
                   className={`bg-zinc-900 border-zinc-700 text-white ${priorityConflictRule ? "border-amber-500/60" : ""}`}
                 />
                 {priorityConflictRule ? (
@@ -1630,6 +1647,22 @@ export default function AdminSmartRouting() {
                   </div>
                 ) : (
                   <p className="text-xs text-zinc-600 mt-1">1 = highest priority</p>
+                )}
+                {ruleSuggestedPriority !== null && (
+                  <div className="flex items-center gap-2 mt-1.5 p-2 rounded-md bg-violet-500/10 border border-violet-500/30">
+                    <Info className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                    <p className="text-xs text-violet-300 flex-1">
+                      Next free priority: <span className="font-mono font-medium">{ruleSuggestedPriority}</span>
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-xs text-violet-300 hover:text-violet-200 hover:bg-violet-500/20 px-2 py-0"
+                      onClick={() => { setRfPriority(ruleSuggestedPriority); setRuleSuggestedPriority(null); }}
+                    >
+                      Use it
+                    </Button>
+                  </div>
                 )}
               </div>
               <div>
