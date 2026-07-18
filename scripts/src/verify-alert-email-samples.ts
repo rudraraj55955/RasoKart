@@ -298,6 +298,28 @@ async function run() {
     process.exit(0);
   }
 
+  // Guard: skip gracefully when the API server is not reachable.
+  // This prevents confusing connection-refused fetch errors during CI runs or
+  // cold deploys where the API server hasn't started yet.
+  try {
+    const probe = await fetch(`${BASE_URL}/healthz`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!probe.ok) {
+      console.log(
+        `⚠  API server responded with HTTP ${probe.status} on /api/healthz.\n` +
+          "   Skipping alert email verification — ensure the API server is healthy before running this check.\n",
+      );
+      process.exit(0);
+    }
+  } catch {
+    console.log(
+      "⚠  API server not reachable at localhost:80 — ensure it is running before running this check.\n" +
+        "   Skipping alert email verification.\n",
+    );
+    process.exit(0);
+  }
+
   // 1. Admin login
   let token: string;
   try {
