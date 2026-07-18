@@ -32,6 +32,7 @@ const API_SERVER_DIR = path.join(ROOT, "artifacts/api-server");
 
 const MOCKED_TEST = "artifacts/api-server/src/routes/smartRouting.priority-conflict.test.ts";
 const REALDB_TEST = "artifacts/api-server/src/routes/smartRouting.priority-conflict.realdb.test.ts";
+const PUT_MOCKED_TEST = "artifacts/api-server/src/routes/smartRouting.priority-conflict.put.test.ts";
 
 /**
  * Title strings that MUST appear as active (non-skipped) tests in their respective files.
@@ -62,6 +63,19 @@ const FILE_SPECS: FileSpec[] = [
       {
         description: "real-DB concurrent POSTs test case",
         titleFragment: "two truly concurrent POSTs at the same priority",
+      },
+    ],
+  },
+  {
+    relPath: PUT_MOCKED_TEST,
+    requiredTitles: [
+      {
+        description: "PUT concurrent-saves (Promise.all) test case",
+        titleFragment: "concurrent saves (Promise.all)",
+      },
+      {
+        description: "PUT stale-tab sequential save test case",
+        titleFragment: "stale-tab sequential save",
       },
     ],
   },
@@ -177,7 +191,55 @@ for (const { description, titleFragment } of mockedSpec.requiredTitles) {
   }
 }
 
-// ─── Step 3: Real-DB suite — required when DATABASE_URL is set ───
+// ─── Step 3: Run the PUT mocked suite with TAP reporter; verify active execution ───
+
+console.log("\n--- Running PUT mocked test suite (TAP) ---");
+const putMockedTestAbs = path.join(ROOT, PUT_MOCKED_TEST);
+
+const putMockedResult = spawnSync(
+  "node",
+  ["--import", "tsx", "--test", "--test-reporter=tap", putMockedTestAbs],
+  {
+    cwd: API_SERVER_DIR,
+    env: { ...process.env, NODE_ENV: "test" },
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
+  },
+);
+
+const putMockedTap = (putMockedResult.stdout ?? "") + (putMockedResult.stderr ?? "");
+process.stdout.write(putMockedTap);
+
+if (putMockedResult.status !== 0) {
+  fail("PUT mocked test suite exited non-zero — a PUT priority-conflict regression may have been introduced");
+} else {
+  ok("PUT mocked test suite exited 0");
+}
+
+// Parse TAP: confirm each required title ran as a passing (non-skipped) test.
+const putMockedSpec = FILE_SPECS.find((s) => s.relPath === PUT_MOCKED_TEST)!;
+for (const { description, titleFragment } of putMockedSpec.requiredTitles) {
+  const tapLines = putMockedTap.split("\n");
+  const matchingLine = tapLines.find((l) => l.includes(titleFragment));
+  if (!matchingLine) {
+    fail(
+      `Required PUT test "${titleFragment}" (${description}) did not appear in TAP output — ` +
+      `it was not run at all (deleted at runtime or file was not loaded).`,
+    );
+  } else if (/# SKIP/i.test(matchingLine)) {
+    fail(
+      `Required PUT test "${titleFragment}" (${description}) was SKIPPED in the TAP output: ${matchingLine.trim()}`,
+    );
+  } else if (/^not ok /i.test(matchingLine.trimStart())) {
+    fail(
+      `Required PUT test "${titleFragment}" (${description}) FAILED in the TAP output: ${matchingLine.trim()}`,
+    );
+  } else {
+    ok(`TAP confirms active PUT execution: "${titleFragment}"`);
+  }
+}
+
+// ─── Step 4: Real-DB suite — required when DATABASE_URL is set ───
 
 console.log("\n--- Real-DB test suite ---");
 if (!process.env["DATABASE_URL"]) {
