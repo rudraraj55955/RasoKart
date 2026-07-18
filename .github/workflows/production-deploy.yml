@@ -208,6 +208,10 @@ jobs:
         working-directory: scripts
         run: npx playwright test --config=playwright.config.ts e2e/settings-persistence.spec.ts e2e/merchant-settings-persistence.spec.ts
 
+      - name: Run OTP auth e2e suite (login + forgot-password + resend invalidation)
+        working-directory: scripts
+        run: npx playwright test --config=playwright.config.ts e2e/otp-auth.spec.ts
+
       - name: Dump server logs on failure
         if: failure()
         run: |
