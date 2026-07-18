@@ -31,6 +31,12 @@ export function CookieConsent() {
   const [showManage, setShowManage] = useState(false);
 
   useEffect(() => {
+    // Suppress banner in automated browser sessions (Playwright, Selenium, etc.)
+    if (typeof navigator !== "undefined" && navigator.webdriver) {
+      setChoice("essential");
+      setLoaded(true);
+      return;
+    }
     const stored = getStoredConsent();
     setChoice(stored);
     setLoaded(true);
