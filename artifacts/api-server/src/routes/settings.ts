@@ -363,18 +363,26 @@ router.post("/finance_report_email/send-sample", async (req, res, next) => {
     const filename = `sample-reconciliation-report-${fmt(today)}.csv`;
     const subject = `[RasoKart] Sample Finance Report — ${fmt(dateFrom)} to ${fmt(today)} (preview)`;
 
-    const [primaryRecipient, ...ccRecipients] = recipients;
+    const results = await Promise.allSettled(
+      recipients.map(email =>
+        sendMail({ to: email, subject, html, attachments: [{ filename, content: csv, contentType: "text/csv" }] })
+      )
+    );
 
-    const sent = await sendMail({
-      to: primaryRecipient,
-      ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
-      subject,
-      html,
-      attachments: [{ filename, content: csv, contentType: "text/csv" }],
+    const sentEmails: string[] = [];
+    const failedEmails: string[] = [];
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value) {
+        sentEmails.push(recipients[i]!);
+      } else {
+        failedEmails.push(recipients[i]!);
+      }
     });
+    const sentCount = sentEmails.length;
+    const failedCount = failedEmails.length;
 
-    if (!sent) {
-      res.status(502).json({ error: "SMTP is not configured or failed to send — check your SMTP settings" });
+    if (sentCount === 0) {
+      res.status(502).json({ error: "SMTP is not configured or failed to send — check your SMTP settings", recipients: { sent: sentEmails, failed: failedEmails } });
       return;
     }
 
@@ -385,14 +393,18 @@ router.post("/finance_report_email/send-sample", async (req, res, next) => {
         action: "sample_report_email_sent",
         targetType: "system_config",
         targetId: null,
-        details: JSON.stringify({ recipients, overrideUsed: Boolean(overrideTo) }),
+        details: JSON.stringify({ recipients, overrideUsed: Boolean(overrideTo), sent: sentCount, failed: failedCount }),
         ipAddress: req.ip ?? null,
       });
     } catch (auditErr) {
       req.log.error({ err: auditErr }, "Failed to write audit log for sample_report_email_sent");
     }
 
-    res.json({ ok: true, to: recipients.join(", ") });
+    res.json({
+      ok: true,
+      stats: { attempted: recipients.length, sent: sentCount, failed: failedCount },
+      recipients: { sent: sentEmails, failed: failedEmails },
+    });
   } catch (err) {
     next(err);
   }
@@ -535,17 +547,20 @@ router.post("/credential-rotation-alert/send-sample", async (req, res, next) => 
       req.log.error({ err: auditErr }, "Failed to write audit log for credential rotation alert test email");
     }
 
+    const recipients = { sent: stats.sentEmails, failed: stats.failedEmails };
+
     if (stats.sent === 0) {
       res.status(502).json({
         error: stats.attempted === 0
           ? "No active admin recipients found — ensure at least one admin account is active"
           : `Delivery failed — ${stats.failed} of ${stats.attempted} recipient${stats.attempted !== 1 ? "s" : ""} could not be reached. Check SMTP credentials and server logs.`,
         stats,
+        recipients,
       });
       return;
     }
 
-    res.json({ ok: true, gateway: resolvedGateway, stats });
+    res.json({ ok: true, gateway: resolvedGateway, stats, recipients });
   } catch (err) {
     next(err);
   }

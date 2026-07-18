@@ -254,6 +254,8 @@ export default function AdminSettings() {
   const [credRotationTestGateway, setCredRotationTestGateway] = useState("cashfree");
   const [credRotationTestResult, setCredRotationTestResult] = useState<"success" | "error" | null>(null);
   const [credRotationTestMessage, setCredRotationTestMessage] = useState("");
+  const [credRotationSentRecipients, setCredRotationSentRecipients] = useState<string[]>([]);
+  const [credRotationFailedRecipients, setCredRotationFailedRecipients] = useState<string[]>([]);
   const [sendingCredRotationTest, setSendingCredRotationTest] = useState(false);
   const [previewingCredRotationEmail, setPreviewingCredRotationEmail] = useState(false);
 
@@ -567,21 +569,53 @@ export default function AdminSettings() {
   const [sampleReportTo, setSampleReportTo] = useState<string>("");
   const [sampleReportResult, setSampleReportResult] = useState<"success" | "error" | null>(null);
   const [sampleReportMessage, setSampleReportMessage] = useState("");
+  const [sampleReportSentRecipients, setSampleReportSentRecipients] = useState<string[]>([]);
+  const [sampleReportFailedRecipients, setSampleReportFailedRecipients] = useState<string[]>([]);
 
-  const { mutate: sendSampleReport, isPending: sendingSample } = useMutation({
-    mutationFn: () => {
+  const [sendingSample, setSendingSample] = useState(false);
+
+  async function sendSampleReport() {
+    setSendingSample(true);
+    setSampleReportResult(null);
+    setSampleReportSentRecipients([]);
+    setSampleReportFailedRecipients([]);
+    try {
       const overrideTrimmed = sampleReportTo.trim();
-      return apiPost("/settings/finance_report_email/send-sample", overrideTrimmed ? { to: overrideTrimmed } : {});
-    },
-    onSuccess: (res: { to: string }) => {
-      setSampleReportResult("success");
-      setSampleReportMessage(`Sample report sent to ${res.to} — check your inbox`);
-    },
-    onError: (err: Error) => {
+      const body = overrideTrimmed ? { to: overrideTrimmed } : {};
+      const httpRes = await fetch("/api/settings/finance_report_email/send-sample", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      let parsed: any = {};
+      try { parsed = await httpRes.json(); } catch {}
+      const sentList: string[] = parsed.recipients?.sent ?? [];
+      const failedList: string[] = parsed.recipients?.failed ?? [];
+      setSampleReportSentRecipients(sentList);
+      setSampleReportFailedRecipients(failedList);
+      if (!httpRes.ok) {
+        setSampleReportResult("error");
+        setSampleReportMessage(parsed.error ?? "Send failed");
+      } else {
+        const stats = parsed.stats as { attempted: number; sent: number; failed: number } | undefined;
+        if (stats && stats.failed > 0 && stats.sent > 0) {
+          setSampleReportResult("error");
+          setSampleReportMessage(`Partial delivery — ${stats.sent} of ${stats.attempted} sent, ${stats.failed} failed. Check SMTP settings.`);
+        } else {
+          setSampleReportResult("success");
+          const count = stats?.sent ?? sentList.length;
+          setSampleReportMessage(`Sample report sent to ${count} recipient${count === 1 ? "" : "s"} — check your inbox`);
+        }
+      }
+    } catch (err: any) {
+      setSampleReportSentRecipients([]);
+      setSampleReportFailedRecipients([]);
       setSampleReportResult("error");
-      setSampleReportMessage(err.message);
-    },
-  });
+      setSampleReportMessage(err.message ?? "Send failed");
+    } finally {
+      setSendingSample(false);
+    }
+  }
 
   const sampleReportToTrimmed = sampleReportTo.trim();
   const sampleReportToInvalid = sampleReportToTrimmed.length > 0 && !EMAIL_REGEX.test(sampleReportToTrimmed);
@@ -1792,15 +1826,42 @@ export default function AdminSettings() {
             )}
 
             {sampleReportResult === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span>{sampleReportMessage}</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>{sampleReportMessage}</span>
+                </div>
+                {sampleReportSentRecipients.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pl-1">
+                    {sampleReportSentRecipients.map(email => (
+                      <span key={email} className="inline-flex items-center gap-1 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5">
+                        <CheckCircle2 className="w-2.5 h-2.5" />{email}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {sampleReportResult === "error" && (
-              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{sampleReportMessage}</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{sampleReportMessage}</span>
+                </div>
+                {(sampleReportSentRecipients.length > 0 || sampleReportFailedRecipients.length > 0) && (
+                  <div className="flex flex-wrap gap-1 pl-1">
+                    {sampleReportSentRecipients.map(email => (
+                      <span key={email} className="inline-flex items-center gap-1 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5">
+                        <CheckCircle2 className="w-2.5 h-2.5" />{email}
+                      </span>
+                    ))}
+                    {sampleReportFailedRecipients.map(email => (
+                      <span key={email} className="inline-flex items-center gap-1 text-xs bg-red-500/10 border border-red-500/20 text-red-300 rounded px-1.5 py-0.5">
+                        <AlertCircle className="w-2.5 h-2.5" />{email}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -3395,11 +3456,26 @@ export default function AdminSettings() {
                 variant="outline"
                 onClick={async () => {
                   setCredRotationTestResult(null);
+                  setCredRotationSentRecipients([]);
+                  setCredRotationFailedRecipients([]);
                   setSendingCredRotationTest(true);
                   try {
-                    const res = await apiPost("/settings/credential-rotation-alert/send-sample", { gateway: credRotationTestGateway });
-                    const stats = res.stats as { attempted: number; sent: number; failed: number } | undefined;
-                    if (stats && stats.failed > 0) {
+                    const httpRes = await fetch("/api/settings/credential-rotation-alert/send-sample", {
+                      method: "POST",
+                      headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+                      body: JSON.stringify({ gateway: credRotationTestGateway }),
+                    });
+                    let parsed: any = {};
+                    try { parsed = await httpRes.json(); } catch {}
+                    const stats = parsed.stats as { attempted: number; sent: number; failed: number } | undefined;
+                    const sentList: string[] = parsed.recipients?.sent ?? [];
+                    const failedList: string[] = parsed.recipients?.failed ?? [];
+                    setCredRotationSentRecipients(sentList);
+                    setCredRotationFailedRecipients(failedList);
+                    if (!httpRes.ok) {
+                      setCredRotationTestResult("error");
+                      setCredRotationTestMessage(parsed.error ?? "Send failed");
+                    } else if (stats && stats.failed > 0 && stats.sent > 0) {
                       setCredRotationTestResult("error");
                       setCredRotationTestMessage(`Partial delivery — ${stats.sent} of ${stats.attempted} sent (${stats.failed} failed). Check SMTP settings.`);
                     } else {
@@ -3408,6 +3484,8 @@ export default function AdminSettings() {
                       setCredRotationTestMessage(`Test alert sent to ${count} admin${stats?.sent === 1 ? "" : "s"} — check your inbox`);
                     }
                   } catch (err: any) {
+                    setCredRotationSentRecipients([]);
+                    setCredRotationFailedRecipients([]);
                     setCredRotationTestResult("error");
                     setCredRotationTestMessage(err.message ?? "Send failed");
                   } finally {
@@ -3453,15 +3531,42 @@ export default function AdminSettings() {
             </div>
 
             {credRotationTestResult === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span>{credRotationTestMessage}</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>{credRotationTestMessage}</span>
+                </div>
+                {credRotationSentRecipients.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pl-1">
+                    {credRotationSentRecipients.map(email => (
+                      <span key={email} className="inline-flex items-center gap-1 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5">
+                        <CheckCircle2 className="w-2.5 h-2.5" />{email}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {credRotationTestResult === "error" && (
-              <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{credRotationTestMessage}</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{credRotationTestMessage}</span>
+                </div>
+                {(credRotationSentRecipients.length > 0 || credRotationFailedRecipients.length > 0) && (
+                  <div className="flex flex-wrap gap-1 pl-1">
+                    {credRotationSentRecipients.map(email => (
+                      <span key={email} className="inline-flex items-center gap-1 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5">
+                        <CheckCircle2 className="w-2.5 h-2.5" />{email}
+                      </span>
+                    ))}
+                    {credRotationFailedRecipients.map(email => (
+                      <span key={email} className="inline-flex items-center gap-1 text-xs bg-red-500/10 border border-red-500/20 text-red-300 rounded px-1.5 py-0.5">
+                        <AlertCircle className="w-2.5 h-2.5" />{email}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {smtpConfigured === false && (

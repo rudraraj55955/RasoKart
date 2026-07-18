@@ -963,6 +963,8 @@ export type CredentialRotationAlertResult = {
   attempted: number;
   sent: number;
   failed: number;
+  sentEmails: string[];
+  failedEmails: string[];
 };
 
 export async function notifyAdminsOfCredentialRotation(opts: {
@@ -972,13 +974,13 @@ export async function notifyAdminsOfCredentialRotation(opts: {
   isTest?: boolean;
 }): Promise<CredentialRotationAlertResult> {
   try {
-    if (opts.changedFields.length === 0) return { attempted: 0, sent: 0, failed: 0 };
+    if (opts.changedFields.length === 0) return { attempted: 0, sent: 0, failed: 0, sentEmails: [], failedEmails: [] };
 
     const adminEmails = await getAllActiveAdminEmails();
 
     if (adminEmails.length === 0) {
       logger.info({ gateway: opts.gateway }, "No active admins found — skipping credential rotation alert");
-      return { attempted: 0, sent: 0, failed: 0 };
+      return { attempted: 0, sent: 0, failed: 0, sentEmails: [], failedEmails: [] };
     }
 
     const extraRecipients = await getCredentialRotationExtraRecipients();
@@ -993,17 +995,26 @@ export async function notifyAdminsOfCredentialRotation(opts: {
       recipients.map(email => sendMail({ to: email, subject, html }))
     );
 
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - sent;
+    const sentEmails: string[] = [];
+    const failedEmails: string[] = [];
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value) {
+        sentEmails.push(recipients[i]!);
+      } else {
+        failedEmails.push(recipients[i]!);
+      }
+    });
+    const sent = sentEmails.length;
+    const failed = failedEmails.length;
 
     logger.info(
       { gateway: opts.gateway, changedFields: opts.changedFields, actorEmail: opts.actorEmail, attempted: recipients.length, sent, failed },
       "Admin credential rotation alert emails dispatched"
     );
 
-    return { attempted: recipients.length, sent, failed };
+    return { attempted: recipients.length, sent, failed, sentEmails, failedEmails };
   } catch (err) {
     logger.error({ err, gateway: opts.gateway }, "Failed to send admin credential rotation alert emails");
-    return { attempted: 0, sent: 0, failed: 0 };
+    return { attempted: 0, sent: 0, failed: 0, sentEmails: [], failedEmails: [] };
   }
 }
