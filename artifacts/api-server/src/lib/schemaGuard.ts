@@ -1357,6 +1357,9 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "policy_versions" }, "schema_guard_table_created");
 
+  // ── signature_failure_alert_logs: backfill cooldown_hours column ──────────
+  await db.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER NOT NULL DEFAULT 1`);
+
   logger.info("schema_guard_completed");
 }
 

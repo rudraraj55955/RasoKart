@@ -297,6 +297,7 @@ export async function checkAndAlertSignatureFailures(): Promise<void> {
       affectedMerchants,
       windowHours,
       threshold,
+      cooldownHours,
     });
 
     logger.info(

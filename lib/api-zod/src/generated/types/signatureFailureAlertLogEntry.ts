@@ -24,4 +24,6 @@ export interface SignatureFailureAlertLogEntry {
   windowHours: number;
   /** Failure threshold that triggered this alert */
   threshold: number;
+  /** Cooldown window (hours) that was active when this alert was sent */
+  cooldownHours: number;
 }

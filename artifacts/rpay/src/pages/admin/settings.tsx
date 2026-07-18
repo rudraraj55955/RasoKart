@@ -2869,7 +2869,7 @@ export default function AdminSettings() {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Window: {entry.windowHours}h · Threshold: {entry.threshold} · Sent to: {entry.recipientEmails.join(", ")}
+                    Window: {entry.windowHours}h · Threshold: {entry.threshold} · Cooldown: {entry.cooldownHours}h · Sent to: {entry.recipientEmails.join(", ")}
                   </p>
                 </div>
               ))}

@@ -13,6 +13,7 @@ export const signatureFailureAlertLogsTable = pgTable("signature_failure_alert_l
     .default([]),
   windowHours: integer("window_hours").notNull(),
   threshold: integer("threshold").notNull(),
+  cooldownHours: integer("cooldown_hours").notNull().default(1),
 });
 
 export type SignatureFailureAlertLog = typeof signatureFailureAlertLogsTable.$inferSelect;

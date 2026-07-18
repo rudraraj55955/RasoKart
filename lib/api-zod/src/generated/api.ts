@@ -7509,7 +7509,8 @@ export const GetSignatureFailureAlertHistoryResponse = zod.object({
   "count": zod.number()
 })).describe('Per-merchant breakdown captured at alert dispatch time'),
   "windowHours": zod.number().describe('Rolling window (hours) used to count failures'),
-  "threshold": zod.number().describe('Failure threshold that triggered this alert')
+  "threshold": zod.number().describe('Failure threshold that triggered this alert'),
+  "cooldownHours": zod.number().describe('Cooldown window (hours) that was active when this alert was sent')
 })),
   "total": zod.number()
 })
