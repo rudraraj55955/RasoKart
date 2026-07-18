@@ -12,7 +12,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useResetSignatureFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -993,9 +993,22 @@ export default function AdminSettings() {
       onSuccess: () => {
         toast.success("Signature failure alert history cleared");
         qc.invalidateQueries({ queryKey: getGetSignatureFailureAlertHistoryQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetAlertCooldownStatusQueryKey() });
         void refetchSigFailureHistory();
       },
       onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to clear history")),
+    },
+  });
+
+  const { mutate: resetSigFailureCooldown, isPending: resettingSigFailureCooldown } = useResetSignatureFailureAlertCooldown({
+    mutation: {
+      onSuccess: () => {
+        toast.success("Signature failure alert cooldown reset — next threshold breach will trigger a fresh alert");
+        qc.invalidateQueries({ queryKey: getGetSignatureFailureAlertHistoryQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetAlertCooldownStatusQueryKey() });
+        void refetchSigFailureHistory();
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reset cooldown")),
     },
   });
 
@@ -2830,16 +2843,28 @@ export default function AdminSettings() {
               <CardTitle className="text-base">Signature Failure Alert History</CardTitle>
             </div>
             {sigFailureHistoryCount > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive hover:text-destructive border-destructive/40 hover:bg-destructive/10"
-                onClick={() => clearSigFailureHistory()}
-                disabled={clearingSigFailureHistory}
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                {clearingSigFailureHistory ? "Clearing…" : `Clear (${sigFailureHistoryCount})`}
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => resetSigFailureCooldown()}
+                  disabled={resettingSigFailureCooldown || clearingSigFailureHistory}
+                  title="Clear all cooldown entries so the next threshold breach triggers a fresh alert email"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                  {resettingSigFailureCooldown ? "Resetting…" : "Reset Cooldown"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive border-destructive/40 hover:bg-destructive/10"
+                  onClick={() => clearSigFailureHistory()}
+                  disabled={clearingSigFailureHistory || resettingSigFailureCooldown}
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  {clearingSigFailureHistory ? "Clearing…" : `Clear (${sigFailureHistoryCount})`}
+                </Button>
+              </>
             )}
           </div>
           <CardDescription className="text-sm">

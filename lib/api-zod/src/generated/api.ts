@@ -7525,6 +7525,15 @@ export const ClearSignatureFailureAlertHistoryResponse = zod.object({
 
 
 /**
+ * @summary Reset signature failure alert cooldown globally (admin only)
+ */
+export const ResetSignatureFailureAlertCooldownResponse = zod.object({
+  "reset": zod.boolean(),
+  "deleted": zod.number()
+})
+
+
+/**
  * @summary Mark a single notification as read
  */
 export const MarkNotificationReadParams = zod.object({

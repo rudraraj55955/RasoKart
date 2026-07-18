@@ -1092,6 +1092,40 @@ router.delete("/signature-failure-alert-history", async (req, res, next) => {
   }
 });
 
+// POST /api/system-config/signature-failure-alert/reset-cooldown
+router.post("/signature-failure-alert/reset-cooldown", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+
+    const rows = await db
+      .delete(signatureFailureAlertLogsTable)
+      .returning({ id: signatureFailureAlertLogsTable.id });
+    const deleted = rows.length;
+
+    // Also reset the in-memory rate-limit counter so the next failures start fresh
+    resetAlertRateLimit();
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({
+        section: "signature_failure_alert_cooldown_reset",
+        deleted,
+      }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ deleted }, "Signature failure alert cooldown reset");
+
+    res.json({ reset: true, deleted });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/system-config/audit-report-retention
 router.get("/audit-report-retention", async (req, res, next) => {
   try {

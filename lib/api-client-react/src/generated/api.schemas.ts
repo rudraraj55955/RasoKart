@@ -7831,6 +7831,11 @@ export type ClearSignatureFailureAlertHistory200 = {
   cleared: boolean;
 };
 
+export type ResetSignatureFailureAlertCooldown200 = {
+  reset: boolean;
+  deleted: number;
+};
+
 export type ListSavedFilters200 = {
   data: SavedFilter[];
 };

@@ -551,6 +551,7 @@ export * from './reregisterBeneficiaryResponseProviderStatus';
 export * from './resendReconciliationAlertEmail200';
 export * from './resendReconciliationReportEmail200';
 export * from './resetAdminMerchantReportScheduleFailures200';
+export * from './resetSignatureFailureAlertCooldown200';
 export * from './resetWebhookFailureAlertCooldown200';
 export * from './resetWebhookFailureAlertCooldownParams';
 export * from './retryAdminReportDeliveryLog200';

@@ -368,6 +368,7 @@ import type {
   ResendReconciliationAlertEmail200,
   ResendReconciliationReportEmail200,
   ResetAdminMerchantReportScheduleFailures200,
+  ResetSignatureFailureAlertCooldown200,
   ResetWebhookFailureAlertCooldown200,
   ResetWebhookFailureAlertCooldownParams,
   RetryAdminReportDeliveryLog200,
@@ -22030,6 +22031,76 @@ export const useClearSignatureFailureAlertHistory = <TError = ErrorType<unknown>
         TContext
       > => {
       return useMutation(getClearSignatureFailureAlertHistoryMutationOptions(options));
+    }
+
+export const getResetSignatureFailureAlertCooldownUrl = () => {
+
+
+
+
+  return `/api/system-config/signature-failure-alert/reset-cooldown`
+}
+
+/**
+ * @summary Reset signature failure alert cooldown globally (admin only)
+ */
+export const resetSignatureFailureAlertCooldown = async ( options?: RequestInit): Promise<ResetSignatureFailureAlertCooldown200> => {
+
+  return customFetch<ResetSignatureFailureAlertCooldown200>(getResetSignatureFailureAlertCooldownUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getResetSignatureFailureAlertCooldownMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetSignatureFailureAlertCooldown>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetSignatureFailureAlertCooldown>>, TError,void, TContext> => {
+
+const mutationKey = ['resetSignatureFailureAlertCooldown'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetSignatureFailureAlertCooldown>>, void> = () => {
+
+
+          return  resetSignatureFailureAlertCooldown(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetSignatureFailureAlertCooldownMutationResult = NonNullable<Awaited<ReturnType<typeof resetSignatureFailureAlertCooldown>>>
+
+    export type ResetSignatureFailureAlertCooldownMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reset signature failure alert cooldown globally (admin only)
+ */
+export const useResetSignatureFailureAlertCooldown = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetSignatureFailureAlertCooldown>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetSignatureFailureAlertCooldown>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getResetSignatureFailureAlertCooldownMutationOptions(options));
     }
 
 export const getMarkNotificationReadUrl = (id: number,) => {
