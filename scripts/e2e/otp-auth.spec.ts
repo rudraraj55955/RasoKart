@@ -298,9 +298,11 @@ test("old OTP is rejected after resend issues a new one", async () => {
   const resendRes = await apiPost("/auth/merchant/otp/resend", {
     identifier: IDENTIFIER,
   });
-  // 200 or 429 (max resend reached) — either means the endpoint was reached.
-  // We just need the API to attempt creating a new OTP row.
-  expect([200, 429]).toContain(resendRes.status);
+  // Must return 200: the backdated seed row is beyond the cooldown window and
+  // has resendCount=0, so a new OTP row is always created.  429 would mean
+  // rate-limit or resend-cap interference, which prevents the newer row from
+  // existing and would make the old-OTP-rejection assertion meaningless.
+  expect(resendRes.status).toBe(200);
 
   // 3. Try to verify with the OLD code.  The verify endpoint picks the LATEST
   //    row (ORDER BY created_at DESC); the resend created a newer row with a

@@ -144,6 +144,8 @@ jobs:
 
       - name: Build (libs + all artifacts - includes API + frontend build)
         run: pnpm run build
+        env:
+          VITE_E2E: "true"
 
       - name: Run database migrations (throwaway CI database only)
         run: pnpm --filter @workspace/scripts run db-migrate

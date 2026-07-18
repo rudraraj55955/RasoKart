@@ -450,7 +450,7 @@ function ForgotPasswordTab({
   // reads _formValues (a plain JS ref), not the DOM, so the submitted data is
   // still correct.  The API success response is the authoritative verification.
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    if (!import.meta.env.DEV && import.meta.env.VITE_E2E !== "true") return;
     (window as unknown as Record<string, unknown>).__testForgotSetOtp = (value: string) => {
       resetForm.setValue("otp", value, { shouldDirty: true, shouldValidate: false });
     };
