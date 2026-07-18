@@ -50,7 +50,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, Bell, BellOff, Activity, ExternalLink, ChevronDown, ChevronRight, CheckCircle2, Eye, Mail, Smartphone, Percent, ReceiptText, Zap, SlidersHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { CheckCircle, XCircle, Search, CreditCard, Calendar, History, ShieldOff, ShieldCheck, TrendingUp, TrendingDown, PauseCircle, PlayCircle, RefreshCw, AlertTriangle, Paintbrush, Users, UserCheck, UserX, RotateCcw, Upload, Loader2, X, Info, KeyRound, Clock, Bell, BellOff, Activity, ExternalLink, ChevronDown, ChevronRight, CheckCircle2, Eye, Mail, Smartphone, Percent, ReceiptText, Zap, SlidersHorizontal, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow, differenceInSeconds } from "date-fns";
 import { getApiErrorMessage } from "@/lib/utils";
@@ -491,6 +492,12 @@ export default function AdminMerchants() {
   const [bulkUndoUsed, setBulkUndoUsed] = useState(false);
 
   const { data, isLoading, isError } = useListMerchants({ status: status as any, search, page, limit: 20, expiryStatus: expiryStatus as any || undefined, rejectionReason: rejectionReasonFilter || undefined, callbackSecretSet: callbackSecretFilter as any || undefined, loginAlertEmails: loginAlertFilter as any || undefined, securityEmailsDisabled: securityEmailsDisabledFilter as any || undefined, settlementStateEmails: settlementStateEmailsFilter as any || undefined, reportScheduleEmails: reportScheduleEmailsFilter as any || undefined, planExpiryAlertEmails: planExpiryAlertEmailsFilter as any || undefined });
+  const { data: pendingData, isLoading: pendingCountLoading } = useListMerchants({ status: "pending" as any, limit: 1 });
+  const { data: approvedData, isLoading: approvedCountLoading } = useListMerchants({ status: "approved" as any, limit: 1 });
+  const { data: suspendedData, isLoading: suspendedCountLoading } = useListMerchants({ status: "suspended" as any, limit: 1 });
+  const pendingTotal = pendingData?.total ?? 0;
+  const approvedTotal = approvedData?.total ?? 0;
+  const suspendedTotal = suspendedData?.total ?? 0;
   const { data: plans } = useListPlans();
   const { data: currentMerchantPlan, isLoading: planLoading } = useGetMerchantPlan(
     assignPlanMerchant?.id ?? 0,
@@ -1283,6 +1290,23 @@ export default function AdminMerchants() {
 
   const clearSelection = () => { setSelected(new Set()); setSelectAllMode(false); };
 
+  const clearAllFilters = () => {
+    setSearch("");
+    setStatus("all");
+    setExpiryStatus("" as const);
+    setRejectionReasonFilter("");
+    setCallbackSecretFilter("" as const);
+    setLoginAlertFilter("" as const);
+    setSecurityEmailsDisabledFilter("" as const);
+    setSettlementStateEmailsFilter("" as const);
+    setReportScheduleEmailsFilter("" as const);
+    setPlanExpiryAlertEmailsFilter("" as const);
+    setPage(1);
+    clearSelection();
+  };
+
+  const advancedFilterCount = [expiryStatus, callbackSecretFilter, loginAlertFilter, securityEmailsDisabledFilter, settlementStateEmailsFilter, reportScheduleEmailsFilter, planExpiryAlertEmailsFilter, rejectionReasonFilter].filter(Boolean).length;
+
   const handleSearchChange = (v: string) => { setSearch(v); setPage(1); clearSelection(); };
   const handleStatusChange = (v: string) => {
     setStatus(v);
@@ -1341,15 +1365,77 @@ export default function AdminMerchants() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Merchants</h1>
-          <p className="text-muted-foreground mt-1">{total} total merchants</p>
+    <div className="min-w-0 max-w-full space-y-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Merchants</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {grandTotal > 0 ? `${grandTotal.toLocaleString()} total merchants` : "\u00a0"}
+          </p>
         </div>
-        <ExportCsvButton onExport={exportCsv} />
+        <div className="hidden sm:block shrink-0">
+          <ExportCsvButton onExport={exportCsv} />
+        </div>
       </div>
 
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="border-border/50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Users className="w-4 h-4 text-muted-foreground" />
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total</p>
+            </div>
+            {grandTotal > 0 ? (
+              <p className="text-2xl font-bold tabular-nums">{grandTotal.toLocaleString()}</p>
+            ) : (
+              <div className="h-7 w-16 bg-muted/50 rounded animate-pulse" />
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border-amber-500/20 bg-amber-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className="w-4 h-4 text-amber-400" />
+              <p className="text-xs font-medium text-amber-400/80 uppercase tracking-wider">Pending</p>
+            </div>
+            {pendingCountLoading ? (
+              <div className="h-7 w-12 bg-muted/50 rounded animate-pulse" />
+            ) : (
+              <p className="text-2xl font-bold text-amber-400 tabular-nums">{pendingTotal.toLocaleString()}</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border-emerald-500/20 bg-emerald-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <UserCheck className="w-4 h-4 text-emerald-400" />
+              <p className="text-xs font-medium text-emerald-400/80 uppercase tracking-wider">Approved</p>
+            </div>
+            {approvedCountLoading ? (
+              <div className="h-7 w-12 bg-muted/50 rounded animate-pulse" />
+            ) : (
+              <p className="text-2xl font-bold text-emerald-400 tabular-nums">{approvedTotal.toLocaleString()}</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border-orange-500/20 bg-orange-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <ShieldOff className="w-4 h-4 text-orange-400" />
+              <p className="text-xs font-medium text-orange-400/80 uppercase tracking-wider">Suspended</p>
+            </div>
+            {suspendedCountLoading ? (
+              <div className="h-7 w-12 bg-muted/50 rounded animate-pulse" />
+            ) : (
+              <p className="text-2xl font-bold text-orange-400 tabular-nums">{suspendedTotal.toLocaleString()}</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Expiry Banner */}
       {(expiringCount > 0 || expiredCount > 0) && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-sm">
           <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -1362,336 +1448,219 @@ export default function AdminMerchants() {
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        {/* Mobile: search + status tabs + filter drawer trigger */}
-        <div className="flex flex-col gap-2 sm:hidden">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input className="pl-9 h-10" placeholder="Search merchants..." value={search} onChange={e => handleSearchChange(e.target.value)} />
-            </div>
-            <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
-              <button
-                type="button"
-                onClick={() => setFilterDrawerOpen(true)}
-                className="relative h-10 w-10 shrink-0 flex items-center justify-center rounded-md border border-input bg-background hover:bg-muted/50 transition-colors"
-                aria-label="Open filters"
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-                {[expiryStatus, callbackSecretFilter, loginAlertFilter, securityEmailsDisabledFilter, settlementStateEmailsFilter, reportScheduleEmailsFilter, planExpiryAlertEmailsFilter].filter(Boolean).length > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                    {[expiryStatus, callbackSecretFilter, loginAlertFilter, securityEmailsDisabledFilter, settlementStateEmailsFilter, reportScheduleEmailsFilter, planExpiryAlertEmailsFilter].filter(Boolean).length}
-                  </span>
-                )}
-              </button>
-              <SheetContent side="bottom" className="h-[85dvh] overflow-y-auto">
-                <SheetHeader className="pb-4">
-                  <SheetTitle>Filters</SheetTitle>
-                </SheetHeader>
-                <div className="space-y-6 pb-8">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Expiry</p>
-                    <div className="flex gap-2 flex-wrap">
-                      {([{ value: "", label: "Any Expiry" }, { value: "expiring", label: "Expiring Soon" }, { value: "expired", label: "Expired" }] as const).map(tab => (
-                        <button key={tab.value} onClick={() => handleExpiryChange(tab.value)} className={`px-3 py-2 rounded-md text-sm transition-colors border ${expiryStatus === tab.value ? tab.value === "expired" ? "bg-rose-500/20 text-rose-400 border-rose-500/40" : tab.value === "expiring" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>{tab.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Callback Secret</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <button onClick={() => { setCallbackSecretFilter(""); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${callbackSecretFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any Secret</button>
-                      <button onClick={() => { setCallbackSecretFilter("false"); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${callbackSecretFilter === "false" ? "bg-rose-500/20 text-rose-400 border-rose-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><KeyRound className="w-3.5 h-3.5" />No Secret</button>
-                      <button onClick={() => { setCallbackSecretFilter("true"); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${callbackSecretFilter === "true" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><KeyRound className="w-3.5 h-3.5" />Secret Set</button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Login Alerts</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <button onClick={() => { setLoginAlertFilter(""); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${loginAlertFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-                      <button onClick={() => { setLoginAlertFilter("false"); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${loginAlertFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Alerts Off</button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Security Emails</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <button onClick={() => { setSecurityEmailsDisabledFilter(""); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${securityEmailsDisabledFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-                      <button onClick={() => { setSecurityEmailsDisabledFilter("true"); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${securityEmailsDisabledFilter === "true" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Any Disabled</button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Settlement Emails</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <button onClick={() => { setSettlementStateEmailsFilter(""); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${settlementStateEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-                      <button onClick={() => { setSettlementStateEmailsFilter("false"); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${settlementStateEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Report Emails</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <button onClick={() => { setReportScheduleEmailsFilter(""); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${reportScheduleEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-                      <button onClick={() => { setReportScheduleEmailsFilter("false"); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${reportScheduleEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Plan Expiry Alerts</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <button onClick={() => { setPlanExpiryAlertEmailsFilter(""); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${planExpiryAlertEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-                      <button onClick={() => { setPlanExpiryAlertEmailsFilter("false"); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${planExpiryAlertEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
-                    </div>
-                  </div>
-                  <div className="pt-2 border-t border-border/50">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => {
-                        setExpiryStatus(""); setCallbackSecretFilter(""); setLoginAlertFilter("");
-                        setSecurityEmailsDisabledFilter(""); setSettlementStateEmailsFilter("");
-                        setReportScheduleEmailsFilter(""); setPlanExpiryAlertEmailsFilter("");
-                        setPage(1); setFilterDrawerOpen(false);
-                      }}
-                    >
-                      Clear All Filters
-                    </Button>
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
+      {/* Compact Filter Bar */}
+      <div className="flex flex-col gap-2">
+        {/* Row 1: search + filters button + reset + export (mobile) */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              className="pl-9 w-full"
+              placeholder="Search business, email or phone…"
+              value={search}
+              onChange={e => handleSearchChange(e.target.value)}
+            />
           </div>
-          <div className="flex gap-1 flex-wrap">
-            {(["all", "pending", "approved", "rejected", "suspended"] as const).map(tab => (
-              <button key={tab} onClick={() => handleStatusChange(tab)} className={`px-3 py-1.5 rounded-md text-sm capitalize transition-colors border ${status === tab ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>
-                {tab === "all" ? "All" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+          <button
+            type="button"
+            onClick={() => setFilterDrawerOpen(true)}
+            className="relative h-10 shrink-0 flex items-center gap-2 px-3 rounded-md border border-input bg-background hover:bg-muted/50 transition-colors text-sm font-medium"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span className="hidden sm:inline">Filters</span>
+            {advancedFilterCount > 0 && (
+              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground px-1">
+                {advancedFilterCount}
+              </span>
+            )}
+          </button>
+          {anyFilterActive && (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="h-10 shrink-0 flex items-center gap-1.5 px-3 rounded-md border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-sm"
+              title="Clear all filters"
+            >
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Reset</span>
+            </button>
+          )}
+          <div className="sm:hidden shrink-0">
+            <ExportCsvButton onExport={exportCsv} />
           </div>
         </div>
 
-        {/* Desktop: full filter row */}
-        <div className="hidden sm:flex flex-col gap-3">
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Search merchants..." value={search} onChange={e => handleSearchChange(e.target.value)} />
-            </div>
-            <div className="flex gap-1 flex-wrap">
-              {(["all", "pending", "approved", "rejected", "suspended"] as const).map(tab => (
-                <button key={tab} onClick={() => handleStatusChange(tab)} className={`px-3 py-1.5 rounded-md text-sm capitalize transition-colors border ${status === tab ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>
-                  {tab === "all" ? "All" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-1 flex-wrap">
-              {([{ value: "", label: "Any Expiry" }, { value: "expiring", label: "Expiring Soon" }, { value: "expired", label: "Expired" }] as const).map(tab => (
-                <button key={tab.value} onClick={() => handleExpiryChange(tab.value)} className={`px-3 py-1.5 rounded-md text-sm transition-colors border ${expiryStatus === tab.value ? tab.value === "expired" ? "bg-rose-500/20 text-rose-400 border-rose-500/40" : tab.value === "expiring" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>{tab.label}</button>
-              ))}
-            </div>
-            <div className="flex gap-1 flex-wrap">
-              <button onClick={() => { setCallbackSecretFilter(""); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${callbackSecretFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any Secret</button>
-              <button onClick={() => { setCallbackSecretFilter("false"); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${callbackSecretFilter === "false" ? "bg-rose-500/20 text-rose-400 border-rose-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><KeyRound className="w-3.5 h-3.5" />No Secret</button>
-              <button onClick={() => { setCallbackSecretFilter("true"); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${callbackSecretFilter === "true" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><KeyRound className="w-3.5 h-3.5" />Secret Set</button>
-            </div>
-            <div className="flex gap-1 flex-wrap items-center">
-              <span className="text-xs text-muted-foreground pr-1">Login Alerts:</span>
-              <button onClick={() => { setLoginAlertFilter(""); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${loginAlertFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-              <button onClick={() => { setLoginAlertFilter("false"); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${loginAlertFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Alerts Off</button>
-            </div>
-            <div className="flex gap-1 flex-wrap items-center">
-              <span className="text-xs text-muted-foreground pr-1">Security Emails:</span>
-              <button onClick={() => { setSecurityEmailsDisabledFilter(""); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${securityEmailsDisabledFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-              <button onClick={() => { setSecurityEmailsDisabledFilter("true"); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${securityEmailsDisabledFilter === "true" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Any Disabled</button>
-            </div>
-            <div className="flex gap-1 flex-wrap items-center">
-              <span className="text-xs text-muted-foreground pr-1">Settlement Emails:</span>
-              <button onClick={() => { setSettlementStateEmailsFilter(""); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${settlementStateEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-              <button onClick={() => { setSettlementStateEmailsFilter("false"); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${settlementStateEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
-            </div>
-            <div className="flex gap-1 flex-wrap items-center">
-              <span className="text-xs text-muted-foreground pr-1">Report Emails:</span>
-              <button onClick={() => { setReportScheduleEmailsFilter(""); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${reportScheduleEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-              <button onClick={() => { setReportScheduleEmailsFilter("false"); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${reportScheduleEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
-            </div>
-            <div className="flex gap-1 flex-wrap items-center">
-              <span className="text-xs text-muted-foreground pr-1">Plan Expiry Alerts:</span>
-              <button onClick={() => { setPlanExpiryAlertEmailsFilter(""); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${planExpiryAlertEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
-              <button onClick={() => { setPlanExpiryAlertEmailsFilter("false"); setPage(1); }} className={`px-3 py-1.5 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${planExpiryAlertEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
-            </div>
-          </div>
+        {/* Row 2: status tabs + result count */}
+        <div className="flex items-center gap-1 flex-wrap">
+          {(["all", "pending", "approved", "rejected", "suspended"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => handleStatusChange(tab)}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors border ${
+                status === tab
+                  ? tab === "all" ? "bg-primary text-primary-foreground border-primary"
+                  : tab === "pending" ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                  : tab === "approved" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                  : tab === "rejected" ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                  : "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+              }`}
+            >
+              {tab === "all" ? "All" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+            {isLoading ? (
+              <span className="inline-block w-16 h-3 bg-muted/60 rounded animate-pulse align-middle" />
+            ) : (
+              <>{total.toLocaleString()} merchant{total !== 1 ? "s" : ""}{anyFilterActive && grandTotal > total ? ` of ${grandTotal.toLocaleString()}` : ""}</>
+            )}
+          </span>
         </div>
-        {(status === "rejected" || status === "all") && (
-          <div className="relative max-w-sm">
-            <XCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Filter by rejection reason…"
-              value={rejectionReasonFilter}
-              onChange={e => handleRejectionReasonFilterChange(e.target.value)}
-            />
+
+        {/* Active filter chips */}
+        {advancedFilterCount > 0 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            {expiryStatus === "expiring" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+                <Clock className="w-3 h-3" />Expiring Soon
+                <button onClick={() => { setExpiryStatus("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {expiryStatus === "expired" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-300">
+                Plan Expired
+                <button onClick={() => { setExpiryStatus("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-rose-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {callbackSecretFilter === "false" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-300">
+                <KeyRound className="w-3 h-3" />No Secret
+                <button onClick={() => { setCallbackSecretFilter("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-rose-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {callbackSecretFilter === "true" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                <KeyRound className="w-3 h-3" />Secret Set
+                <button onClick={() => { setCallbackSecretFilter("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {loginAlertFilter === "false" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+                <BellOff className="w-3 h-3" />Login Alerts Off
+                <button onClick={() => { setLoginAlertFilter("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {securityEmailsDisabledFilter === "true" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+                <BellOff className="w-3 h-3" />Security Emails Disabled
+                <button onClick={() => { setSecurityEmailsDisabledFilter("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {settlementStateEmailsFilter === "false" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+                <BellOff className="w-3 h-3" />Settlement Emails Off
+                <button onClick={() => { setSettlementStateEmailsFilter("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {reportScheduleEmailsFilter === "false" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+                <BellOff className="w-3 h-3" />Report Emails Off
+                <button onClick={() => { setReportScheduleEmailsFilter("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {planExpiryAlertEmailsFilter === "false" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+                <BellOff className="w-3 h-3" />Plan Expiry Alerts Off
+                <button onClick={() => { setPlanExpiryAlertEmailsFilter("" as const); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {rejectionReasonFilter && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                Reason: {rejectionReasonFilter.length > 20 ? rejectionReasonFilter.slice(0, 20) + "…" : rejectionReasonFilter}
+                <button onClick={() => { setRejectionReasonFilter(""); setPage(1); }} className="ml-0.5 rounded-full p-0.5 hover:bg-muted transition-colors"><X className="w-3 h-3" /></button>
+              </span>
+            )}
           </div>
         )}
       </div>
 
-      {/* Filter chips */}
-      {(!!search || status !== "all" || !!expiryStatus || !!rejectionReasonFilter || !!callbackSecretFilter || !!loginAlertFilter || !!securityEmailsDisabledFilter || !!settlementStateEmailsFilter || !!reportScheduleEmailsFilter || !!planExpiryAlertEmailsFilter) && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground font-medium">Filters:</span>
-          {!!search && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-300">
-              Search: {search}
-              <button
-                onClick={() => handleSearchChange("")}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-sky-500/20 transition-colors"
-                aria-label="Clear search filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {status !== "all" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-300">
-              Status: {status.charAt(0).toUpperCase() + status.slice(1)}
-              <button
-                onClick={() => handleStatusChange("all")}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-sky-500/20 transition-colors"
-                aria-label="Clear status filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {expiryStatus === "expiring" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
-              Expiring Soon
-              <button
-                onClick={() => handleExpiryChange("")}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
-                aria-label="Clear expiry filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {expiryStatus === "expired" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300">
-              Expired Plan
-              <button
-                onClick={() => handleExpiryChange("")}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-rose-500/20 transition-colors"
-                aria-label="Clear expiry filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {!!rejectionReasonFilter && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-300">
-              Reason: {rejectionReasonFilter}
-              <button
-                onClick={() => handleRejectionReasonFilterChange("")}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-sky-500/20 transition-colors"
-                aria-label="Clear rejection reason filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {callbackSecretFilter === "false" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300">
-              No Secret
-              <button
-                onClick={() => { setCallbackSecretFilter(""); setPage(1); }}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-rose-500/20 transition-colors"
-                aria-label="Clear callback secret filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {callbackSecretFilter === "true" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-              Secret Set
-              <button
-                onClick={() => { setCallbackSecretFilter(""); setPage(1); }}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-500/20 transition-colors"
-                aria-label="Clear callback secret filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {loginAlertFilter === "false" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
-              <BellOff className="w-3 h-3" />
-              Login Alerts Off
-              <button
-                onClick={() => { setLoginAlertFilter(""); setPage(1); }}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
-                aria-label="Clear login alert filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {securityEmailsDisabledFilter === "true" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
-              <BellOff className="w-3 h-3" />
-              Security Email Disabled
-              <button
-                onClick={() => { setSecurityEmailsDisabledFilter(""); setPage(1); }}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
-                aria-label="Clear security emails filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {settlementStateEmailsFilter === "false" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
-              <BellOff className="w-3 h-3" />
-              Settlement Emails Off
-              <button
-                onClick={() => { setSettlementStateEmailsFilter(""); setPage(1); }}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
-                aria-label="Clear settlement state emails filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {reportScheduleEmailsFilter === "false" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
-              <BellOff className="w-3 h-3" />
-              Report Emails Off
-              <button
-                onClick={() => { setReportScheduleEmailsFilter(""); setPage(1); }}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
-                aria-label="Clear report schedule emails filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {planExpiryAlertEmailsFilter === "false" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
-              <BellOff className="w-3 h-3" />
-              Plan Expiry Alerts Off
-              <button
-                onClick={() => { setPlanExpiryAlertEmailsFilter(""); setPage(1); }}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
-                aria-label="Clear plan expiry alert emails filter"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
-            {isLoading
-              ? <span className="inline-block w-24 h-3 bg-muted/60 rounded animate-pulse align-middle" />
-              : <>{total.toLocaleString()} of {grandTotal.toLocaleString()} merchant{grandTotal !== 1 ? "s" : ""}</>}
-          </span>
-        </div>
-      )}
+      {/* Filters Sheet */}
+      <Sheet open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
+        <SheetContent side="bottom" className="h-[85dvh] overflow-y-auto rounded-t-xl">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="flex items-center gap-2"><SlidersHorizontal className="w-4 h-4" />More Filters</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-6 pb-8">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Plan Expiry</p>
+              <div className="flex gap-2 flex-wrap">
+                {([{ value: "" as const, label: "Any" }, { value: "expiring" as const, label: "Expiring Soon" }, { value: "expired" as const, label: "Expired" }]).map(opt => (
+                  <button key={opt.value} onClick={() => handleExpiryChange(opt.value)} className={`px-3 py-2 rounded-md text-sm transition-colors border ${expiryStatus === opt.value ? opt.value === "expired" ? "bg-rose-500/20 text-rose-400 border-rose-500/40" : opt.value === "expiring" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>{opt.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Callback Secret</p>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => { setCallbackSecretFilter("" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${callbackSecretFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
+                <button onClick={() => { setCallbackSecretFilter("false" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${callbackSecretFilter === "false" ? "bg-rose-500/20 text-rose-400 border-rose-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><KeyRound className="w-3.5 h-3.5" />Not Set</button>
+                <button onClick={() => { setCallbackSecretFilter("true" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${callbackSecretFilter === "true" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><KeyRound className="w-3.5 h-3.5" />Set</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Login Alerts</p>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => { setLoginAlertFilter("" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${loginAlertFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
+                <button onClick={() => { setLoginAlertFilter("false" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${loginAlertFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Alerts Off</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Security Emails</p>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => { setSecurityEmailsDisabledFilter("" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${securityEmailsDisabledFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
+                <button onClick={() => { setSecurityEmailsDisabledFilter("true" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${securityEmailsDisabledFilter === "true" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Any Disabled</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Settlement Emails</p>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => { setSettlementStateEmailsFilter("" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${settlementStateEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
+                <button onClick={() => { setSettlementStateEmailsFilter("false" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${settlementStateEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Report Emails</p>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => { setReportScheduleEmailsFilter("" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${reportScheduleEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
+                <button onClick={() => { setReportScheduleEmailsFilter("false" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${reportScheduleEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Plan Expiry Alerts</p>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => { setPlanExpiryAlertEmailsFilter("" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border ${planExpiryAlertEmailsFilter === "" ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}>Any</button>
+                <button onClick={() => { setPlanExpiryAlertEmailsFilter("false" as const); setPage(1); }} className={`px-3 py-2 rounded-md text-sm transition-colors border flex items-center gap-1.5 ${planExpiryAlertEmailsFilter === "false" ? "bg-amber-500/20 text-amber-400 border-amber-500/40" : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"}`}><BellOff className="w-3.5 h-3.5" />Opted Out</button>
+              </div>
+            </div>
+            {(status === "rejected" || status === "all") && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rejection Reason</p>
+                <Input
+                  placeholder="Filter by rejection reason…"
+                  value={rejectionReasonFilter}
+                  onChange={e => handleRejectionReasonFilterChange(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="pt-2 border-t border-border/50">
+              <Button variant="outline" className="w-full" onClick={() => { clearAllFilters(); setFilterDrawerOpen(false); }}>
+                Clear All Filters
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Bulk action toolbar */}
       {selected.size > 0 && (
@@ -1781,12 +1750,12 @@ export default function AdminMerchants() {
         </div>
       )}
 
-      {/* Mobile merchant cards */}
+      {/* Mobile cards (< 768px) */}
       <div className="md:hidden space-y-3">
         {isLoading ? (
           [1, 2, 3].map(i => (
             <Card key={i}>
-              <CardContent className="p-4 space-y-3">
+              <CardContent className="p-4 space-y-2">
                 <div className="h-4 bg-muted/50 animate-pulse rounded w-3/4" />
                 <div className="h-3 bg-muted/50 animate-pulse rounded w-1/2" />
                 <div className="h-3 bg-muted/50 animate-pulse rounded w-2/3" />
@@ -1797,79 +1766,151 @@ export default function AdminMerchants() {
           <div className="flex flex-col items-center gap-2 py-8 text-destructive">
             <AlertTriangle className="w-5 h-5" />
             <p className="text-sm font-medium">Failed to load merchants</p>
-            <p className="text-xs text-muted-foreground">Please refresh and try again.</p>
           </div>
         ) : merchants.length === 0 ? (
           <p className="text-center text-muted-foreground py-8 text-sm">No merchants found</p>
         ) : merchants.map(merchant => (
           <Card key={merchant.id} className={selected.has(merchant.id) ? "border-primary/50 bg-primary/5" : ""}>
-            <CardContent className="p-4 space-y-3">
+            <CardContent className="p-4 space-y-2">
               <div className="flex items-start gap-3">
-                <Checkbox
-                  checked={selected.has(merchant.id)}
-                  onCheckedChange={() => toggleSelect(merchant.id)}
-                  aria-label={`Select ${merchant.businessName}`}
-                  className="mt-0.5 shrink-0"
-                />
+                <Checkbox checked={selected.has(merchant.id)} onCheckedChange={() => toggleSelect(merchant.id)} className="mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium text-sm truncate">{merchant.businessName}</p>
+                      <p className="font-semibold text-sm truncate">{merchant.businessName}</p>
                       <p className="text-xs text-muted-foreground truncate">{merchant.email}</p>
                     </div>
-                    <StatusBadge status={merchant.status} />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <StatusBadge status={merchant.status} />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0"><MoreHorizontal className="w-4 h-4" /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          {merchant.status === "pending" && <>
+                            <DropdownMenuItem onClick={() => handleApprove(merchant.id)} className="text-emerald-400 focus:text-emerald-400"><CheckCircle className="w-3.5 h-3.5 mr-2" />{isSuperAdmin ? "Approve After KYC" : "Approve"}</DropdownMenuItem>
+                            {isSuperAdmin && <DropdownMenuItem onClick={() => { setForceApproveTarget({ id: merchant.id, name: merchant.businessName }); setForceApproveReason(""); }} className="text-amber-400 focus:text-amber-400"><Zap className="w-3.5 h-3.5 mr-2" />Force Approve</DropdownMenuItem>}
+                            <DropdownMenuItem onClick={() => { setRejectId(merchant.id); setRejectReason(""); }} className="text-rose-400 focus:text-rose-400"><XCircle className="w-3.5 h-3.5 mr-2" />Reject</DropdownMenuItem>
+                          </>}
+                          {merchant.status === "approved" && <DropdownMenuItem onClick={() => handleSuspend(merchant.id)} className="text-orange-400 focus:text-orange-400"><ShieldOff className="w-3.5 h-3.5 mr-2" />Suspend</DropdownMenuItem>}
+                          {merchant.status === "suspended" && <DropdownMenuItem onClick={() => handleUnsuspend(merchant.id)} className="text-emerald-400 focus:text-emerald-400"><ShieldCheck className="w-3.5 h-3.5 mr-2" />Reinstate</DropdownMenuItem>}
+                          {merchant.isDemoAccount && !merchant.demoRemovedAt && <DropdownMenuItem onClick={() => setRemoveDemoTarget({ id: merchant.id, businessName: merchant.businessName, email: merchant.email })} className="text-rose-400 focus:text-rose-400"><UserX className="w-3.5 h-3.5 mr-2" />Remove Demo</DropdownMenuItem>}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails, merchant.signatureFailureAlertEmails, merchant.webhookFailureEmails, merchant.apiKeyGeneratedEmails, merchant.apiKeyRevokedEmails, merchant.reportScheduleChangedEmails, merchant.settlementStateChangedEmails, merchant.planExpiryAlertEmails)}>
+                            <CreditCard className="w-3.5 h-3.5 mr-2" />{merchant.currentPlanName ? "Change Plan" : "Assign Plan"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openBranding(merchant)}><Paintbrush className="w-3.5 h-3.5 mr-2" />Branding</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setWebhookLogsMerchant({ id: merchant.id, name: merchant.businessName }); setWebhookLogsStatus("all"); setWebhookLogsPage(1); }}><Activity className="w-3.5 h-3.5 mr-2" />Webhooks</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {merchant.currentPlanName ? (
-                      <span className="text-xs font-medium">{merchant.currentPlanName}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">No plan</span>
-                    )}
-                    {merchant.currentPlanIsExpired && (
-                      <Badge variant="outline" className="text-[10px] py-0 px-1.5 text-rose-400 border-rose-500/30 bg-rose-500/10">Expired</Badge>
-                    )}
-                    <span className="text-xs text-muted-foreground font-mono ml-auto">₹{Number(merchant.balance).toLocaleString()}</span>
+                  <div className="grid grid-cols-2 gap-1.5 mt-2 text-xs">
+                    <div><span className="text-muted-foreground">Plan: </span><span className="font-medium">{merchant.currentPlanName ?? <span className="italic text-muted-foreground">None</span>}</span></div>
+                    <div className="text-right font-mono">₹{Number(merchant.balance).toLocaleString()}</div>
                   </div>
                   {merchant.status === "rejected" && merchant.rejectionReason && (
-                    <p className="text-xs text-rose-400 mt-1 truncate">✕ {merchant.rejectionReason}</p>
+                    <p className="text-xs text-rose-400 truncate">✕ {merchant.rejectionReason}</p>
                   )}
                 </div>
-              </div>
-              <div className="flex items-center gap-1 flex-wrap border-t border-border/30 pt-2">
-                {merchant.status === "pending" && (
-                  <>
-                    <Button size="sm" variant="ghost" className="h-8 text-xs text-emerald-500 hover:bg-emerald-500/10 px-2" onClick={() => handleApprove(merchant.id)}>
-                      <CheckCircle className="w-3.5 h-3.5 mr-1" /> Approve
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-8 text-xs text-rose-500 hover:bg-rose-500/10 px-2" onClick={() => { setRejectId(merchant.id); setRejectReason(""); }}>
-                      <XCircle className="w-3.5 h-3.5 mr-1" /> Reject
-                    </Button>
-                  </>
-                )}
-                {merchant.status === "approved" && (
-                  <Button size="sm" variant="ghost" className="h-8 text-xs text-orange-500 hover:bg-orange-500/10 px-2" onClick={() => handleSuspend(merchant.id)}>
-                    <ShieldOff className="w-3.5 h-3.5 mr-1" /> Suspend
-                  </Button>
-                )}
-                {merchant.status === "suspended" && (
-                  <Button size="sm" variant="ghost" className="h-8 text-xs text-emerald-500 hover:bg-emerald-500/10 px-2" onClick={() => handleUnsuspend(merchant.id)}>
-                    <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Reinstate
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" className="h-8 text-xs text-primary hover:bg-primary/10 px-2" onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails, merchant.signatureFailureAlertEmails, merchant.webhookFailureEmails, merchant.apiKeyGeneratedEmails, merchant.apiKeyRevokedEmails, merchant.reportScheduleChangedEmails, merchant.settlementStateChangedEmails, merchant.planExpiryAlertEmails)}>
-                  <CreditCard className="w-3.5 h-3.5 mr-1" /> {merchant.currentPlanName ? "Plan" : "Assign"}
-                </Button>
-                <Button size="sm" variant="ghost" className="h-8 text-xs text-sky-400 hover:bg-sky-500/10 px-2" onClick={() => { setWebhookLogsMerchant({ id: merchant.id, name: merchant.businessName }); setWebhookLogsStatus("all"); setWebhookLogsPage(1); }}>
-                  <Activity className="w-3.5 h-3.5 mr-1" /> Webhooks
-                </Button>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Desktop table */}
-      <div className="hidden md:block">
+      {/* Tablet cards (768px–1279px) */}
+      <div className="hidden md:block xl:hidden">
+        {isLoading ? (
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map(i => (
+              <Card key={i}><CardContent className="p-4 space-y-2">
+                <div className="h-4 bg-muted/50 animate-pulse rounded w-3/4" />
+                <div className="h-3 bg-muted/50 animate-pulse rounded w-1/2" />
+                <div className="h-3 bg-muted/50 animate-pulse rounded w-2/3" />
+              </CardContent></Card>
+            ))}
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center gap-2 py-8 text-destructive">
+            <AlertTriangle className="w-5 h-5" /><p className="text-sm font-medium">Failed to load merchants</p>
+          </div>
+        ) : merchants.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8 text-sm">No merchants found</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {merchants.map(merchant => (
+              <Card key={merchant.id} className={selected.has(merchant.id) ? "border-primary/50 bg-primary/5" : "border-border/50"}>
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-2.5">
+                    <Checkbox checked={selected.has(merchant.id)} onCheckedChange={() => toggleSelect(merchant.id)} className="mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-semibold text-sm truncate">{merchant.businessName}</p>
+                            {(webhookFailureCounts[merchant.id] ?? 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-400 text-[11px] font-semibold">
+                                <AlertTriangle className="w-3 h-3" />{webhookFailureCounts[merchant.id]}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">{merchant.email}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <StatusBadge status={merchant.status} />
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0"><MoreHorizontal className="w-4 h-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                              {merchant.status === "pending" && <>
+                                <DropdownMenuItem onClick={() => handleApprove(merchant.id)} className="text-emerald-400 focus:text-emerald-400"><CheckCircle className="w-3.5 h-3.5 mr-2" />{isSuperAdmin ? "Approve After KYC" : "Approve"}</DropdownMenuItem>
+                                {isSuperAdmin && <DropdownMenuItem onClick={() => { setForceApproveTarget({ id: merchant.id, name: merchant.businessName }); setForceApproveReason(""); }} className="text-amber-400 focus:text-amber-400"><Zap className="w-3.5 h-3.5 mr-2" />Force Approve</DropdownMenuItem>}
+                                <DropdownMenuItem onClick={() => { setRejectId(merchant.id); setRejectReason(""); }} className="text-rose-400 focus:text-rose-400"><XCircle className="w-3.5 h-3.5 mr-2" />Reject</DropdownMenuItem>
+                              </>}
+                              {merchant.status === "approved" && <DropdownMenuItem onClick={() => handleSuspend(merchant.id)} className="text-orange-400 focus:text-orange-400"><ShieldOff className="w-3.5 h-3.5 mr-2" />Suspend</DropdownMenuItem>}
+                              {merchant.status === "suspended" && <DropdownMenuItem onClick={() => handleUnsuspend(merchant.id)} className="text-emerald-400 focus:text-emerald-400"><ShieldCheck className="w-3.5 h-3.5 mr-2" />Reinstate</DropdownMenuItem>}
+                              {merchant.isDemoAccount && !merchant.demoRemovedAt && <DropdownMenuItem onClick={() => setRemoveDemoTarget({ id: merchant.id, businessName: merchant.businessName, email: merchant.email })} className="text-rose-400 focus:text-rose-400"><UserX className="w-3.5 h-3.5 mr-2" />Remove Demo</DropdownMenuItem>}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => openAssignPlan(merchant.id, merchant.businessName, merchant.callbackTimestampWindowSeconds, merchant.loginAlertEmails, merchant.signatureFailureAlertEmails, merchant.webhookFailureEmails, merchant.apiKeyGeneratedEmails, merchant.apiKeyRevokedEmails, merchant.reportScheduleChangedEmails, merchant.settlementStateChangedEmails, merchant.planExpiryAlertEmails)}>
+                                <CreditCard className="w-3.5 h-3.5 mr-2" />{merchant.currentPlanName ? "Change Plan" : "Assign Plan"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openBranding(merchant)}><Paintbrush className="w-3.5 h-3.5 mr-2" />Branding</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setWebhookLogsMerchant({ id: merchant.id, name: merchant.businessName }); setWebhookLogsStatus("all"); setWebhookLogsPage(1); }}><Activity className="w-3.5 h-3.5 mr-2" />Webhooks</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
+                        <div>
+                          <p className="text-muted-foreground mb-0.5">Plan</p>
+                          <p className="font-medium truncate">{merchant.currentPlanName ?? <span className="text-muted-foreground italic">None</span>}</p>
+                          {merchant.currentPlanIsExpired && <span className="text-rose-400 text-[11px]">Expired</span>}
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground mb-0.5">Balance</p>
+                          <p className="font-mono font-medium">₹{Number(merchant.balance).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground mb-0.5">Joined</p>
+                          <p>{format(new Date(merchant.createdAt), "MMM d, yyyy")}</p>
+                        </div>
+                      </div>
+                      {merchant.status === "rejected" && merchant.rejectionReason && (
+                        <p className="text-xs text-rose-400 mt-1.5 truncate">✕ {merchant.rejectionReason}</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop table (≥ 1280px) */}
+      <div className="hidden xl:block">
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">

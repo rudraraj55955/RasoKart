@@ -631,7 +631,7 @@ function MobileHeader({
 
   return (
     <header
-      className="md:hidden sticky top-0 z-40 flex items-center gap-2 h-14 border-b border-border/50 bg-background/95 backdrop-blur shrink-0"
+      className="xl:hidden sticky top-0 z-40 flex items-center gap-2 h-14 border-b border-border/50 bg-background/95 backdrop-blur shrink-0"
       style={{ paddingLeft: "12px", paddingRight: "12px" }}
     >
       <button
@@ -800,10 +800,10 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
   const portalLabel = publicMode ? "Developer Docs" : (isAdmin ? "Admin Console" : "Merchant Portal");
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={typeof window !== 'undefined' ? window.innerWidth >= 1280 : true}>
       <div className="flex min-h-screen bg-background w-full">
         <Sidebar collapsible="offcanvas" variant="sidebar" className="border-r border-border/50">
-          <SidebarHeader className="p-4 flex-row items-center gap-2 hidden md:flex">
+          <SidebarHeader className="p-4 flex-row items-center gap-2 hidden xl:flex">
             <Link
               href={publicMode ? "/" : isAdmin ? "/admin/dashboard" : "/merchant/dashboard"}
               className="flex items-center gap-2 flex-1 min-w-0"
