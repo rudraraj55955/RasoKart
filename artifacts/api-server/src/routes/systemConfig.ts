@@ -1425,24 +1425,26 @@ router.put("/cashfree", async (req, res, next) => {
     if (clientId !== undefined) auditDetails.clientIdUpdated = true;
     if (clientSecret !== undefined) auditDetails.clientSecretUpdated = true;
     if (webhookSecret !== undefined) auditDetails.webhookSecretUpdated = true;
-    if (enabled !== undefined) auditDetails.enabled = { from: oldConfig.enabled, to: enabled };
-    if (env !== undefined) auditDetails.env = { from: oldConfig.env, to: env };
-    if (baseUrl !== undefined) auditDetails.baseUrl = { from: oldConfig.baseUrl, to: baseUrl };
-    if (apiVersion !== undefined && apiVersion !== "") auditDetails.apiVersion = { from: oldConfig.apiVersion, to: apiVersion };
-    if (upiEnabled !== undefined) auditDetails.upiEnabled = { from: oldConfig.upiEnabled, to: upiEnabled };
-    if (qrEnabled !== undefined) auditDetails.qrEnabled = { from: oldConfig.qrEnabled, to: qrEnabled };
-    if (paymentLinksEnabled !== undefined) auditDetails.paymentLinksEnabled = { from: oldConfig.paymentLinksEnabled, to: paymentLinksEnabled };
-    if (merchantPayinEnabled !== undefined) auditDetails.merchantPayinEnabled = { from: oldConfig.merchantPayinEnabled, to: merchantPayinEnabled };
-    if (minAmount !== undefined) auditDetails.minAmount = { from: oldConfig.minAmount, to: minAmount };
-    if (maxAmount !== undefined) auditDetails.maxAmount = { from: oldConfig.maxAmount, to: maxAmount };
-    if (dailyLimit !== undefined) auditDetails.dailyLimit = { from: oldConfig.dailyLimit, to: dailyLimit };
+    if (enabled !== undefined && oldConfig.enabled !== enabled) auditDetails.enabled = { from: oldConfig.enabled, to: enabled };
+    if (env !== undefined && oldConfig.env !== env) auditDetails.env = { from: oldConfig.env, to: env };
+    if (baseUrl !== undefined && oldConfig.baseUrl !== baseUrl) auditDetails.baseUrl = { from: oldConfig.baseUrl, to: baseUrl };
+    if (apiVersion !== undefined && apiVersion !== "" && oldConfig.apiVersion !== apiVersion) auditDetails.apiVersion = { from: oldConfig.apiVersion, to: apiVersion };
+    if (upiEnabled !== undefined && oldConfig.upiEnabled !== upiEnabled) auditDetails.upiEnabled = { from: oldConfig.upiEnabled, to: upiEnabled };
+    if (qrEnabled !== undefined && oldConfig.qrEnabled !== qrEnabled) auditDetails.qrEnabled = { from: oldConfig.qrEnabled, to: qrEnabled };
+    if (paymentLinksEnabled !== undefined && oldConfig.paymentLinksEnabled !== paymentLinksEnabled) auditDetails.paymentLinksEnabled = { from: oldConfig.paymentLinksEnabled, to: paymentLinksEnabled };
+    if (merchantPayinEnabled !== undefined && oldConfig.merchantPayinEnabled !== merchantPayinEnabled) auditDetails.merchantPayinEnabled = { from: oldConfig.merchantPayinEnabled, to: merchantPayinEnabled };
+    if (minAmount !== undefined && oldConfig.minAmount !== minAmount) auditDetails.minAmount = { from: oldConfig.minAmount, to: minAmount };
+    if (maxAmount !== undefined && oldConfig.maxAmount !== maxAmount) auditDetails.maxAmount = { from: oldConfig.maxAmount, to: maxAmount };
+    if (dailyLimit !== undefined && oldConfig.dailyLimit !== dailyLimit) auditDetails.dailyLimit = { from: oldConfig.dailyLimit, to: dailyLimit };
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id, adminEmail: user.email,
-      action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify(auditDetails),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (Object.keys(auditDetails).length > 1) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "system_config_updated", targetType: "system_config", targetId: null,
+        details: JSON.stringify(auditDetails),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     const cfCredentialFields: string[] = [];
     if (clientId !== undefined) cfCredentialFields.push("Client ID");
@@ -1654,23 +1656,25 @@ router.put("/cashfree-payout", async (req, res, next) => {
     if (clientSecret !== undefined) auditPayoutDetails.clientSecretUpdated = true;
     if (fundsourceId !== undefined) auditPayoutDetails.fundsourceIdUpdated = true;
     if (webhookSecret !== undefined) auditPayoutDetails.webhookSecretUpdated = true;
-    if (enabled !== undefined) auditPayoutDetails.enabled = { from: oldPayoutConfig.enabled, to: enabled };
-    if (env !== undefined) auditPayoutDetails.env = { from: oldPayoutConfig.env, to: env };
-    if (baseUrl !== undefined) auditPayoutDetails.baseUrl = { from: oldPayoutConfig.baseUrl, to: baseUrl };
-    if (apiVersion !== undefined && apiVersion !== "") auditPayoutDetails.apiVersion = { from: oldPayoutConfig.apiVersion, to: apiVersion };
-    if (merchantEnabled !== undefined) auditPayoutDetails.merchantEnabled = { from: oldPayoutConfig.merchantEnabled, to: merchantEnabled };
-    if (bulkEnabled !== undefined) auditPayoutDetails.bulkEnabled = { from: oldPayoutConfig.bulkEnabled, to: bulkEnabled };
-    if (adminApprovalRequired !== undefined) auditPayoutDetails.adminApprovalRequired = { from: oldPayoutConfig.adminApprovalRequired, to: adminApprovalRequired };
-    if (minLimit !== undefined) auditPayoutDetails.minLimit = { from: oldPayoutConfig.minLimit, to: minLimit };
-    if (maxLimit !== undefined) auditPayoutDetails.maxLimit = { from: oldPayoutConfig.maxLimit, to: maxLimit };
-    if (dailyLimit !== undefined) auditPayoutDetails.dailyLimit = { from: oldPayoutConfig.dailyLimit, to: dailyLimit };
+    if (enabled !== undefined && oldPayoutConfig.enabled !== enabled) auditPayoutDetails.enabled = { from: oldPayoutConfig.enabled, to: enabled };
+    if (env !== undefined && oldPayoutConfig.env !== env) auditPayoutDetails.env = { from: oldPayoutConfig.env, to: env };
+    if (baseUrl !== undefined && oldPayoutConfig.baseUrl !== baseUrl) auditPayoutDetails.baseUrl = { from: oldPayoutConfig.baseUrl, to: baseUrl };
+    if (apiVersion !== undefined && apiVersion !== "" && oldPayoutConfig.apiVersion !== apiVersion) auditPayoutDetails.apiVersion = { from: oldPayoutConfig.apiVersion, to: apiVersion };
+    if (merchantEnabled !== undefined && oldPayoutConfig.merchantEnabled !== merchantEnabled) auditPayoutDetails.merchantEnabled = { from: oldPayoutConfig.merchantEnabled, to: merchantEnabled };
+    if (bulkEnabled !== undefined && oldPayoutConfig.bulkEnabled !== bulkEnabled) auditPayoutDetails.bulkEnabled = { from: oldPayoutConfig.bulkEnabled, to: bulkEnabled };
+    if (adminApprovalRequired !== undefined && oldPayoutConfig.adminApprovalRequired !== adminApprovalRequired) auditPayoutDetails.adminApprovalRequired = { from: oldPayoutConfig.adminApprovalRequired, to: adminApprovalRequired };
+    if (minLimit !== undefined && oldPayoutConfig.minLimit !== minLimit) auditPayoutDetails.minLimit = { from: oldPayoutConfig.minLimit, to: minLimit };
+    if (maxLimit !== undefined && oldPayoutConfig.maxLimit !== maxLimit) auditPayoutDetails.maxLimit = { from: oldPayoutConfig.maxLimit, to: maxLimit };
+    if (dailyLimit !== undefined && oldPayoutConfig.dailyLimit !== dailyLimit) auditPayoutDetails.dailyLimit = { from: oldPayoutConfig.dailyLimit, to: dailyLimit };
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id, adminEmail: user.email,
-      action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify(auditPayoutDetails),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (Object.keys(auditPayoutDetails).length > 1) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "system_config_updated", targetType: "system_config", targetId: null,
+        details: JSON.stringify(auditPayoutDetails),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     const cfpCredentialFields: string[] = [];
     if (clientId !== undefined) cfpCredentialFields.push("Client ID");

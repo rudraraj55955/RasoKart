@@ -97,22 +97,22 @@ router.put("/settings", async (req, res, next) => {
       }
     }
 
-    const auditDetails: Record<string, unknown> = {
-      section: "upigateway",
-      ...(apiKey !== undefined && { apiKeyUpdated: true }),
-      ...(webhookSecret !== undefined && { webhookSecretUpdated: true }),
-      ...(enabled !== undefined && { enabled: { from: oldCfg.enabled, to: enabled } }),
-      ...(env !== undefined && { env: { from: oldCfg.env, to: env } }),
-      ...(minAmount !== undefined && { minAmount: { from: oldCfg.minAmount, to: Number(minAmount) } }),
-      ...(maxAmount !== undefined && { maxAmount: { from: oldCfg.maxAmount, to: Number(maxAmount) } }),
-    };
+    const auditDetails: Record<string, unknown> = { section: "upigateway" };
+    if (apiKey !== undefined) auditDetails.apiKeyUpdated = true;
+    if (webhookSecret !== undefined) auditDetails.webhookSecretUpdated = true;
+    if (enabled !== undefined && oldCfg.enabled !== enabled) auditDetails.enabled = { from: oldCfg.enabled, to: enabled };
+    if (env !== undefined && oldCfg.env !== env) auditDetails.env = { from: oldCfg.env, to: env };
+    if (minAmount !== undefined && oldCfg.minAmount !== Number(minAmount)) auditDetails.minAmount = { from: oldCfg.minAmount, to: Number(minAmount) };
+    if (maxAmount !== undefined && oldCfg.maxAmount !== Number(maxAmount)) auditDetails.maxAmount = { from: oldCfg.maxAmount, to: Number(maxAmount) };
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id, adminEmail: user.email,
-      action: "system_config_updated", targetType: "system_config", targetId: null,
-      details: JSON.stringify(auditDetails),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (Object.keys(auditDetails).length > 1) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "system_config_updated", targetType: "system_config", targetId: null,
+        details: JSON.stringify(auditDetails),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     if (credentialFields.length > 0) {
       notifyAdminsOfCredentialRotation({ gateway: "upigateway", changedFields: credentialFields, actorEmail: user.email })

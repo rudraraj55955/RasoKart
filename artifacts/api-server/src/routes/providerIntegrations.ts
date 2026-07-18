@@ -169,18 +169,26 @@ router.put("/integrations/:key", requireAdmin, async (req, res, next) => {
       .where(eq(providerIntegrationsTable.providerKey, key))
       .returning();
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id, adminEmail: user.email,
-      action: "provider_integration_updated", targetType: "provider_integration", targetId: null,
-      details: JSON.stringify({
-        providerKey: key,
-        ...updateSet,
-        apiKeyEncrypted: updateSet["apiKeyEncrypted"] !== undefined ? "[redacted]" : undefined,
-        apiSecretEncrypted: updateSet["apiSecretEncrypted"] !== undefined ? "[redacted]" : undefined,
-        webhookSecretEncrypted: updateSet["webhookSecretEncrypted"] !== undefined ? "[redacted]" : undefined,
-      }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    const auditChangeSet: Record<string, unknown> = { providerKey: key };
+    if (updateSet["apiKeyEncrypted"] !== undefined) auditChangeSet.apiKeyUpdated = true;
+    if (updateSet["apiSecretEncrypted"] !== undefined) auditChangeSet.apiSecretUpdated = true;
+    if (updateSet["webhookSecretEncrypted"] !== undefined) auditChangeSet.webhookSecretUpdated = true;
+    if (updateSet["environment"] !== undefined && updateSet["environment"] !== existing.environment) auditChangeSet.environment = { from: existing.environment, to: updateSet["environment"] };
+    if (updateSet["isEnabled"] !== undefined && updateSet["isEnabled"] !== existing.isEnabled) auditChangeSet.isEnabled = { from: existing.isEnabled, to: updateSet["isEnabled"] };
+    if (updateSet["webhookUrl"] !== undefined && updateSet["webhookUrl"] !== existing.webhookUrl) auditChangeSet.webhookUrl = { from: existing.webhookUrl, to: updateSet["webhookUrl"] };
+    if (updateSet["notes"] !== undefined && updateSet["notes"] !== existing.notes) auditChangeSet.notes = { from: existing.notes, to: updateSet["notes"] };
+    if (updateSet["displayNamePublic"] !== undefined && updateSet["displayNamePublic"] !== existing.displayNamePublic) auditChangeSet.displayNamePublic = { from: existing.displayNamePublic, to: updateSet["displayNamePublic"] };
+    if (updateSet["productType"] !== undefined && updateSet["productType"] !== existing.productType) auditChangeSet.productType = { from: existing.productType, to: updateSet["productType"] };
+
+    const hasChanges = Object.keys(auditChangeSet).some(k => k !== "providerKey");
+    if (hasChanges) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id, adminEmail: user.email,
+        action: "provider_integration_updated", targetType: "provider_integration", targetId: null,
+        details: JSON.stringify(auditChangeSet),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ key, isEnabled, environment }, "Provider integration updated");
     res.json(serializeIntegration(updated!));
