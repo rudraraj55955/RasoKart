@@ -1332,6 +1332,31 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "contact_submissions" }, "schema_guard_table_created");
 
+  // ── policy_versions ───────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS policy_versions (
+      id              SERIAL PRIMARY KEY,
+      slug            TEXT NOT NULL,
+      version_tag     TEXT NOT NULL DEFAULT '1.0',
+      title           TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'published',
+      effective_date  TEXT NOT NULL,
+      changelog_notes TEXT,
+      updated_by_email TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      published_at    TIMESTAMPTZ
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS policy_versions_slug_status_idx
+      ON policy_versions (slug, status)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS policy_versions_slug_created_idx
+      ON policy_versions (slug, created_at)
+  `);
+  logger.info({ table: "policy_versions" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

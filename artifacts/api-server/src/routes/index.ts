@@ -91,6 +91,7 @@ import payoutMerchantSignupRouter from "./payoutMerchantSignup";
 import socialProvidersRouter from "./socialProviders";
 import publicContactRouter from "./publicContact";
 import policyAcceptanceRouter from "./policyAcceptance";
+import policyVersionsRouter from "./policyVersions";
 
 const router: IRouter = Router();
 
@@ -225,5 +226,8 @@ router.use(publicContactRouter);
 
 // Policy acceptance recording + admin view
 router.use(policyAcceptanceRouter);
+
+// Policy version management (admin draft/publish/history)
+router.use(policyVersionsRouter);
 
 export default router;

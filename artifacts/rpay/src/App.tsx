@@ -41,6 +41,7 @@ import CookiePolicyPage from "@/pages/cookie-policy";
 import SecurityPolicyPage from "@/pages/security-policy";
 import DisclaimerPage from "@/pages/disclaimer";
 import AdminLegalPages from "@/pages/admin/legal-pages";
+import { CookieConsent } from "@/components/ui/cookie-consent";
 
 // Auth Pages
 import AdminLogin from "@/pages/admin/login";
@@ -599,6 +600,7 @@ function App() {
         <AuthProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
+            <CookieConsent />
           </WouterRouter>
         </AuthProvider>
         <Toaster theme="dark" position="top-right" />

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
-import { CookieConsent } from "@/components/ui/cookie-consent";
 import { useCompanySettings } from "@/lib/company-settings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -908,7 +907,6 @@ export default function Landing() {
           )}
         </div>
       </footer>
-      <CookieConsent />
     </div>
   );
 }

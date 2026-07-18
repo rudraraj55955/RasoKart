@@ -33,6 +33,7 @@ import {
   credentialEventsTable,
   demoAccountRemovalsTable,
   merchantWalletsTable,
+  policyVersionsTable,
   walletLedgerTable,
   merchantVerificationsTable,
   reportSchedulesTable,
@@ -1597,6 +1598,45 @@ export async function seed() {
   if ((backfillResult.rowCount ?? 0) > 0) {
     console.log(`Backfilled frequency/format on ${backfillResult.rowCount} delivery log row(s).`);
   }
+
+  // ── Policy versions — seed initial v1.0 "published" entries for all 15 policies
+  const POLICY_SEEDS = [
+    { slug: "privacy-policy",                   title: "Privacy Policy" },
+    { slug: "terms-and-conditions",             title: "Terms and Conditions" },
+    { slug: "refund-cancellation-policy",       title: "Refund & Cancellation Policy" },
+    { slug: "service-delivery-policy",         title: "Service Delivery Policy" },
+    { slug: "contact-us",                       title: "Contact Us" },
+    { slug: "grievance-redressal-policy",       title: "Grievance Redressal Policy" },
+    { slug: "pricing-fees-settlement-policy",  title: "Pricing, Fees & Settlement Policy" },
+    { slug: "merchant-agreement",              title: "Merchant Agreement" },
+    { slug: "prohibited-businesses",           title: "Prohibited Businesses" },
+    { slug: "kyc-aml-policy",                  title: "KYC & AML Policy" },
+    { slug: "payment-payout-settlement-policy", title: "Payment, Payout & Settlement Policy" },
+    { slug: "chargeback-dispute-policy",       title: "Chargeback & Dispute Policy" },
+    { slug: "cookie-policy",                   title: "Cookie Policy" },
+    { slug: "security-policy",                 title: "Security & Responsible Disclosure Policy" },
+    { slug: "disclaimer",                      title: "Disclaimer" },
+  ];
+  for (const policy of POLICY_SEEDS) {
+    const existing = await db
+      .select({ id: policyVersionsTable.id })
+      .from(policyVersionsTable)
+      .where(eq(policyVersionsTable.slug, policy.slug))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(policyVersionsTable).values({
+        slug: policy.slug,
+        versionTag: "1.0",
+        title: policy.title,
+        status: "published",
+        effectiveDate: "16 July 2026",
+        changelogNotes: "Initial policy publication.",
+        updatedByEmail: "admin@rasokart.com",
+        publishedAt: new Date("2026-07-16T00:00:00.000Z"),
+      });
+    }
+  }
+  console.log("Policy versions seeded");
 
   console.log("Seed complete.");
 
