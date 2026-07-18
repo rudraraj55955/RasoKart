@@ -84,55 +84,63 @@ export default function AdminDashboard() {
             title="Total Deposits"
             value={`₹${Number(stats.totalDeposits).toLocaleString()}`}
             icon={<ArrowDownLeft className="w-4 h-4 text-emerald-500" />}
+            href="/admin/deposits"
           />
           <StatCard
             title="Total Payouts"
             value={`₹${Number(stats.totalWithdrawals).toLocaleString()}`}
             icon={<ArrowUpRight className="w-4 h-4 text-rose-500" />}
+            href="/admin/transactions?type=withdrawal"
           />
           <StatCard
             title="Success Rate"
             value={`${((stats.successTransactions / Math.max(1, stats.successTransactions + stats.failedTransactions)) * 100).toFixed(1)}%`}
             icon={<Activity className="w-4 h-4 text-primary" />}
             description={`${stats.successTransactions} successful · ${stats.failedTransactions} failed`}
+            href="/admin/transactions?status=success"
           />
           <StatCard
             title="Pending Actions"
             value={stats.pendingTransactions + stats.pendingMerchants}
             icon={<Clock className="w-4 h-4 text-amber-500" />}
             description={`${stats.pendingTransactions} txns · ${stats.pendingMerchants} merchants`}
+            href="/admin/transactions?status=pending"
           />
         </div>
       ) : null}
 
       {stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-border/50 bg-card/50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Store className="w-4 h-4 text-primary" />
+          <Link href="/admin/merchants">
+            <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Store className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Merchants</p>
+                    <p className="text-xl font-bold">{stats.totalMerchants}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Total Merchants</p>
-                  <p className="text-xl font-bold">{stats.totalMerchants}</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/merchants?status=pending">
+            <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Pending Merchants</p>
+                    <p className="text-xl font-bold">{stats.pendingMerchants}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 bg-card/50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                  <Clock className="w-4 h-4 text-amber-500" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Pending Merchants</p>
-                  <p className="text-xl font-bold">{stats.pendingMerchants}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
           <Card className="border-border/50 bg-card/50">
             <CardContent className="pt-4 pb-4">
               <div className="flex items-center gap-3">
@@ -146,19 +154,21 @@ export default function AdminDashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50 bg-card/50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center">
-                  <ShieldAlert className="w-4 h-4 text-rose-500" />
+          <Link href="/admin/transactions?status=failed">
+            <Card className="border-border/50 bg-card/50 cursor-pointer hover:border-border/80 transition-colors">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center">
+                    <ShieldAlert className="w-4 h-4 text-rose-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Failure Rate</p>
+                    <p className="text-xl font-bold">{risk ? `${risk.failedRatePercent}%` : "—"}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Failure Rate</p>
-                  <p className="text-xl font-bold">{risk ? `${risk.failedRatePercent}%` : "—"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       )}
 

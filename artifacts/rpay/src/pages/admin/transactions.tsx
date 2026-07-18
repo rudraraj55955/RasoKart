@@ -822,9 +822,9 @@ export default function AdminTransactions() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [utrSearch, setUtrSearch] = useState("");
-  const [type, setType] = useState("all");
-  const [status, setStatus] = useState("all");
-  const [provider, setProvider] = useState("all");
+  const [type, setType] = useState(() => new URLSearchParams(window.location.search).get("type") ?? "all");
+  const [status, setStatus] = useState(() => new URLSearchParams(window.location.search).get("status") ?? "all");
+  const [provider, setProvider] = useState(() => new URLSearchParams(window.location.search).get("provider") ?? "all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -854,15 +854,15 @@ export default function AdminTransactions() {
   const [saveFilterNameError, setSaveFilterNameError] = useState("");
   const saveNameInputRef = useRef<HTMLInputElement>(null);
 
-  // Read ?provider= URL query param on mount and pre-fill the provider filter
+  // Sync type, status, provider filters to URL for deep-link navigation
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const providerParam = params.get("provider");
-    if (providerParam && providerParam !== "all") {
-      setProvider(providerParam);
-      setPage(1);
-    }
-  }, []);
+    if (type && type !== "all") params.set("type", type); else params.delete("type");
+    if (status && status !== "all") params.set("status", status); else params.delete("status");
+    if (provider && provider !== "all") params.set("provider", provider); else params.delete("provider");
+    const next = params.toString();
+    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
+  }, [type, status, provider]);
 
   useEffect(() => {
     if (showSaveInput) setTimeout(() => saveNameInputRef.current?.focus(), 50);

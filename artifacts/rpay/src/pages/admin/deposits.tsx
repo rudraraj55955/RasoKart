@@ -361,7 +361,7 @@ function AdminPayinOrdersPanel() {
 
 export default function AdminDeposits() {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState(() => new URLSearchParams(window.location.search).get("status") ?? "all");
   const [merchantId, setMerchantId] = useState("");
   const [page, setPage] = useState(1);
 
@@ -400,6 +400,13 @@ export default function AdminDeposits() {
       setTimeout(() => renameInputRef.current?.focus(), 50);
     }
   }, [renamingId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (status && status !== "all") params.set("status", status); else params.delete("status");
+    const next = params.toString();
+    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
+  }, [status]);
 
   const activeStatus = smartFilter?.txStatus ?? (status !== "all" ? status : undefined);
   const activeDateFrom = smartFilter?.dateFrom ?? undefined;
@@ -609,6 +616,19 @@ export default function AdminDeposits() {
           </CardContent>
         </Card>
       </div>
+
+      {status !== "all" && !hasSmartFilter && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Active filter:</span>
+          <button
+            onClick={() => { setStatus("all"); setPage(1); }}
+            className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/30 text-xs px-2.5 py-1 hover:bg-primary/20 transition-colors capitalize"
+          >
+            Status: {status}
+            <X className="w-3 h-3 ml-0.5" />
+          </button>
+        </div>
+      )}
 
       {/* Smart Search Bar */}
       <Card>

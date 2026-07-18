@@ -76,12 +76,12 @@ export default function AgentDashboard() {
   }
 
   const statCards = [
-    { label: "Total Merchants",   value: stats?.totalMerchantsOnboarded ?? "—", icon: Users,       color: "text-primary",     bg: "bg-primary/10" },
-    { label: "Pending",           value: stats?.pendingMerchants ?? "—",         icon: Clock,        color: "text-amber-400",   bg: "bg-amber-500/10" },
-    { label: "Active",            value: stats?.approvedMerchants ?? "—",        icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-    { label: "Rejected",          value: stats?.rejectedMerchants ?? "—",        icon: AlertCircle,  color: "text-rose-400",    bg: "bg-rose-500/10" },
-    { label: "Commission Earned", value: stats ? `₹${stats.totalCommissionEarned.toLocaleString()}` : "—", icon: TrendingUp, color: "text-cyan-400",   bg: "bg-cyan-500/10" },
-    { label: "Withdrawable",      value: stats ? `₹${stats.withdrawableCommission.toLocaleString()}` : "—", icon: Wallet,    color: "text-violet-400", bg: "bg-violet-500/10" },
+    { label: "Total Merchants",   value: stats?.totalMerchantsOnboarded ?? "—", icon: Users,       color: "text-primary",     bg: "bg-primary/10",     href: "/agent/payout-merchants" },
+    { label: "Pending",           value: stats?.pendingMerchants ?? "—",         icon: Clock,        color: "text-amber-400",   bg: "bg-amber-500/10",   href: "/agent/payout-merchants?status=pending" },
+    { label: "Active",            value: stats?.approvedMerchants ?? "—",        icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", href: "/agent/payout-merchants?status=approved" },
+    { label: "Rejected",          value: stats?.rejectedMerchants ?? "—",        icon: AlertCircle,  color: "text-rose-400",    bg: "bg-rose-500/10",    href: "/agent/payout-merchants?status=rejected" },
+    { label: "Commission Earned", value: stats ? `₹${stats.totalCommissionEarned.toLocaleString()}` : "—", icon: TrendingUp, color: "text-cyan-400",   bg: "bg-cyan-500/10",   href: "/agent/commission" },
+    { label: "Withdrawable",      value: stats ? `₹${stats.withdrawableCommission.toLocaleString()}` : "—", icon: Wallet,    color: "text-violet-400", bg: "bg-violet-500/10", href: "/agent/commission" },
   ];
 
   return (
@@ -92,23 +92,30 @@ export default function AgentDashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {statCards.map((card) => (
-          <Card key={card.label} className="border-border/50">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{card.label}</p>
-                  <p className={`text-2xl font-bold ${loading ? "animate-pulse text-muted-foreground" : card.color}`}>
-                    {loading ? "…" : card.value}
-                  </p>
+        {statCards.map((card) => {
+          const cardEl = (
+            <Card className={`border-border/50 ${card.href ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{card.label}</p>
+                    <p className={`text-2xl font-bold ${loading ? "animate-pulse text-muted-foreground" : card.color}`}>
+                      {loading ? "…" : card.value}
+                    </p>
+                  </div>
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.bg}`}>
+                    <card.icon className={`h-5 w-5 ${card.color}`} />
+                  </div>
                 </div>
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.bg}`}>
-                  <card.icon className={`h-5 w-5 ${card.color}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+          return card.href ? (
+            <Link key={card.label} href={card.href}>{cardEl}</Link>
+          ) : (
+            <div key={card.label}>{cardEl}</div>
+          );
+        })}
       </div>
 
       <Card className="border-border/50">

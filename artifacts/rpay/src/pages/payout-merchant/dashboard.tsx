@@ -88,48 +88,56 @@ export default function PayoutMerchantDashboard() {
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-card border-border/50">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Wallet className="w-4 h-4 text-blue-400" />
-              <span className="text-xs text-muted-foreground">Available Balance</span>
-            </div>
-            <p className="text-2xl font-bold text-foreground">{fmtAmount(stats?.walletAvailable)}</p>
-            {Number(stats?.walletHold ?? 0) > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">{fmtAmount(stats?.walletHold)} on hold</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border/50">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs text-muted-foreground">Total Sent</span>
-            </div>
-            <p className="text-2xl font-bold text-foreground">{fmtAmount(stats?.successTotal)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{stats?.successCount ?? 0} payouts</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border/50">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <span className="text-xs text-muted-foreground">Pending</span>
-            </div>
-            <p className="text-2xl font-bold text-foreground">{fmtAmount(stats?.pendingTotal)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{stats?.pendingCount ?? 0} payouts</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border/50">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <XCircle className="w-4 h-4 text-red-400" />
-              <span className="text-xs text-muted-foreground">Failed</span>
-            </div>
-            <p className="text-2xl font-bold text-foreground">{stats?.failedCount ?? 0}</p>
-            <p className="text-xs text-muted-foreground mt-1">payouts</p>
-          </CardContent>
-        </Card>
+        <Link href="/payout-merchant/wallet">
+          <Card className="bg-card border-border/50 cursor-pointer hover:border-border/80 transition-colors">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Wallet className="w-4 h-4 text-blue-400" />
+                <span className="text-xs text-muted-foreground">Available Balance</span>
+              </div>
+              <p className="text-2xl font-bold text-foreground">{fmtAmount(stats?.walletAvailable)}</p>
+              {Number(stats?.walletHold ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">{fmtAmount(stats?.walletHold)} on hold</p>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/payout-merchant/payouts?status=Sent">
+          <Card className="bg-card border-border/50 cursor-pointer hover:border-border/80 transition-colors">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs text-muted-foreground">Total Sent</span>
+              </div>
+              <p className="text-2xl font-bold text-foreground">{fmtAmount(stats?.successTotal)}</p>
+              <p className="text-xs text-muted-foreground mt-1">{stats?.successCount ?? 0} payouts</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/payout-merchant/payouts?status=Processing">
+          <Card className="bg-card border-border/50 cursor-pointer hover:border-border/80 transition-colors">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-muted-foreground">Pending</span>
+              </div>
+              <p className="text-2xl font-bold text-foreground">{fmtAmount(stats?.pendingTotal)}</p>
+              <p className="text-xs text-muted-foreground mt-1">{stats?.pendingCount ?? 0} payouts</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/payout-merchant/payouts?status=Failed">
+          <Card className="bg-card border-border/50 cursor-pointer hover:border-border/80 transition-colors">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <XCircle className="w-4 h-4 text-red-400" />
+                <span className="text-xs text-muted-foreground">Failed</span>
+              </div>
+              <p className="text-2xl font-bold text-foreground">{stats?.failedCount ?? 0}</p>
+              <p className="text-xs text-muted-foreground mt-1">payouts</p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Quick actions */}

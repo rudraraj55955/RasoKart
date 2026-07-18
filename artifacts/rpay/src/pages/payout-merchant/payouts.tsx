@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { getToken } from "@/lib/auth";
@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ArrowRightLeft, Plus, ChevronLeft, ChevronRight, Clock, CheckCircle2, XCircle, Zap, PauseCircle, ShieldAlert, MoreHorizontal, FileText, Download, Share2, Copy } from "lucide-react";
+import { ArrowRightLeft, Plus, ChevronLeft, ChevronRight, Clock, CheckCircle2, XCircle, Zap, PauseCircle, ShieldAlert, MoreHorizontal, FileText, Download, Share2, Copy, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { PayoutSlipModal } from "@/components/payout-slip-modal";
@@ -95,6 +95,7 @@ export default function PayoutMerchantPayouts() {
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState(() => new URLSearchParams(window.location.search).get("status") ?? "");
   const [showCreate, setShowCreate] = useState(false);
   const [slipPayoutId, setSlipPayoutId] = useState<number | null>(null);
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string>("");
@@ -171,7 +172,15 @@ export default function PayoutMerchantPayouts() {
     });
   };
 
-  const payouts = data?.payouts ?? [];
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (statusFilter) params.set("status", statusFilter); else params.delete("status");
+    const next = params.toString();
+    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
+  }, [statusFilter]);
+
+  const allPayouts: any[] = data?.payouts ?? [];
+  const filteredPayouts = statusFilter ? allPayouts.filter((p: any) => p.displayStatus === statusFilter) : allPayouts;
   const totalPages = data?.totalPages ?? 1;
 
   return (
@@ -185,6 +194,19 @@ export default function PayoutMerchantPayouts() {
           <Plus className="w-4 h-4" /> New Payout
         </Button>
       </div>
+
+      {statusFilter && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Active filter:</span>
+          <button
+            onClick={() => setStatusFilter("")}
+            className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary border border-primary/30 text-xs px-2.5 py-1 hover:bg-primary/20 transition-colors"
+          >
+            Status: {statusFilter}
+            <X className="w-3 h-3 ml-0.5" />
+          </button>
+        </div>
+      )}
 
       {apStatus?.autoPayoutEnabled && !apStatus?.autoPayoutPaused && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 flex items-center gap-3 text-sm">
@@ -209,11 +231,11 @@ export default function PayoutMerchantPayouts() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-10"><Spinner className="w-6 h-6 text-muted-foreground" /></div>
-          ) : payouts.length === 0 ? (
+          ) : filteredPayouts.length === 0 ? (
             <div className="py-14 text-center">
               <ArrowRightLeft className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">No payouts yet</p>
-              <Button className="mt-4" onClick={openCreateDialog}>Send First Payout</Button>
+              <p className="text-sm text-muted-foreground">{statusFilter ? `No ${statusFilter.toLowerCase()} payouts` : "No payouts yet"}</p>
+              {!statusFilter && <Button className="mt-4" onClick={openCreateDialog}>Send First Payout</Button>}
             </div>
           ) : (
             <>
@@ -226,7 +248,7 @@ export default function PayoutMerchantPayouts() {
                   <span>Status</span>
                   <span />
                 </div>
-                {payouts.map((p: any) => (
+                {filteredPayouts.map((p: any) => (
                   <div key={p.id} className="grid grid-cols-[1fr_120px_100px_100px_40px] gap-4 px-4 py-3 items-center hover:bg-muted/10 transition-colors">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{p.accountHolder ?? p.upiId ?? "—"}</p>
