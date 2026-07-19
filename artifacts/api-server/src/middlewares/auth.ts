@@ -6,7 +6,11 @@ import { resolveUserPermissions, checkPermission } from "../services/permissionR
 
 export { resolveUserPermissions } from "../services/permissionResolver";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "rasokart-secret-key-change-in-production";
+const _rawSecret = process.env.SESSION_SECRET;
+if (!_rawSecret && process.env.NODE_ENV === "production") {
+  throw new Error("SESSION_SECRET environment variable is required in production");
+}
+const JWT_SECRET = _rawSecret ?? "rasokart-secret-key-change-in-production";
 
 export interface AuthPayload {
   userId: number;

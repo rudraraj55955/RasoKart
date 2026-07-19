@@ -95,7 +95,10 @@ export function checkPermission(
   keys: string | string[],
   mode: "OR" | "AND" = "OR",
 ): boolean {
-  if (perms === null) return true; // pre-migration soft-pass
+  // null = migration log missing (seed failed or schema not ready).
+  // Fail-CLOSED: deny access rather than allow. The seed auto-activates
+  // IAM on startup so null is a transient/error state, not a normal mode.
+  if (perms === null) return false;
   if ("__all__" in perms) return true; // Super Admin
 
   const keyList = Array.isArray(keys) ? keys : [keys];

@@ -43,7 +43,7 @@ import {
   rolePermissionsTable,
   userPermissionsTable,
 } from "@workspace/db";
-import { ALL_PERMISSION_KEYS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "./permissions";
+import { ALL_PERMISSION_KEYS, LEGACY_KEY_MAP, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "./permissions";
 
 const PLAN_TIERS = [
   {
@@ -1643,13 +1643,118 @@ export async function seed() {
   }
   console.log("Policy versions seeded");
 
+  // ── IAM migration auto-activation ─────────────────────────────────────────
+  // On first startup (no iam_migration_log row), automatically activate RBAC
+  // enforcement — no manual admin trigger required. This ensures permissions
+  // are enforced from the very first request on every fresh environment.
+  //
+  // Steps: (1) seed permissions catalog, (2) seed role templates from
+  // ROLE_DEFAULT_PERMISSIONS (onConflictDoNothing to preserve future admin
+  // edits), (3) backfill any legacy permissionsJson overrides into
+  // user_permissions, (4) write the migration log row.
+  //
+  // On subsequent starts, the iam_migration_log row already exists so this
+  // block is skipped — only the reconciliation block below runs to pick up
+  // new permission keys added since the initial migration.
+  const KNOWN_ROLES_LIST = ["admin", "merchant", "payout_merchant", "payout_admin", "payout_super_admin", "agent", "customer"];
+  let [iamMigRow] = await db.select({ id: iamMigrationLogTable.id }).from(iamMigrationLogTable).limit(1);
+  if (!iamMigRow) {
+    // 1. Seed permissions catalog
+    for (const key of ALL_PERMISSION_KEYS) {
+      const category = key.split("_")[0] ?? "unknown";
+      const isSuperAdminOnly = SUPER_ADMIN_ONLY_PERMISSIONS.has(key);
+      await db
+        .insert(permissionsTable)
+        .values({ key, category, isSuperAdminOnly, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: permissionsTable.key,
+          set: { category, isSuperAdminOnly, updatedAt: new Date() },
+        });
+    }
+
+    // 2. Seed role_permissions from code defaults (onConflictDoNothing = admin edits survive)
+    for (const role of KNOWN_ROLES_LIST) {
+      const defaults = ROLE_DEFAULT_PERMISSIONS[role] ?? {};
+      for (const key of ALL_PERMISSION_KEYS) {
+        const isEnabled = (defaults[key] ?? false) === true;
+        await db
+          .insert(rolePermissionsTable)
+          .values({ role, permissionKey: key, isEnabled, updatedByUserId: null })
+          .onConflictDoNothing();
+      }
+    }
+
+    // 3. Backfill legacy permissionsJson overrides → user_permissions
+    // Preserves effective access for users whose permissions_json deviated
+    // from the role default before the IAM system was introduced.
+    const allUsers = await db
+      .select({ id: usersTable.id, role: usersTable.role, isSuperAdmin: usersTable.isSuperAdmin, permissionsJson: usersTable.permissionsJson })
+      .from(usersTable);
+    let backfilledUsers = 0;
+    let backfilledOverrides = 0;
+    for (const u of allUsers) {
+      if (u.isSuperAdmin) continue;
+      const legacyMap = u.permissionsJson as Record<string, boolean> | null;
+      if (!legacyMap || typeof legacyMap !== "object") continue;
+      const roleDefaults = ROLE_DEFAULT_PERMISSIONS[u.role] ?? {};
+      let userHadOverride = false;
+      for (const [rawKey, legacyValue] of Object.entries(legacyMap)) {
+        let key: string = rawKey;
+        if (!ALL_PERMISSION_KEYS.includes(rawKey as any)) {
+          const mapped = LEGACY_KEY_MAP[rawKey];
+          if (!mapped) continue; // truly unknown — skip silently in auto-migration
+          key = mapped;
+        }
+        const roleDefault = roleDefaults[key] ?? false;
+        if (legacyValue === roleDefault) continue;
+        const effect = legacyValue ? "ALLOW" : "DENY";
+        if (effect === "ALLOW" && SUPER_ADMIN_ONLY_PERMISSIONS.has(key)) continue;
+        await db
+          .insert(userPermissionsTable)
+          .values({ userId: u.id, permissionKey: key, effect, updatedByUserId: null })
+          .onConflictDoUpdate({
+            target: [userPermissionsTable.userId, userPermissionsTable.permissionKey],
+            set: { effect, updatedByUserId: null, updatedAt: new Date() },
+          });
+        backfilledOverrides++;
+        userHadOverride = true;
+      }
+      if (userHadOverride) backfilledUsers++;
+    }
+
+    // 4. Write migration log (system-initiated; executedByUserId = null)
+    const [userCountRow] = await db.select({ c: count() }).from(usersTable);
+    const now = new Date();
+    await db.insert(iamMigrationLogTable).values({
+      cutoffAt: now,
+      executedByUserId: null,
+      totalUsers: Number(userCountRow.c),
+      snapshotJson: {
+        source: "seed_auto_activation",
+        roles: KNOWN_ROLES_LIST,
+        permissionCount: ALL_PERMISSION_KEYS.length,
+        catalogSynced: true,
+        backfilledUsers,
+        backfilledOverrides,
+      },
+    });
+
+    logger.info(
+      { roles: KNOWN_ROLES_LIST.length, keys: ALL_PERMISSION_KEYS.length, backfilledUsers, backfilledOverrides },
+      "iam_auto_activated_on_startup",
+    );
+
+    // Refresh iamMigRow so the reconciliation block below runs this start too
+    const [freshRow] = await db.select({ id: iamMigrationLogTable.id }).from(iamMigrationLogTable).limit(1);
+    iamMigRow = freshRow!;
+  }
+
   // ── IAM catalog auto-sync ──────────────────────────────────────────────────
   // If the IAM migration has been run (iam_migration_log has rows) but the
   // permissions catalog (permissions table) is empty — or new keys have been
   // added to ALL_PERMISSION_KEYS since the migration ran — this block brings
   // both tables up to date with the current code without requiring a re-run.
   // This is idempotent and safe to run on every server start.
-  const [iamMigRow] = await db.select({ id: iamMigrationLogTable.id }).from(iamMigrationLogTable).limit(1);
   if (iamMigRow) {
     const [catCount] = await db.select({ c: count() }).from(permissionsTable);
     const needsCatalogSync = Number(catCount.c) === 0;
