@@ -1,0 +1,327 @@
+Update the RasoKart IAM + RBAC implementation with the following mandatory migration and default-access rules.
+
+1. Super Admin Must Have All Permissions
+
+The SUPER_ADMIN system role must automatically receive every existing and future permission in the platform.
+
+Rules:
+
+- All permissions must remain permanently enabled for SUPER_ADMIN.
+- When a new module or permission is added later, it must automatically become available to SUPER_ADMIN.
+- Super Admin permissions must not require manual selection.
+- No Admin or other user can remove, disable or override Super Admin permissions.
+- Super Admin must have access to every portal, module, page, dashboard, KPI card, report, API, audit log, setting and administrative action.
+- Only another authorized Super Admin may manage Super Admin accounts.
+- At least one active Super Admin must always remain in the system.
+- Prevent deletion, suspension or permission removal if it would leave the platform without an active Super Admin.
+
+The permission matrix may display all Super Admin permissions as checked and locked.
+
+Display a clear message:
+
+“Super Admin automatically has complete platform access. These permissions cannot be disabled.”
+
+---
+
+2. Preserve All Existing Access
+
+During IAM + RBAC migration, do not remove or restrict any access that was already available before 19 July 2026.
+
+All users, roles, portals, routes, pages, APIs and modules that were working before the IAM migration must continue working after deployment.
+
+This includes existing:
+
+- Super Admin access
+- Admin access
+- Merchant access
+- Payout Merchant access
+- Agent access
+- Customer access
+- Dashboard access
+- KPI card access
+- Payout access
+- Collection access
+- Wallet access
+- Settlement access
+- Reports
+- CSV exports
+- PDF downloads
+- Merchant onboarding
+- KYC
+- API keys
+- Webhooks
+- Provider settings
+- Support modules
+- Audit modules
+- Login methods
+- OTP login
+- Password login
+- Google/social login where enabled
+
+Use a backward-compatible migration strategy.
+
+Do not default existing users to “no permissions”.
+
+Do not apply a strict deny-all migration that breaks current production access.
+
+---
+
+3. Existing User Permission Migration
+
+For every account created before the IAM + RBAC production migration:
+
+1. Identify the account’s existing role.
+2. Detect the pages, modules and actions currently available to that role.
+3. Map those existing capabilities into RBAC permissions.
+4. Assign those permissions as enabled.
+5. Preserve the existing data scope and tenant restrictions.
+6. Do not expand access beyond what the role previously had.
+7. Do not reduce existing valid access during migration.
+
+Examples:
+
+- Existing Admins should retain their currently available Admin modules.
+- Existing Merchants should retain all currently available Merchant features, limited to their own merchantId.
+- Existing Payout Merchants should retain all current payout and wallet features, limited to their own payoutMerchantId.
+- Existing Agents should retain their current assigned modules and data scope.
+- Existing Customers should retain their currently available customer features.
+- Super Admin must receive every permission.
+
+Create a migration snapshot before applying changes.
+
+The snapshot should record:
+
+- User ID
+- Existing role
+- Existing portal
+- Existing accessible modules
+- Existing account status
+- Existing merchant or payout merchant mapping
+- Migration result
+- Assigned RBAC permissions
+
+---
+
+4. Default Permission State for Existing Roles
+
+At the initial production migration, all permissions corresponding to currently working features must be ON for the relevant existing role.
+
+Do not require Super Admin to manually enable hundreds of permissions immediately after deployment.
+
+Initial default state:
+
+SUPER_ADMIN
+
+- All permissions ON
+- All modules ON
+- All data scope
+- Permissions locked from being disabled
+
+Existing ADMIN Accounts
+
+- All Admin features they currently have access to must remain ON
+- Super Admin can disable individual permissions afterward
+- No automatic access to Super Admin-only security features unless already intentionally available
+
+Existing MERCHANT Accounts
+
+- All currently available Merchant features must remain ON
+- Access remains restricted to their own merchantId
+- Super Admin can later enable or disable Merchant-level permissions
+
+Existing PAYOUT_MERCHANT Accounts
+
+- All currently available Payout Merchant features must remain ON
+- Access remains restricted to their own payoutMerchantId
+- Super Admin can later enable or disable permissions
+
+Existing AGENT Accounts
+
+- Existing assigned features remain ON
+- Existing assignment and data-scope restrictions remain active
+- Super Admin can later enable or disable permissions
+
+Existing CUSTOMER Accounts
+
+- Existing customer features remain ON
+- Access remains restricted to their own customerId
+- Super Admin can later enable or disable applicable features
+
+---
+
+5. New Accounts After IAM Launch
+
+For accounts created after IAM + RBAC goes live:
+
+- Apply a role-based default permission template.
+- Super Admin must be able to edit these default templates.
+- New accounts should receive the current default permissions configured by Super Admin.
+- New accounts must not automatically receive every permission.
+- Only SUPER_ADMIN receives all permissions automatically.
+
+Create default templates for:
+
+- Admin
+- Merchant
+- Payout Merchant
+- Agent
+- Customer
+- Custom roles
+
+Super Admin must be able to configure:
+
+- Default permissions
+- Default data scope
+- Default dashboard cards
+- Default menu items
+- Default report access
+- Default export access
+- Default approval rights
+
+---
+
+6. Super Admin Permission Control Panel
+
+Create a Super Admin-only control panel where permissions can be turned ON or OFF for:
+
+- Individual users
+- Entire roles
+- Custom roles
+- Specific modules
+- Individual actions
+- Dashboard cards
+- Reports
+- CSV/PDF exports
+- Approval actions
+- API access
+- API key scopes
+- Webhooks
+- Settings
+- Provider configuration
+- Support modules
+- KYC modules
+
+Support three effective permission states:
+
+- ROLE DEFAULT
+- ALLOW
+- DENY
+
+Effective permission priority:
+
+1. Super Admin automatic full access
+2. Explicit user DENY
+3. Explicit user ALLOW
+4. Role permission
+5. Default deny for unknown permissions
+
+For SUPER_ADMIN, explicit DENY must not be allowed.
+
+---
+
+7. Permission ON/OFF Behaviour
+
+When Super Admin turns a permission OFF:
+
+- Remove the related navigation item where appropriate.
+- Block direct route access.
+- Block backend API access.
+- Block button/action access.
+- Block export/download access.
+- Block realtime/WebSocket access where applicable.
+- Return a branded permission-denied response.
+- Record the change in audit logs.
+- Invalidate the affected user’s permission cache immediately.
+- Refresh or revoke the affected user’s active sessions as required.
+
+When Super Admin turns a permission ON:
+
+- Access should become available immediately.
+- No deployment or server restart should be required.
+- Menu, route and action access should update after permission refresh.
+- Record the change in audit logs.
+
+---
+
+8. Safety Rules
+
+Do not confuse permission preservation with unrestricted data access.
+
+Even when existing permissions remain ON:
+
+- Merchant A must never access Merchant B data.
+- Payout Merchant A must never access another payout merchant’s records.
+- Customer A must never access Customer B data.
+- Agents remain limited to assigned data.
+- Existing provider secrets must remain restricted.
+- Existing role separation must remain active.
+- Normal Merchant and Payout Merchant route guards must remain separate.
+- Backend data-scope checks must remain mandatory.
+
+Preserve feature access, not cross-tenant access.
+
+---
+
+9. Migration Preview and Rollback
+
+Before applying the IAM migration in production, generate a migration preview showing:
+
+- Total existing users
+- Users by role
+- Permissions to be assigned
+- Existing access that will be preserved
+- Accounts with unclear or invalid role mappings
+- Duplicate users
+- Missing merchant mappings
+- Missing payout merchant mappings
+- Accounts that may lose access
+
+The production migration must stop if any valid existing account would unexpectedly lose access.
+
+Create:
+
+- Database backup
+- Permission migration backup
+- User-role mapping backup
+- Rollback migration
+
+Rollback must restore the previous authentication and access state safely.
+
+---
+
+10. Production Verification
+
+After migration, test existing production accounts created before 19 July 2026.
+
+Verify:
+
+- Super Admin has every permission.
+- Super Admin can access every IAM page.
+- Existing Admin pages still open.
+- Existing Merchant features still work.
+- Existing Payout Merchant payout and wallet features still work.
+- Existing Agent access still works.
+- Existing Customer access still works.
+- No login redirect loop occurs.
+- No existing valid menu disappears unexpectedly.
+- Existing reports and exports still work.
+- Existing API integrations still work.
+- Tenant data remains isolated.
+- Permission ON/OFF changes apply immediately.
+- Super Admin permissions cannot be disabled.
+
+Do not mark the task complete unless all existing access is preserved and Super Admin can centrally control permissions afterward.Use the exact IAM migration cutoff timestamp:
+
+19 July 2026, 9:48 PM IST (Asia/Kolkata)
+
+Rules:
+
+- Every user/account created before this exact timestamp must retain all of their currently available valid permissions and features.
+- Do not remove, disable or reset any existing valid access for accounts created before this cutoff.
+- Existing access must remain ON after IAM + RBAC migration.
+- Super Admin can later turn individual permissions ON or OFF from the IAM control panel.
+- Accounts created at or after this cutoff timestamp must receive permissions from the new role-based default permission templates.
+- Preserve tenant and ownership restrictions even when permissions remain ON.
+- SUPER_ADMIN must always have all current and future permissions automatically ON.
+- Store the cutoff internally in UTC as "2026-07-19T16:18:00Z", while displaying it in the UI as "19 July 2026, 9:48 PM IST".
+- Do not use only the date for comparison; use the complete timestamp with timezone.
