@@ -92,3 +92,4 @@ export * from "./otpEmailSettings";
 export * from "./policyAcceptances";
 export * from "./contactSubmissions";
 export * from "./policyVersions";
+export * from "./iamPermissions";

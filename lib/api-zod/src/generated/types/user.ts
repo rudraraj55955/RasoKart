@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { UserBadgeSnoozedUntil } from './userBadgeSnoozedUntil';
+import type { UserEffectivePermissions } from './userEffectivePermissions';
 import type { UserNotifFieldDisabledAt } from './userNotifFieldDisabledAt';
 import type { UserPermissionsJson } from './userPermissionsJson';
 import type { UserRole } from './userRole';
@@ -22,6 +23,9 @@ export interface User {
   canManagePayoutProviderCredentials?: boolean;
   /** Granular permission flags for payout admins (e.g. canTopUpWallet, canApprovePayouts, canManageAgents). */
   permissionsJson?: UserPermissionsJson;
+  /** IAM effective permission map. null = migration not yet run (soft/legacy mode, all access). { "__all__": true } = Super Admin (unrestricted). Otherwise a flat boolean map keyed by permission key.
+   */
+  effectivePermissions?: UserEffectivePermissions;
   /** @nullable */
   merchantId?: number | null;
   /** @nullable */

@@ -92,6 +92,7 @@ import socialProvidersRouter from "./socialProviders";
 import publicContactRouter from "./publicContact";
 import policyAcceptanceRouter from "./policyAcceptance";
 import policyVersionsRouter from "./policyVersions";
+import iamRouter from "./iam";
 
 const router: IRouter = Router();
 
@@ -229,5 +230,8 @@ router.use(policyAcceptanceRouter);
 
 // Policy version management (admin draft/publish/history)
 router.use(policyVersionsRouter);
+
+// IAM + RBAC control panel
+router.use("/iam", iamRouter);
 
 export default router;

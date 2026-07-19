@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, iamMigrationLogTable, rolePermissionTemplatesTable, userPermissionOverridesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "rasokart-secret-key-change-in-production";
@@ -116,4 +116,64 @@ export function requireAnyAdmin(req: Request, res: Response, next: NextFunction)
     return;
   }
   next();
+}
+
+// ── IAM permission resolver ─────────────────────────────────────────────────
+
+/**
+ * Resolves the effective permission map for a user.
+ * - Super Admin (isSuperAdmin=true): returns { __all__: true }
+ * - Before migration runs: returns null (soft/pass-through enforcement)
+ * - After migration: role template + user overrides → flat boolean map
+ */
+export async function resolveUserPermissions(
+  user: { id: number; role: string; isSuperAdmin: boolean },
+): Promise<Record<string, boolean> | { __all__: true } | null> {
+  if (user.isSuperAdmin) return { __all__: true };
+
+  const [migRow] = await db.select({ id: iamMigrationLogTable.id }).from(iamMigrationLogTable).limit(1);
+  if (!migRow) return null;
+
+  const templates = await db
+    .select({ permissionKey: rolePermissionTemplatesTable.permissionKey, isEnabled: rolePermissionTemplatesTable.isEnabled })
+    .from(rolePermissionTemplatesTable)
+    .where(eq(rolePermissionTemplatesTable.role, user.role));
+
+  const perms: Record<string, boolean> = {};
+  for (const t of templates) perms[t.permissionKey] = t.isEnabled;
+
+  const overrides = await db
+    .select({ permissionKey: userPermissionOverridesTable.permissionKey, effect: userPermissionOverridesTable.effect })
+    .from(userPermissionOverridesTable)
+    .where(eq(userPermissionOverridesTable.userId, user.id));
+
+  for (const o of overrides) perms[o.permissionKey] = o.effect === "ALLOW";
+
+  return perms;
+}
+
+/**
+ * Middleware factory: check that the authenticated user has a specific
+ * permission key. Super Admin always passes. Before IAM migration, always
+ * passes (soft/backward-compat). After migration, enforces the permission.
+ */
+export function requirePermission(permissionKey: string) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user;
+    if (!user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    if (user.isSuperAdmin) { next(); return; }
+
+    try {
+      const perms = await resolveUserPermissions(user);
+      if (perms === null) { next(); return; }
+      if ("__all__" in perms) { next(); return; }
+      if (perms[permissionKey] === true) { next(); return; }
+      res.status(403).json({ error: "Permission denied", permissionRequired: permissionKey });
+    } catch {
+      res.status(403).json({ error: "Permission check failed" });
+    }
+  };
 }

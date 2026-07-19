@@ -102,6 +102,7 @@ import AdminOtpEmailSettings from "@/pages/admin/otp-email-settings";
 import AdminSocialProviders from "@/pages/admin/social-providers";
 import AdminDataHygiene from "@/pages/admin/data-hygiene";
 import AdminSecureIdSettings from "@/pages/admin/secure-id-settings";
+import AdminIam from "@/pages/admin/iam";
 import AdminMerchantOnboarding from "@/pages/admin/merchant-onboarding";
 import MerchantOnboarding from "@/pages/merchant/onboarding";
 import MerchantAutoKyc from "@/pages/merchant/auto-kyc";
@@ -497,6 +498,7 @@ function Router() {
       <Route path="/admin/payout-wallet-loads"><AdminRoute component={AdminPayoutWalletLoads} /></Route>
       <Route path="/admin/api-docs"><AdminRoute component={AdminApiDocs} /></Route>
       <Route path="/admin/legal-pages"><AdminRoute component={AdminLegalPages} /></Route>
+      <Route path="/admin/iam"><AdminRoute component={AdminIam} /></Route>
 
       {/* Legacy/broken payout routes — redirect to canonical page */}
       <Route path="/admin/cashfree-payout"><Redirect to="/admin/payout-gateway" /></Route>

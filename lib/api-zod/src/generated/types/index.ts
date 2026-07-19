@@ -704,6 +704,7 @@ export * from './upsertReportScheduleBodyFormat';
 export * from './upsertReportScheduleBodyFrequency';
 export * from './user';
 export * from './userBadgeSnoozedUntil';
+export * from './userEffectivePermissions';
 export * from './userInput';
 export * from './userInputRole';
 export * from './userListResponse';

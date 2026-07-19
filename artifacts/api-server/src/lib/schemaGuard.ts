@@ -1360,6 +1360,45 @@ async function runGuard(): Promise<void> {
   // ── signature_failure_alert_logs: backfill cooldown_hours column ──────────
   await db.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER NOT NULL DEFAULT 1`);
 
+  // ── IAM tables ─────────────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS role_permission_templates (
+      id SERIAL PRIMARY KEY,
+      role TEXT NOT NULL,
+      permission_key TEXT NOT NULL,
+      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by_user_id INTEGER,
+      UNIQUE (role, permission_key)
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS rpt_role_idx ON role_permission_templates(role)`);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS user_permission_overrides (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      permission_key TEXT NOT NULL,
+      effect TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by_user_id INTEGER,
+      UNIQUE (user_id, permission_key)
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS upo_user_id_idx ON user_permission_overrides(user_id)`);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS iam_migration_log (
+      id SERIAL PRIMARY KEY,
+      cutoff_at TIMESTAMPTZ NOT NULL,
+      executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      executed_by_user_id INTEGER,
+      total_users INTEGER NOT NULL DEFAULT 0,
+      snapshot_json JSONB
+    )
+  `);
+  logger.info({ tables: ["role_permission_templates", "user_permission_overrides", "iam_migration_log"] }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

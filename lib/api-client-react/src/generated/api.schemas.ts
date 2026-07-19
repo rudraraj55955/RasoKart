@@ -426,6 +426,12 @@ export const UserRole = {
 export type UserPermissionsJson = { [key: string]: unknown };
 
 /**
+ * IAM effective permission map. null = migration not yet run (soft/legacy mode, all access). { "__all__": true } = Super Admin (unrestricted). Otherwise a flat boolean map keyed by permission key.
+
+ */
+export type UserEffectivePermissions = { [key: string]: unknown } | null;
+
+/**
  * Map of notification field name to ISO timestamp of when that specific field was disabled. Only present for fields that are currently disabled. Null or empty if all are enabled.
  * @nullable
  */
@@ -449,6 +455,9 @@ export interface User {
   canManagePayoutProviderCredentials?: boolean;
   /** Granular permission flags for payout admins (e.g. canTopUpWallet, canApprovePayouts, canManageAgents). */
   permissionsJson?: UserPermissionsJson;
+  /** IAM effective permission map. null = migration not yet run (soft/legacy mode, all access). { "__all__": true } = Super Admin (unrestricted). Otherwise a flat boolean map keyed by permission key.
+   */
+  effectivePermissions?: UserEffectivePermissions;
   /** @nullable */
   merchantId?: number | null;
   /** @nullable */

@@ -11903,6 +11903,13 @@ components:
           type: object
           description: Granular permission flags for payout admins (e.g. canTopUpWallet, canApprovePayouts, canManageAgents).
           additionalProperties: true
+        effectivePermissions:
+          type: object
+          nullable: true
+          description: >
+            IAM effective permission map. null = migration not yet run (soft/legacy mode, all access).
+            { "__all__": true } = Super Admin (unrestricted). Otherwise a flat boolean map keyed by permission key.
+          additionalProperties: true
         merchantId:
           type: ["integer", "null"]
         merchantStatus:

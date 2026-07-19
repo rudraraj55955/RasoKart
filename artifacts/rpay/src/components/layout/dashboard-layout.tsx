@@ -417,6 +417,7 @@ const ADMIN_NAV = [
       { title: "Secure ID Provider", icon: ShieldCheck, href: "/admin/secure-id-settings", superAdminOnly: true as const },
       { title: "Merchant Auto KYC Settings", icon: ShieldCheck, href: "/admin/merchant-kyc-settings", superAdminOnly: true as const },
       { title: "Data Hygiene", icon: Trash2, href: "/admin/data-hygiene", superAdminOnly: true as const },
+      { title: "IAM & Permissions", icon: ShieldCheck, href: "/admin/iam", superAdminOnly: true as const },
       { title: "Settings", icon: Settings, href: "/admin/settings" },
       { title: "API Reference", icon: BookOpen, href: "/admin/api-docs" },
     ],

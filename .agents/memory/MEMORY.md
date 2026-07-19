@@ -59,3 +59,4 @@
 - [Login mutation key cross-session bleed](login-mutation-cache-bleed.md) — mutationKey:['login'] is shared; always call queryClient.clear() before saveAuthAndRedirect to evict stale mutation data from a prior portal session.
 - [Email OTP activation status](email-otp-activation.md) — code deployed (10-min expiry), MSG91_AUTH_KEY missing from VPS .env; otpLoginEnabled=false until key added and inbox tested.
 - [SidebarHeader mobile duplication fix](sidebar-header-mobile-fix.md) — shadcn SidebarHeader shows in Sheet portal on mobile; hide with `hidden md:flex` so MobileHeader is the sole mobile branding; Sheet respects viewport-based CSS breakpoints.
+- [IAM soft-enforcement contract](iam-soft-enforcement.md) — resolveUserPermissions() returns null before migration runs (pass-through), { __all__: true } for Super Admin, flat bool map after migration; requirePermission() always calls next() on null/SA.

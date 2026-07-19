@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { db, usersTable, merchantsTable, credentialEventsTable, merchantTrustedIpsTable, auditLogsTable, merchantAuthOtpsTable, authProvidersTable, socialProviderSettingsTable } from "@workspace/db";
 import { DbRateLimitStore } from "../lib/rateLimitStore";
 import { eq, and, count, desc } from "drizzle-orm";
-import { generateToken, requireAuth } from "../middlewares/auth";
+import { generateToken, requireAuth, resolveUserPermissions } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { makeRateLimiter, safeIpKey } from "../helpers/makeRateLimiter";
 import { sendNewLoginAlertEmail } from "../helpers/newLoginEmail";
@@ -760,6 +760,13 @@ router.get("/me", requireAuth, async (req, res, next) => {
       if (new Date(val) > now) badgeSnoozedUntil[key] = val;
     }
 
+    let effectivePermissions: Record<string, boolean> | { __all__: true } | null = null;
+    try {
+      effectivePermissions = await resolveUserPermissions(user);
+    } catch {
+      // Never block /auth/me due to IAM errors — degrade gracefully to null
+    }
+
     res.json({
       id: user.id,
       email: user.email,
@@ -815,6 +822,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
       reportsBadgeSnoozedUntil: snoozeIso,
       badgeSnoozedUntil: Object.keys(badgeSnoozedUntil).length > 0 ? badgeSnoozedUntil : null,
       createdAt: user.createdAt,
+      effectivePermissions,
     });
   } catch (err) {
     next(err);
