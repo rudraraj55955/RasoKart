@@ -10,4 +10,5 @@ import type { GetIamUsersUserIdPermissions200OverridesItemEffect } from './getIa
 export type GetIamUsersUserIdPermissions200OverridesItem = {
   permissionKey?: string;
   effect?: GetIamUsersUserIdPermissions200OverridesItemEffect;
+  updatedAt?: Date;
 };

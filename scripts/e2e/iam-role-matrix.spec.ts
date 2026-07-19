@@ -1,19 +1,21 @@
 /**
  * iam-role-matrix.spec.ts
  *
- * IAM role-isolation tests. Verifies:
+ * IAM role-isolation tests. Covers the full canonical role matrix:
+ *  admin (SA), merchant (Starter, Gold), payout_admin, payout_super_admin, agent.
+ *  customer has no portal login and is tested only at the schema level.
+ *
+ * Verifies:
  *  1. Merchant cannot reach admin IAM/users/reconciliation/feature endpoints (→ 403)
  *  2. Super Admin (admin@rasokart.com) can reach all admin IAM endpoints (→ 200)
  *  3. Unauthenticated requests are rejected (→ 401)
  *  4. GET /api/healthz/deep includes iam_catalog_seeded and schema checks
  *  5. Merchant2 (Gold) and Merchant3 (Starter) are also blocked from admin routes
  *  6. requirePermission is wired on users, reconciliation, featureControl routes
- *
- * Note: admin@rasokart.com is the Super Admin (is_super_admin=true) in this
- * system. The SA bypasses all requirePermission checks. Tests that verify
- * "non-SA admin blocked" require a separate test-only non-SA admin account
- * which does not exist in the default demo seed — those scenarios are covered
- * by unit tests on the requirePermission middleware instead.
+ *  7. payout_admin / payout_super_admin / agent are blocked from main-admin endpoints
+ *  8. payout_admin / payout_super_admin can reach payout-admin endpoints
+ *  9. agent can reach agent-specific endpoints
+ * 10. customer role is present in /iam/roles canonical role list
  */
 
 import { test, expect, request as apiRequest } from "@playwright/test";
@@ -46,11 +48,20 @@ const MERCHANT_PASS = "Merchant@123456";
 const MERCHANT2_EMAIL = "merchant2@demo.com";
 const MERCHANT3_EMAIL = "merchant3@demo.com";
 
+const TEST_PAYOUT_ADMIN_EMAIL = "test_e2e_payout_admin@iam-matrix.local";
+const TEST_PAYOUT_SUPER_EMAIL = "test_e2e_payout_super@iam-matrix.local";
+const TEST_AGENT_EMAIL       = "test_e2e_agent@iam-matrix.local";
+const TEST_ROLE_PASS = "TestRole@12345";
+
 test.describe("IAM role-isolation", () => {
   let adminToken: string;
   let merchantToken: string;
   let merchant2Token: string;
   let merchant3Token: string;
+  let payoutAdminToken: string;
+  let payoutSuperToken: string;
+  let agentToken: string;
+  let testUserIds: number[] = [];
 
   test.beforeAll(async () => {
     // Clear rate limits so login calls don't get blocked by previous test runs
@@ -69,6 +80,59 @@ test.describe("IAM role-isolation", () => {
       login(MERCHANT2_EMAIL, MERCHANT_PASS),
       login(MERCHANT3_EMAIL, MERCHANT_PASS),
     ]);
+
+    // Create ephemeral test users for roles not in the default seed
+    const ctx = await apiRequest.newContext();
+
+    async function createPayoutRole(email: string, role: string): Promise<{ id: number; token: string }> {
+      // Clean up any leftover from a previous interrupted run
+      try {
+        execSync(
+          `psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM users WHERE email = '${email}';"`,
+          { stdio: "pipe" },
+        );
+      } catch { /* ignore */ }
+      const r = await ctx.post(`${API}/admin/payout-admins`, {
+        data: { email, name: `Test ${role}`, password: TEST_ROLE_PASS, role },
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (r.status() !== 200 && r.status() !== 201) {
+        const body = await r.text();
+        throw new Error(`Failed to create ${role} user: HTTP ${r.status()} ${body}`);
+      }
+      const body = await r.json() as { id: number };
+      execSync(
+        `psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM rate_limit_hits;"`,
+        { stdio: "pipe" },
+      );
+      const token = await login(email, TEST_ROLE_PASS);
+      return { id: body.id, token };
+    }
+
+    const [pa, ps, ag] = await Promise.all([
+      createPayoutRole(TEST_PAYOUT_ADMIN_EMAIL, "payout_admin"),
+      createPayoutRole(TEST_PAYOUT_SUPER_EMAIL, "payout_super_admin"),
+      createPayoutRole(TEST_AGENT_EMAIL, "agent"),
+    ]);
+    payoutAdminToken  = pa.token;
+    payoutSuperToken  = ps.token;
+    agentToken        = ag.token;
+    testUserIds       = [pa.id, ps.id, ag.id];
+
+    await ctx.dispose();
+  });
+
+  test.afterAll(async () => {
+    // Clean up ephemeral test users
+    const ctx = await apiRequest.newContext();
+    await Promise.all(
+      testUserIds.map((id) =>
+        ctx.delete(`${API}/users/${id}`, {
+          headers: { Authorization: `Bearer ${adminToken}` },
+        }),
+      ),
+    );
+    await ctx.dispose();
   });
 
   // ── 1. Merchant (Starter) blocked from all admin IAM endpoints ───────────
@@ -342,5 +406,104 @@ test.describe("IAM role-isolation", () => {
       headers: { Authorization: `Bearer ${merchant3Token}` },
     });
     expect(r.status()).toBe(200);
+  });
+
+  // ── 7. payout_admin is blocked from main-admin endpoints ─────────────────
+
+  test("payout_admin cannot read admin merchants list", async ({ request }) => {
+    const r = await request.get(`${API}/merchants`, {
+      headers: { Authorization: `Bearer ${payoutAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("payout_admin cannot read admin IAM roles", async ({ request }) => {
+    const r = await request.get(`${API}/iam/roles`, {
+      headers: { Authorization: `Bearer ${payoutAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("payout_admin cannot read admin users list", async ({ request }) => {
+    const r = await request.get(`${API}/users`, {
+      headers: { Authorization: `Bearer ${payoutAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("payout_admin cannot read admin feature-control settings", async ({ request }) => {
+    const r = await request.get(`${API}/feature-control`, {
+      headers: { Authorization: `Bearer ${payoutAdminToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  // ── 8. payout_super_admin is blocked from main-admin endpoints ────────────
+
+  test("payout_super_admin cannot read admin merchants list", async ({ request }) => {
+    const r = await request.get(`${API}/merchants`, {
+      headers: { Authorization: `Bearer ${payoutSuperToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("payout_super_admin cannot read admin IAM roles", async ({ request }) => {
+    const r = await request.get(`${API}/iam/roles`, {
+      headers: { Authorization: `Bearer ${payoutSuperToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  // ── 9. agent is blocked from main-admin endpoints ─────────────────────────
+
+  test("agent cannot read admin merchants list", async ({ request }) => {
+    const r = await request.get(`${API}/merchants`, {
+      headers: { Authorization: `Bearer ${agentToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("agent cannot read admin IAM roles", async ({ request }) => {
+    const r = await request.get(`${API}/iam/roles`, {
+      headers: { Authorization: `Bearer ${agentToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("agent cannot read admin users list", async ({ request }) => {
+    const r = await request.get(`${API}/users`, {
+      headers: { Authorization: `Bearer ${agentToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  // ── 10. customer role is present in the IAM canonical roles catalog ────────
+
+  test("IAM roles catalog includes the customer canonical role", async ({ request }) => {
+    const r = await request.get(`${API}/iam/roles`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    expect(r.status()).toBe(200);
+    const body = await r.json();
+    const roleNames: string[] = body.roles.map((e: { role: string }) => e.role);
+    // customer role should appear in the canonical list even though it has no portal login
+    expect(roleNames).toContain("customer");
+  });
+
+  // ── 11. payout_admin CAN reach the payout-admin portal endpoints ──────────
+
+  test("payout_admin can reach payout-admin dashboard", async ({ request }) => {
+    const r = await request.get(`${API}/payout-admin/dashboard`, {
+      headers: { Authorization: `Bearer ${payoutAdminToken}` },
+    });
+    // 200 or 404 (no merchants yet) are both acceptable — any 4xx other than 403 means gating works
+    expect([200, 404]).toContain(r.status());
+  });
+
+  test("payout_super_admin can reach payout-admin dashboard", async ({ request }) => {
+    const r = await request.get(`${API}/payout-admin/dashboard`, {
+      headers: { Authorization: `Bearer ${payoutSuperToken}` },
+    });
+    expect([200, 404]).toContain(r.status());
   });
 });

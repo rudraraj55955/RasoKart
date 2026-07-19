@@ -10616,9 +10616,10 @@ export const PostIamMigrationRollbackResponse = zod.object({
  * @summary List role permission templates
  */
 export const GetIamRolesResponse = zod.object({
-  "roles": zod.array(zod.string()).optional(),
-  "permissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional(),
-  "total": zod.number().optional()
+  "roles": zod.array(zod.object({
+  "role": zod.string().optional(),
+  "permissions": zod.record(zod.string(), zod.boolean()).optional()
+})).optional().describe('Each entry is a role name paired with its full permission map')
 })
 
 
@@ -10673,14 +10674,22 @@ export const GetIamUsersUserIdPermissionsParams = zod.object({
 })
 
 export const GetIamUsersUserIdPermissionsResponse = zod.object({
-  "userId": zod.number().optional(),
+  "user": zod.object({
+  "id": zod.number().optional(),
+  "email": zod.string().optional(),
+  "name": zod.string().optional(),
   "role": zod.string().optional(),
   "isSuperAdmin": zod.boolean().optional(),
+  "isActive": zod.boolean().optional()
+}).optional(),
+  "migrated": zod.boolean().optional(),
   "effectivePermissions": zod.record(zod.string(), zod.boolean()).optional(),
   "overrides": zod.array(zod.object({
   "permissionKey": zod.string().optional(),
-  "effect": zod.enum(['ALLOW', 'DENY']).optional()
-})).optional()
+  "effect": zod.enum(['ALLOW', 'DENY']).optional(),
+  "updatedAt": zod.coerce.date().optional()
+})).optional(),
+  "roleTemplate": zod.record(zod.string(), zod.boolean()).optional()
 })
 
 

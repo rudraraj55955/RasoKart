@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useHasPermission } from "@/hooks/use-has-permission";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -491,14 +492,16 @@ function AuditTrailPanel() {
 
 export default function AdminIam() {
   const { user } = useAuth();
+  const hasIamRead = useHasPermission("iam_read");
 
-  if (!user?.isSuperAdmin) {
+  // Super Admin always has full access; admins with iam_read permission get read-only view
+  if (!user?.isSuperAdmin && !hasIamRead) {
     return (
       <div className="p-6">
         <div className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-6 text-center text-red-400">
           <ShieldCheck className="w-8 h-8 mx-auto mb-2" />
           <div className="font-semibold">Access Restricted</div>
-          <div className="text-sm mt-1">IAM control panel is only accessible to Super Admin.</div>
+          <div className="text-sm mt-1">IAM control panel requires the <code>iam_read</code> permission.</div>
         </div>
       </div>
     );

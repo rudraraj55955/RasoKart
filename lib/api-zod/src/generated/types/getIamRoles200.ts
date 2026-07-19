@@ -5,10 +5,9 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
-import type { GetIamRoles200Permissions } from './getIamRoles200Permissions';
+import type { GetIamRoles200RolesItem } from './getIamRoles200RolesItem';
 
 export type GetIamRoles200 = {
-  roles?: string[];
-  permissions?: GetIamRoles200Permissions;
-  total?: number;
+  /** Each entry is a role name paired with its full permission map */
+  roles?: GetIamRoles200RolesItem[];
 };

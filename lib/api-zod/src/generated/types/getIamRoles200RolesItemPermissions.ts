@@ -6,4 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetIamRoles200Permissions = {[key: string]: {[key: string]: boolean}};
+export type GetIamRoles200RolesItemPermissions = {[key: string]: boolean};

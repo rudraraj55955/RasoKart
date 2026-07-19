@@ -8249,12 +8249,16 @@ export type PostIamMigrationRollback200 = {
   deletedOverrideRows?: number;
 };
 
-export type GetIamRoles200Permissions = {[key: string]: {[key: string]: boolean}};
+export type GetIamRoles200RolesItemPermissions = {[key: string]: boolean};
+
+export type GetIamRoles200RolesItem = {
+  role?: string;
+  permissions?: GetIamRoles200RolesItemPermissions;
+};
 
 export type GetIamRoles200 = {
-  roles?: string[];
-  permissions?: GetIamRoles200Permissions;
-  total?: number;
+  /** Each entry is a role name paired with its full permission map */
+  roles?: GetIamRoles200RolesItem[];
 };
 
 export type PutIamRolesRolePermissionKeyBody = {
@@ -8289,6 +8293,15 @@ export type GetIamUsers200 = {
   limit?: number;
 };
 
+export type GetIamUsersUserIdPermissions200User = {
+  id?: number;
+  email?: string;
+  name?: string;
+  role?: string;
+  isSuperAdmin?: boolean;
+  isActive?: boolean;
+};
+
 export type GetIamUsersUserIdPermissions200EffectivePermissions = {[key: string]: boolean};
 
 export type GetIamUsersUserIdPermissions200OverridesItemEffect = typeof GetIamUsersUserIdPermissions200OverridesItemEffect[keyof typeof GetIamUsersUserIdPermissions200OverridesItemEffect];
@@ -8302,14 +8315,17 @@ export const GetIamUsersUserIdPermissions200OverridesItemEffect = {
 export type GetIamUsersUserIdPermissions200OverridesItem = {
   permissionKey?: string;
   effect?: GetIamUsersUserIdPermissions200OverridesItemEffect;
+  updatedAt?: string;
 };
 
+export type GetIamUsersUserIdPermissions200RoleTemplate = {[key: string]: boolean};
+
 export type GetIamUsersUserIdPermissions200 = {
-  userId?: number;
-  role?: string;
-  isSuperAdmin?: boolean;
+  user?: GetIamUsersUserIdPermissions200User;
+  migrated?: boolean;
   effectivePermissions?: GetIamUsersUserIdPermissions200EffectivePermissions;
   overrides?: GetIamUsersUserIdPermissions200OverridesItem[];
+  roleTemplate?: GetIamUsersUserIdPermissions200RoleTemplate;
 };
 
 export type PutIamUsersUserIdPermissionsPermissionKeyBodyEffect = typeof PutIamUsersUserIdPermissionsPermissionKeyBodyEffect[keyof typeof PutIamUsersUserIdPermissionsPermissionKeyBodyEffect];

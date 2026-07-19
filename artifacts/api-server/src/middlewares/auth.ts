@@ -153,6 +153,18 @@ export async function resolveUserPermissions(
 }
 
 /**
+ * Combined middleware factory: role-gate (requireAdmin) + IAM permission check
+ * in one call.  Preferred pattern for new routes — replaces the old two-step
+ * `router.use(requireAdmin); router.use(requirePermission(key))` pattern.
+ *
+ * Usage:
+ *   router.use(requireAuth, ...requireAdminPermission(PERMISSIONS.ADMIN_MERCHANTS));
+ */
+export function requireAdminPermission(permissionKey: string): Array<(req: Request, res: Response, next: NextFunction) => void | Promise<void>> {
+  return [requireAdmin, requirePermission(permissionKey)];
+}
+
+/**
  * Middleware factory: check that the authenticated user has a specific
  * permission key. Super Admin always passes. Before IAM migration, always
  * passes (soft/backward-compat). After migration, enforces the permission.

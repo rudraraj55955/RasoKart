@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useHasPermission } from "@/hooks/use-has-permission";
 import { Spinner } from "@/components/ui/spinner";
 import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useGetSecurityComplianceSummary, useGetKycSummary, useListMerchantReportSchedules, useListNotifications, useGetMe, ListNotificationsIsRead, useGetReportDeliveryHealth, useGetReportSchedule, useGetGithubSyncStatus, useGetGithubSyncDivergence } from "@workspace/api-client-react";
 
@@ -417,7 +418,7 @@ const ADMIN_NAV = [
       { title: "Secure ID Provider", icon: ShieldCheck, href: "/admin/secure-id-settings", superAdminOnly: true as const },
       { title: "Merchant Auto KYC Settings", icon: ShieldCheck, href: "/admin/merchant-kyc-settings", superAdminOnly: true as const },
       { title: "Data Hygiene", icon: Trash2, href: "/admin/data-hygiene", superAdminOnly: true as const },
-      { title: "IAM & Permissions", icon: ShieldCheck, href: "/admin/iam", superAdminOnly: true as const },
+      { title: "IAM & Permissions", icon: ShieldCheck, href: "/admin/iam", superAdminOnly: true as const, permissionOverride: "iam_read" as const },
       { title: "Settings", icon: Settings, href: "/admin/settings" },
       { title: "API Reference", icon: BookOpen, href: "/admin/api-docs" },
     ],
@@ -434,6 +435,7 @@ function getScheduleNextDue(lastSentAt: string | null | undefined, frequency: st
 function AdminSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
+  const hasIamRead = useHasPermission("iam_read");
   const { data: complianceData } = useGetSecurityComplianceSummary();
   const neverCount = complianceData?.neverCount ?? 0;
 
@@ -548,7 +550,10 @@ function AdminSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {group.items.map((item) => {
-                if ((item as any).superAdminOnly && !meData?.isSuperAdmin) return null;
+                if ((item as any).superAdminOnly) {
+                  const hasPermOverride = (item as any).permissionOverride && hasIamRead;
+                  if (!meData?.isSuperAdmin && !hasPermOverride) return null;
+                }
                 const isAuditLogs = item.href === "/admin/audit-logs";
                 const isReports = item.href === "/admin/reports";
                 const isActive = location === item.href || (isAuditLogs && location.startsWith("/admin/audit-logs"));

@@ -7,11 +7,13 @@
  */
 import type { GetIamUsersUserIdPermissions200EffectivePermissions } from './getIamUsersUserIdPermissions200EffectivePermissions';
 import type { GetIamUsersUserIdPermissions200OverridesItem } from './getIamUsersUserIdPermissions200OverridesItem';
+import type { GetIamUsersUserIdPermissions200RoleTemplate } from './getIamUsersUserIdPermissions200RoleTemplate';
+import type { GetIamUsersUserIdPermissions200User } from './getIamUsersUserIdPermissions200User';
 
 export type GetIamUsersUserIdPermissions200 = {
-  userId?: number;
-  role?: string;
-  isSuperAdmin?: boolean;
+  user?: GetIamUsersUserIdPermissions200User;
+  migrated?: boolean;
   effectivePermissions?: GetIamUsersUserIdPermissions200EffectivePermissions;
   overrides?: GetIamUsersUserIdPermissions200OverridesItem[];
+  roleTemplate?: GetIamUsersUserIdPermissions200RoleTemplate;
 };
