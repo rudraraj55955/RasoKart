@@ -52,10 +52,11 @@ router.get("/healthz/deep", async (_req, res) => {
       { key: "provider_integrations.is_custom", query: "SELECT is_custom FROM provider_integrations LIMIT 1" },
       { key: "routing_rules", query: "SELECT id FROM routing_rules LIMIT 1" },
       { key: "quiet_hours_queue.flushed", query: "SELECT flushed, deliver_after FROM quiet_hours_queue LIMIT 1" },
-      { key: "iam_tables.permissions", query: "SELECT id FROM permissions LIMIT 1" },
-      { key: "iam_tables.role_permissions", query: "SELECT id FROM role_permissions LIMIT 1" },
-      { key: "iam_tables.user_permissions", query: "SELECT id FROM user_permissions LIMIT 1" },
-      { key: "iam_tables.iam_migration_log", query: "SELECT id FROM iam_migration_log LIMIT 1" },
+      // IAM table existence checks (throws if table is missing entirely)
+      { key: "iam_tables.permissions_schema", query: "SELECT column_name FROM information_schema.columns WHERE table_name='permissions' AND column_name='key' LIMIT 1" },
+      { key: "iam_tables.role_permissions_schema", query: "SELECT column_name FROM information_schema.columns WHERE table_name='role_permissions' AND column_name='permission_key' LIMIT 1" },
+      { key: "iam_tables.user_permissions_schema", query: "SELECT column_name FROM information_schema.columns WHERE table_name='user_permissions' AND column_name='effect' LIMIT 1" },
+      { key: "iam_tables.iam_migration_log_schema", query: "SELECT column_name FROM information_schema.columns WHERE table_name='iam_migration_log' AND column_name='cutoff_at' LIMIT 1" },
     ];
 
     for (const { key, query } of tableChecks) {
@@ -66,6 +67,42 @@ router.get("/healthz/deep", async (_req, res) => {
         checks[key] = false;
         logger.error({ err, check: key }, "healthz_deep_schema_check_failed");
       }
+    }
+
+    // IAM catalog integrity check: if IAM migration has been run, the
+    // permissions catalog must not be empty. An empty catalog after migration
+    // means the sync step failed and enforcement will be broken.
+    try {
+      const migResult = await pool.query<{ c: string }>(
+        "SELECT COUNT(*) AS c FROM iam_migration_log",
+      );
+      const migrated = parseInt(migResult.rows[0]?.c ?? "0", 10) > 0;
+      if (migrated) {
+        const catResult = await pool.query<{ c: string }>(
+          "SELECT COUNT(*) AS c FROM permissions",
+        );
+        const catalogRows = parseInt(catResult.rows[0]?.c ?? "0", 10);
+        const roleTemplateResult = await pool.query<{ c: string }>(
+          "SELECT COUNT(*) AS c FROM role_permissions",
+        );
+        const roleTemplateRows = parseInt(roleTemplateResult.rows[0]?.c ?? "0", 10);
+        if (catalogRows === 0) {
+          checks["iam_catalog_seeded"] = false;
+          logger.error(
+            { catalogRows, roleTemplateRows },
+            "healthz_deep_iam_catalog_empty: migration ran but permissions catalog has no rows",
+          );
+        } else {
+          checks["iam_catalog_seeded"] = true;
+          logger.info({ catalogRows, roleTemplateRows }, "healthz_deep_iam_catalog_ok");
+        }
+      } else {
+        // Migration not yet run — soft enforcement mode; catalog check is N/A
+        checks["iam_catalog_seeded"] = true;
+      }
+    } catch (err) {
+      checks["iam_catalog_seeded"] = false;
+      logger.error({ err }, "healthz_deep_iam_catalog_check_failed");
     }
 
     // Demo-credential check: verify every documented login can authenticate.

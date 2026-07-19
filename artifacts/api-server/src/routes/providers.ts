@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db, providersTable, providerVisibilityTable, merchantsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, asc, isNull, count } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
+import { PERMISSIONS } from "../permissions";
 import { ObjectStorageService, ObjectNotFoundError, InvalidImageError } from "../lib/objectStorage";
 import { consumeUploadIntent } from "../lib/uploadIntentStore";
 
@@ -123,7 +124,7 @@ router.get("/admin", requireAdmin, async (req, res, next) => {
 });
 
 // PUT /api/providers/reorder — batch update sortOrder (admin only)
-router.put("/reorder", requireAdmin, async (req, res, next) => {
+router.put("/reorder", requireAdmin, requirePermission(PERMISSIONS.ADMIN_PROVIDERS), async (req, res, next) => {
   try {
     const { order } = req.body; // array of provider ids in new order
     if (!Array.isArray(order)) { res.status(400).json({ error: "order (array of ids) is required" }); return; }
@@ -169,7 +170,7 @@ router.get("/", async (req, res, next) => {
 });
 
 // POST /api/providers (admin only)
-router.post("/", requireAdmin, async (req, res, next) => {
+router.post("/", requireAdmin, requirePermission(PERMISSIONS.ADMIN_PROVIDERS), async (req, res, next) => {
   try {
     const { name, slug, category = "upi", status = "live", description, sortOrder = 0, logoUrl } = req.body;
     if (!name || !slug) { res.status(400).json({ error: "name and slug are required" }); return; }
@@ -198,7 +199,7 @@ router.post("/", requireAdmin, async (req, res, next) => {
 });
 
 // PUT /api/providers/:id (admin only)
-router.put("/:id", requireAdmin, async (req, res, next) => {
+router.put("/:id", requireAdmin, requirePermission(PERMISSIONS.ADMIN_PROVIDERS), async (req, res, next) => {
   try {
     const id = parseInt(req.params['id'] as string);
     const { name, slug, category, status, description, sortOrder, logoUrl } = req.body;
@@ -229,7 +230,7 @@ router.put("/:id", requireAdmin, async (req, res, next) => {
 });
 
 // DELETE /api/providers/:id (admin only)
-router.delete("/:id", requireAdmin, async (req, res, next) => {
+router.delete("/:id", requireAdmin, requirePermission(PERMISSIONS.ADMIN_PROVIDERS), async (req, res, next) => {
   try {
     const id = parseInt(req.params.id as string);
     await db.delete(providerVisibilityTable).where(eq(providerVisibilityTable.providerId, id));

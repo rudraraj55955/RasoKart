@@ -2,7 +2,8 @@ import { Router, type Request } from "express";
 import { CreateSettlementBody } from "@workspace/api-zod";
 import { db, settlementsTable, merchantsTable, ledgerEntriesTable, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, sql, gte, lte, sum } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
+import { PERMISSIONS } from "../permissions";
 import { requireModule } from "../middlewares/checkModule";
 import { createNotification } from "../helpers/notifications";
 import { notifyAdminsOfSettlementStateChange } from "../helpers/adminNotifyEmail";
@@ -52,7 +53,7 @@ function mapSettlement(s: typeof settlementsTable.$inferSelect, merchantName?: s
 }
 
 // GET /api/settlements/stats  (admin only)
-router.get("/stats", requireAdmin, async (_req, res) => {
+router.get("/stats", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMENTS), async (_req, res) => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -355,7 +356,7 @@ function getRemark(body: any): string | null {
 }
 
 // POST /api/settlements/:id/process  (admin: pending → processing)
-router.post("/:id/process", requireAdmin, async (req, res) => {
+router.post("/:id/process", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMENTS), async (req, res) => {
   const user = (req as any).user;
   const id = parseId(req.params.id);
   const s = await getSettlementOrFail(id, res);
@@ -408,7 +409,7 @@ router.post("/:id/process", requireAdmin, async (req, res) => {
 
 // POST /api/settlements/:id/approve  (admin: processing → approved, deduct balance atomically)
 
-router.post("/:id/approve", requireAdmin, async (req, res) => {
+router.post("/:id/approve", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMENTS), async (req, res) => {
   const user = (req as any).user;
   const id = parseId(req.params.id);
   const s = await getSettlementOrFail(id, res);
@@ -527,7 +528,7 @@ router.post("/:id/approve", requireAdmin, async (req, res) => {
 });
 
 // POST /api/settlements/:id/reject  (admin: pending|processing → rejected)
-router.post("/:id/reject", requireAdmin, async (req, res) => {
+router.post("/:id/reject", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMENTS), async (req, res) => {
   const user = (req as any).user;
   const id = parseId(req.params.id);
   const s = await getSettlementOrFail(id, res);
@@ -590,7 +591,7 @@ router.post("/:id/reject", requireAdmin, async (req, res) => {
 });
 
 // POST /api/settlements/:id/hold  (admin: processing → pending)
-router.post("/:id/hold", requireAdmin, async (req, res) => {
+router.post("/:id/hold", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMENTS), async (req, res) => {
   const user = (req as any).user;
   const id = parseId(req.params.id);
   const s = await getSettlementOrFail(id, res);
@@ -618,7 +619,7 @@ router.post("/:id/hold", requireAdmin, async (req, res) => {
 });
 
 // POST /api/settlements/:id/mark-paid  (admin: approved → paid)
-router.post("/:id/mark-paid", requireAdmin, async (req, res) => {
+router.post("/:id/mark-paid", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMENTS), async (req, res) => {
   const user = (req as any).user;
   const id = parseId(req.params.id);
   const s = await getSettlementOrFail(id, res);

@@ -38,7 +38,12 @@ import {
   merchantVerificationsTable,
   reportSchedulesTable,
   reportDeliveryLogsTable,
+  iamMigrationLogTable,
+  permissionsTable,
+  rolePermissionsTable,
+  userPermissionsTable,
 } from "@workspace/db";
+import { ALL_PERMISSION_KEYS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "./permissions";
 
 const PLAN_TIERS = [
   {
@@ -1637,6 +1642,88 @@ export async function seed() {
     }
   }
   console.log("Policy versions seeded");
+
+  // ── IAM catalog auto-sync ──────────────────────────────────────────────────
+  // If the IAM migration has been run (iam_migration_log has rows) but the
+  // permissions catalog (permissions table) is empty — or new keys have been
+  // added to ALL_PERMISSION_KEYS since the migration ran — this block brings
+  // both tables up to date with the current code without requiring a re-run.
+  // This is idempotent and safe to run on every server start.
+  const [iamMigRow] = await db.select({ id: iamMigrationLogTable.id }).from(iamMigrationLogTable).limit(1);
+  if (iamMigRow) {
+    const [catCount] = await db.select({ c: count() }).from(permissionsTable);
+    const needsCatalogSync = Number(catCount.c) === 0;
+
+    // ── 1. Sync permissions catalog ─────────────────────────────────────────
+    if (needsCatalogSync) {
+      for (const key of ALL_PERMISSION_KEYS) {
+        const category = key.split("_")[0] ?? "unknown";
+        const isSuperAdminOnly = SUPER_ADMIN_ONLY_PERMISSIONS.has(key);
+        await db
+          .insert(permissionsTable)
+          .values({ key, category, isSuperAdminOnly, updatedAt: new Date() })
+          .onConflictDoUpdate({
+            target: permissionsTable.key,
+            set: { category, isSuperAdminOnly, updatedAt: new Date() },
+          });
+      }
+      logger.info({ keyCount: ALL_PERMISSION_KEYS.length }, "iam_catalog_auto_synced_on_start");
+    }
+
+    // ── 2. Upsert any role_permissions rows that are missing or stale ───────
+    // This handles keys added to ALL_PERMISSION_KEYS after the original migration
+    // ran — without this, new keys would be absent from role_permissions and
+    // requirePermission would silently deny legitimate users.
+    const KNOWN_ROLES = ["admin", "merchant", "payout_merchant", "payout_admin", "payout_super_admin", "agent"];
+    for (const role of KNOWN_ROLES) {
+      const defaults = ROLE_DEFAULT_PERMISSIONS[role] ?? {};
+      for (const key of ALL_PERMISSION_KEYS) {
+        const isEnabled = (defaults[key] ?? false) === true;
+        await db
+          .insert(rolePermissionsTable)
+          .values({ role, permissionKey: key, isEnabled, updatedByUserId: null })
+          .onConflictDoUpdate({
+            target: [rolePermissionsTable.role, rolePermissionsTable.permissionKey],
+            set: { isEnabled, updatedAt: new Date() },
+          });
+      }
+    }
+    logger.info({ roles: KNOWN_ROLES.length, keys: ALL_PERMISSION_KEYS.length }, "iam_role_permissions_reconciled_on_start");
+
+    // ── 3. Prune stale user_permissions ALLOW overrides that are now identical
+    //       to the updated role default — they add no value and confuse audits.
+    //       We only remove ALLOW overrides where the role now grants the key
+    //       by default; DENY overrides are preserved (they represent deliberate
+    //       restrictions the admin may have set).
+    const usersWithOverrides = await db
+      .select({ id: usersTable.id, role: usersTable.role, isSuperAdmin: usersTable.isSuperAdmin })
+      .from(usersTable);
+    let pruned = 0;
+    for (const u of usersWithOverrides) {
+      if (u.isSuperAdmin) continue;
+      const roleDefaults = ROLE_DEFAULT_PERMISSIONS[u.role] ?? {};
+      const overrides = await db
+        .select({ permissionKey: userPermissionsTable.permissionKey, effect: userPermissionsTable.effect })
+        .from(userPermissionsTable)
+        .where(eq(userPermissionsTable.userId, u.id));
+      for (const o of overrides) {
+        const roleDefault = (roleDefaults[o.permissionKey] ?? false) === true;
+        if (o.effect === "ALLOW" && roleDefault === true) {
+          // Role now grants this permission by default — the ALLOW override is redundant
+          await db
+            .delete(userPermissionsTable)
+            .where(and(
+              eq(userPermissionsTable.userId, u.id),
+              eq(userPermissionsTable.permissionKey, o.permissionKey),
+            ));
+          pruned++;
+        }
+      }
+    }
+    if (pruned > 0) {
+      logger.info({ pruned }, "iam_stale_allow_overrides_pruned_on_start");
+    }
+  }
 
   console.log("Seed complete.");
 

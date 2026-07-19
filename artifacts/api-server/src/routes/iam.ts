@@ -186,7 +186,51 @@ router.post(
         }
       }
 
-      // 3. Write migration log (cutoffAt = now, so all users existing before this point are covered)
+      // 3. Backfill legacy permissionsJson overrides → user_permissions
+      // Pre-cutoff users may have explicit per-key overrides stored in the legacy
+      // users.permissions_json column. We diff each user's stored map against
+      // their role default and create ALLOW/DENY overrides for any deviation,
+      // preserving their exact effective access across the migration boundary.
+      const allUsers = await db
+        .select({
+          id: usersTable.id,
+          role: usersTable.role,
+          isSuperAdmin: usersTable.isSuperAdmin,
+          permissionsJson: usersTable.permissionsJson,
+        })
+        .from(usersTable);
+
+      let backfilledUsers = 0;
+      let backfilledOverrides = 0;
+      for (const u of allUsers) {
+        if (u.isSuperAdmin) continue; // SA bypasses permission checks entirely
+        const legacyMap = u.permissionsJson as Record<string, boolean> | null;
+        if (!legacyMap || typeof legacyMap !== "object") continue;
+        const roleDefaults = ROLE_DEFAULT_PERMISSIONS[u.role] ?? {};
+        let userHadOverride = false;
+        for (const [key, legacyValue] of Object.entries(legacyMap)) {
+          if (!ALL_PERMISSION_KEYS.includes(key as any)) continue;
+          const roleDefault = roleDefaults[key] ?? false;
+          if (legacyValue === roleDefault) continue; // no deviation — skip
+          const effect = legacyValue ? "ALLOW" : "DENY";
+          // Block backfilling SA-only permissions as ALLOW for non-SA users
+          if (effect === "ALLOW" && SUPER_ADMIN_ONLY_PERMISSIONS.has(key)) continue;
+          await db
+            .insert(userPermissionsTable)
+            .values({ userId: u.id, permissionKey: key, effect, updatedByUserId: user.id })
+            .onConflictDoUpdate({
+              target: [userPermissionsTable.userId, userPermissionsTable.permissionKey],
+              set: { effect, updatedByUserId: user.id, updatedAt: new Date() },
+            });
+          backfilledOverrides++;
+          userHadOverride = true;
+        }
+        if (userHadOverride) backfilledUsers++;
+      }
+
+      req.log.info({ backfilledUsers, backfilledOverrides }, "iam_migration_legacy_backfill_done");
+
+      // 4. Write migration log (cutoffAt = now, so all users existing before this point are covered)
       const now = new Date();
       await db.insert(iamMigrationLogTable).values({
         cutoffAt: now,
@@ -196,6 +240,8 @@ router.post(
           roles: KNOWN_ROLES,
           permissionCount: ALL_PERMISSION_KEYS.length,
           catalogSynced: true,
+          backfilledUsers,
+          backfilledOverrides,
         },
       });
 
@@ -203,6 +249,8 @@ router.post(
         totalUsers,
         templateRows: KNOWN_ROLES.length * ALL_PERMISSION_KEYS.length,
         catalogRows: ALL_PERMISSION_KEYS.length,
+        backfilledUsers,
+        backfilledOverrides,
         executedBy: user.email,
         cutoffAt: now.toISOString(),
       });
@@ -210,10 +258,12 @@ router.post(
       req.log.info({ executedBy: user.email, totalUsers, cutoffAt: now }, "iam_migration_run");
       res.json({
         ok: true,
-        message: "IAM migration complete — catalog synced, role templates seeded",
+        message: "IAM migration complete — catalog synced, role templates seeded, legacy overrides backfilled",
         totalUsers,
         templateRows: KNOWN_ROLES.length * ALL_PERMISSION_KEYS.length,
         catalogRows: ALL_PERMISSION_KEYS.length,
+        backfilledUsers,
+        backfilledOverrides,
         cutoffAt: now.toISOString(),
       });
     } catch (err) {
@@ -523,9 +573,12 @@ router.put(
       }
 
       // ── Role max-scope guard ──────────────────────────────────────────────
-      // Block ALLOW grants that exceed the target user's role envelope.
-      // (1) Super Admin-only permissions may never be granted to non-SA users.
-      // (2) Admin-scoped permissions may not be ALLOWed to merchant/payout/agent roles.
+      // Block ALLOW grants that escalate beyond the target user's role boundary.
+      // Rule 1: SA-only permissions can never be ALLOWed for non-SA users.
+      // Rule 2: Permissions outside the role's default-true set (i.e., the
+      //         permission key maps to `false` in ROLE_DEFAULT_PERMISSIONS for
+      //         that role) cannot be ALLOWed — that would be cross-role escalation.
+      //         DENY overrides are always permitted (they can only reduce access).
       if (effect === "ALLOW" && !targetUser.isSuperAdmin) {
         if (SUPER_ADMIN_ONLY_PERMISSIONS.has(permissionKey)) {
           res.status(403).json({
@@ -535,14 +588,15 @@ router.put(
           });
           return;
         }
-        const targetRoleEnvelope = ROLE_DEFAULT_PERMISSIONS[targetUser.role] ?? {};
-        const inRoleEnvelope = permissionKey in targetRoleEnvelope;
-        if (!inRoleEnvelope) {
-          // Permission is not in target role's catalog at all — cross-role escalation blocked
+        // Use === true (not just `in`) because every role's map has every key,
+        // most set to false — a false entry means the role has no access to it.
+        const targetRoleDefault = (ROLE_DEFAULT_PERMISSIONS[targetUser.role] ?? {})[permissionKey];
+        if (targetRoleDefault !== true) {
           res.status(403).json({
-            error: `Permission '${permissionKey}' is outside role '${targetUser.role}' envelope. Super Admin must elevate via role change, not override.`,
+            error: `Cannot ALLOW '${permissionKey}' for role '${targetUser.role}': it is outside that role's default access envelope. Escalating requires a role change, not a per-user override.`,
             permissionKey,
             targetRole: targetUser.role,
+            hint: "Only permissions that are true by default for a role may be re-granted via override. Use DENY overrides to reduce access below role default.",
           });
           return;
         }

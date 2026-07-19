@@ -6,7 +6,8 @@ import { cashfreeCreateOrder, type CashfreeEnv } from "../helpers/cashfree";
 import { encryptSecret, decryptSecret } from "../helpers/cryptoUtils";
 import { inArray, desc, count, countDistinct, sql, eq, and, isNotNull } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
+import { PERMISSIONS } from "../permissions";
 import { rescheduleFromDb, getNextRunTime } from "../helpers/reconScheduler";
 import { loadQrCleanupRetentionDays, loadQrCleanupLastRun, runQrCleanup, loadQrCleanupHistory, clearQrCleanupHistory } from "../helpers/qrCleanupScheduler";
 import { loadVaCleanupRetentionDays, loadVaCleanupLastRun, runVaCleanup, loadVaCleanupHistory, clearVaCleanupHistory } from "../helpers/vaCleanupScheduler";
@@ -16,7 +17,7 @@ import { resetAlertRateLimit } from "../helpers/signatureFailureAlert";
 import { notifyAdminsOfCredentialRotation } from "../helpers/adminNotifyEmail";
 
 const router = Router();
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth, requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTINGS));
 
 // Returns who last touched any of the given config keys and when — used to
 // surface "Last changed by X on <date>" directly on each gateway config panel.

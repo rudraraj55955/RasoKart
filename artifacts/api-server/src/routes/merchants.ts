@@ -3,7 +3,8 @@ import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHis
 import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull, inArray } from "drizzle-orm";
 import { maskIp } from "../helpers/apiKeyEmail";
 import { loadWebhookRetryConfig } from "../helpers/callbackRetry";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
+import { PERMISSIONS } from "../permissions";
 import { getMerchantPlanUsage } from "../helpers/planLimits";
 import { sendRejectionEmail } from "../helpers/rejectionEmail";
 import { sendCallbackSecretResetEmail } from "../helpers/callbackSecretResetEmail";
@@ -783,7 +784,7 @@ async function checkKycApproved(merchantId: number): Promise<{ passed: boolean; 
 }
 
 // POST /api/merchants/:id/approve
-router.post("/:id/approve", requireAdmin, async (req, res) => {
+router.post("/:id/approve", requireAdmin, requirePermission(PERMISSIONS.ADMIN_MERCHANTS), async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const admin = (req as any).user;
 
@@ -838,7 +839,7 @@ router.get("/:id/kyc-check", requireAdmin, async (req, res) => {
 // POST /api/merchants/:id/force-approve
 // Super Admin only — bypasses KYC validation gate and approves the merchant.
 // Records override reason, missing KYC docs, and full audit trail.
-router.post("/:id/force-approve", requireAdmin, async (req, res) => {
+router.post("/:id/force-approve", requireAdmin, requirePermission(PERMISSIONS.ADMIN_MERCHANTS), async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const admin = (req as any).user;
 
@@ -903,7 +904,7 @@ router.post("/:id/force-approve", requireAdmin, async (req, res) => {
 });
 
 // POST /api/merchants/:id/suspend
-router.post("/:id/suspend", async (req, res) => {
+router.post("/:id/suspend", requireAdmin, requirePermission(PERMISSIONS.ADMIN_MERCHANTS), async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const [merchant] = await db
     .update(merchantsTable)
@@ -923,7 +924,7 @@ router.post("/:id/suspend", async (req, res) => {
 });
 
 // POST /api/merchants/:id/unsuspend
-router.post("/:id/unsuspend", async (req, res) => {
+router.post("/:id/unsuspend", requireAdmin, requirePermission(PERMISSIONS.ADMIN_MERCHANTS), async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const [merchant] = await db
     .update(merchantsTable)
@@ -996,7 +997,7 @@ router.post("/:id/remove-demo-account", requireAdmin, async (req, res) => {
 });
 
 // POST /api/merchants/:id/reject
-router.post("/:id/reject", requireAdmin, async (req, res) => {
+router.post("/:id/reject", requireAdmin, requirePermission(PERMISSIONS.ADMIN_MERCHANTS), async (req, res) => {
   const id = parseInt(req.params['id'] as string);
   const admin = (req as any).user;
   const { reason } = req.body;
@@ -1050,7 +1051,7 @@ router.get("/:id/plan/history", requireAdmin, async (req, res) => {
 });
 
 // POST /api/merchants/bulk-reject
-router.post("/bulk-reject", requireAdmin, async (req, res) => {
+router.post("/bulk-reject", requireAdmin, requirePermission(PERMISSIONS.ADMIN_MERCHANTS), async (req, res) => {
   const user = (req as any).user;
   const { merchantIds, reason } = req.body;
   if (!Array.isArray(merchantIds) || merchantIds.length === 0) {
@@ -1095,7 +1096,7 @@ router.post("/bulk-reject", requireAdmin, async (req, res) => {
 });
 
 // POST /api/merchants/bulk-approve
-router.post("/bulk-approve", requireAdmin, async (req, res) => {
+router.post("/bulk-approve", requireAdmin, requirePermission(PERMISSIONS.ADMIN_MERCHANTS), async (req, res) => {
   const user = (req as any).user;
   const { merchantIds } = req.body;
   if (!Array.isArray(merchantIds) || merchantIds.length === 0) {
@@ -1156,7 +1157,7 @@ router.post("/bulk-approve", requireAdmin, async (req, res) => {
 });
 
 // POST /api/merchants/bulk-suspend
-router.post("/bulk-suspend", requireAdmin, async (req, res) => {
+router.post("/bulk-suspend", requireAdmin, requirePermission(PERMISSIONS.ADMIN_MERCHANTS), async (req, res) => {
   const user = (req as any).user;
   const { merchantIds, action } = req.body;
   if (!Array.isArray(merchantIds) || merchantIds.length === 0 || !["suspend", "reinstate"].includes(action)) {
