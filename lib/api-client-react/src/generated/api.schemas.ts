@@ -8215,3 +8215,74 @@ result?: string;
 eventType?: string;
 };
 
+export type GetApiIamPermissions200PermissionsItem = {
+  key?: string;
+  isSuperAdminOnly?: boolean;
+  category?: string;
+};
+
+export type GetApiIamPermissions200 = {
+  permissions?: GetApiIamPermissions200PermissionsItem[];
+  total?: number;
+};
+
+export type GetApiIamMigrationStatus200 = {
+  migrated?: boolean;
+  migratedAt?: string | null;
+  cutoffAt?: string | null;
+  totalUsers?: number;
+  templateRows?: number;
+  overrideRows?: number;
+};
+
+export type PostApiIamMigrationRun200 = {
+  ok?: boolean;
+  message?: string;
+  totalUsers?: number;
+  templateRows?: number;
+};
+
+export type PutApiIamRolesRolePermissionKeyBody = {
+  isEnabled: boolean;
+};
+
+export type GetApiIamUsersParams = {
+page?: number;
+limit?: number;
+};
+
+export type PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect = typeof PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect[keyof typeof PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect];
+
+
+export const PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect = {
+  ALLOW: 'ALLOW',
+  DENY: 'DENY',
+} as const;
+
+export type PutApiIamUsersUserIdPermissionsPermissionKeyBody = {
+  effect: PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect;
+};
+
+export type GetApiIamAuditParams = {
+page?: number;
+limit?: number;
+};
+
+export type GetApiIamAudit200EntriesItemDetails = { [key: string]: unknown } | null;
+
+export type GetApiIamAudit200EntriesItem = {
+  id?: number;
+  adminEmail?: string;
+  action?: string;
+  targetType?: string;
+  targetId?: number | null;
+  details?: GetApiIamAudit200EntriesItemDetails;
+  createdAt?: string;
+};
+
+export type GetApiIamAudit200 = {
+  entries?: GetApiIamAudit200EntriesItem[];
+  page?: number;
+  limit?: number;
+};
+

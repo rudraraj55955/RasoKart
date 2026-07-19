@@ -146,6 +146,11 @@ import type {
   GetAdminMerchantReportScheduleHistoryParams,
   GetAdminReportDeliveryHistory200,
   GetAdminReportDeliveryHistoryParams,
+  GetApiIamAudit200,
+  GetApiIamAuditParams,
+  GetApiIamMigrationStatus200,
+  GetApiIamPermissions200,
+  GetApiIamUsersParams,
   GetCallbackSecretHistoryParams,
   GetLedgerBackfillLastRun200,
   GetMerchantTryItPresets200,
@@ -313,6 +318,7 @@ import type {
   PlatformProfitAdjustmentInput,
   PlatformProfitLedgerPage,
   PlatformProfitSummary,
+  PostApiIamMigrationRun200,
   PreviewAdminMerchantReportScheduleEmail200,
   PreviewAdminMerchantReportScheduleEmailParams,
   PreviewAuditReportEmailParams,
@@ -331,6 +337,8 @@ import type {
   ProviderVisibilityInput,
   ProviderVolumeListResponse,
   PublicPaymentLink,
+  PutApiIamRolesRolePermissionKeyBody,
+  PutApiIamUsersUserIdPermissionsPermissionKeyBody,
   QrCleanupConfig,
   QrCleanupRunResult,
   QrCode,
@@ -32438,6 +32446,842 @@ export function useListRazorpayWebhookLogs<TData = Awaited<ReturnType<typeof lis
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListRazorpayWebhookLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetApiIamPermissionsUrl = () => {
+
+
+
+
+  return `/api/api/iam/permissions`
+}
+
+/**
+ * @summary List all permission keys in the catalog
+ */
+export const getApiIamPermissions = async ( options?: RequestInit): Promise<GetApiIamPermissions200> => {
+
+  return customFetch<GetApiIamPermissions200>(getGetApiIamPermissionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetApiIamPermissionsQueryKey = () => {
+    return [
+    `/api/api/iam/permissions`
+    ] as const;
+    }
+
+
+export const getGetApiIamPermissionsQueryOptions = <TData = Awaited<ReturnType<typeof getApiIamPermissions>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiIamPermissionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiIamPermissions>>> = ({ signal }) => getApiIamPermissions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiIamPermissions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetApiIamPermissionsQueryResult = NonNullable<Awaited<ReturnType<typeof getApiIamPermissions>>>
+export type GetApiIamPermissionsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List all permission keys in the catalog
+ */
+
+export function useGetApiIamPermissions<TData = Awaited<ReturnType<typeof getApiIamPermissions>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetApiIamPermissionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetApiIamMigrationStatusUrl = () => {
+
+
+
+
+  return `/api/api/iam/migration/status`
+}
+
+/**
+ * @summary Get IAM migration status
+ */
+export const getApiIamMigrationStatus = async ( options?: RequestInit): Promise<GetApiIamMigrationStatus200> => {
+
+  return customFetch<GetApiIamMigrationStatus200>(getGetApiIamMigrationStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetApiIamMigrationStatusQueryKey = () => {
+    return [
+    `/api/api/iam/migration/status`
+    ] as const;
+    }
+
+
+export const getGetApiIamMigrationStatusQueryOptions = <TData = Awaited<ReturnType<typeof getApiIamMigrationStatus>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamMigrationStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiIamMigrationStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiIamMigrationStatus>>> = ({ signal }) => getApiIamMigrationStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiIamMigrationStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetApiIamMigrationStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getApiIamMigrationStatus>>>
+export type GetApiIamMigrationStatusQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get IAM migration status
+ */
+
+export function useGetApiIamMigrationStatus<TData = Awaited<ReturnType<typeof getApiIamMigrationStatus>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamMigrationStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetApiIamMigrationStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPostApiIamMigrationRunUrl = () => {
+
+
+
+
+  return `/api/api/iam/migration/run`
+}
+
+/**
+ * @summary Run IAM migration (Super Admin only)
+ */
+export const postApiIamMigrationRun = async ( options?: RequestInit): Promise<PostApiIamMigrationRun200> => {
+
+  return customFetch<PostApiIamMigrationRun200>(getPostApiIamMigrationRunUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getPostApiIamMigrationRunMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiIamMigrationRun>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiIamMigrationRun>>, TError,void, TContext> => {
+
+const mutationKey = ['postApiIamMigrationRun'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiIamMigrationRun>>, void> = () => {
+
+
+          return  postApiIamMigrationRun(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiIamMigrationRunMutationResult = NonNullable<Awaited<ReturnType<typeof postApiIamMigrationRun>>>
+
+    export type PostApiIamMigrationRunMutationError = ErrorType<void>
+
+    /**
+ * @summary Run IAM migration (Super Admin only)
+ */
+export const usePostApiIamMigrationRun = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiIamMigrationRun>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof postApiIamMigrationRun>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getPostApiIamMigrationRunMutationOptions(options));
+    }
+
+export const getPostApiIamMigrationRollbackUrl = () => {
+
+
+
+
+  return `/api/api/iam/migration/rollback`
+}
+
+/**
+ * @summary Roll back IAM migration (Super Admin only)
+ */
+export const postApiIamMigrationRollback = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getPostApiIamMigrationRollbackUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getPostApiIamMigrationRollbackMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiIamMigrationRollback>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiIamMigrationRollback>>, TError,void, TContext> => {
+
+const mutationKey = ['postApiIamMigrationRollback'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiIamMigrationRollback>>, void> = () => {
+
+
+          return  postApiIamMigrationRollback(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiIamMigrationRollbackMutationResult = NonNullable<Awaited<ReturnType<typeof postApiIamMigrationRollback>>>
+
+    export type PostApiIamMigrationRollbackMutationError = ErrorType<void>
+
+    /**
+ * @summary Roll back IAM migration (Super Admin only)
+ */
+export const usePostApiIamMigrationRollback = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiIamMigrationRollback>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof postApiIamMigrationRollback>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getPostApiIamMigrationRollbackMutationOptions(options));
+    }
+
+export const getGetApiIamRolesUrl = () => {
+
+
+
+
+  return `/api/api/iam/roles`
+}
+
+/**
+ * @summary List role permission templates
+ */
+export const getApiIamRoles = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getGetApiIamRolesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetApiIamRolesQueryKey = () => {
+    return [
+    `/api/api/iam/roles`
+    ] as const;
+    }
+
+
+export const getGetApiIamRolesQueryOptions = <TData = Awaited<ReturnType<typeof getApiIamRoles>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamRoles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiIamRolesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiIamRoles>>> = ({ signal }) => getApiIamRoles({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiIamRoles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetApiIamRolesQueryResult = NonNullable<Awaited<ReturnType<typeof getApiIamRoles>>>
+export type GetApiIamRolesQueryError = ErrorType<void>
+
+
+/**
+ * @summary List role permission templates
+ */
+
+export function useGetApiIamRoles<TData = Awaited<ReturnType<typeof getApiIamRoles>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamRoles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetApiIamRolesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPutApiIamRolesRolePermissionKeyUrl = (role: string,
+    permissionKey: string,) => {
+
+
+
+
+  return `/api/api/iam/roles/${role}/${permissionKey}`
+}
+
+/**
+ * @summary Update a role template permission (Super Admin only)
+ */
+export const putApiIamRolesRolePermissionKey = async (role: string,
+    permissionKey: string,
+    putApiIamRolesRolePermissionKeyBody: PutApiIamRolesRolePermissionKeyBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getPutApiIamRolesRolePermissionKeyUrl(role,permissionKey),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      putApiIamRolesRolePermissionKeyBody,)
+  }
+);}
+
+
+
+
+export const getPutApiIamRolesRolePermissionKeyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiIamRolesRolePermissionKey>>, TError,{role: string;permissionKey: string;data: BodyType<PutApiIamRolesRolePermissionKeyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof putApiIamRolesRolePermissionKey>>, TError,{role: string;permissionKey: string;data: BodyType<PutApiIamRolesRolePermissionKeyBody>}, TContext> => {
+
+const mutationKey = ['putApiIamRolesRolePermissionKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putApiIamRolesRolePermissionKey>>, {role: string;permissionKey: string;data: BodyType<PutApiIamRolesRolePermissionKeyBody>}> = (props) => {
+          const {role,permissionKey,data} = props ?? {};
+
+          return  putApiIamRolesRolePermissionKey(role,permissionKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutApiIamRolesRolePermissionKeyMutationResult = NonNullable<Awaited<ReturnType<typeof putApiIamRolesRolePermissionKey>>>
+    export type PutApiIamRolesRolePermissionKeyMutationBody = BodyType<PutApiIamRolesRolePermissionKeyBody>
+    export type PutApiIamRolesRolePermissionKeyMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a role template permission (Super Admin only)
+ */
+export const usePutApiIamRolesRolePermissionKey = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiIamRolesRolePermissionKey>>, TError,{role: string;permissionKey: string;data: BodyType<PutApiIamRolesRolePermissionKeyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof putApiIamRolesRolePermissionKey>>,
+        TError,
+        {role: string;permissionKey: string;data: BodyType<PutApiIamRolesRolePermissionKeyBody>},
+        TContext
+      > => {
+      return useMutation(getPutApiIamRolesRolePermissionKeyMutationOptions(options));
+    }
+
+export const getGetApiIamUsersUrl = (params?: GetApiIamUsersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/api/iam/users?${stringifiedParams}` : `/api/api/iam/users`
+}
+
+/**
+ * @summary List users with IAM summary
+ */
+export const getApiIamUsers = async (params?: GetApiIamUsersParams, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getGetApiIamUsersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetApiIamUsersQueryKey = (params?: GetApiIamUsersParams,) => {
+    return [
+    `/api/api/iam/users`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetApiIamUsersQueryOptions = <TData = Awaited<ReturnType<typeof getApiIamUsers>>, TError = ErrorType<void>>(params?: GetApiIamUsersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiIamUsersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiIamUsers>>> = ({ signal }) => getApiIamUsers(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiIamUsers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetApiIamUsersQueryResult = NonNullable<Awaited<ReturnType<typeof getApiIamUsers>>>
+export type GetApiIamUsersQueryError = ErrorType<void>
+
+
+/**
+ * @summary List users with IAM summary
+ */
+
+export function useGetApiIamUsers<TData = Awaited<ReturnType<typeof getApiIamUsers>>, TError = ErrorType<void>>(
+ params?: GetApiIamUsersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetApiIamUsersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetApiIamUsersUserIdPermissionsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/api/iam/users/${userId}/permissions`
+}
+
+/**
+ * @summary Get effective permissions for a user
+ */
+export const getApiIamUsersUserIdPermissions = async (userId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getGetApiIamUsersUserIdPermissionsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetApiIamUsersUserIdPermissionsQueryKey = (userId: number,) => {
+    return [
+    `/api/api/iam/users/${userId}/permissions`
+    ] as const;
+    }
+
+
+export const getGetApiIamUsersUserIdPermissionsQueryOptions = <TData = Awaited<ReturnType<typeof getApiIamUsersUserIdPermissions>>, TError = ErrorType<void>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamUsersUserIdPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiIamUsersUserIdPermissionsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiIamUsersUserIdPermissions>>> = ({ signal }) => getApiIamUsersUserIdPermissions(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiIamUsersUserIdPermissions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetApiIamUsersUserIdPermissionsQueryResult = NonNullable<Awaited<ReturnType<typeof getApiIamUsersUserIdPermissions>>>
+export type GetApiIamUsersUserIdPermissionsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get effective permissions for a user
+ */
+
+export function useGetApiIamUsersUserIdPermissions<TData = Awaited<ReturnType<typeof getApiIamUsersUserIdPermissions>>, TError = ErrorType<void>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamUsersUserIdPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetApiIamUsersUserIdPermissionsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPutApiIamUsersUserIdPermissionsPermissionKeyUrl = (userId: number,
+    permissionKey: string,) => {
+
+
+
+
+  return `/api/api/iam/users/${userId}/permissions/${permissionKey}`
+}
+
+/**
+ * @summary Set a per-user permission override (Super Admin only)
+ */
+export const putApiIamUsersUserIdPermissionsPermissionKey = async (userId: number,
+    permissionKey: string,
+    putApiIamUsersUserIdPermissionsPermissionKeyBody: PutApiIamUsersUserIdPermissionsPermissionKeyBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getPutApiIamUsersUserIdPermissionsPermissionKeyUrl(userId,permissionKey),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      putApiIamUsersUserIdPermissionsPermissionKeyBody,)
+  }
+);}
+
+
+
+
+export const getPutApiIamUsersUserIdPermissionsPermissionKeyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiIamUsersUserIdPermissionsPermissionKey>>, TError,{userId: number;permissionKey: string;data: BodyType<PutApiIamUsersUserIdPermissionsPermissionKeyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof putApiIamUsersUserIdPermissionsPermissionKey>>, TError,{userId: number;permissionKey: string;data: BodyType<PutApiIamUsersUserIdPermissionsPermissionKeyBody>}, TContext> => {
+
+const mutationKey = ['putApiIamUsersUserIdPermissionsPermissionKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putApiIamUsersUserIdPermissionsPermissionKey>>, {userId: number;permissionKey: string;data: BodyType<PutApiIamUsersUserIdPermissionsPermissionKeyBody>}> = (props) => {
+          const {userId,permissionKey,data} = props ?? {};
+
+          return  putApiIamUsersUserIdPermissionsPermissionKey(userId,permissionKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutApiIamUsersUserIdPermissionsPermissionKeyMutationResult = NonNullable<Awaited<ReturnType<typeof putApiIamUsersUserIdPermissionsPermissionKey>>>
+    export type PutApiIamUsersUserIdPermissionsPermissionKeyMutationBody = BodyType<PutApiIamUsersUserIdPermissionsPermissionKeyBody>
+    export type PutApiIamUsersUserIdPermissionsPermissionKeyMutationError = ErrorType<void>
+
+    /**
+ * @summary Set a per-user permission override (Super Admin only)
+ */
+export const usePutApiIamUsersUserIdPermissionsPermissionKey = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiIamUsersUserIdPermissionsPermissionKey>>, TError,{userId: number;permissionKey: string;data: BodyType<PutApiIamUsersUserIdPermissionsPermissionKeyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof putApiIamUsersUserIdPermissionsPermissionKey>>,
+        TError,
+        {userId: number;permissionKey: string;data: BodyType<PutApiIamUsersUserIdPermissionsPermissionKeyBody>},
+        TContext
+      > => {
+      return useMutation(getPutApiIamUsersUserIdPermissionsPermissionKeyMutationOptions(options));
+    }
+
+export const getDeleteApiIamUsersUserIdPermissionsPermissionKeyUrl = (userId: number,
+    permissionKey: string,) => {
+
+
+
+
+  return `/api/api/iam/users/${userId}/permissions/${permissionKey}`
+}
+
+/**
+ * @summary Remove a per-user permission override (Super Admin only)
+ */
+export const deleteApiIamUsersUserIdPermissionsPermissionKey = async (userId: number,
+    permissionKey: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteApiIamUsersUserIdPermissionsPermissionKeyUrl(userId,permissionKey),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteApiIamUsersUserIdPermissionsPermissionKeyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiIamUsersUserIdPermissionsPermissionKey>>, TError,{userId: number;permissionKey: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApiIamUsersUserIdPermissionsPermissionKey>>, TError,{userId: number;permissionKey: string}, TContext> => {
+
+const mutationKey = ['deleteApiIamUsersUserIdPermissionsPermissionKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApiIamUsersUserIdPermissionsPermissionKey>>, {userId: number;permissionKey: string}> = (props) => {
+          const {userId,permissionKey} = props ?? {};
+
+          return  deleteApiIamUsersUserIdPermissionsPermissionKey(userId,permissionKey,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteApiIamUsersUserIdPermissionsPermissionKeyMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApiIamUsersUserIdPermissionsPermissionKey>>>
+
+    export type DeleteApiIamUsersUserIdPermissionsPermissionKeyMutationError = ErrorType<void>
+
+    /**
+ * @summary Remove a per-user permission override (Super Admin only)
+ */
+export const useDeleteApiIamUsersUserIdPermissionsPermissionKey = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiIamUsersUserIdPermissionsPermissionKey>>, TError,{userId: number;permissionKey: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteApiIamUsersUserIdPermissionsPermissionKey>>,
+        TError,
+        {userId: number;permissionKey: string},
+        TContext
+      > => {
+      return useMutation(getDeleteApiIamUsersUserIdPermissionsPermissionKeyMutationOptions(options));
+    }
+
+export const getGetApiIamAuditUrl = (params?: GetApiIamAuditParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/api/iam/audit?${stringifiedParams}` : `/api/api/iam/audit`
+}
+
+/**
+ * @summary List IAM audit log entries
+ */
+export const getApiIamAudit = async (params?: GetApiIamAuditParams, options?: RequestInit): Promise<GetApiIamAudit200> => {
+
+  return customFetch<GetApiIamAudit200>(getGetApiIamAuditUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetApiIamAuditQueryKey = (params?: GetApiIamAuditParams,) => {
+    return [
+    `/api/api/iam/audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetApiIamAuditQueryOptions = <TData = Awaited<ReturnType<typeof getApiIamAudit>>, TError = ErrorType<void>>(params?: GetApiIamAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiIamAuditQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiIamAudit>>> = ({ signal }) => getApiIamAudit(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiIamAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetApiIamAuditQueryResult = NonNullable<Awaited<ReturnType<typeof getApiIamAudit>>>
+export type GetApiIamAuditQueryError = ErrorType<void>
+
+
+/**
+ * @summary List IAM audit log entries
+ */
+
+export function useGetApiIamAudit<TData = Awaited<ReturnType<typeof getApiIamAudit>>, TError = ErrorType<void>>(
+ params?: GetApiIamAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getApiIamAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetApiIamAuditQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

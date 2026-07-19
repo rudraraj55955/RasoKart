@@ -11218,6 +11218,330 @@ paths:
         "403":
           description: Forbidden
 
+  /api/iam/permissions:
+    get:
+      tags: [IAM]
+      summary: List all permission keys in the catalog
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Permission catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  permissions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        isSuperAdminOnly:
+                          type: boolean
+                        category:
+                          type: string
+                  total:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /api/iam/migration/status:
+    get:
+      tags: [IAM]
+      summary: Get IAM migration status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Migration status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  migrated:
+                    type: boolean
+                  migratedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  cutoffAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  totalUsers:
+                    type: integer
+                  templateRows:
+                    type: integer
+                  overrideRows:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /api/iam/migration/run:
+    post:
+      tags: [IAM]
+      summary: Run IAM migration (Super Admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Migration complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  totalUsers:
+                    type: integer
+                  templateRows:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "409":
+          description: Migration already run
+
+  /api/iam/migration/rollback:
+    post:
+      tags: [IAM]
+      summary: Roll back IAM migration (Super Admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Rollback complete
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /api/iam/roles:
+    get:
+      tags: [IAM]
+      summary: List role permission templates
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Roles with permission maps
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /api/iam/roles/{role}/{permissionKey}:
+    put:
+      tags: [IAM]
+      summary: Update a role template permission (Super Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: role
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: permissionKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isEnabled]
+              properties:
+                isEnabled:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated
+        "400":
+          description: Invalid role or permission key
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /api/iam/users:
+    get:
+      tags: [IAM]
+      summary: List users with IAM summary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User list
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /api/iam/users/{userId}/permissions:
+    get:
+      tags: [IAM]
+      summary: Get effective permissions for a user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User effective permissions
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: User not found
+
+  /api/iam/users/{userId}/permissions/{permissionKey}:
+    put:
+      tags: [IAM]
+      summary: Set a per-user permission override (Super Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: permissionKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [effect]
+              properties:
+                effect:
+                  type: string
+                  enum: [ALLOW, DENY]
+      responses:
+        "200":
+          description: Override set
+        "400":
+          description: Invalid input
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - including when granting SA-only permission to non-SA user
+        "404":
+          description: User not found
+    delete:
+      tags: [IAM]
+      summary: Remove a per-user permission override (Super Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: permissionKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Override removed
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /api/iam/audit:
+    get:
+      tags: [IAM]
+      summary: List IAM audit log entries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: IAM audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        adminEmail:
+                          type: string
+                        action:
+                          type: string
+                        targetType:
+                          type: string
+                        targetId:
+                          type: integer
+                          nullable: true
+                        details:
+                          type: object
+                          nullable: true
+                          additionalProperties: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
 components:
   schemas:
     CompanySettingsPublic:

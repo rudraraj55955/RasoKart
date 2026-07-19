@@ -39,6 +39,7 @@ export const PERMISSIONS = {
   ADMIN_API_MONITORING:    "admin_api_monitoring",
 
   // ── IAM (Super Admin only by default) ────────────────────────────────────
+  IAM_READ:   "iam_read",
   IAM_MANAGE: "iam_manage",
 
   // ── Merchant portal ───────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ export const SUPER_ADMIN_ONLY_PERMISSIONS: Set<string> = new Set([
   PERMISSIONS.ADMIN_SECURE_ID,
   PERMISSIONS.ADMIN_OTP_SETTINGS,
   PERMISSIONS.ADMIN_PLATFORM_PROFIT,
+  PERMISSIONS.IAM_READ,
   PERMISSIONS.IAM_MANAGE,
 ]);
 
