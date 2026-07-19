@@ -52,6 +52,10 @@ router.get("/healthz/deep", async (_req, res) => {
       { key: "provider_integrations.is_custom", query: "SELECT is_custom FROM provider_integrations LIMIT 1" },
       { key: "routing_rules", query: "SELECT id FROM routing_rules LIMIT 1" },
       { key: "quiet_hours_queue.flushed", query: "SELECT flushed, deliver_after FROM quiet_hours_queue LIMIT 1" },
+      { key: "iam_tables.permissions", query: "SELECT id FROM permissions LIMIT 1" },
+      { key: "iam_tables.role_permissions", query: "SELECT id FROM role_permissions LIMIT 1" },
+      { key: "iam_tables.user_permissions", query: "SELECT id FROM user_permissions LIMIT 1" },
+      { key: "iam_tables.iam_migration_log", query: "SELECT id FROM iam_migration_log LIMIT 1" },
     ];
 
     for (const { key, query } of tableChecks) {

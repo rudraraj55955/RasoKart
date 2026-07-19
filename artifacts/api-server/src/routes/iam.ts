@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, usersTable, iamMigrationLogTable, rolePermissionTemplatesTable, userPermissionOverridesTable, auditLogsTable } from "@workspace/db";
-import { eq, and, count, desc } from "drizzle-orm";
+import { db, usersTable, iamMigrationLogTable, rolePermissionsTable, userPermissionsTable, permissionsTable, auditLogsTable } from "@workspace/db";
+import { eq, and, count, desc, like } from "drizzle-orm";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
 import { ALL_PERMISSION_KEYS, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "../permissions";
 
@@ -23,25 +23,83 @@ async function writeAuditLog(req: any, action: string, targetType: string, targe
       ipAddress: (req as any).ip ?? null,
     });
   } catch {
-    // Never let audit log failure block the main operation
     req.log.warn({ action, targetType, targetId }, "iam_audit_log_write_failed");
   }
 }
 
 // ── GET /api/iam/permissions ────────────────────────────────────────────────
-// List all permission keys in the catalog.
+// List all permission keys from DB catalog (falls back to code catalog if empty).
 router.get(
   "/permissions",
   requireAuth,
   requireAdmin,
   requirePermission(PERMISSIONS.IAM_READ),
-  (_req, res) => {
-    const keys = ALL_PERMISSION_KEYS.map((k) => ({
-      key: k,
-      isSuperAdminOnly: SUPER_ADMIN_ONLY_PERMISSIONS.has(k),
-      category: k.split("_")[0],
-    }));
-    res.json({ permissions: keys, total: keys.length });
+  async (_req, res, next) => {
+    try {
+      const dbRows = await db.select().from(permissionsTable).orderBy(permissionsTable.category, permissionsTable.key);
+      if (dbRows.length > 0) {
+        res.json({
+          permissions: dbRows.map((r) => ({
+            key: r.key,
+            isSuperAdminOnly: r.isSuperAdminOnly,
+            category: r.category,
+            description: r.description ?? null,
+          })),
+          total: dbRows.length,
+          source: "db",
+        });
+        return;
+      }
+      // Fallback to code catalog when DB catalog not yet seeded
+      const keys = ALL_PERMISSION_KEYS.map((k) => ({
+        key: k,
+        isSuperAdminOnly: SUPER_ADMIN_ONLY_PERMISSIONS.has(k),
+        category: k.split("_")[0],
+        description: null,
+      }));
+      res.json({ permissions: keys, total: keys.length, source: "code" });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── POST /api/iam/permissions/sync ──────────────────────────────────────────
+// Upsert all permission keys from the code catalog into the DB permissions table.
+router.post(
+  "/permissions/sync",
+  requireAuth,
+  requireAdmin,
+  requirePermission(PERMISSIONS.IAM_MANAGE),
+  async (req, res, next) => {
+    const user = (req as any).user;
+    if (!user.isSuperAdmin) {
+      res.status(403).json({ error: "Only Super Admin can sync the permissions catalog" });
+      return;
+    }
+    try {
+      let upserted = 0;
+      for (const key of ALL_PERMISSION_KEYS) {
+        const category = key.split("_")[0] ?? "unknown";
+        const isSuperAdminOnly = SUPER_ADMIN_ONLY_PERMISSIONS.has(key);
+        await db
+          .insert(permissionsTable)
+          .values({ key, category, isSuperAdminOnly, updatedAt: new Date() })
+          .onConflictDoUpdate({
+            target: permissionsTable.key,
+            set: { category, isSuperAdminOnly, updatedAt: new Date() },
+          });
+        upserted++;
+      }
+      await writeAuditLog(req, "iam_permissions_synced", "iam", null, {
+        count: upserted,
+        executedBy: user.email,
+      });
+      req.log.info({ count: upserted, executedBy: user.email }, "iam_permissions_catalog_synced");
+      res.json({ ok: true, upserted });
+    } catch (err) {
+      next(err);
+    }
   },
 );
 
@@ -59,8 +117,9 @@ router.get(
         .orderBy(iamMigrationLogTable.executedAt)
         .limit(1);
 
-      const [templateCount] = await db.select({ c: count() }).from(rolePermissionTemplatesTable);
-      const [overrideCount] = await db.select({ c: count() }).from(userPermissionOverridesTable);
+      const [templateCount] = await db.select({ c: count() }).from(rolePermissionsTable);
+      const [overrideCount] = await db.select({ c: count() }).from(userPermissionsTable);
+      const [catalogCount] = await db.select({ c: count() }).from(permissionsTable);
 
       res.json({
         migrated: !!migRow,
@@ -69,6 +128,7 @@ router.get(
         totalUsers: migRow?.totalUsers ?? 0,
         templateRows: Number(templateCount.c),
         overrideRows: Number(overrideCount.c),
+        catalogRows: Number(catalogCount.c),
       });
     } catch (err) {
       next(err);
@@ -77,8 +137,6 @@ router.get(
 );
 
 // ── POST /api/iam/migration/run ─────────────────────────────────────────────
-// Seeds role_permission_templates from ROLE_DEFAULT_PERMISSIONS catalog.
-// Idempotent — safe to run again if templates already exist.
 router.post(
   "/migration/run",
   requireAuth,
@@ -97,6 +155,20 @@ router.post(
         return;
       }
 
+      // 1. Sync permissions catalog into DB
+      for (const key of ALL_PERMISSION_KEYS) {
+        const category = key.split("_")[0] ?? "unknown";
+        const isSuperAdminOnly = SUPER_ADMIN_ONLY_PERMISSIONS.has(key);
+        await db
+          .insert(permissionsTable)
+          .values({ key, category, isSuperAdminOnly, updatedAt: new Date() })
+          .onConflictDoUpdate({
+            target: permissionsTable.key,
+            set: { category, isSuperAdminOnly, updatedAt: new Date() },
+          });
+      }
+
+      // 2. Seed role_permissions from ROLE_DEFAULT_PERMISSIONS
       const [userCountRow] = await db.select({ c: count() }).from(usersTable);
       const totalUsers = Number(userCountRow.c);
 
@@ -105,35 +177,44 @@ router.post(
         for (const key of ALL_PERMISSION_KEYS) {
           const isEnabled = defaults[key] ?? false;
           await db
-            .insert(rolePermissionTemplatesTable)
+            .insert(rolePermissionsTable)
             .values({ role, permissionKey: key, isEnabled, updatedByUserId: user.id })
             .onConflictDoUpdate({
-              target: [rolePermissionTemplatesTable.role, rolePermissionTemplatesTable.permissionKey],
+              target: [rolePermissionsTable.role, rolePermissionsTable.permissionKey],
               set: { isEnabled, updatedByUserId: user.id, updatedAt: new Date() },
             });
         }
       }
 
+      // 3. Write migration log (cutoffAt = now, so all users existing before this point are covered)
       const now = new Date();
       await db.insert(iamMigrationLogTable).values({
         cutoffAt: now,
         executedByUserId: user.id,
         totalUsers,
-        snapshotJson: { roles: KNOWN_ROLES, permissionCount: ALL_PERMISSION_KEYS.length },
+        snapshotJson: {
+          roles: KNOWN_ROLES,
+          permissionCount: ALL_PERMISSION_KEYS.length,
+          catalogSynced: true,
+        },
       });
 
       await writeAuditLog(req, "iam_migration_run", "iam", null, {
         totalUsers,
         templateRows: KNOWN_ROLES.length * ALL_PERMISSION_KEYS.length,
+        catalogRows: ALL_PERMISSION_KEYS.length,
         executedBy: user.email,
+        cutoffAt: now.toISOString(),
       });
 
-      req.log.info({ executedBy: user.email, totalUsers }, "iam_migration_run");
+      req.log.info({ executedBy: user.email, totalUsers, cutoffAt: now }, "iam_migration_run");
       res.json({
         ok: true,
-        message: "IAM migration complete",
+        message: "IAM migration complete — catalog synced, role templates seeded",
         totalUsers,
         templateRows: KNOWN_ROLES.length * ALL_PERMISSION_KEYS.length,
+        catalogRows: ALL_PERMISSION_KEYS.length,
+        cutoffAt: now.toISOString(),
       });
     } catch (err) {
       next(err);
@@ -154,12 +235,24 @@ router.post(
       return;
     }
     try {
-      await db.delete(userPermissionOverridesTable);
-      await db.delete(rolePermissionTemplatesTable);
+      const [existingMig] = await db.select({ id: iamMigrationLogTable.id }).from(iamMigrationLogTable).limit(1);
+      if (!existingMig) {
+        res.status(409).json({ error: "No IAM migration to roll back." });
+        return;
+      }
+
+      // Capture snapshot before deletion for audit
+      const [templateCount] = await db.select({ c: count() }).from(rolePermissionsTable);
+      const [overrideCount] = await db.select({ c: count() }).from(userPermissionsTable);
+
+      await db.delete(userPermissionsTable);
+      await db.delete(rolePermissionsTable);
       await db.delete(iamMigrationLogTable);
 
       await writeAuditLog(req, "iam_migration_rollback", "iam", null, {
         executedBy: user.email,
+        deletedTemplates: Number(templateCount.c),
+        deletedOverrides: Number(overrideCount.c),
       });
 
       req.log.info({ executedBy: user.email }, "iam_migration_rollback");
@@ -180,8 +273,8 @@ router.get(
     try {
       const templates = await db
         .select()
-        .from(rolePermissionTemplatesTable)
-        .orderBy(rolePermissionTemplatesTable.role, rolePermissionTemplatesTable.permissionKey);
+        .from(rolePermissionsTable)
+        .orderBy(rolePermissionsTable.role, rolePermissionsTable.permissionKey);
 
       const byRole: Record<string, Record<string, boolean>> = {};
       for (const t of templates) {
@@ -229,10 +322,10 @@ router.put(
     }
     try {
       await db
-        .insert(rolePermissionTemplatesTable)
+        .insert(rolePermissionsTable)
         .values({ role, permissionKey, isEnabled, updatedByUserId: user.id })
         .onConflictDoUpdate({
-          target: [rolePermissionTemplatesTable.role, rolePermissionTemplatesTable.permissionKey],
+          target: [rolePermissionsTable.role, rolePermissionsTable.permissionKey],
           set: { isEnabled, updatedByUserId: user.id, updatedAt: new Date() },
         });
 
@@ -279,9 +372,9 @@ router.get(
         .orderBy(usersTable.createdAt);
 
       const overrideCounts = await db
-        .select({ userId: userPermissionOverridesTable.userId, c: count() })
-        .from(userPermissionOverridesTable)
-        .groupBy(userPermissionOverridesTable.userId);
+        .select({ userId: userPermissionsTable.userId, c: count() })
+        .from(userPermissionsTable)
+        .groupBy(userPermissionsTable.userId);
 
       const overrideMap: Record<number, number> = {};
       for (const row of overrideCounts) overrideMap[row.userId] = Number(row.c);
@@ -346,11 +439,11 @@ router.get(
       const roleDefaults = migrated
         ? await db
             .select({
-              permissionKey: rolePermissionTemplatesTable.permissionKey,
-              isEnabled: rolePermissionTemplatesTable.isEnabled,
+              permissionKey: rolePermissionsTable.permissionKey,
+              isEnabled: rolePermissionsTable.isEnabled,
             })
-            .from(rolePermissionTemplatesTable)
-            .where(eq(rolePermissionTemplatesTable.role, userRow.role))
+            .from(rolePermissionsTable)
+            .where(eq(rolePermissionsTable.role, userRow.role))
         : ALL_PERMISSION_KEYS.map((k) => ({
             permissionKey: k,
             isEnabled: (ROLE_DEFAULT_PERMISSIONS[userRow.role] ?? {})[k] ?? false,
@@ -358,8 +451,8 @@ router.get(
 
       const overrides = await db
         .select()
-        .from(userPermissionOverridesTable)
-        .where(eq(userPermissionOverridesTable.userId, userId));
+        .from(userPermissionsTable)
+        .where(eq(userPermissionsTable.userId, userId));
 
       const effective: Record<string, boolean> = {};
       for (const t of roleDefaults) effective[t.permissionKey] = t.isEnabled;
@@ -414,7 +507,12 @@ router.put(
 
     try {
       const [targetUser] = await db
-        .select({ id: usersTable.id, email: usersTable.email, isSuperAdmin: usersTable.isSuperAdmin })
+        .select({
+          id: usersTable.id,
+          email: usersTable.email,
+          role: usersTable.role,
+          isSuperAdmin: usersTable.isSuperAdmin,
+        })
         .from(usersTable)
         .where(eq(usersTable.id, userId))
         .limit(1);
@@ -424,23 +522,37 @@ router.put(
         return;
       }
 
-      // ── Role max-scope guard ─────────────────────────────────────────────
-      // Super Admin-only permissions cannot be ALLOWed for non-SA users via override.
-      // This prevents privilege escalation beyond a role's max scope.
-      if (effect === "ALLOW" && SUPER_ADMIN_ONLY_PERMISSIONS.has(permissionKey) && !targetUser.isSuperAdmin) {
-        res.status(403).json({
-          error: "Cannot grant a Super Admin-only permission to a non-Super-Admin user",
-          permissionKey,
-          hint: "Super Admin-only permissions are enforced at the system level and cannot be overridden per-user.",
-        });
-        return;
+      // ── Role max-scope guard ──────────────────────────────────────────────
+      // Block ALLOW grants that exceed the target user's role envelope.
+      // (1) Super Admin-only permissions may never be granted to non-SA users.
+      // (2) Admin-scoped permissions may not be ALLOWed to merchant/payout/agent roles.
+      if (effect === "ALLOW" && !targetUser.isSuperAdmin) {
+        if (SUPER_ADMIN_ONLY_PERMISSIONS.has(permissionKey)) {
+          res.status(403).json({
+            error: "Cannot grant a Super Admin-only permission to a non-Super-Admin user",
+            permissionKey,
+            hint: "Super Admin-only permissions are enforced at the system level and cannot be overridden per-user.",
+          });
+          return;
+        }
+        const targetRoleEnvelope = ROLE_DEFAULT_PERMISSIONS[targetUser.role] ?? {};
+        const inRoleEnvelope = permissionKey in targetRoleEnvelope;
+        if (!inRoleEnvelope) {
+          // Permission is not in target role's catalog at all — cross-role escalation blocked
+          res.status(403).json({
+            error: `Permission '${permissionKey}' is outside role '${targetUser.role}' envelope. Super Admin must elevate via role change, not override.`,
+            permissionKey,
+            targetRole: targetUser.role,
+          });
+          return;
+        }
       }
 
       await db
-        .insert(userPermissionOverridesTable)
+        .insert(userPermissionsTable)
         .values({ userId, permissionKey, effect, updatedByUserId: callerUser.id })
         .onConflictDoUpdate({
-          target: [userPermissionOverridesTable.userId, userPermissionOverridesTable.permissionKey],
+          target: [userPermissionsTable.userId, userPermissionsTable.permissionKey],
           set: { effect, updatedByUserId: callerUser.id, updatedAt: new Date() },
         });
 
@@ -485,11 +597,11 @@ router.delete(
 
     try {
       await db
-        .delete(userPermissionOverridesTable)
+        .delete(userPermissionsTable)
         .where(
           and(
-            eq(userPermissionOverridesTable.userId, userId),
-            eq(userPermissionOverridesTable.permissionKey, permissionKey),
+            eq(userPermissionsTable.userId, userId),
+            eq(userPermissionsTable.permissionKey, permissionKey),
           ),
         );
 
@@ -507,7 +619,6 @@ router.delete(
 );
 
 // ── GET /api/iam/audit ──────────────────────────────────────────────────────
-// List recent audit log entries for IAM actions.
 router.get(
   "/audit",
   requireAuth,
@@ -519,8 +630,6 @@ router.get(
       const page = Math.max(1, parseInt((req.query["page"] as string) || "1", 10));
       const offset = (page - 1) * limit;
 
-      const { like } = await import("drizzle-orm");
-
       const rows = await db
         .select()
         .from(auditLogsTable)
@@ -528,6 +637,11 @@ router.get(
         .orderBy(desc(auditLogsTable.createdAt))
         .limit(limit)
         .offset(offset);
+
+      const [totalRow] = await db
+        .select({ c: count() })
+        .from(auditLogsTable)
+        .where(like(auditLogsTable.action, "iam_%"));
 
       res.json({
         entries: rows.map((r) => ({
@@ -541,6 +655,7 @@ router.get(
         })),
         page,
         limit,
+        total: Number(totalRow.c),
       });
     } catch (err) {
       next(err);

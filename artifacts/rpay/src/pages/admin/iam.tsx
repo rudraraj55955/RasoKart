@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
-import { AlertTriangle, CheckCircle2, ShieldCheck, Users, Lock } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ShieldCheck, Users, Lock, ScrollText, RefreshCw } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -69,6 +69,13 @@ function useUserPermissions(userId: number | null) {
   });
 }
 
+function useIamAudit(page: number) {
+  return useQuery({
+    queryKey: ["iam", "audit", page],
+    queryFn: () => apiFetch(`/iam/audit?page=${page}&limit=50`),
+  });
+}
+
 // ── Migration panel ──────────────────────────────────────────────────────────
 
 function MigrationPanel() {
@@ -78,7 +85,7 @@ function MigrationPanel() {
   const runMutation = useMutation({
     mutationFn: () => apiFetch("/iam/migration/run", { method: "POST" }),
     onSuccess: () => {
-      toast.success("IAM migration complete. Role templates seeded from default catalog.");
+      toast.success("IAM migration complete — catalog synced, role templates seeded.");
       qc.invalidateQueries({ queryKey: ["iam"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -89,6 +96,16 @@ function MigrationPanel() {
     onSuccess: () => {
       toast.success("IAM migration rolled back. System in legacy role-based mode.");
       qc.invalidateQueries({ queryKey: ["iam"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const syncCatalogMutation = useMutation({
+    mutationFn: () => apiFetch("/iam/permissions/sync", { method: "POST" }),
+    onSuccess: (d: any) => {
+      toast.success(`Permissions catalog synced — ${d.upserted} keys.`);
+      qc.invalidateQueries({ queryKey: ["iam", "permissions"] });
+      qc.invalidateQueries({ queryKey: ["iam", "migration", "status"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -106,11 +123,11 @@ function MigrationPanel() {
         </CardTitle>
         <CardDescription>
           {migrated
-            ? `Migration ran on ${new Date(data.migratedAt).toLocaleString()}. ${data.templateRows} role–permission template rows active.`
+            ? `Migration ran on ${new Date(data.migratedAt).toLocaleString()}. ${data.templateRows} role–permission rows. ${data.catalogRows ?? 0} catalog keys in DB.`
             : "Migration not yet run. System is in soft/legacy mode — all roles have full access."}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex items-center gap-3">
+      <CardContent className="flex flex-wrap items-center gap-3">
         {!migrated ? (
           <Button onClick={() => runMutation.mutate()} disabled={runMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">
             {runMutation.isPending ? "Running…" : "Run IAM Migration"}
@@ -123,6 +140,10 @@ function MigrationPanel() {
             {rollbackMutation.isPending ? "Rolling back…" : "Rollback Migration"}
           </Button>
         )}
+        <Button variant="outline" size="sm" onClick={() => syncCatalogMutation.mutate()} disabled={syncCatalogMutation.isPending}>
+          <RefreshCw className={`w-3 h-3 mr-1 ${syncCatalogMutation.isPending ? "animate-spin" : ""}`} />
+          Sync Catalog to DB
+        </Button>
         <Button variant="outline" onClick={() => refetch()}>Refresh</Button>
         {migrated && (
           <div className="ml-auto text-xs text-muted-foreground">
@@ -159,7 +180,7 @@ function RoleTemplatesPanel() {
 
   const migrated = migData?.migrated ?? false;
   const roleMap: Record<string, Record<string, boolean>> = {};
-  for (const r of rolesData?.roles ?? []) {
+  for (const r of (rolesData?.roles ?? []) as RolePermMap[]) {
     roleMap[r.role] = r.permissions;
   }
   const catalogKeys: { key: string; isSuperAdminOnly: boolean; category: string }[] = catalogData?.permissions ?? [];
@@ -233,6 +254,7 @@ function UserOverridesPanel() {
       apiFetch(`/iam/users/${userId}/permissions/${key}`, { method: "PUT", body: JSON.stringify({ effect }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["iam", "users", selectedUserId, "permissions"] });
+      qc.invalidateQueries({ queryKey: ["iam", "users"] });
       toast.success("Permission override saved");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -243,6 +265,7 @@ function UserOverridesPanel() {
       apiFetch(`/iam/users/${userId}/permissions/${key}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["iam", "users", selectedUserId, "permissions"] });
+      qc.invalidateQueries({ queryKey: ["iam", "users"] });
       toast.success("Override removed — reverted to role default");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -254,7 +277,6 @@ function UserOverridesPanel() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* User list */}
       <Card className="lg:col-span-1">
         <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Users className="w-4 h-4" /> Users ({users.length})</CardTitle></CardHeader>
         <CardContent className="p-0">
@@ -278,7 +300,6 @@ function UserOverridesPanel() {
         </CardContent>
       </Card>
 
-      {/* Permission detail */}
       <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle className="text-sm">
@@ -375,6 +396,97 @@ function UserOverridesPanel() {
   );
 }
 
+// ── Audit trail panel ─────────────────────────────────────────────────────────
+
+function AuditTrailPanel() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading, refetch } = useIamAudit(page);
+
+  const entries: any[] = data?.entries ?? [];
+  const total: number = data?.total ?? 0;
+  const limit: number = data?.limit ?? 50;
+  const totalPages = Math.ceil(total / limit);
+
+  const ACTION_COLOR: Record<string, string> = {
+    iam_migration_run: "text-emerald-400",
+    iam_migration_rollback: "text-red-400",
+    iam_permissions_synced: "text-blue-400",
+    iam_role_template_updated: "text-purple-400",
+    iam_user_override_set: "text-amber-400",
+    iam_user_override_removed: "text-orange-400",
+  };
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">{total} IAM audit entries total</div>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <RefreshCw className="w-3 h-3 mr-1" /> Refresh
+        </Button>
+      </div>
+
+      {entries.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground text-sm">
+          No IAM audit entries yet. Run a migration or modify permissions to start the audit trail.
+        </div>
+      )}
+
+      {entries.length > 0 && (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs">Timestamp</TableHead>
+                <TableHead className="text-xs">Action</TableHead>
+                <TableHead className="text-xs">By</TableHead>
+                <TableHead className="text-xs">Target</TableHead>
+                <TableHead className="text-xs">Details</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.map((e: any) => (
+                <TableRow key={e.id}>
+                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap py-2">
+                    {new Date(e.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    <span className={`text-xs font-mono ${ACTION_COLOR[e.action] ?? "text-foreground"}`}>
+                      {e.action}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-xs truncate max-w-[150px] py-2">{e.adminEmail}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground py-2">
+                    {e.targetType}{e.targetId ? ` #${e.targetId}` : ""}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap max-w-[300px] overflow-hidden">
+                      {e.details ? JSON.stringify(e.details, null, 2) : "—"}
+                    </pre>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+            Previous
+          </Button>
+          <span className="text-xs text-muted-foreground">Page {page} of {totalPages}</span>
+          <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AdminIam() {
@@ -400,7 +512,8 @@ export default function AdminIam() {
           IAM &amp; RBAC
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Manage role permission templates and per-user overrides. Super Admin always has unrestricted access.
+          Manage role permission templates, per-user overrides, and review the full IAM audit trail.
+          Super Admin always has unrestricted access to all permissions.
         </p>
       </div>
 
@@ -410,12 +523,18 @@ export default function AdminIam() {
         <TabsList>
           <TabsTrigger value="roles">Role Templates</TabsTrigger>
           <TabsTrigger value="users">User Overrides</TabsTrigger>
+          <TabsTrigger value="audit" className="flex items-center gap-1">
+            <ScrollText className="w-3 h-3" /> Audit Trail
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="roles" className="mt-4">
           <RoleTemplatesPanel />
         </TabsContent>
         <TabsContent value="users" className="mt-4">
           <UserOverridesPanel />
+        </TabsContent>
+        <TabsContent value="audit" className="mt-4">
+          <AuditTrailPanel />
         </TabsContent>
       </Tabs>
     </div>

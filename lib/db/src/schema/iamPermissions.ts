@@ -1,10 +1,26 @@
 import { pgTable, text, serial, timestamp, boolean, integer, jsonb } from "drizzle-orm/pg-core";
 
 /**
+ * DB-backed permissions catalog — one row per permission key.
+ * Seeded/synced from the code catalog in permissions.ts.
+ * Canonical name: `permissions`
+ */
+export const permissionsTable = pgTable("permissions", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  category: text("category").notNull(),
+  isSuperAdminOnly: boolean("is_super_admin_only").notNull().default(false),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * Per-role default permission states.
  * Seeded at IAM migration time from the ROLE_DEFAULT_PERMISSIONS catalog.
+ * Canonical name: `role_permissions` (renamed from role_permission_templates)
  */
-export const rolePermissionTemplatesTable = pgTable("role_permission_templates", {
+export const rolePermissionsTable = pgTable("role_permissions", {
   id: serial("id").primaryKey(),
   role: text("role").notNull(),
   permissionKey: text("permission_key").notNull(),
@@ -16,8 +32,9 @@ export const rolePermissionTemplatesTable = pgTable("role_permission_templates",
 /**
  * Per-user explicit overrides on top of the role template.
  * effect = 'ALLOW' → force-grant; 'DENY' → force-revoke.
+ * Canonical name: `user_permissions` (renamed from user_permission_overrides)
  */
-export const userPermissionOverridesTable = pgTable("user_permission_overrides", {
+export const userPermissionsTable = pgTable("user_permissions", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   permissionKey: text("permission_key").notNull(),
@@ -41,6 +58,13 @@ export const iamMigrationLogTable = pgTable("iam_migration_log", {
   snapshotJson: jsonb("snapshot_json"),
 });
 
-export type RolePermissionTemplate = typeof rolePermissionTemplatesTable.$inferSelect;
-export type UserPermissionOverride = typeof userPermissionOverridesTable.$inferSelect;
+export type Permission = typeof permissionsTable.$inferSelect;
+export type RolePermission = typeof rolePermissionsTable.$inferSelect;
+export type UserPermission = typeof userPermissionsTable.$inferSelect;
 export type IamMigrationLog = typeof iamMigrationLogTable.$inferSelect;
+
+// Backward-compat aliases for any code that still references old names
+export const rolePermissionTemplatesTable = rolePermissionsTable;
+export const userPermissionOverridesTable = userPermissionsTable;
+export type RolePermissionTemplate = RolePermission;
+export type UserPermissionOverride = UserPermission;

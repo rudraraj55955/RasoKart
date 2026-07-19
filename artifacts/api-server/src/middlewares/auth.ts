@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { db, usersTable, iamMigrationLogTable, rolePermissionTemplatesTable, userPermissionOverridesTable } from "@workspace/db";
+import { db, usersTable, iamMigrationLogTable, rolePermissionsTable, userPermissionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "rasokart-secret-key-change-in-production";
@@ -135,17 +135,17 @@ export async function resolveUserPermissions(
   if (!migRow) return null;
 
   const templates = await db
-    .select({ permissionKey: rolePermissionTemplatesTable.permissionKey, isEnabled: rolePermissionTemplatesTable.isEnabled })
-    .from(rolePermissionTemplatesTable)
-    .where(eq(rolePermissionTemplatesTable.role, user.role));
+    .select({ permissionKey: rolePermissionsTable.permissionKey, isEnabled: rolePermissionsTable.isEnabled })
+    .from(rolePermissionsTable)
+    .where(eq(rolePermissionsTable.role, user.role));
 
   const perms: Record<string, boolean> = {};
   for (const t of templates) perms[t.permissionKey] = t.isEnabled;
 
   const overrides = await db
-    .select({ permissionKey: userPermissionOverridesTable.permissionKey, effect: userPermissionOverridesTable.effect })
-    .from(userPermissionOverridesTable)
-    .where(eq(userPermissionOverridesTable.userId, user.id));
+    .select({ permissionKey: userPermissionsTable.permissionKey, effect: userPermissionsTable.effect })
+    .from(userPermissionsTable)
+    .where(eq(userPermissionsTable.userId, user.id));
 
   for (const o of overrides) perms[o.permissionKey] = o.effect === "ALLOW";
 
