@@ -3,8 +3,11 @@
  *
  * Centralises all permission resolution logic:
  *   - Super Admin short-circuit (isSuperAdmin=true → {__all__: true})
- *   - Pre-migration soft-pass (no iam_migration_log row → null)
- *   - Post-migration: role template + user overrides → flat boolean map
+ *   - Missing migration log (no iam_migration_log row → null → fail-CLOSED)
+ *   - Normal path: role template + user overrides → flat boolean map
+ *
+ * The seed auto-activates IAM on every fresh startup, so null is a transient
+ * error state only (e.g. seed failed). checkPermission() treats null as DENY.
  *
  * Request-local caching via res.locals:
  *   The resolver is called up to three times per request (requireAdmin,
@@ -29,8 +32,9 @@ const RES_LOCALS_CACHE_KEY = "__iam_resolved_permissions__";
  *
  * Return semantics:
  *   { __all__: true }        — Super Admin: bypass all checks
- *   null                     — pre-migration: soft-pass (no enforcement yet)
- *   Record<string, boolean>  — post-migration: effective permission map
+ *   null                     — iam_migration_log absent (seed failed/not ready);
+ *                              checkPermission() treats this as DENY (fail-closed)
+ *   Record<string, boolean>  — effective permission map (role template + overrides)
  */
 export async function resolveUserPermissions(
   user: { id: number; role: string; isSuperAdmin: boolean },

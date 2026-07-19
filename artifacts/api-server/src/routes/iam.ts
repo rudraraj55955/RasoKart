@@ -304,22 +304,43 @@ router.post(
         return;
       }
 
-      // Capture snapshot before deletion for audit
+      // Capture snapshot before reset for audit
       const [templateCount] = await db.select({ c: count() }).from(rolePermissionsTable);
       const [overrideCount] = await db.select({ c: count() }).from(userPermissionsTable);
 
+      // 1. Clear all per-user overrides and role templates
       await db.delete(userPermissionsTable);
       await db.delete(rolePermissionsTable);
-      await db.delete(iamMigrationLogTable);
+
+      // 2. Immediately re-seed role templates from code defaults so enforcement
+      //    continues working without requiring a server restart.
+      //    NOTE: We intentionally keep the iam_migration_log row so
+      //    resolveUserPermissions() never returns null and fails-closed.
+      //    Deleting it was the old behaviour that caused a hard-deny window
+      //    for non-SuperAdmin users between rollback and the next restart.
+      for (const role of KNOWN_ROLES) {
+        const defaults = ROLE_DEFAULT_PERMISSIONS[role] ?? {};
+        for (const key of ALL_PERMISSION_KEYS) {
+          const isEnabled = (defaults[key] ?? false) === true;
+          await db
+            .insert(rolePermissionsTable)
+            .values({ role, permissionKey: key, isEnabled, updatedByUserId: user.id })
+            .onConflictDoNothing();
+        }
+      }
 
       await writeAuditLog(req, "iam_migration_rollback", "iam", null, {
         executedBy: user.email,
         deletedTemplates: Number(templateCount.c),
         deletedOverrides: Number(overrideCount.c),
+        action: "user_overrides_cleared_role_templates_reset_to_code_defaults",
       });
 
       req.log.info({ executedBy: user.email }, "iam_migration_rollback");
-      res.json({ ok: true, message: "IAM migration rolled back. System is in legacy role-based mode." });
+      res.json({
+        ok: true,
+        message: "IAM overrides and role templates have been reset to code defaults. RBAC enforcement continues — the migration log is preserved to prevent access denial.",
+      });
     } catch (err) {
       next(err);
     }
