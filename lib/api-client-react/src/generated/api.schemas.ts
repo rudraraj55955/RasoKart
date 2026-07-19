@@ -8215,18 +8215,18 @@ result?: string;
 eventType?: string;
 };
 
-export type GetApiIamPermissions200PermissionsItem = {
+export type GetIamPermissions200PermissionsItem = {
   key?: string;
   isSuperAdminOnly?: boolean;
   category?: string;
 };
 
-export type GetApiIamPermissions200 = {
-  permissions?: GetApiIamPermissions200PermissionsItem[];
+export type GetIamPermissions200 = {
+  permissions?: GetIamPermissions200PermissionsItem[];
   total?: number;
 };
 
-export type GetApiIamMigrationStatus200 = {
+export type GetIamMigrationStatus200 = {
   migrated?: boolean;
   migratedAt?: string | null;
   cutoffAt?: string | null;
@@ -8235,53 +8235,53 @@ export type GetApiIamMigrationStatus200 = {
   overrideRows?: number;
 };
 
-export type PostApiIamMigrationRun200 = {
+export type PostIamMigrationRun200 = {
   ok?: boolean;
   message?: string;
   totalUsers?: number;
   templateRows?: number;
 };
 
-export type PutApiIamRolesRolePermissionKeyBody = {
+export type PutIamRolesRolePermissionKeyBody = {
   isEnabled: boolean;
 };
 
-export type GetApiIamUsersParams = {
+export type GetIamUsersParams = {
 page?: number;
 limit?: number;
 };
 
-export type PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect = typeof PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect[keyof typeof PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect];
+export type PutIamUsersUserIdPermissionsPermissionKeyBodyEffect = typeof PutIamUsersUserIdPermissionsPermissionKeyBodyEffect[keyof typeof PutIamUsersUserIdPermissionsPermissionKeyBodyEffect];
 
 
-export const PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect = {
+export const PutIamUsersUserIdPermissionsPermissionKeyBodyEffect = {
   ALLOW: 'ALLOW',
   DENY: 'DENY',
 } as const;
 
-export type PutApiIamUsersUserIdPermissionsPermissionKeyBody = {
-  effect: PutApiIamUsersUserIdPermissionsPermissionKeyBodyEffect;
+export type PutIamUsersUserIdPermissionsPermissionKeyBody = {
+  effect: PutIamUsersUserIdPermissionsPermissionKeyBodyEffect;
 };
 
-export type GetApiIamAuditParams = {
+export type GetIamAuditParams = {
 page?: number;
 limit?: number;
 };
 
-export type GetApiIamAudit200EntriesItemDetails = { [key: string]: unknown } | null;
+export type GetIamAudit200EntriesItemDetails = { [key: string]: unknown } | null;
 
-export type GetApiIamAudit200EntriesItem = {
+export type GetIamAudit200EntriesItem = {
   id?: number;
   adminEmail?: string;
   action?: string;
   targetType?: string;
   targetId?: number | null;
-  details?: GetApiIamAudit200EntriesItemDetails;
+  details?: GetIamAudit200EntriesItemDetails;
   createdAt?: string;
 };
 
-export type GetApiIamAudit200 = {
-  entries?: GetApiIamAudit200EntriesItem[];
+export type GetIamAudit200 = {
+  entries?: GetIamAudit200EntriesItem[];
   page?: number;
   limit?: number;
 };

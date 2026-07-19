@@ -6,7 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetApiIamUsersParams = {
-page?: number;
-limit?: number;
+export type GetIamPermissions200PermissionsItem = {
+  key?: string;
+  isSuperAdminOnly?: boolean;
+  category?: string;
 };

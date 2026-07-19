@@ -5,14 +5,14 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
-import type { GetApiIamAudit200EntriesItemDetails } from './getApiIamAudit200EntriesItemDetails';
+import type { GetIamAudit200EntriesItemDetails } from './getIamAudit200EntriesItemDetails';
 
-export type GetApiIamAudit200EntriesItem = {
+export type GetIamAudit200EntriesItem = {
   id?: number;
   adminEmail?: string;
   action?: string;
   targetType?: string;
   targetId?: number | null;
-  details?: GetApiIamAudit200EntriesItemDetails;
+  details?: GetIamAudit200EntriesItemDetails;
   createdAt?: Date;
 };

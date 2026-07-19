@@ -77,6 +77,8 @@ tags:
     description: Merchant KYC/AML verification application system
   - name: tryit-presets
     description: Server-side storage for merchant Try It panel presets
+  - name: IAM
+    description: Identity and access management — permissions catalog, role templates, per-user overrides, and audit trail
 paths:
   /healthz:
     get:
@@ -11218,7 +11220,7 @@ paths:
         "403":
           description: Forbidden
 
-  /api/iam/permissions:
+  /iam/permissions:
     get:
       tags: [IAM]
       summary: List all permission keys in the catalog
@@ -11250,7 +11252,7 @@ paths:
         "403":
           description: Forbidden
 
-  /api/iam/migration/status:
+  /iam/migration/status:
     get:
       tags: [IAM]
       summary: Get IAM migration status
@@ -11285,7 +11287,7 @@ paths:
         "403":
           description: Forbidden
 
-  /api/iam/migration/run:
+  /iam/migration/run:
     post:
       tags: [IAM]
       summary: Run IAM migration (Super Admin only)
@@ -11314,7 +11316,7 @@ paths:
         "409":
           description: Migration already run
 
-  /api/iam/migration/rollback:
+  /iam/migration/rollback:
     post:
       tags: [IAM]
       summary: Roll back IAM migration (Super Admin only)
@@ -11328,7 +11330,7 @@ paths:
         "403":
           description: Forbidden
 
-  /api/iam/roles:
+  /iam/roles:
     get:
       tags: [IAM]
       summary: List role permission templates
@@ -11342,7 +11344,7 @@ paths:
         "403":
           description: Forbidden
 
-  /api/iam/roles/{role}/{permissionKey}:
+  /iam/roles/{role}/{permissionKey}:
     put:
       tags: [IAM]
       summary: Update a role template permission (Super Admin only)
@@ -11379,7 +11381,7 @@ paths:
         "403":
           description: Forbidden
 
-  /api/iam/users:
+  /iam/users:
     get:
       tags: [IAM]
       summary: List users with IAM summary
@@ -11402,7 +11404,7 @@ paths:
         "403":
           description: Forbidden
 
-  /api/iam/users/{userId}/permissions:
+  /iam/users/{userId}/permissions:
     get:
       tags: [IAM]
       summary: Get effective permissions for a user
@@ -11424,7 +11426,7 @@ paths:
         "404":
           description: User not found
 
-  /api/iam/users/{userId}/permissions/{permissionKey}:
+  /iam/users/{userId}/permissions/{permissionKey}:
     put:
       tags: [IAM]
       summary: Set a per-user permission override (Super Admin only)
@@ -11487,7 +11489,7 @@ paths:
         "403":
           description: Forbidden
 
-  /api/iam/audit:
+  /iam/audit:
     get:
       tags: [IAM]
       summary: List IAM audit log entries

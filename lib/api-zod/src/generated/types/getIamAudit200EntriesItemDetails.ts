@@ -6,9 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type PostApiIamMigrationRun200 = {
-  ok?: boolean;
-  message?: string;
-  totalUsers?: number;
-  templateRows?: number;
-};
+export type GetIamAudit200EntriesItemDetails = { [key: string]: unknown } | null;

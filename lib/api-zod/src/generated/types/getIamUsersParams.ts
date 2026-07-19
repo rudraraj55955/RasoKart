@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetApiIamAuditParams = {
+export type GetIamUsersParams = {
 page?: number;
 limit?: number;
 };

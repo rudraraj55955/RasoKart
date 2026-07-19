@@ -10567,7 +10567,7 @@ export const ListRazorpayWebhookLogsResponse = zod.object({
 /**
  * @summary List all permission keys in the catalog
  */
-export const GetApiIamPermissionsResponse = zod.object({
+export const GetIamPermissionsResponse = zod.object({
   "permissions": zod.array(zod.object({
   "key": zod.string().optional(),
   "isSuperAdminOnly": zod.boolean().optional(),
@@ -10580,7 +10580,7 @@ export const GetApiIamPermissionsResponse = zod.object({
 /**
  * @summary Get IAM migration status
  */
-export const GetApiIamMigrationStatusResponse = zod.object({
+export const GetIamMigrationStatusResponse = zod.object({
   "migrated": zod.boolean().optional(),
   "migratedAt": zod.coerce.date().nullish(),
   "cutoffAt": zod.coerce.date().nullish(),
@@ -10593,7 +10593,7 @@ export const GetApiIamMigrationStatusResponse = zod.object({
 /**
  * @summary Run IAM migration (Super Admin only)
  */
-export const PostApiIamMigrationRunResponse = zod.object({
+export const PostIamMigrationRunResponse = zod.object({
   "ok": zod.boolean().optional(),
   "message": zod.string().optional(),
   "totalUsers": zod.number().optional(),
@@ -10604,12 +10604,12 @@ export const PostApiIamMigrationRunResponse = zod.object({
 /**
  * @summary Update a role template permission (Super Admin only)
  */
-export const PutApiIamRolesRolePermissionKeyParams = zod.object({
+export const PutIamRolesRolePermissionKeyParams = zod.object({
   "role": zod.coerce.string(),
   "permissionKey": zod.coerce.string()
 })
 
-export const PutApiIamRolesRolePermissionKeyBody = zod.object({
+export const PutIamRolesRolePermissionKeyBody = zod.object({
   "isEnabled": zod.boolean()
 })
 
@@ -10617,7 +10617,7 @@ export const PutApiIamRolesRolePermissionKeyBody = zod.object({
 /**
  * @summary List users with IAM summary
  */
-export const GetApiIamUsersQueryParams = zod.object({
+export const GetIamUsersQueryParams = zod.object({
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })
@@ -10626,7 +10626,7 @@ export const GetApiIamUsersQueryParams = zod.object({
 /**
  * @summary Get effective permissions for a user
  */
-export const GetApiIamUsersUserIdPermissionsParams = zod.object({
+export const GetIamUsersUserIdPermissionsParams = zod.object({
   "userId": zod.coerce.number()
 })
 
@@ -10634,12 +10634,12 @@ export const GetApiIamUsersUserIdPermissionsParams = zod.object({
 /**
  * @summary Set a per-user permission override (Super Admin only)
  */
-export const PutApiIamUsersUserIdPermissionsPermissionKeyParams = zod.object({
+export const PutIamUsersUserIdPermissionsPermissionKeyParams = zod.object({
   "userId": zod.coerce.number(),
   "permissionKey": zod.coerce.string()
 })
 
-export const PutApiIamUsersUserIdPermissionsPermissionKeyBody = zod.object({
+export const PutIamUsersUserIdPermissionsPermissionKeyBody = zod.object({
   "effect": zod.enum(['ALLOW', 'DENY'])
 })
 
@@ -10647,7 +10647,7 @@ export const PutApiIamUsersUserIdPermissionsPermissionKeyBody = zod.object({
 /**
  * @summary Remove a per-user permission override (Super Admin only)
  */
-export const DeleteApiIamUsersUserIdPermissionsPermissionKeyParams = zod.object({
+export const DeleteIamUsersUserIdPermissionsPermissionKeyParams = zod.object({
   "userId": zod.coerce.number(),
   "permissionKey": zod.coerce.string()
 })
@@ -10656,12 +10656,12 @@ export const DeleteApiIamUsersUserIdPermissionsPermissionKeyParams = zod.object(
 /**
  * @summary List IAM audit log entries
  */
-export const GetApiIamAuditQueryParams = zod.object({
+export const GetIamAuditQueryParams = zod.object({
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional()
 })
 
-export const GetApiIamAuditResponse = zod.object({
+export const GetIamAuditResponse = zod.object({
   "entries": zod.array(zod.object({
   "id": zod.number().optional(),
   "adminEmail": zod.string().optional(),

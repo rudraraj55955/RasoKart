@@ -6,4 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetApiIamAudit200EntriesItemDetails = { [key: string]: unknown } | null;
+export type PutIamRolesRolePermissionKeyBody = {
+  isEnabled: boolean;
+};

@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type PutApiIamRolesRolePermissionKeyBody = {
-  isEnabled: boolean;
+export type PostIamMigrationRun200 = {
+  ok?: boolean;
+  message?: string;
+  totalUsers?: number;
+  templateRows?: number;
 };

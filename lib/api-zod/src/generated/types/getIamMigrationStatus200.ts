@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetApiIamMigrationStatus200 = {
+export type GetIamMigrationStatus200 = {
   migrated?: boolean;
   migratedAt?: Date | null;
   cutoffAt?: Date | null;
