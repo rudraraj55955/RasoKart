@@ -11325,6 +11325,19 @@ paths:
       responses:
         "200":
           description: Rollback complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  deletedTemplateRows:
+                    type: integer
+                  deletedOverrideRows:
+                    type: integer
         "401":
           description: Unauthorized
         "403":
@@ -11339,6 +11352,23 @@ paths:
       responses:
         "200":
           description: Roles with permission maps
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      type: string
+                  permissions:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      additionalProperties:
+                        type: boolean
+                  total:
+                    type: integer
         "401":
           description: Unauthorized
         "403":
@@ -11374,6 +11404,19 @@ paths:
       responses:
         "200":
           description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  role:
+                    type: string
+                  permissionKey:
+                    type: string
+                  isEnabled:
+                    type: boolean
         "400":
           description: Invalid role or permission key
         "401":
@@ -11399,6 +11442,35 @@ paths:
       responses:
         "200":
           description: User list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        email:
+                          type: string
+                        role:
+                          type: string
+                        isSuperAdmin:
+                          type: boolean
+                        overrideCount:
+                          type: integer
+                        createdAt:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
         "401":
           description: Unauthorized
         "403":
@@ -11419,6 +11491,31 @@ paths:
       responses:
         "200":
           description: User effective permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: integer
+                  role:
+                    type: string
+                  isSuperAdmin:
+                    type: boolean
+                  effectivePermissions:
+                    type: object
+                    additionalProperties:
+                      type: boolean
+                  overrides:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        permissionKey:
+                          type: string
+                        effect:
+                          type: string
+                          enum: [ALLOW, DENY]
         "401":
           description: Unauthorized
         "403":
@@ -11457,6 +11554,20 @@ paths:
       responses:
         "200":
           description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  userId:
+                    type: integer
+                  permissionKey:
+                    type: string
+                  effect:
+                    type: string
+                    enum: [ALLOW, DENY]
         "400":
           description: Invalid input
         "401":
@@ -11484,6 +11595,17 @@ paths:
       responses:
         "200":
           description: Override removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  userId:
+                    type: integer
+                  permissionKey:
+                    type: string
         "401":
           description: Unauthorized
         "403":

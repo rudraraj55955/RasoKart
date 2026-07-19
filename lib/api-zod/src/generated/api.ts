@@ -10602,6 +10602,27 @@ export const PostIamMigrationRunResponse = zod.object({
 
 
 /**
+ * @summary Roll back IAM migration (Super Admin only)
+ */
+export const PostIamMigrationRollbackResponse = zod.object({
+  "ok": zod.boolean().optional(),
+  "message": zod.string().optional(),
+  "deletedTemplateRows": zod.number().optional(),
+  "deletedOverrideRows": zod.number().optional()
+})
+
+
+/**
+ * @summary List role permission templates
+ */
+export const GetIamRolesResponse = zod.object({
+  "roles": zod.array(zod.string()).optional(),
+  "permissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional(),
+  "total": zod.number().optional()
+})
+
+
+/**
  * @summary Update a role template permission (Super Admin only)
  */
 export const PutIamRolesRolePermissionKeyParams = zod.object({
@@ -10613,6 +10634,13 @@ export const PutIamRolesRolePermissionKeyBody = zod.object({
   "isEnabled": zod.boolean()
 })
 
+export const PutIamRolesRolePermissionKeyResponse = zod.object({
+  "ok": zod.boolean().optional(),
+  "role": zod.string().optional(),
+  "permissionKey": zod.string().optional(),
+  "isEnabled": zod.boolean().optional()
+})
+
 
 /**
  * @summary List users with IAM summary
@@ -10622,12 +10650,37 @@ export const GetIamUsersQueryParams = zod.object({
   "limit": zod.coerce.number().optional()
 })
 
+export const GetIamUsersResponse = zod.object({
+  "users": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "email": zod.string().optional(),
+  "role": zod.string().optional(),
+  "isSuperAdmin": zod.boolean().optional(),
+  "overrideCount": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional()
+})).optional(),
+  "total": zod.number().optional(),
+  "page": zod.number().optional(),
+  "limit": zod.number().optional()
+})
+
 
 /**
  * @summary Get effective permissions for a user
  */
 export const GetIamUsersUserIdPermissionsParams = zod.object({
   "userId": zod.coerce.number()
+})
+
+export const GetIamUsersUserIdPermissionsResponse = zod.object({
+  "userId": zod.number().optional(),
+  "role": zod.string().optional(),
+  "isSuperAdmin": zod.boolean().optional(),
+  "effectivePermissions": zod.record(zod.string(), zod.boolean()).optional(),
+  "overrides": zod.array(zod.object({
+  "permissionKey": zod.string().optional(),
+  "effect": zod.enum(['ALLOW', 'DENY']).optional()
+})).optional()
 })
 
 
@@ -10643,6 +10696,13 @@ export const PutIamUsersUserIdPermissionsPermissionKeyBody = zod.object({
   "effect": zod.enum(['ALLOW', 'DENY'])
 })
 
+export const PutIamUsersUserIdPermissionsPermissionKeyResponse = zod.object({
+  "ok": zod.boolean().optional(),
+  "userId": zod.number().optional(),
+  "permissionKey": zod.string().optional(),
+  "effect": zod.enum(['ALLOW', 'DENY']).optional()
+})
+
 
 /**
  * @summary Remove a per-user permission override (Super Admin only)
@@ -10650,6 +10710,12 @@ export const PutIamUsersUserIdPermissionsPermissionKeyBody = zod.object({
 export const DeleteIamUsersUserIdPermissionsPermissionKeyParams = zod.object({
   "userId": zod.coerce.number(),
   "permissionKey": zod.coerce.string()
+})
+
+export const DeleteIamUsersUserIdPermissionsPermissionKeyResponse = zod.object({
+  "ok": zod.boolean().optional(),
+  "userId": zod.number().optional(),
+  "permissionKey": zod.string().optional()
 })
 
 

@@ -2,10 +2,11 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, sql } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
+import { PERMISSIONS } from "../permissions";
 
 const router = Router();
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth, requireAdmin, requirePermission(PERMISSIONS.ADMIN_USERS));
 
 const formatUser = (u: any) => ({
   id: u.id,

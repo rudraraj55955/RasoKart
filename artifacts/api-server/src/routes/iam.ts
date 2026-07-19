@@ -6,7 +6,7 @@ import { ALL_PERMISSION_KEYS, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN
 
 const router = Router();
 
-const KNOWN_ROLES = ["admin", "merchant", "payout_merchant", "payout_admin", "payout_super_admin", "agent"];
+const KNOWN_ROLES = ["admin", "merchant", "payout_merchant", "payout_admin", "payout_super_admin", "agent", "customer"];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

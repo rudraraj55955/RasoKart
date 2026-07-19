@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTable, settlementsTable, merchantsTable, usersTable, auditLogsTable, reconciliationEmailLogsTable } from "@workspace/db";
 import { eq, and, gte, lte, inArray, sql, count, or, isNull, isNotNull, gt, desc } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
+import { PERMISSIONS } from "../permissions";
 import { runReconciliation } from "../helpers/reconcileEngine";
 import { loadReconConfig } from "../helpers/reconScheduler";
 import { sendReconciliationReportEmail, notifyAdminsOfUnmatchedItems, buildEmailHtml, buildRunCsv } from "../helpers/reconcileEmail";
@@ -10,6 +11,7 @@ import { sendMail } from "../helpers/mailer";
 const router = Router();
 router.use(requireAuth);
 router.use(requireAdmin);
+router.use(requirePermission(PERMISSIONS.ADMIN_RECONCILIATION));
 
 function mapRun(r: typeof reconciliationRunsTable.$inferSelect) {
   return {

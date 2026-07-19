@@ -1472,6 +1472,57 @@ async function migrate() {
     INSERT INTO otp_email_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
   `);
 
+  // ── Section 18: IAM tables ────────────────────────────────────────────────
+  // Idempotent CREATE TABLE IF NOT EXISTS for all 4 IAM tables that the
+  // schemaGuard + seed create at runtime. Adding them here makes the IAM
+  // schema auditable, diffable, and rollback-able as a standard migration
+  // step rather than relying solely on runtime guard execution.
+  await runSection("iam-tables", sql`
+    CREATE TABLE IF NOT EXISTS permissions (
+      id                  SERIAL PRIMARY KEY,
+      key                 TEXT NOT NULL UNIQUE,
+      category            TEXT NOT NULL,
+      is_super_admin_only BOOLEAN NOT NULL DEFAULT FALSE,
+      description         TEXT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      id                 SERIAL PRIMARY KEY,
+      role               TEXT NOT NULL,
+      permission_key     TEXT NOT NULL,
+      is_enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by_user_id INTEGER,
+      UNIQUE (role, permission_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_permissions (
+      id                 SERIAL PRIMARY KEY,
+      user_id            INTEGER NOT NULL,
+      permission_key     TEXT NOT NULL,
+      effect             TEXT NOT NULL CHECK (effect IN ('ALLOW', 'DENY')),
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by_user_id INTEGER,
+      UNIQUE (user_id, permission_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS iam_migration_log (
+      id                   SERIAL PRIMARY KEY,
+      cutoff_at            TIMESTAMPTZ NOT NULL,
+      executed_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      executed_by_user_id  INTEGER,
+      total_users          INTEGER NOT NULL DEFAULT 0,
+      snapshot_json        JSONB
+    );
+
+    CREATE INDEX IF NOT EXISTS role_permissions_role_idx
+      ON role_permissions(role);
+    CREATE INDEX IF NOT EXISTS user_permissions_user_id_idx
+      ON user_permissions(user_id);
+  `);
+
   console.log("DB migrations complete.");
   process.exit(0);
 }

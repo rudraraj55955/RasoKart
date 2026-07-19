@@ -1674,7 +1674,7 @@ export async function seed() {
     // This handles keys added to ALL_PERMISSION_KEYS after the original migration
     // ran — without this, new keys would be absent from role_permissions and
     // requirePermission would silently deny legitimate users.
-    const KNOWN_ROLES = ["admin", "merchant", "payout_merchant", "payout_admin", "payout_super_admin", "agent"];
+    const KNOWN_ROLES = ["admin", "merchant", "payout_merchant", "payout_admin", "payout_super_admin", "agent", "customer"];
     for (const role of KNOWN_ROLES) {
       const defaults = ROLE_DEFAULT_PERMISSIONS[role] ?? {};
       for (const key of ALL_PERMISSION_KEYS) {

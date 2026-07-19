@@ -8242,13 +8242,74 @@ export type PostIamMigrationRun200 = {
   templateRows?: number;
 };
 
+export type PostIamMigrationRollback200 = {
+  ok?: boolean;
+  message?: string;
+  deletedTemplateRows?: number;
+  deletedOverrideRows?: number;
+};
+
+export type GetIamRoles200Permissions = {[key: string]: {[key: string]: boolean}};
+
+export type GetIamRoles200 = {
+  roles?: string[];
+  permissions?: GetIamRoles200Permissions;
+  total?: number;
+};
+
 export type PutIamRolesRolePermissionKeyBody = {
   isEnabled: boolean;
+};
+
+export type PutIamRolesRolePermissionKey200 = {
+  ok?: boolean;
+  role?: string;
+  permissionKey?: string;
+  isEnabled?: boolean;
 };
 
 export type GetIamUsersParams = {
 page?: number;
 limit?: number;
+};
+
+export type GetIamUsers200UsersItem = {
+  id?: number;
+  email?: string;
+  role?: string;
+  isSuperAdmin?: boolean;
+  overrideCount?: number;
+  createdAt?: string;
+};
+
+export type GetIamUsers200 = {
+  users?: GetIamUsers200UsersItem[];
+  total?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type GetIamUsersUserIdPermissions200EffectivePermissions = {[key: string]: boolean};
+
+export type GetIamUsersUserIdPermissions200OverridesItemEffect = typeof GetIamUsersUserIdPermissions200OverridesItemEffect[keyof typeof GetIamUsersUserIdPermissions200OverridesItemEffect];
+
+
+export const GetIamUsersUserIdPermissions200OverridesItemEffect = {
+  ALLOW: 'ALLOW',
+  DENY: 'DENY',
+} as const;
+
+export type GetIamUsersUserIdPermissions200OverridesItem = {
+  permissionKey?: string;
+  effect?: GetIamUsersUserIdPermissions200OverridesItemEffect;
+};
+
+export type GetIamUsersUserIdPermissions200 = {
+  userId?: number;
+  role?: string;
+  isSuperAdmin?: boolean;
+  effectivePermissions?: GetIamUsersUserIdPermissions200EffectivePermissions;
+  overrides?: GetIamUsersUserIdPermissions200OverridesItem[];
 };
 
 export type PutIamUsersUserIdPermissionsPermissionKeyBodyEffect = typeof PutIamUsersUserIdPermissionsPermissionKeyBodyEffect[keyof typeof PutIamUsersUserIdPermissionsPermissionKeyBodyEffect];
@@ -8261,6 +8322,27 @@ export const PutIamUsersUserIdPermissionsPermissionKeyBodyEffect = {
 
 export type PutIamUsersUserIdPermissionsPermissionKeyBody = {
   effect: PutIamUsersUserIdPermissionsPermissionKeyBodyEffect;
+};
+
+export type PutIamUsersUserIdPermissionsPermissionKey200Effect = typeof PutIamUsersUserIdPermissionsPermissionKey200Effect[keyof typeof PutIamUsersUserIdPermissionsPermissionKey200Effect];
+
+
+export const PutIamUsersUserIdPermissionsPermissionKey200Effect = {
+  ALLOW: 'ALLOW',
+  DENY: 'DENY',
+} as const;
+
+export type PutIamUsersUserIdPermissionsPermissionKey200 = {
+  ok?: boolean;
+  userId?: number;
+  permissionKey?: string;
+  effect?: PutIamUsersUserIdPermissionsPermissionKey200Effect;
+};
+
+export type DeleteIamUsersUserIdPermissionsPermissionKey200 = {
+  ok?: boolean;
+  userId?: number;
+  permissionKey?: string;
 };
 
 export type GetIamAuditParams = {

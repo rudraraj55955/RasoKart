@@ -45,24 +45,29 @@ router.get("/healthz/deep", async (_req, res) => {
   }
 
   if (dbOk) {
-    const tableChecks: Array<{ key: string; query: string }> = [
+    const tableChecks: Array<{ key: string; query: string; requireRows?: boolean }> = [
       { key: "users.is_super_admin", query: "SELECT is_super_admin FROM users LIMIT 1" },
       { key: "company_settings", query: "SELECT id FROM company_settings LIMIT 1" },
       { key: "merchant_auth_otps", query: "SELECT id FROM merchant_auth_otps LIMIT 1" },
       { key: "provider_integrations.is_custom", query: "SELECT is_custom FROM provider_integrations LIMIT 1" },
       { key: "routing_rules", query: "SELECT id FROM routing_rules LIMIT 1" },
       { key: "quiet_hours_queue.flushed", query: "SELECT flushed, deliver_after FROM quiet_hours_queue LIMIT 1" },
-      // IAM table existence checks (throws if table is missing entirely)
-      { key: "iam_tables.permissions_schema", query: "SELECT column_name FROM information_schema.columns WHERE table_name='permissions' AND column_name='key' LIMIT 1" },
-      { key: "iam_tables.role_permissions_schema", query: "SELECT column_name FROM information_schema.columns WHERE table_name='role_permissions' AND column_name='permission_key' LIMIT 1" },
-      { key: "iam_tables.user_permissions_schema", query: "SELECT column_name FROM information_schema.columns WHERE table_name='user_permissions' AND column_name='effect' LIMIT 1" },
-      { key: "iam_tables.iam_migration_log_schema", query: "SELECT column_name FROM information_schema.columns WHERE table_name='iam_migration_log' AND column_name='cutoff_at' LIMIT 1" },
+      // IAM table schema checks — SELECT directly from the expected column so
+      // Postgres throws if the table or column is absent. information_schema is
+      // intentionally avoided here: those queries never throw — they silently
+      // return 0 rows on missing objects, which would falsely pass the check
+      // even on a schema that is broken. requireRows=true adds an extra rowCount
+      // guard for queries that expect at least one row to exist.
+      { key: "iam_tables.permissions_schema",      query: "SELECT key FROM permissions LIMIT 1",                requireRows: false },
+      { key: "iam_tables.role_permissions_schema",  query: "SELECT permission_key FROM role_permissions LIMIT 1", requireRows: false },
+      { key: "iam_tables.user_permissions_schema",  query: "SELECT effect FROM user_permissions LIMIT 1",         requireRows: false },
+      { key: "iam_tables.iam_migration_log_schema", query: "SELECT cutoff_at FROM iam_migration_log LIMIT 1",    requireRows: false },
     ];
 
-    for (const { key, query } of tableChecks) {
+    for (const { key, query, requireRows } of tableChecks) {
       try {
-        await pool.query(query);
-        checks[key] = true;
+        const result = await pool.query(query);
+        checks[key] = requireRows ? result.rows.length > 0 : true;
       } catch (err) {
         checks[key] = false;
         logger.error({ err, check: key }, "healthz_deep_schema_check_failed");

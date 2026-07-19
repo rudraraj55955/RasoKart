@@ -74,6 +74,13 @@ export const PERMISSIONS = {
   AGENT_MERCHANTS:  "agent_merchants",
   AGENT_COMMISSION: "agent_commission",
   AGENT_PROFILE:    "agent_profile",
+
+  // ── Customer (payment link / checkout consumers) ───────────────────────
+  // Customers are not portal users — they interact only through public
+  // checkout flows and payment links. They have zero portal permissions by
+  // default; this key exists so the canonical role model is complete and
+  // any future customer-portal features can be gated here.
+  CUSTOMER_CHECKOUT: "customer_checkout",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -98,10 +105,25 @@ export const SUPER_ADMIN_ONLY_PERMISSIONS: Set<string> = new Set([
 ]);
 
 /**
- * Default permission map per role at IAM migration time.
- * Reflects what each role already had access to before IAM was introduced
- * — preserving all existing access.
+ * Canonical roles in the RasoKart system.
+ *
+ * SUPER_ADMIN is not a separate role value in the `users.role` column —
+ * it is modelled as `is_super_admin = TRUE` on an admin user. Super Admin
+ * bypasses all requirePermission checks entirely and can modify IAM config.
+ * The 7 canonical role identifiers are the values allowed in `users.role`.
  */
+export const CANONICAL_ROLES = [
+  "admin",            // Admin portal — full ops access (non-SA)
+  "merchant",         // Merchant portal — self-serve payment dashboard
+  "payout_merchant",  // Payout merchant portal — wallet & payout management
+  "payout_admin",     // Payout admin portal — payout operations oversight
+  "payout_super_admin", // Payout super admin — elevated payout authority
+  "agent",            // Agent portal — referral & commission tracking
+  "customer",         // Checkout consumer — no portal access; public flows only
+] as const;
+
+export type CanonicalRole = (typeof CANONICAL_ROLES)[number];
+
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, Record<string, boolean>> = {
   admin: Object.fromEntries(
     ALL_PERMISSION_KEYS.map((k) => [
@@ -128,5 +150,13 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, Record<string, boolean>> =
 
   agent: Object.fromEntries(
     ALL_PERMISSION_KEYS.map((k) => [k, k.startsWith("agent_")]),
+  ),
+
+  // Customers have no portal permissions — they use public checkout flows.
+  // All permission keys default to false; only customer_checkout is their
+  // natural domain and can be explicitly granted when a customer portal
+  // feature is introduced.
+  customer: Object.fromEntries(
+    ALL_PERMISSION_KEYS.map((k) => [k, false]),
   ),
 };

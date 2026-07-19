@@ -113,6 +113,7 @@ import type {
   DebugPayinGatewayCreateOrderBody,
   DeleteAccountDetail200,
   DeleteAdminMerchantReportSchedule200,
+  DeleteIamUsersUserIdPermissionsPermissionKey200,
   DeleteReportSchedule200,
   DeleteRoutingRule200,
   DummyDataCleanupConfirmRequest,
@@ -151,7 +152,10 @@ import type {
   GetIamAuditParams,
   GetIamMigrationStatus200,
   GetIamPermissions200,
+  GetIamRoles200,
+  GetIamUsers200,
   GetIamUsersParams,
+  GetIamUsersUserIdPermissions200,
   GetLedgerBackfillLastRun200,
   GetMerchantTryItPresets200,
   GetMerchantsWebhookFailureCountsParams,
@@ -318,6 +322,7 @@ import type {
   PlatformProfitAdjustmentInput,
   PlatformProfitLedgerPage,
   PlatformProfitSummary,
+  PostIamMigrationRollback200,
   PostIamMigrationRun200,
   PreviewAdminMerchantReportScheduleEmail200,
   PreviewAdminMerchantReportScheduleEmailParams,
@@ -337,7 +342,9 @@ import type {
   ProviderVisibilityInput,
   ProviderVolumeListResponse,
   PublicPaymentLink,
+  PutIamRolesRolePermissionKey200,
   PutIamRolesRolePermissionKeyBody,
+  PutIamUsersUserIdPermissionsPermissionKey200,
   PutIamUsersUserIdPermissionsPermissionKeyBody,
   QrCleanupConfig,
   QrCleanupRunResult,
@@ -32693,9 +32700,9 @@ export const getPostIamMigrationRollbackUrl = () => {
 /**
  * @summary Roll back IAM migration (Super Admin only)
  */
-export const postIamMigrationRollback = async ( options?: RequestInit): Promise<void> => {
+export const postIamMigrationRollback = async ( options?: RequestInit): Promise<PostIamMigrationRollback200> => {
 
-  return customFetch<void>(getPostIamMigrationRollbackUrl(),
+  return customFetch<PostIamMigrationRollback200>(getPostIamMigrationRollbackUrl(),
   {
     ...options,
     method: 'POST'
@@ -32763,9 +32770,9 @@ export const getGetIamRolesUrl = () => {
 /**
  * @summary List role permission templates
  */
-export const getIamRoles = async ( options?: RequestInit): Promise<void> => {
+export const getIamRoles = async ( options?: RequestInit): Promise<GetIamRoles200> => {
 
-  return customFetch<void>(getGetIamRolesUrl(),
+  return customFetch<GetIamRoles200>(getGetIamRolesUrl(),
   {
     ...options,
     method: 'GET'
@@ -32843,9 +32850,9 @@ export const getPutIamRolesRolePermissionKeyUrl = (role: string,
  */
 export const putIamRolesRolePermissionKey = async (role: string,
     permissionKey: string,
-    putIamRolesRolePermissionKeyBody: PutIamRolesRolePermissionKeyBody, options?: RequestInit): Promise<void> => {
+    putIamRolesRolePermissionKeyBody: PutIamRolesRolePermissionKeyBody, options?: RequestInit): Promise<PutIamRolesRolePermissionKey200> => {
 
-  return customFetch<void>(getPutIamRolesRolePermissionKeyUrl(role,permissionKey),
+  return customFetch<PutIamRolesRolePermissionKey200>(getPutIamRolesRolePermissionKeyUrl(role,permissionKey),
   {
     ...options,
     method: 'PUT',
@@ -32921,9 +32928,9 @@ export const getGetIamUsersUrl = (params?: GetIamUsersParams,) => {
 /**
  * @summary List users with IAM summary
  */
-export const getIamUsers = async (params?: GetIamUsersParams, options?: RequestInit): Promise<void> => {
+export const getIamUsers = async (params?: GetIamUsersParams, options?: RequestInit): Promise<GetIamUsers200> => {
 
-  return customFetch<void>(getGetIamUsersUrl(params),
+  return customFetch<GetIamUsers200>(getGetIamUsersUrl(params),
   {
     ...options,
     method: 'GET'
@@ -32998,9 +33005,9 @@ export const getGetIamUsersUserIdPermissionsUrl = (userId: number,) => {
 /**
  * @summary Get effective permissions for a user
  */
-export const getIamUsersUserIdPermissions = async (userId: number, options?: RequestInit): Promise<void> => {
+export const getIamUsersUserIdPermissions = async (userId: number, options?: RequestInit): Promise<GetIamUsersUserIdPermissions200> => {
 
-  return customFetch<void>(getGetIamUsersUserIdPermissionsUrl(userId),
+  return customFetch<GetIamUsersUserIdPermissions200>(getGetIamUsersUserIdPermissionsUrl(userId),
   {
     ...options,
     method: 'GET'
@@ -33078,9 +33085,9 @@ export const getPutIamUsersUserIdPermissionsPermissionKeyUrl = (userId: number,
  */
 export const putIamUsersUserIdPermissionsPermissionKey = async (userId: number,
     permissionKey: string,
-    putIamUsersUserIdPermissionsPermissionKeyBody: PutIamUsersUserIdPermissionsPermissionKeyBody, options?: RequestInit): Promise<void> => {
+    putIamUsersUserIdPermissionsPermissionKeyBody: PutIamUsersUserIdPermissionsPermissionKeyBody, options?: RequestInit): Promise<PutIamUsersUserIdPermissionsPermissionKey200> => {
 
-  return customFetch<void>(getPutIamUsersUserIdPermissionsPermissionKeyUrl(userId,permissionKey),
+  return customFetch<PutIamUsersUserIdPermissionsPermissionKey200>(getPutIamUsersUserIdPermissionsPermissionKeyUrl(userId,permissionKey),
   {
     ...options,
     method: 'PUT',
@@ -33151,9 +33158,9 @@ export const getDeleteIamUsersUserIdPermissionsPermissionKeyUrl = (userId: numbe
  * @summary Remove a per-user permission override (Super Admin only)
  */
 export const deleteIamUsersUserIdPermissionsPermissionKey = async (userId: number,
-    permissionKey: string, options?: RequestInit): Promise<void> => {
+    permissionKey: string, options?: RequestInit): Promise<DeleteIamUsersUserIdPermissionsPermissionKey200> => {
 
-  return customFetch<void>(getDeleteIamUsersUserIdPermissionsPermissionKeyUrl(userId,permissionKey),
+  return customFetch<DeleteIamUsersUserIdPermissionsPermissionKey200>(getDeleteIamUsersUserIdPermissionsPermissionKeyUrl(userId,permissionKey),
   {
     ...options,
     method: 'DELETE'
