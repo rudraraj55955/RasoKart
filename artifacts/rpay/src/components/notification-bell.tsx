@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey, useGetQuietHoursQueueCount, getGetQuietHoursQueueCountQueryKey, useGetMe, getGetMeQueryKey, useUpdateMyPreferences } from "@workspace/api-client-react";
-import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2, ChevronDown, ChevronUp, VolumeX } from "lucide-react";
+import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2, ChevronDown, ChevronUp, VolumeX, CheckCircle2, WifiOff } from "lucide-react";
 import { IN_APP_NOTIF_FIELDS, IN_APP_NOTIF_LABELS, typeToField } from "@/lib/notification-categories";
 import type { InAppNotifField } from "@/lib/notification-categories";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,8 @@ function notifIcon(type: string) {
   if (type === "limit_exceeded") return <AlertCircle className="w-3.5 h-3.5" />;
   if (type === "report_schedule_auto_paused_admin" || type === "report_schedule_reenabled_by_merchant" || type === "scheduled_report_auto_paused" || type === "scheduled_report_failure" || type === "report_schedule_failures_reset") return <BarChart3 className="w-3.5 h-3.5" />;
   if (type === "preference_change_unknown_device") return <ShieldAlert className="w-3.5 h-3.5" />;
+  if (type === "gateway_recovered") return <CheckCircle2 className="w-3.5 h-3.5" />;
+  if (type === "gateway_failover_exhausted") return <WifiOff className="w-3.5 h-3.5" />;
   return <Megaphone className="w-3.5 h-3.5" />;
 }
 
@@ -29,6 +31,8 @@ function notifColor(type: string): string {
   if (type === "report_schedule_reenabled_by_merchant" || type === "report_schedule_failures_reset") return "text-emerald-400";
   if (type === "scheduled_report_failure") return "text-orange-400";
   if (type === "preference_change_unknown_device") return "text-red-400";
+  if (type === "gateway_recovered") return "text-emerald-400";
+  if (type === "gateway_failover_exhausted") return "text-amber-400";
   return "text-blue-400";
 }
 
@@ -45,6 +49,9 @@ function notifNavTarget(type: string, metadata: unknown): string | null {
   }
   if (type === "preference_change_unknown_device") {
     return "/merchant/security";
+  }
+  if (type === "gateway_recovered" || type === "gateway_failover_exhausted") {
+    return "/admin/smart-routing?tab=failover";
   }
   return null;
 }
@@ -249,8 +256,14 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
                     >
                       <div className={`mt-0.5 shrink-0 ${notifColor(n.type)}`}>{notifIcon(n.type)}</div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="text-xs font-medium leading-tight truncate">{n.title}</p>
+                          {n.type === "gateway_recovered" && (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-px text-[9px] font-semibold text-emerald-400 leading-tight shrink-0">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              Recovered
+                            </span>
+                          )}
                           {!n.isRead && !isTypeMuted && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
                           {isTypeMuted && (
                             <span className="inline-flex items-center gap-0.5 text-[9px] text-muted-foreground/50">

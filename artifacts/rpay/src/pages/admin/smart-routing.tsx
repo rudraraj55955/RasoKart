@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -411,6 +412,18 @@ function DeleteCoveragePreview({
 
 export default function AdminSmartRouting() {
   const qc = useQueryClient();
+  const searchStr = useSearch();
+  const VALID_TABS = ["config", "rules", "metrics", "failover", "logs"] as const;
+  type TabValue = (typeof VALID_TABS)[number];
+  const tabFromUrl = (() => {
+    const t = new URLSearchParams(searchStr).get("tab");
+    return VALID_TABS.includes(t as TabValue) ? (t as TabValue) : "config";
+  })();
+  const [activeTab, setActiveTab] = useState<TabValue>(tabFromUrl);
+
+  useEffect(() => {
+    setActiveTab(tabFromUrl);
+  }, [tabFromUrl]);
 
   // Selected config (for rules view)
   const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null);
@@ -815,7 +828,7 @@ export default function AdminSmartRouting() {
         )}
 
         {/* Tabs */}
-        <Tabs defaultValue="config" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="space-y-4">
           <TabsList className="bg-zinc-900 border border-zinc-800">
             <TabsTrigger value="config" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
               <Settings2 className="w-4 h-4 mr-1.5" /> Routing Strategy
