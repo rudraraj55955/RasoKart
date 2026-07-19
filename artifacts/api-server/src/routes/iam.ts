@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, usersTable, iamMigrationLogTable, rolePermissionsTable, userPermissionsTable, permissionsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, desc, like } from "drizzle-orm";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
-import { ALL_PERMISSION_KEYS, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "../permissions";
+import { ALL_PERMISSION_KEYS, LEGACY_KEY_MAP, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "../permissions";
 
 const router = Router();
 
@@ -208,8 +208,21 @@ router.post(
         if (!legacyMap || typeof legacyMap !== "object") continue;
         const roleDefaults = ROLE_DEFAULT_PERMISSIONS[u.role] ?? {};
         let userHadOverride = false;
-        for (const [key, legacyValue] of Object.entries(legacyMap)) {
-          if (!ALL_PERMISSION_KEYS.includes(key as any)) continue;
+        for (const [rawKey, legacyValue] of Object.entries(legacyMap)) {
+          // Resolve the canonical key: direct match first, then legacy alias map.
+          // Truly unknown keys are logged for investigation — never silently dropped.
+          let key: string = rawKey;
+          if (!ALL_PERMISSION_KEYS.includes(rawKey as any)) {
+            const mapped = LEGACY_KEY_MAP[rawKey];
+            if (!mapped) {
+              req.log.warn(
+                { userId: u.id, role: u.role, unknownKey: rawKey },
+                "iam_migration_backfill_unknown_legacy_key_skipped",
+              );
+              continue;
+            }
+            key = mapped;
+          }
           const roleDefault = roleDefaults[key] ?? false;
           if (legacyValue === roleDefault) continue; // no deviation — skip
           const effect = legacyValue ? "ALLOW" : "DENY";

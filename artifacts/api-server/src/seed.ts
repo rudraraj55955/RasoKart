@@ -1670,10 +1670,15 @@ export async function seed() {
       logger.info({ keyCount: ALL_PERMISSION_KEYS.length }, "iam_catalog_auto_synced_on_start");
     }
 
-    // ── 2. Upsert any role_permissions rows that are missing or stale ───────
+    // ── 2. Insert any role_permissions rows that are MISSING ────────────────
     // This handles keys added to ALL_PERMISSION_KEYS after the original migration
     // ran — without this, new keys would be absent from role_permissions and
     // requirePermission would silently deny legitimate users.
+    //
+    // IMPORTANT: We use onConflictDoNothing() here, never onConflictDoUpdate().
+    // Admin-edited role templates (via PUT /api/iam/roles/:role/:key) must
+    // survive restarts and deploys. Overwriting existing rows would wipe those
+    // deliberate customisations silently on every server start.
     const KNOWN_ROLES = ["admin", "merchant", "payout_merchant", "payout_admin", "payout_super_admin", "agent", "customer"];
     for (const role of KNOWN_ROLES) {
       const defaults = ROLE_DEFAULT_PERMISSIONS[role] ?? {};
@@ -1682,10 +1687,7 @@ export async function seed() {
         await db
           .insert(rolePermissionsTable)
           .values({ role, permissionKey: key, isEnabled, updatedByUserId: null })
-          .onConflictDoUpdate({
-            target: [rolePermissionsTable.role, rolePermissionsTable.permissionKey],
-            set: { isEnabled, updatedAt: new Date() },
-          });
+          .onConflictDoNothing();
       }
     }
     logger.info({ roles: KNOWN_ROLES.length, keys: ALL_PERMISSION_KEYS.length }, "iam_role_permissions_reconciled_on_start");

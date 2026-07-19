@@ -67,8 +67,13 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     if ("__all__" in perms) { next(); return; } // SA marker
     if (perms["admin_dashboard"] === true) { next(); return; }
     res.status(403).json({ error: "Forbidden", permissionRequired: "admin_dashboard" });
-  } catch {
-    next(); // fail-open on resolver error to avoid locking out valid admins
+  } catch (err) {
+    // Fail-CLOSED: a resolver failure must never silently grant access.
+    // Return 503 so the caller knows this is a transient infrastructure
+    // error rather than a permanent denial.
+    const reqWithLog = req as any;
+    (reqWithLog.log ?? console).error({ err }, "requireAdmin_resolver_error");
+    res.status(503).json({ error: "Permission resolver unavailable — try again shortly" });
   }
 }
 
@@ -99,8 +104,10 @@ export async function requirePayoutAdmin(req: Request, res: Response, next: Next
     if ("__all__" in perms) { next(); return; }
     if (perms["payout_admin_dashboard"] === true) { next(); return; }
     res.status(403).json({ error: "Payout Admin access required", permissionRequired: "payout_admin_dashboard" });
-  } catch {
-    next();
+  } catch (err) {
+    const reqWithLog = req as any;
+    (reqWithLog.log ?? console).error({ err }, "requirePayoutAdmin_resolver_error");
+    res.status(503).json({ error: "Permission resolver unavailable — try again shortly" });
   }
 }
 

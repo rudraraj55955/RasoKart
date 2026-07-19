@@ -124,6 +124,82 @@ export const CANONICAL_ROLES = [
 
 export type CanonicalRole = (typeof CANONICAL_ROLES)[number];
 
+/**
+ * Maps legacy camelCase boolean flag names (previously stored in users.permissions_json)
+ * to their canonical new permission keys.
+ *
+ * Purpose: the IAM migration backfill must preserve effective access for users
+ * whose permissionsJson contained keys that pre-date the IAM naming convention.
+ * Any key in permissionsJson not found in ALL_PERMISSION_KEYS AND not found here
+ * is truly unknown and will be logged + skipped (never silently dropped without trace).
+ *
+ * Add entries here whenever a legacy flag is discovered in real data — the key is
+ * the exact string that appeared in permissions_json, the value is the canonical key.
+ *
+ * Role-specific context: the map is role-agnostic. If the same camelCase key could
+ * map to different canonical keys for different roles, the safest approach is to
+ * add the more-permissive mapping and let the backfill's role-escalation guard
+ * (which rejects cross-role ALLOWs) trim any that go out of scope.
+ */
+export const LEGACY_KEY_MAP: Record<string, PermissionKey> = {
+  // ── Admin-portal legacy flags ──────────────────────────────────────────────
+  canViewMerchants:             "admin_merchants",
+  canManageMerchants:           "admin_merchants",
+  canViewTransactions:          "admin_transactions",
+  canManageTransactions:        "admin_transactions",
+  canViewSettlements:           "admin_settlements",
+  canManageSettlements:         "admin_settlements",
+  canViewPayouts:               "admin_payouts",
+  canManagePayouts:             "admin_payouts",
+  canManageUsers:               "admin_users",
+  canManagePlans:               "admin_plans",
+  canManageWebhooks:            "admin_webhooks",
+  canViewAuditLogs:             "admin_audit_logs",
+  canManageFeatureControl:      "admin_feature_control",
+  canManageSettings:            "admin_settings",
+  canManageSmartRouting:        "admin_smart_routing",
+  canManageKyc:                 "admin_kyc",
+  canViewKyc:                   "admin_kyc",
+  canManageProviders:           "admin_providers",
+  canViewProviders:             "admin_providers",
+  canViewReports:               "admin_reports",
+  canManageReports:             "admin_reports",
+  canManageSupport:             "admin_support",
+  canManagePayoutAdmins:        "admin_payout_admins",
+  canManagePayoutMerchants:     "admin_payout_merchants",
+  canManagePayoutSettings:      "admin_payout_settings",
+  canManageReconciliation:      "admin_reconciliation",
+  canViewReconciliation:        "admin_reconciliation",
+  canManageModuleControl:       "admin_module_control",
+  canViewPlatformProfit:        "admin_platform_profit",
+  canManageUtrVerifications:    "admin_utr_verifications",
+  canManagePayinCharges:        "admin_payin_charges",
+  canViewConnections:           "admin_connections",
+  canViewApiMonitoring:         "admin_api_monitoring",
+
+  // ── Payout-admin legacy flags ─────────────────────────────────────────────
+  canAccessPayoutDashboard:     "payout_admin_dashboard",
+  canViewPayoutMerchants:       "payout_admin_merchants",
+  canManagePayoutMerchantsList: "payout_admin_merchants",
+  canViewPayoutAuditLogs:       "payout_admin_audit_logs",
+  canManagePayoutAdminSettings: "payout_admin_settings",
+
+  // ── Merchant-portal legacy flags ──────────────────────────────────────────
+  canAccessMerchantDashboard:   "merchant_dashboard",
+  canViewMerchantTransactions:  "merchant_transactions",
+  canManageMerchantPayouts:     "merchant_payouts",
+  canManageApiKeys:             "merchant_api_keys",
+  canManageMerchantWebhook:     "merchant_webhook",
+  canManageVirtualAccounts:     "merchant_virtual_accounts",
+  canManageQrCodes:             "merchant_qr_codes",
+  canViewLedger:                "merchant_ledger",
+  canViewMerchantReports:       "merchant_reports",
+  canManageMerchantKyc:         "merchant_kyc",
+  canManageOnboarding:          "merchant_onboarding",
+  canManageMerchantSupport:     "merchant_support",
+  canManagePaymentLinks:        "merchant_payment_links",
+};
+
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, Record<string, boolean>> = {
   admin: Object.fromEntries(
     ALL_PERMISSION_KEYS.map((k) => [
