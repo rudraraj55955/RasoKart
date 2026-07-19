@@ -1798,25 +1798,42 @@ export async function seed() {
     logger.info({ roles: KNOWN_ROLES.length, keys: ALL_PERMISSION_KEYS.length }, "iam_role_permissions_reconciled_on_start");
 
     // ── 3. Prune stale user_permissions ALLOW overrides that are now identical
-    //       to the updated role default — they add no value and confuse audits.
-    //       We only remove ALLOW overrides where the role now grants the key
-    //       by default; DENY overrides are preserved (they represent deliberate
-    //       restrictions the admin may have set).
+    //       to the LIVE role template — they add no value and confuse audits.
+    //       We compare against the live role_permissions DB rows (not the static
+    //       ROLE_DEFAULT_PERMISSIONS code map) so that admin-customised role
+    //       templates are respected: a user ALLOW override is only redundant when
+    //       the live template *currently* grants that key.
+    //       DENY overrides are always preserved (they represent deliberate
+    //       per-user restrictions the admin may have set).
+    //
+    // Load live role_permissions template into a fast lookup: role → key → bool
+    const liveTemplateRows = await db
+      .select({ role: rolePermissionsTable.role, permissionKey: rolePermissionsTable.permissionKey, isEnabled: rolePermissionsTable.isEnabled })
+      .from(rolePermissionsTable);
+    const liveTemplate: Record<string, Record<string, boolean>> = {};
+    for (const row of liveTemplateRows) {
+      if (!liveTemplate[row.role]) liveTemplate[row.role] = {};
+      liveTemplate[row.role][row.permissionKey] = row.isEnabled;
+    }
+
     const usersWithOverrides = await db
       .select({ id: usersTable.id, role: usersTable.role, isSuperAdmin: usersTable.isSuperAdmin })
       .from(usersTable);
     let pruned = 0;
     for (const u of usersWithOverrides) {
       if (u.isSuperAdmin) continue;
-      const roleDefaults = ROLE_DEFAULT_PERMISSIONS[u.role] ?? {};
+      const roleMap = liveTemplate[u.role] ?? {};
       const overrides = await db
         .select({ permissionKey: userPermissionsTable.permissionKey, effect: userPermissionsTable.effect })
         .from(userPermissionsTable)
         .where(eq(userPermissionsTable.userId, u.id));
       for (const o of overrides) {
-        const roleDefault = (roleDefaults[o.permissionKey] ?? false) === true;
-        if (o.effect === "ALLOW" && roleDefault === true) {
-          // Role now grants this permission by default — the ALLOW override is redundant
+        // Use the LIVE role_permissions state, not code defaults.
+        // This prevents pruning user overrides that remain meaningful after
+        // an admin has customised the role template.
+        const liveRoleGrant = (roleMap[o.permissionKey] ?? false) === true;
+        if (o.effect === "ALLOW" && liveRoleGrant) {
+          // Live role template already grants this key — the ALLOW override is redundant
           await db
             .delete(userPermissionsTable)
             .where(and(

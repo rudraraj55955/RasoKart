@@ -1,6 +1,26 @@
 /**
  * IAM Permission Catalog — single source of truth for all permission keys.
  * Convention: snake_case grouping by portal prefix.
+ *
+ * ── Canonical role model ──────────────────────────────────────────────────────
+ * The system has 7 string role values stored in users.role, plus a boolean
+ * super-admin escalation flag (users.is_super_admin):
+ *
+ *   isSuperAdmin=true   → SUPER_ADMIN semantics: bypasses all IAM checks,
+ *                         resolveUserPermissions returns { __all__: true }
+ *   role="admin"        → platform admin (admin portal access)
+ *   role="merchant"     → standard payment merchant
+ *   role="payout_merchant"    → merchant with payout access
+ *   role="payout_admin"       → payout operations admin
+ *   role="payout_super_admin" → elevated payout admin (full payout ops)
+ *   role="agent"        → support/ops agent (read-heavy, limited writes)
+ *   role="customer"     → end-customer (lowest privilege)
+ *
+ * This 7-role model has been the production taxonomy since day 1 and is
+ * intentional — do not consolidate or rename roles without a full DB migration.
+ * The payout_admin / payout_super_admin split reflects the payout system's
+ * own privilege hierarchy, analogous to admin / super-admin in the main portal.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 export const PERMISSIONS = {
