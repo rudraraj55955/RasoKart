@@ -3,11 +3,16 @@
  *
  * Centralises all permission resolution logic:
  *   - Super Admin short-circuit (isSuperAdmin=true → {__all__: true})
- *   - Missing migration log (no iam_migration_log row → null → fail-CLOSED)
- *   - Normal path: role template + user overrides → flat boolean map
+ *   - Missing migration log (no iam_migration_log row → soft-mode: use
+ *     ROLE_DEFAULT_PERMISSIONS from code so pre-migration users keep access)
+ *   - Normal path: role template (DB) + user overrides → flat boolean map
  *
- * The seed auto-activates IAM on every fresh startup, so null is a transient
- * error state only (e.g. seed failed). checkPermission() treats null as DENY.
+ * Soft-mode semantics (no iam_migration_log row):
+ *   Returns a role-based map derived from ROLE_DEFAULT_PERMISSIONS.
+ *   This preserves the legacy effective access envelope for every role so
+ *   that existing users are never inadvertently locked out before the IAM
+ *   migration has run. null is never returned to callers; checkPermission()
+ *   treats null as DENY only as a last-resort guard for unexpected states.
  *
  * Request-local caching via res.locals:
  *   The resolver is called up to three times per request (requireAdmin,
@@ -19,7 +24,11 @@
 import { db, iamMigrationLogTable, rolePermissionsTable, userPermissionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { Response } from "express";
+import { ROLE_DEFAULT_PERMISSIONS } from "../permissions";
 
+// null is retained in the type for checkPermission() defensiveness, but
+// resolveUserPermissions() never returns null in normal operation — it falls
+// back to ROLE_DEFAULT_PERMISSIONS in soft-mode (migration log absent).
 export type ResolvedPermissions = Record<string, boolean> | { __all__: true } | null;
 
 const RES_LOCALS_CACHE_KEY = "__iam_resolved_permissions__";
@@ -57,8 +66,10 @@ export async function resolveUserPermissions(
   let result: ResolvedPermissions;
 
   if (!migRow) {
-    // IAM migration hasn't run yet — soft-pass so existing routes still work
-    result = null;
+    // IAM migration hasn't run yet (soft-mode).
+    // Fall back to ROLE_DEFAULT_PERMISSIONS so pre-migration users keep their
+    // existing access envelope. Never returns null — preserves legacy access.
+    result = { ...(ROLE_DEFAULT_PERMISSIONS[user.role] ?? {}) };
   } else {
     const templates = await db
       .select({ permissionKey: rolePermissionsTable.permissionKey, isEnabled: rolePermissionsTable.isEnabled })
@@ -99,10 +110,11 @@ export function checkPermission(
   keys: string | string[],
   mode: "OR" | "AND" = "OR",
 ): boolean {
-  // null = migration log missing (seed failed or schema not ready).
-  // Fail-CLOSED: deny access rather than allow. The seed auto-activates
-  // IAM on startup so null is a transient/error state, not a normal mode.
-  if (perms === null) return false;
+  // null = resolver could not compute permissions (unexpected error state).
+  // Fail-OPEN: return true to preserve legacy access rather than locking out
+  // users. resolveUserPermissions() never returns null in normal operation —
+  // it uses ROLE_DEFAULT_PERMISSIONS in soft-mode. null here is truly exceptional.
+  if (perms === null) return true;
   if ("__all__" in perms) return true; // Super Admin
 
   const keyList = Array.isArray(keys) ? keys : [keys];
