@@ -11629,6 +11629,75 @@ paths:
         "403":
           description: Forbidden
 
+  /iam/users/{userId}/permissions/bulk:
+    put:
+      tags: [IAM]
+      summary: Bulk-set per-user permission overrides (Super Admin only)
+      description: |
+        Applies multiple permission overrides in one request.
+        - ALLOW/DENY: upserts the override for the given key.
+        - null: removes the override for that key (restores role default).
+        All keys are validated up-front before any writes occur.
+        Super Admin only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [overrides]
+              properties:
+                overrides:
+                  type: object
+                  description: Map of permissionKey → "ALLOW" | "DENY" | null
+                  additionalProperties:
+                    type: string
+                    nullable: true
+                    enum: [ALLOW, DENY, null]
+      responses:
+        "200":
+          description: Overrides applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  userId:
+                    type: integer
+                  applied:
+                    type: integer
+                    description: Number of ALLOW/DENY overrides upserted
+                  removed:
+                    type: integer
+                    description: Number of overrides removed (null entries)
+                  upserted:
+                    type: object
+                    additionalProperties:
+                      type: string
+                      enum: [ALLOW, DENY]
+                  deletedKeys:
+                    type: array
+                    items:
+                      type: string
+        "400":
+          description: Invalid input or unknown permission key
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: User not found
+
   /iam/audit:
     get:
       tags: [IAM]

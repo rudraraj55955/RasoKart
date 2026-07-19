@@ -672,6 +672,131 @@ router.delete(
   },
 );
 
+// ── PUT /api/iam/users/:userId/permissions ─────────────────────────────────
+// Bulk override: apply multiple permission overrides in one request.
+// Body: { overrides: Record<permissionKey, "ALLOW" | "DENY" | null> }
+// null removes the override for that key. Super Admin only.
+router.put(
+  "/users/:userId/permissions/bulk",
+  requireAuth,
+  requireAdmin,
+  requirePermission(PERMISSIONS.IAM_MANAGE),
+  async (req, res, next) => {
+    const callerUser = (req as any).user;
+    if (!callerUser.isSuperAdmin) {
+      res.status(403).json({ error: "Only Super Admin can bulk-set user permission overrides" });
+      return;
+    }
+
+    const userId = parseInt(req.params["userId"] as string, 10);
+    if (!userId) {
+      res.status(400).json({ error: "Invalid userId" });
+      return;
+    }
+
+    const { overrides } = req.body as { overrides?: Record<string, string | null> };
+    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+      res.status(400).json({ error: "overrides must be an object mapping permissionKey → ALLOW | DENY | null" });
+      return;
+    }
+
+    const entries = Object.entries(overrides);
+    if (entries.length === 0) {
+      res.status(400).json({ error: "overrides must contain at least one entry" });
+      return;
+    }
+
+    // Validate all keys and effects up-front
+    for (const [key, effect] of entries) {
+      if (!ALL_PERMISSION_KEYS.includes(key as any)) {
+        res.status(400).json({ error: `Unknown permission key: ${key}` });
+        return;
+      }
+      if (effect !== "ALLOW" && effect !== "DENY" && effect !== null) {
+        res.status(400).json({ error: `Invalid effect for '${key}': must be ALLOW, DENY, or null` });
+        return;
+      }
+    }
+
+    try {
+      const [targetUser] = await db
+        .select({ id: usersTable.id, email: usersTable.email, role: usersTable.role, isSuperAdmin: usersTable.isSuperAdmin })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+
+      if (!targetUser) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      // Guard: SA-only and cross-role escalation checks (same rules as per-key endpoint)
+      for (const [key, effect] of entries) {
+        if (effect === "ALLOW" && !targetUser.isSuperAdmin) {
+          if (SUPER_ADMIN_ONLY_PERMISSIONS.has(key)) {
+            res.status(403).json({
+              error: `Cannot grant SA-only permission '${key}' to a non-SA user`,
+              permissionKey: key,
+            });
+            return;
+          }
+          const roleDefault = (ROLE_DEFAULT_PERMISSIONS[targetUser.role] ?? {})[key];
+          if (roleDefault !== true) {
+            res.status(403).json({
+              error: `Cannot ALLOW '${key}' for role '${targetUser.role}': outside role's default access envelope`,
+              permissionKey: key,
+              targetRole: targetUser.role,
+            });
+            return;
+          }
+        }
+      }
+
+      // Apply overrides: upsert ALLOW/DENY, delete null
+      const toUpsert = entries.filter(([, e]) => e !== null) as [string, string][];
+      const toDelete = entries.filter(([, e]) => e === null).map(([k]) => k);
+
+      for (const [key, effect] of toUpsert) {
+        await db
+          .insert(userPermissionsTable)
+          .values({ userId, permissionKey: key, effect, updatedByUserId: callerUser.id })
+          .onConflictDoUpdate({
+            target: [userPermissionsTable.userId, userPermissionsTable.permissionKey],
+            set: { effect, updatedByUserId: callerUser.id, updatedAt: new Date() },
+          });
+      }
+
+      for (const key of toDelete) {
+        await db
+          .delete(userPermissionsTable)
+          .where(and(eq(userPermissionsTable.userId, userId), eq(userPermissionsTable.permissionKey, key)));
+      }
+
+      await writeAuditLog(req, "iam_user_bulk_override", "user", userId, {
+        targetEmail: targetUser.email,
+        upserted: toUpsert.length,
+        removed: toDelete.length,
+        callerEmail: callerUser.email,
+      });
+
+      req.log.info(
+        { targetUserId: userId, targetEmail: targetUser.email, upserted: toUpsert.length, removed: toDelete.length },
+        "iam_user_bulk_override",
+      );
+      res.json({
+        ok: true,
+        userId,
+        applied: toUpsert.length,
+        removed: toDelete.length,
+        upserted: Object.fromEntries(toUpsert),
+        deletedKeys: toDelete,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // ── GET /api/iam/audit ──────────────────────────────────────────────────────
 router.get(
   "/audit",

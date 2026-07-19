@@ -45,13 +45,31 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+/**
+ * Role gate + IAM RBAC wrapper.
+ *
+ * Pre-migration (IAM not yet run): role check only — same as before.
+ * Post-migration: also verifies at minimum `admin_dashboard` permission so that
+ * per-user IAM overrides actually govern portal access.  Super Admin (isSuperAdmin)
+ * always bypasses both checks.  This makes requireAdmin a true RBAC wrapper —
+ * every route using it gets permission enforcement without per-route changes.
+ */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const user = (req as any).user;
-  if (!user || user.role !== "admin") {
+  if (!user || (user.role !== "admin" && !user.isSuperAdmin)) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  next();
+  if (user.isSuperAdmin) { next(); return; }
+  try {
+    const perms = await resolveUserPermissions(user);
+    if (perms === null) { next(); return; } // pre-migration: soft-pass
+    if ("__all__" in perms) { next(); return; } // SA marker
+    if (perms["admin_dashboard"] === true) { next(); return; }
+    res.status(403).json({ error: "Forbidden", permissionRequired: "admin_dashboard" });
+  } catch {
+    next(); // fail-open on resolver error to avoid locking out valid admins
+  }
 }
 
 /** Super Admin is an admin with the isSuperAdmin flag set — a strict superset of requireAdmin. */
@@ -64,14 +82,26 @@ export function requireSuperAdmin(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-/** Payout Admin or Payout Super Admin — can manage payout operations. */
-export function requirePayoutAdmin(req: Request, res: Response, next: NextFunction) {
+/**
+ * Payout Admin or Payout Super Admin — can manage payout operations.
+ * Post-migration: also verifies `payout_admin_dashboard` permission.
+ */
+export async function requirePayoutAdmin(req: Request, res: Response, next: NextFunction) {
   const user = (req as any).user;
   if (!user || (user.role !== "payout_admin" && user.role !== "payout_super_admin" && user.role !== "admin")) {
     res.status(403).json({ error: "Payout Admin access required" });
     return;
   }
-  next();
+  if (user.isSuperAdmin) { next(); return; }
+  try {
+    const perms = await resolveUserPermissions(user);
+    if (perms === null) { next(); return; }
+    if ("__all__" in perms) { next(); return; }
+    if (perms["payout_admin_dashboard"] === true) { next(); return; }
+    res.status(403).json({ error: "Payout Admin access required", permissionRequired: "payout_admin_dashboard" });
+  } catch {
+    next();
+  }
 }
 
 /** Payout Super Admin only — has broader payout admin powers (e.g. provider config if granted). */

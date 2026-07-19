@@ -10729,6 +10729,33 @@ export const DeleteIamUsersUserIdPermissionsPermissionKeyResponse = zod.object({
 
 
 /**
+ * Applies multiple permission overrides in one request.
+- ALLOW/DENY: upserts the override for the given key.
+- null: removes the override for that key (restores role default).
+All keys are validated up-front before any writes occur.
+Super Admin only.
+
+ * @summary Bulk-set per-user permission overrides (Super Admin only)
+ */
+export const PutIamUsersUserIdPermissionsBulkParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const PutIamUsersUserIdPermissionsBulkBody = zod.object({
+  "overrides": zod.record(zod.string(), zod.union([zod.literal('ALLOW'),zod.literal('DENY'),zod.literal(null)]).nullable()).describe('Map of permissionKey → \"ALLOW\" | \"DENY\" | null')
+})
+
+export const PutIamUsersUserIdPermissionsBulkResponse = zod.object({
+  "ok": zod.boolean().optional(),
+  "userId": zod.number().optional(),
+  "applied": zod.number().optional().describe('Number of ALLOW\/DENY overrides upserted'),
+  "removed": zod.number().optional().describe('Number of overrides removed (null entries)'),
+  "upserted": zod.record(zod.string(), zod.enum(['ALLOW', 'DENY'])).optional(),
+  "deletedKeys": zod.array(zod.string()).optional()
+})
+
+
+/**
  * @summary List IAM audit log entries
  */
 export const GetIamAuditQueryParams = zod.object({

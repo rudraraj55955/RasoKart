@@ -86,9 +86,11 @@ test.describe("IAM role-isolation", () => {
 
     async function createPayoutRole(email: string, role: string): Promise<{ id: number; token: string }> {
       // Clean up any leftover from a previous interrupted run
+      // Delete from role-specific tables first (agents table has unique constraint on email)
+      // then from users (CASCADE handles other FK children)
       try {
         execSync(
-          `psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM users WHERE email = '${email}';"`,
+          `psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM agents WHERE email = '${email}'; DELETE FROM users WHERE email = '${email}';"`,
           { stdio: "pipe" },
         );
       } catch { /* ignore */ }

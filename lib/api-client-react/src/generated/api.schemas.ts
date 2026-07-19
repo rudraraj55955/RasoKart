@@ -8361,6 +8361,29 @@ export type DeleteIamUsersUserIdPermissionsPermissionKey200 = {
   permissionKey?: string;
 };
 
+/**
+ * Map of permissionKey → "ALLOW" | "DENY" | null
+ */
+export type PutIamUsersUserIdPermissionsBulkBodyOverrides = {[key: string]: 'ALLOW' | 'DENY' | null};
+
+export type PutIamUsersUserIdPermissionsBulkBody = {
+  /** Map of permissionKey → "ALLOW" | "DENY" | null */
+  overrides: PutIamUsersUserIdPermissionsBulkBodyOverrides;
+};
+
+export type PutIamUsersUserIdPermissionsBulk200Upserted = {[key: string]: 'ALLOW' | 'DENY'};
+
+export type PutIamUsersUserIdPermissionsBulk200 = {
+  ok?: boolean;
+  userId?: number;
+  /** Number of ALLOW/DENY overrides upserted */
+  applied?: number;
+  /** Number of overrides removed (null entries) */
+  removed?: number;
+  upserted?: PutIamUsersUserIdPermissionsBulk200Upserted;
+  deletedKeys?: string[];
+};
+
 export type GetIamAuditParams = {
 page?: number;
 limit?: number;

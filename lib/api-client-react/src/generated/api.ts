@@ -344,6 +344,8 @@ import type {
   PublicPaymentLink,
   PutIamRolesRolePermissionKey200,
   PutIamRolesRolePermissionKeyBody,
+  PutIamUsersUserIdPermissionsBulk200,
+  PutIamUsersUserIdPermissionsBulkBody,
   PutIamUsersUserIdPermissionsPermissionKey200,
   PutIamUsersUserIdPermissionsPermissionKeyBody,
   QrCleanupConfig,
@@ -33215,6 +33217,84 @@ export const useDeleteIamUsersUserIdPermissionsPermissionKey = <TError = ErrorTy
         TContext
       > => {
       return useMutation(getDeleteIamUsersUserIdPermissionsPermissionKeyMutationOptions(options));
+    }
+
+export const getPutIamUsersUserIdPermissionsBulkUrl = (userId: number,) => {
+
+
+
+
+  return `/api/iam/users/${userId}/permissions/bulk`
+}
+
+/**
+ * Applies multiple permission overrides in one request.
+- ALLOW/DENY: upserts the override for the given key.
+- null: removes the override for that key (restores role default).
+All keys are validated up-front before any writes occur.
+Super Admin only.
+
+ * @summary Bulk-set per-user permission overrides (Super Admin only)
+ */
+export const putIamUsersUserIdPermissionsBulk = async (userId: number,
+    putIamUsersUserIdPermissionsBulkBody: PutIamUsersUserIdPermissionsBulkBody, options?: RequestInit): Promise<PutIamUsersUserIdPermissionsBulk200> => {
+
+  return customFetch<PutIamUsersUserIdPermissionsBulk200>(getPutIamUsersUserIdPermissionsBulkUrl(userId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      putIamUsersUserIdPermissionsBulkBody,)
+  }
+);}
+
+
+
+
+export const getPutIamUsersUserIdPermissionsBulkMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putIamUsersUserIdPermissionsBulk>>, TError,{userId: number;data: BodyType<PutIamUsersUserIdPermissionsBulkBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof putIamUsersUserIdPermissionsBulk>>, TError,{userId: number;data: BodyType<PutIamUsersUserIdPermissionsBulkBody>}, TContext> => {
+
+const mutationKey = ['putIamUsersUserIdPermissionsBulk'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putIamUsersUserIdPermissionsBulk>>, {userId: number;data: BodyType<PutIamUsersUserIdPermissionsBulkBody>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  putIamUsersUserIdPermissionsBulk(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutIamUsersUserIdPermissionsBulkMutationResult = NonNullable<Awaited<ReturnType<typeof putIamUsersUserIdPermissionsBulk>>>
+    export type PutIamUsersUserIdPermissionsBulkMutationBody = BodyType<PutIamUsersUserIdPermissionsBulkBody>
+    export type PutIamUsersUserIdPermissionsBulkMutationError = ErrorType<void>
+
+    /**
+ * @summary Bulk-set per-user permission overrides (Super Admin only)
+ */
+export const usePutIamUsersUserIdPermissionsBulk = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putIamUsersUserIdPermissionsBulk>>, TError,{userId: number;data: BodyType<PutIamUsersUserIdPermissionsBulkBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof putIamUsersUserIdPermissionsBulk>>,
+        TError,
+        {userId: number;data: BodyType<PutIamUsersUserIdPermissionsBulkBody>},
+        TContext
+      > => {
+      return useMutation(getPutIamUsersUserIdPermissionsBulkMutationOptions(options));
     }
 
 export const getGetIamAuditUrl = (params?: GetIamAuditParams,) => {
