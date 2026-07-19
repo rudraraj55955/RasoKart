@@ -1,7 +1,10 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { db, usersTable, iamMigrationLogTable, rolePermissionsTable, userPermissionsTable } from "@workspace/db";
+import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { resolveUserPermissions, checkPermission } from "../services/permissionResolver";
+
+export { resolveUserPermissions } from "../services/permissionResolver";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "rasokart-secret-key-change-in-production";
 
@@ -62,15 +65,14 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   }
   if (user.isSuperAdmin) { next(); return; }
   try {
-    const perms = await resolveUserPermissions(user);
-    if (perms === null) { next(); return; } // pre-migration: soft-pass
-    if ("__all__" in perms) { next(); return; } // SA marker
-    if (perms["admin_dashboard"] === true) { next(); return; }
-    res.status(403).json({ error: "Forbidden", permissionRequired: "admin_dashboard" });
+    const perms = await resolveUserPermissions(user, res);
+    if (!checkPermission(perms, "admin_dashboard")) {
+      res.status(403).json({ error: "Forbidden", permissionRequired: "admin_dashboard" });
+      return;
+    }
+    next();
   } catch (err) {
     // Fail-CLOSED: a resolver failure must never silently grant access.
-    // Return 503 so the caller knows this is a transient infrastructure
-    // error rather than a permanent denial.
     const reqWithLog = req as any;
     (reqWithLog.log ?? console).error({ err }, "requireAdmin_resolver_error");
     res.status(503).json({ error: "Permission resolver unavailable — try again shortly" });
@@ -99,11 +101,12 @@ export async function requirePayoutAdmin(req: Request, res: Response, next: Next
   }
   if (user.isSuperAdmin) { next(); return; }
   try {
-    const perms = await resolveUserPermissions(user);
-    if (perms === null) { next(); return; }
-    if ("__all__" in perms) { next(); return; }
-    if (perms["payout_admin_dashboard"] === true) { next(); return; }
-    res.status(403).json({ error: "Payout Admin access required", permissionRequired: "payout_admin_dashboard" });
+    const perms = await resolveUserPermissions(user, res);
+    if (!checkPermission(perms, "payout_admin_dashboard")) {
+      res.status(403).json({ error: "Payout Admin access required", permissionRequired: "payout_admin_dashboard" });
+      return;
+    }
+    next();
   } catch (err) {
     const reqWithLog = req as any;
     (reqWithLog.log ?? console).error({ err }, "requirePayoutAdmin_resolver_error");
@@ -155,40 +158,6 @@ export function requireAnyAdmin(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-// ── IAM permission resolver ─────────────────────────────────────────────────
-
-/**
- * Resolves the effective permission map for a user.
- * - Super Admin (isSuperAdmin=true): returns { __all__: true }
- * - Before migration runs: returns null (soft/pass-through enforcement)
- * - After migration: role template + user overrides → flat boolean map
- */
-export async function resolveUserPermissions(
-  user: { id: number; role: string; isSuperAdmin: boolean },
-): Promise<Record<string, boolean> | { __all__: true } | null> {
-  if (user.isSuperAdmin) return { __all__: true };
-
-  const [migRow] = await db.select({ id: iamMigrationLogTable.id }).from(iamMigrationLogTable).limit(1);
-  if (!migRow) return null;
-
-  const templates = await db
-    .select({ permissionKey: rolePermissionsTable.permissionKey, isEnabled: rolePermissionsTable.isEnabled })
-    .from(rolePermissionsTable)
-    .where(eq(rolePermissionsTable.role, user.role));
-
-  const perms: Record<string, boolean> = {};
-  for (const t of templates) perms[t.permissionKey] = t.isEnabled;
-
-  const overrides = await db
-    .select({ permissionKey: userPermissionsTable.permissionKey, effect: userPermissionsTable.effect })
-    .from(userPermissionsTable)
-    .where(eq(userPermissionsTable.userId, user.id));
-
-  for (const o of overrides) perms[o.permissionKey] = o.effect === "ALLOW";
-
-  return perms;
-}
-
 /**
  * Combined middleware factory: role-gate (requireAdmin) + IAM permission check
  * in one call.  Preferred pattern for new routes — replaces the old two-step
@@ -197,16 +166,23 @@ export async function resolveUserPermissions(
  * Usage:
  *   router.use(requireAuth, ...requireAdminPermission(PERMISSIONS.ADMIN_MERCHANTS));
  */
-export function requireAdminPermission(permissionKey: string): Array<(req: Request, res: Response, next: NextFunction) => void | Promise<void>> {
-  return [requireAdmin, requirePermission(permissionKey)];
+export function requireAdminPermission(permissionKey: string | string[], mode: "OR" | "AND" = "OR"): Array<(req: Request, res: Response, next: NextFunction) => void | Promise<void>> {
+  return [requireAdmin, requirePermission(permissionKey, mode)];
 }
 
 /**
- * Middleware factory: check that the authenticated user has a specific
- * permission key. Super Admin always passes. Before IAM migration, always
+ * Middleware factory: check that the authenticated user has one or more specific
+ * permission keys. Super Admin always passes. Before IAM migration, always
  * passes (soft/backward-compat). After migration, enforces the permission.
+ *
+ * @param keys  A single key or an array of keys to check.
+ * @param mode  "OR"  — user needs at least ONE of the keys (default).
+ *              "AND" — user needs ALL of the keys.
+ *
+ * Uses request-local caching (res.locals) so parallel middleware in the same
+ * request chain share one DB round-trip.
  */
-export function requirePermission(permissionKey: string) {
+export function requirePermission(keys: string | string[], mode: "OR" | "AND" = "OR") {
   return async (req: Request, res: Response, next: NextFunction) => {
     const user = (req as any).user;
     if (!user) {
@@ -216,13 +192,20 @@ export function requirePermission(permissionKey: string) {
     if (user.isSuperAdmin) { next(); return; }
 
     try {
-      const perms = await resolveUserPermissions(user);
-      if (perms === null) { next(); return; }
-      if ("__all__" in perms) { next(); return; }
-      if (perms[permissionKey] === true) { next(); return; }
-      res.status(403).json({ error: "Permission denied", permissionRequired: permissionKey });
-    } catch {
-      res.status(403).json({ error: "Permission check failed" });
+      const perms = await resolveUserPermissions(user, res);
+      if (checkPermission(perms, keys, mode)) {
+        next();
+        return;
+      }
+      res.status(403).json({
+        error: "Permission denied",
+        permissionRequired: Array.isArray(keys) ? keys : [keys],
+        mode,
+      });
+    } catch (err) {
+      const reqWithLog = req as any;
+      (reqWithLog.log ?? console).error({ err }, "requirePermission_resolver_error");
+      res.status(503).json({ error: "Permission resolver unavailable — try again shortly" });
     }
   };
 }

@@ -1,4 +1,4 @@
-import { db } from "@workspace/db";
+import { db, up } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -1361,61 +1361,10 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER NOT NULL DEFAULT 1`);
 
   // ── IAM tables ─────────────────────────────────────────────────────────────
-  // Rename legacy tables to canonical names (idempotent — IF EXISTS means no-op when already renamed)
-  await db.execute(sql`ALTER TABLE IF EXISTS role_permission_templates RENAME TO role_permissions`);
-  await db.execute(sql`ALTER TABLE IF EXISTS user_permission_overrides RENAME TO user_permissions`);
-
-  // permissions — DB-backed catalog of all permission keys (canonical source alongside code)
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS permissions (
-      id SERIAL PRIMARY KEY,
-      key TEXT NOT NULL UNIQUE,
-      category TEXT NOT NULL,
-      is_super_admin_only BOOLEAN NOT NULL DEFAULT FALSE,
-      description TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // role_permissions — per-role default permission states (canonical name, was role_permission_templates)
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS role_permissions (
-      id SERIAL PRIMARY KEY,
-      role TEXT NOT NULL,
-      permission_key TEXT NOT NULL,
-      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_by_user_id INTEGER,
-      UNIQUE (role, permission_key)
-    )
-  `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS rp_role_idx ON role_permissions(role)`);
-
-  // user_permissions — per-user ALLOW/DENY overrides (canonical name, was user_permission_overrides)
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS user_permissions (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL,
-      permission_key TEXT NOT NULL,
-      effect TEXT NOT NULL CHECK (effect IN ('ALLOW', 'DENY')),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_by_user_id INTEGER,
-      UNIQUE (user_id, permission_key)
-    )
-  `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS up_user_id_idx ON user_permissions(user_id)`);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS iam_migration_log (
-      id SERIAL PRIMARY KEY,
-      cutoff_at TIMESTAMPTZ NOT NULL,
-      executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      executed_by_user_id INTEGER,
-      total_users INTEGER NOT NULL DEFAULT 0,
-      snapshot_json JSONB
-    )
-  `);
+  // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
+  // That file owns the DDL and its exported rollback() for emergency use.
+  // Both up() and rollback() are idempotent (CREATE/DROP IF EXISTS).
+  await up(db);
   logger.info({ tables: ["permissions", "role_permissions", "user_permissions", "iam_migration_log"] }, "schema_guard_table_created");
 
   logger.info("schema_guard_completed");

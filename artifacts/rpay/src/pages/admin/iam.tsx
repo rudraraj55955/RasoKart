@@ -9,111 +9,66 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getToken } from "@/lib/auth";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, ShieldCheck, Users, Lock, ScrollText, RefreshCw } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-async function apiFetch(path: string, opts?: RequestInit) {
-  const res = await fetch(`${BASE}/api${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken()}`,
-      ...((opts?.headers as Record<string, string>) ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
-  }
-  return res.json();
-}
+import {
+  useGetIamMigrationStatus,
+  useGetIamPermissions,
+  useGetIamRoles,
+  useGetIamUsers,
+  useGetIamUsersUserIdPermissions,
+  useGetIamAudit,
+  usePostIamMigrationRun,
+  usePostIamMigrationRollback,
+  usePutIamRolesRolePermissionKey,
+  usePutIamUsersUserIdPermissionsPermissionKey,
+  useDeleteIamUsersUserIdPermissionsPermissionKey,
+  getGetIamMigrationStatusQueryKey,
+  getGetIamPermissionsQueryKey,
+  getGetIamRolesQueryKey,
+  getGetIamUsersQueryKey,
+  getGetIamUsersUserIdPermissionsQueryKey,
+  getGetIamAuditQueryKey,
+} from "@workspace/api-client-react";
 
 const KNOWN_ROLES = ["admin", "merchant", "payout_merchant", "payout_admin", "payout_super_admin", "agent"];
-
-function useMigrationStatus() {
-  return useQuery({
-    queryKey: ["iam", "migration", "status"],
-    queryFn: () => apiFetch("/iam/migration/status"),
-    refetchInterval: false,
-  });
-}
-
-function usePermissionCatalog() {
-  return useQuery({
-    queryKey: ["iam", "permissions"],
-    queryFn: () => apiFetch("/iam/permissions"),
-  });
-}
-
-function useRoles() {
-  return useQuery({
-    queryKey: ["iam", "roles"],
-    queryFn: () => apiFetch("/iam/roles"),
-  });
-}
-
-function useIamUsers() {
-  return useQuery({
-    queryKey: ["iam", "users"],
-    queryFn: () => apiFetch("/iam/users?limit=100"),
-  });
-}
-
-function useUserPermissions(userId: number | null) {
-  return useQuery({
-    queryKey: ["iam", "users", userId, "permissions"],
-    queryFn: () => apiFetch(`/iam/users/${userId}/permissions`),
-    enabled: !!userId,
-  });
-}
-
-function useIamAudit(page: number) {
-  return useQuery({
-    queryKey: ["iam", "audit", page],
-    queryFn: () => apiFetch(`/iam/audit?page=${page}&limit=50`),
-  });
-}
 
 // ── Migration panel ──────────────────────────────────────────────────────────
 
 function MigrationPanel() {
-  const { data, isLoading, refetch } = useMigrationStatus();
+  const { data, isLoading, refetch } = useGetIamMigrationStatus();
   const qc = useQueryClient();
 
-  const runMutation = useMutation({
-    mutationFn: () => apiFetch("/iam/migration/run", { method: "POST" }),
-    onSuccess: () => {
-      toast.success("IAM migration complete — catalog synced, role templates seeded.");
-      qc.invalidateQueries({ queryKey: ["iam"] });
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: getGetIamMigrationStatusQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetIamPermissionsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetIamRolesQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetIamUsersQueryKey() });
+  };
+
+  const runMutation = usePostIamMigrationRun({
+    mutation: {
+      onSuccess: () => {
+        toast.success("IAM migration complete — catalog synced, role templates seeded.");
+        invalidateAll();
+      },
+      onError: (e: Error) => toast.error(e.message),
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
-  const rollbackMutation = useMutation({
-    mutationFn: () => apiFetch("/iam/migration/rollback", { method: "POST" }),
-    onSuccess: () => {
-      toast.success("IAM migration rolled back. System in legacy role-based mode.");
-      qc.invalidateQueries({ queryKey: ["iam"] });
+  const rollbackMutation = usePostIamMigrationRollback({
+    mutation: {
+      onSuccess: () => {
+        toast.success("IAM migration rolled back. System in legacy role-based mode.");
+        invalidateAll();
+      },
+      onError: (e: Error) => toast.error(e.message),
     },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const syncCatalogMutation = useMutation({
-    mutationFn: () => apiFetch("/iam/permissions/sync", { method: "POST" }),
-    onSuccess: (d: any) => {
-      toast.success(`Permissions catalog synced — ${d.upserted} keys.`);
-      qc.invalidateQueries({ queryKey: ["iam", "permissions"] });
-      qc.invalidateQueries({ queryKey: ["iam", "migration", "status"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   if (isLoading) return <Skeleton className="h-36 w-full" />;
 
-  const migrated = data?.migrated ?? false;
+  const migrated = (data as any)?.migrated ?? false;
 
   return (
     <Card>
@@ -124,7 +79,7 @@ function MigrationPanel() {
         </CardTitle>
         <CardDescription>
           {migrated
-            ? `Migration ran on ${new Date(data.migratedAt).toLocaleString()}. ${data.templateRows} role–permission rows. ${data.catalogRows ?? 0} catalog keys in DB.`
+            ? `Migration ran on ${new Date((data as any).migratedAt).toLocaleString()}. ${(data as any).templateRows} role–permission rows. ${(data as any).catalogRows ?? 0} catalog keys in DB.`
             : "Migration not yet run. System is in soft/legacy mode — all roles have full access."}
         </CardDescription>
       </CardHeader>
@@ -141,14 +96,10 @@ function MigrationPanel() {
             {rollbackMutation.isPending ? "Rolling back…" : "Rollback Migration"}
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={() => syncCatalogMutation.mutate()} disabled={syncCatalogMutation.isPending}>
-          <RefreshCw className={`w-3 h-3 mr-1 ${syncCatalogMutation.isPending ? "animate-spin" : ""}`} />
-          Sync Catalog to DB
-        </Button>
         <Button variant="outline" onClick={() => refetch()}>Refresh</Button>
         {migrated && (
           <div className="ml-auto text-xs text-muted-foreground">
-            {data.overrideRows} per-user overrides active
+            {(data as any).overrideRows} per-user overrides active
           </div>
         )}
       </CardContent>
@@ -161,30 +112,30 @@ function MigrationPanel() {
 type RolePermMap = { role: string; permissions: Record<string, boolean> };
 
 function RoleTemplatesPanel() {
-  const { data: rolesData, isLoading: rolesLoading } = useRoles();
-  const { data: catalogData, isLoading: catalogLoading } = usePermissionCatalog();
-  const { data: migData } = useMigrationStatus();
+  const { data: rolesData, isLoading: rolesLoading } = useGetIamRoles();
+  const { data: catalogData, isLoading: catalogLoading } = useGetIamPermissions();
+  const { data: migData } = useGetIamMigrationStatus();
   const qc = useQueryClient();
   const [activeRole, setActiveRole] = useState("admin");
 
-  const updateMutation = useMutation({
-    mutationFn: ({ role, key, isEnabled }: { role: string; key: string; isEnabled: boolean }) =>
-      apiFetch(`/iam/roles/${role}/${key}`, { method: "PUT", body: JSON.stringify({ isEnabled }) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["iam", "roles"] });
-      toast.success("Role template updated");
+  const updateMutation = usePutIamRolesRolePermissionKey({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetIamRolesQueryKey() });
+        toast.success("Role template updated");
+      },
+      onError: (e: Error) => toast.error(e.message),
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   if (rolesLoading || catalogLoading) return <Skeleton className="h-64 w-full" />;
 
-  const migrated = migData?.migrated ?? false;
+  const migrated = (migData as any)?.migrated ?? false;
   const roleMap: Record<string, Record<string, boolean>> = {};
-  for (const r of (rolesData?.roles ?? []) as RolePermMap[]) {
+  for (const r of ((rolesData as any)?.roles ?? []) as RolePermMap[]) {
     roleMap[r.role] = r.permissions;
   }
-  const catalogKeys: { key: string; isSuperAdminOnly: boolean; category: string }[] = catalogData?.permissions ?? [];
+  const catalogKeys: { key: string; isSuperAdminOnly: boolean; category: string }[] = (catalogData as any)?.permissions ?? [];
   const categories = Array.from(new Set(catalogKeys.map((k) => k.category)));
 
   const activePerms = roleMap[activeRole] ?? {};
@@ -224,7 +175,7 @@ function RoleTemplatesPanel() {
                               checked={activePerms[k.key] ?? false}
                               disabled={!migrated || k.isSuperAdminOnly || updateMutation.isPending}
                               onCheckedChange={(checked) =>
-                                updateMutation.mutate({ role: r, key: k.key, isEnabled: checked })
+                                updateMutation.mutate({ role: r, permissionKey: k.key, data: { isEnabled: checked } })
                               }
                             />
                           </div>
@@ -245,36 +196,44 @@ function RoleTemplatesPanel() {
 // ── User overrides panel ──────────────────────────────────────────────────────
 
 function UserOverridesPanel() {
-  const { data, isLoading } = useIamUsers();
+  const { data, isLoading } = useGetIamUsers({ limit: 100 });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const { data: userPerms, isLoading: permsLoading } = useUserPermissions(selectedUserId);
+  const { data: userPerms, isLoading: permsLoading } = useGetIamUsersUserIdPermissions(
+    selectedUserId ?? 0,
+    { query: { enabled: !!selectedUserId, queryKey: getGetIamUsersUserIdPermissionsQueryKey(selectedUserId ?? 0) } },
+  );
   const qc = useQueryClient();
 
-  const setOverride = useMutation({
-    mutationFn: ({ userId, key, effect }: { userId: number; key: string; effect: "ALLOW" | "DENY" }) =>
-      apiFetch(`/iam/users/${userId}/permissions/${key}`, { method: "PUT", body: JSON.stringify({ effect }) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["iam", "users", selectedUserId, "permissions"] });
-      qc.invalidateQueries({ queryKey: ["iam", "users"] });
-      toast.success("Permission override saved");
+  const setOverride = usePutIamUsersUserIdPermissionsPermissionKey({
+    mutation: {
+      onSuccess: () => {
+        if (selectedUserId) {
+          qc.invalidateQueries({ queryKey: getGetIamUsersUserIdPermissionsQueryKey(selectedUserId) });
+        }
+        qc.invalidateQueries({ queryKey: getGetIamUsersQueryKey() });
+        toast.success("Permission override saved");
+      },
+      onError: (e: Error) => toast.error(e.message),
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
-  const removeOverride = useMutation({
-    mutationFn: ({ userId, key }: { userId: number; key: string }) =>
-      apiFetch(`/iam/users/${userId}/permissions/${key}`, { method: "DELETE" }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["iam", "users", selectedUserId, "permissions"] });
-      qc.invalidateQueries({ queryKey: ["iam", "users"] });
-      toast.success("Override removed — reverted to role default");
+  const removeOverride = useDeleteIamUsersUserIdPermissionsPermissionKey({
+    mutation: {
+      onSuccess: () => {
+        if (selectedUserId) {
+          qc.invalidateQueries({ queryKey: getGetIamUsersUserIdPermissionsQueryKey(selectedUserId) });
+        }
+        qc.invalidateQueries({ queryKey: getGetIamUsersQueryKey() });
+        toast.success("Override removed — reverted to role default");
+      },
+      onError: (e: Error) => toast.error(e.message),
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
 
-  const users = data?.users ?? [];
+  const users = (data as any)?.users ?? [];
+  const ud = userPerms as any;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -305,10 +264,10 @@ function UserOverridesPanel() {
         <CardHeader>
           <CardTitle className="text-sm">
             {selectedUserId
-              ? `Permissions — ${userPerms?.user?.email ?? "…"}`
+              ? `Permissions — ${ud?.user?.email ?? "…"}`
               : "Select a user to view permissions"}
           </CardTitle>
-          {selectedUserId && userPerms?.user?.isSuperAdmin && (
+          {selectedUserId && ud?.user?.isSuperAdmin && (
             <CardDescription className="text-amber-400 flex items-center gap-1">
               <ShieldCheck className="w-4 h-4" /> Super Admin — all permissions always granted
             </CardDescription>
@@ -317,20 +276,20 @@ function UserOverridesPanel() {
         <CardContent>
           {!selectedUserId && <div className="text-muted-foreground text-sm">No user selected.</div>}
           {selectedUserId && permsLoading && <Skeleton className="h-48 w-full" />}
-          {selectedUserId && userPerms && !userPerms.user?.isSuperAdmin && (
+          {selectedUserId && ud && !ud.user?.isSuperAdmin && (
             <>
-              {userPerms.overrides?.length > 0 && (
+              {ud.overrides?.length > 0 && (
                 <div className="mb-4">
                   <div className="text-xs text-muted-foreground uppercase mb-2">Active Overrides</div>
                   <div className="space-y-1">
-                    {userPerms.overrides.map((o: any) => (
+                    {ud.overrides.map((o: any) => (
                       <div key={o.permissionKey} className="flex items-center justify-between gap-2 text-xs">
                         <span className="font-mono text-muted-foreground">{o.permissionKey}</span>
                         <div className="flex items-center gap-2">
                           <Badge variant={o.effect === "ALLOW" ? "default" : "destructive"} className="text-[10px]">{o.effect}</Badge>
                           <button
                             className="text-red-400 hover:text-red-300 text-xs"
-                            onClick={() => removeOverride.mutate({ userId: selectedUserId, key: o.permissionKey })}
+                            onClick={() => removeOverride.mutate({ userId: selectedUserId, permissionKey: o.permissionKey })}
                           >
                             Remove
                           </button>
@@ -350,9 +309,9 @@ function UserOverridesPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {Object.entries(userPerms.effectivePermissions ?? {}).map(([key, effective]) => {
-                    const roleDefault = userPerms.roleTemplate?.[key] ?? false;
-                    const override = userPerms.overrides?.find((o: any) => o.permissionKey === key);
+                  {Object.entries(ud.effectivePermissions ?? {}).map(([key, effective]) => {
+                    const roleDefault = ud.roleTemplate?.[key] ?? false;
+                    const override = ud.overrides?.find((o: any) => o.permissionKey === key);
                     return (
                       <TableRow key={key} className={override ? "bg-amber-500/5" : ""}>
                         <TableCell className="text-xs font-mono py-1">{key}</TableCell>
@@ -370,14 +329,14 @@ function UserOverridesPanel() {
                           <div className="flex gap-1">
                             <button
                               className="text-[10px] px-2 py-0.5 rounded bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40"
-                              onClick={() => setOverride.mutate({ userId: selectedUserId, key, effect: "ALLOW" })}
+                              onClick={() => setOverride.mutate({ userId: selectedUserId, permissionKey: key, data: { effect: "ALLOW" } })}
                               disabled={setOverride.isPending}
                             >
                               Allow
                             </button>
                             <button
                               className="text-[10px] px-2 py-0.5 rounded bg-red-600/20 text-red-400 hover:bg-red-600/40"
-                              onClick={() => setOverride.mutate({ userId: selectedUserId, key, effect: "DENY" })}
+                              onClick={() => setOverride.mutate({ userId: selectedUserId, permissionKey: key, data: { effect: "DENY" } })}
                               disabled={setOverride.isPending}
                             >
                               Deny
@@ -401,11 +360,11 @@ function UserOverridesPanel() {
 
 function AuditTrailPanel() {
   const [page, setPage] = useState(1);
-  const { data, isLoading, refetch } = useIamAudit(page);
+  const { data, isLoading, refetch } = useGetIamAudit({ page, limit: 50 });
 
-  const entries: any[] = data?.entries ?? [];
-  const total: number = data?.total ?? 0;
-  const limit: number = data?.limit ?? 50;
+  const entries: any[] = (data as any)?.entries ?? [];
+  const total: number = (data as any)?.total ?? 0;
+  const limit: number = (data as any)?.limit ?? 50;
   const totalPages = Math.ceil(total / limit);
 
   const ACTION_COLOR: Record<string, string> = {
@@ -494,7 +453,6 @@ export default function AdminIam() {
   const { user } = useAuth();
   const hasIamRead = useHasPermission("iam_read");
 
-  // Super Admin always has full access; admins with iam_read permission get read-only view
   if (!user?.isSuperAdmin && !hasIamRead) {
     return (
       <div className="p-6">
