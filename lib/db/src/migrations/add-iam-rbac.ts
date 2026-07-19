@@ -185,6 +185,118 @@ export async function up(db: DrizzleExecutor): Promise<void> {
       END IF;
     END $$
   `);
+
+  // ── Initial backfill: seed the permissions catalog ────────────────────────
+  // Idempotent — ON CONFLICT (key) DO NOTHING preserves any admin edits.
+  // This is the authoritative initial dataset for a fresh deployment.
+  // Runtime seed.ts reconciles additions/removals on subsequent restarts.
+  await db.execute(sql`
+    INSERT INTO permissions (key, category, is_super_admin_only) VALUES
+      -- Admin portal
+      ('admin_dashboard',         'admin', FALSE),
+      ('admin_merchants',         'admin', FALSE),
+      ('admin_transactions',      'admin', FALSE),
+      ('admin_settlements',       'admin', FALSE),
+      ('admin_payouts',           'admin', FALSE),
+      ('admin_users',             'admin', FALSE),
+      ('admin_plans',             'admin', FALSE),
+      ('admin_webhooks',          'admin', FALSE),
+      ('admin_audit_logs',        'admin', FALSE),
+      ('admin_feature_control',   'admin', FALSE),
+      ('admin_settings',          'admin', FALSE),
+      ('admin_company_branding',  'admin', TRUE),
+      ('admin_data_hygiene',      'admin', TRUE),
+      ('admin_smart_routing',     'admin', FALSE),
+      ('admin_kyc',               'admin', FALSE),
+      ('admin_providers',         'admin', FALSE),
+      ('admin_reports',           'admin', FALSE),
+      ('admin_support',           'admin', FALSE),
+      ('admin_payout_admins',     'admin', FALSE),
+      ('admin_payout_merchants',  'admin', FALSE),
+      ('admin_payout_settings',   'admin', FALSE),
+      ('admin_razorpay',          'admin', TRUE),
+      ('admin_social_providers',  'admin', TRUE),
+      ('admin_secure_id',         'admin', TRUE),
+      ('admin_otp_settings',      'admin', TRUE),
+      ('admin_reconciliation',    'admin', FALSE),
+      ('admin_module_control',    'admin', FALSE),
+      ('admin_platform_profit',   'admin', TRUE),
+      ('admin_utr_verifications', 'admin', FALSE),
+      ('admin_payin_charges',     'admin', FALSE),
+      ('admin_connections',       'admin', FALSE),
+      ('admin_api_monitoring',    'admin', FALSE),
+      -- IAM (super admin only)
+      ('iam_read',   'iam', TRUE),
+      ('iam_manage', 'iam', TRUE),
+      -- Merchant portal
+      ('merchant_dashboard',        'merchant', FALSE),
+      ('merchant_transactions',     'merchant', FALSE),
+      ('merchant_payouts',          'merchant', FALSE),
+      ('merchant_api_keys',         'merchant', FALSE),
+      ('merchant_webhook',          'merchant', FALSE),
+      ('merchant_virtual_accounts', 'merchant', FALSE),
+      ('merchant_qr_codes',         'merchant', FALSE),
+      ('merchant_ledger',           'merchant', FALSE),
+      ('merchant_reports',          'merchant', FALSE),
+      ('merchant_kyc',              'merchant', FALSE),
+      ('merchant_onboarding',       'merchant', FALSE),
+      ('merchant_support',          'merchant', FALSE),
+      ('merchant_payment_links',    'merchant', FALSE),
+      -- Payout merchant portal
+      ('payout_merchant_dashboard',    'payout_merchant', FALSE),
+      ('payout_merchant_payouts',      'payout_merchant', FALSE),
+      ('payout_merchant_kyc',          'payout_merchant', FALSE),
+      ('payout_merchant_wallet_loads', 'payout_merchant', FALSE),
+      -- Payout admin portal (canonical + extended role access)
+      ('payout_admin_dashboard',  'payout_admin', FALSE),
+      ('payout_admin_merchants',  'payout_admin', FALSE),
+      ('payout_admin_audit_logs', 'payout_admin', FALSE),
+      ('payout_admin_settings',   'payout_admin', FALSE),
+      -- Agent portal
+      ('agent_dashboard',  'agent', FALSE),
+      ('agent_merchants',  'agent', FALSE),
+      ('agent_commission', 'agent', FALSE),
+      ('agent_profile',    'agent', FALSE),
+      -- Customer (checkout consumer — no portal access by default)
+      ('customer_checkout', 'customer', FALSE)
+    ON CONFLICT (key) DO NOTHING
+  `);
+
+  // ── Initial backfill: seed role_permissions defaults ──────────────────────
+  // Covers all 7 roles (5 canonical + 2 extended payout roles) × all keys.
+  // Uses a CROSS JOIN + CASE so the logic mirrors ROLE_DEFAULT_PERMISSIONS in
+  // permissions.ts and remains a single idempotent statement.
+  // ON CONFLICT DO NOTHING preserves any admin-customised role templates.
+  await db.execute(sql`
+    INSERT INTO role_permissions (role, permission_key, is_enabled)
+    SELECT
+      r.role,
+      p.key,
+      CASE
+        WHEN r.role = 'admin' THEN (
+          p.key LIKE 'admin_%'
+          AND p.key NOT IN (
+            'admin_company_branding', 'admin_data_hygiene', 'admin_razorpay',
+            'admin_social_providers', 'admin_secure_id', 'admin_otp_settings',
+            'admin_platform_profit'
+          )
+          AND p.key NOT IN ('iam_read', 'iam_manage')
+        )
+        WHEN r.role = 'merchant'         THEN p.key LIKE 'merchant_%'
+        WHEN r.role = 'payout_merchant'  THEN p.key LIKE 'payout_merchant_%'
+        WHEN r.role = 'payout_admin'     THEN p.key LIKE 'payout_admin_%'
+        WHEN r.role = 'payout_super_admin' THEN p.key LIKE 'payout_admin_%'
+        WHEN r.role = 'agent'            THEN p.key LIKE 'agent_%'
+        WHEN r.role = 'customer'         THEN FALSE
+        ELSE FALSE
+      END AS is_enabled
+    FROM (VALUES
+      ('admin'), ('merchant'), ('payout_merchant'),
+      ('payout_admin'), ('payout_super_admin'), ('agent'), ('customer')
+    ) AS r(role)
+    CROSS JOIN permissions p
+    ON CONFLICT (role, permission_key) DO NOTHING
+  `);
 }
 
 /**

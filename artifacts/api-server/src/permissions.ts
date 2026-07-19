@@ -125,24 +125,51 @@ export const SUPER_ADMIN_ONLY_PERMISSIONS: Set<string> = new Set([
 ]);
 
 /**
- * Canonical roles in the RasoKart system.
+ * Canonical roles in the RasoKart IAM system — the 6-entity model:
  *
- * SUPER_ADMIN is not a separate role value in the `users.role` column —
- * it is modelled as `is_super_admin = TRUE` on an admin user. Super Admin
- * bypasses all requirePermission checks entirely and can modify IAM config.
- * The 7 canonical role identifiers are the values allowed in `users.role`.
+ *   1. SUPER_ADMIN — modelled as `users.is_super_admin = TRUE` (not a role string).
+ *                    Bypasses all permission checks. Only one in the system.
+ *   2. admin          — platform admin; full ops dashboard, minus SA-only keys.
+ *   3. merchant       — self-serve payment merchant.
+ *   4. payout_merchant — wallet & payout-collection merchant.
+ *   5. agent          — referral/commission tracking; read-heavy.
+ *   6. customer       — checkout consumer; no portal access.
+ *
+ * CANONICAL_ROLES lists the 5 role string values that appear in `users.role`
+ * for the canonical set. Together with the `isSuperAdmin` flag they form the
+ * complete 6-entity canonical model.
+ *
+ * The payout system also defines two EXTENDED_ROLES (payout_admin and
+ * payout_super_admin) that represent the payout platform's own ops hierarchy.
+ * They are managed by the IAM engine but are not part of the 6-entity canonical
+ * set — they are payout-subsystem-specific extensions. Use KNOWN_ROLES (which
+ * includes both canonical and extended) when iterating over ALL system roles.
  */
 export const CANONICAL_ROLES = [
-  "admin",            // Admin portal — full ops access (non-SA)
-  "merchant",         // Merchant portal — self-serve payment dashboard
-  "payout_merchant",  // Payout merchant portal — wallet & payout management
-  "payout_admin",     // Payout admin portal — payout operations oversight
-  "payout_super_admin", // Payout super admin — elevated payout authority
-  "agent",            // Agent portal — referral & commission tracking
-  "customer",         // Checkout consumer — no portal access; public flows only
+  "admin",           // Admin portal — full ops access (non-SA)
+  "merchant",        // Merchant portal — self-serve payment dashboard
+  "payout_merchant", // Payout merchant portal — wallet & payout management
+  "agent",           // Agent portal — referral & commission tracking
+  "customer",        // Checkout consumer — no portal access; public flows only
 ] as const;
 
+/**
+ * Extended roles — payout subsystem's own privilege hierarchy.
+ * Managed by the IAM engine (role_permissions rows, etc.) but not part of
+ * the 6-entity canonical model above. They inherit the payout_admin_* key
+ * prefix and differ only in operational authority level.
+ */
+export const EXTENDED_ROLES = [
+  "payout_admin",       // Payout admin portal — payout ops oversight
+  "payout_super_admin", // Elevated payout admin — broader authority
+] as const;
+
+/** All role strings that exist in `users.role` — canonical + extended. */
+export const KNOWN_ROLES = [...CANONICAL_ROLES, ...EXTENDED_ROLES] as const;
+
 export type CanonicalRole = (typeof CANONICAL_ROLES)[number];
+export type ExtendedRole = (typeof EXTENDED_ROLES)[number];
+export type KnownRole = (typeof KNOWN_ROLES)[number];
 
 /**
  * Maps legacy camelCase boolean flag names (previously stored in users.permissions_json)

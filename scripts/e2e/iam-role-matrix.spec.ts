@@ -2,8 +2,12 @@
  * iam-role-matrix.spec.ts
  *
  * IAM role-isolation tests. Covers the full canonical role matrix:
- *  admin (SA), merchant (Starter, Gold), payout_admin, payout_super_admin, agent.
- *  customer has no portal login and is tested only at the schema level.
+ *  SUPER_ADMIN (admin@rasokart.com), admin, merchant (Starter, Gold),
+ *  payout_admin, payout_super_admin, agent, AND customer.
+ *
+ * All 7 system roles are tested end-to-end: login, API gating, and
+ * permission semantics. Customer users have no portal access and are
+ * verified to receive 403 on all admin + merchant portal endpoints.
  *
  * Verifies:
  *  1. Merchant cannot reach admin IAM/users/reconciliation/feature endpoints (→ 403)
@@ -16,6 +20,8 @@
  *  8. payout_admin / payout_super_admin can reach payout-admin endpoints
  *  9. agent can reach agent-specific endpoints
  * 10. customer role is present in /iam/roles canonical role list
+ * 11. customer login succeeds; customer is blocked from admin and merchant portal APIs (→ 403)
+ * 12. customer role template has zero enabled permissions
  */
 
 import { test, expect, request as apiRequest } from "@playwright/test";
@@ -50,7 +56,8 @@ const MERCHANT3_EMAIL = "merchant3@demo.com";
 
 const TEST_PAYOUT_ADMIN_EMAIL = "test_e2e_payout_admin@iam-matrix.local";
 const TEST_PAYOUT_SUPER_EMAIL = "test_e2e_payout_super@iam-matrix.local";
-const TEST_AGENT_EMAIL       = "test_e2e_agent@iam-matrix.local";
+const TEST_AGENT_EMAIL        = "test_e2e_agent@iam-matrix.local";
+const TEST_CUSTOMER_EMAIL     = "test_e2e_customer@iam-matrix.local";
 const TEST_ROLE_PASS = "TestRole@12345";
 
 test.describe("IAM role-isolation", () => {
@@ -61,7 +68,9 @@ test.describe("IAM role-isolation", () => {
   let payoutAdminToken: string;
   let payoutSuperToken: string;
   let agentToken: string;
+  let customerToken: string;
   let testUserIds: number[] = [];
+  let customerUserId: number | null = null;
 
   test.beforeAll(async () => {
     // Clear rate limits so login calls don't get blocked by previous test runs
@@ -122,10 +131,33 @@ test.describe("IAM role-isolation", () => {
     testUserIds       = [pa.id, ps.id, ag.id];
 
     await ctx.dispose();
+
+    // ── Create customer user via pgcrypto (no admin endpoint for customer role) ──
+    // pgcrypto's crypt() generates $2a$ bcrypt — accepted by the app's bcrypt.compare().
+    try {
+      execSync(
+        `psql "${process.env["DATABASE_URL"]}" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto; DELETE FROM users WHERE email = '${TEST_CUSTOMER_EMAIL}'; INSERT INTO users (email, password_hash, name, role, is_active) VALUES ('${TEST_CUSTOMER_EMAIL}', crypt('${TEST_ROLE_PASS}', gen_salt('bf', 10)), 'Test Customer', 'customer', true);"`,
+        { stdio: "pipe" },
+      );
+      execSync(
+        `psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM rate_limit_hits;"`,
+        { stdio: "pipe" },
+      );
+      customerToken = await login(TEST_CUSTOMER_EMAIL, TEST_ROLE_PASS);
+      // Record the customer user id for cleanup
+      const idRow = execSync(
+        `psql "${process.env["DATABASE_URL"]}" -t -c "SELECT id FROM users WHERE email = '${TEST_CUSTOMER_EMAIL}';"`,
+        { stdio: "pipe" },
+      ).toString().trim();
+      customerUserId = idRow ? parseInt(idRow, 10) : null;
+    } catch (err) {
+      // Non-fatal: customer tests will be marked as failing if login/create fails
+      console.error("customer user setup failed:", err);
+    }
   });
 
   test.afterAll(async () => {
-    // Clean up ephemeral test users
+    // Clean up ephemeral test users created via admin API
     const ctx = await apiRequest.newContext();
     await Promise.all(
       testUserIds.map((id) =>
@@ -135,6 +167,15 @@ test.describe("IAM role-isolation", () => {
       ),
     );
     await ctx.dispose();
+    // Clean up customer user created via psql (no admin API delete for customer role)
+    if (customerUserId != null) {
+      try {
+        execSync(
+          `psql "${process.env["DATABASE_URL"]}" -c "DELETE FROM users WHERE id = ${customerUserId};"`,
+          { stdio: "pipe" },
+        );
+      } catch { /* best-effort */ }
+    }
   });
 
   // ── 1. Merchant (Starter) blocked from all admin IAM endpoints ───────────
@@ -507,5 +548,67 @@ test.describe("IAM role-isolation", () => {
       headers: { Authorization: `Bearer ${payoutSuperToken}` },
     });
     expect([200, 404]).toContain(r.status());
+  });
+
+  // ── 11. customer login + API gating — end-to-end ──────────────────────────
+  // Customer users have no portal access. They can authenticate (get a JWT)
+  // but every admin and merchant portal endpoint returns 403.
+
+  test("customer login succeeds and returns a JWT", async () => {
+    // customerToken was set in beforeAll; if null, setup failed
+    expect(typeof customerToken).toBe("string");
+    expect(customerToken.length).toBeGreaterThan(0);
+  });
+
+  test("customer cannot read IAM roles (403)", async ({ request }) => {
+    const r = await request.get(`${API}/iam/roles`, {
+      headers: { Authorization: `Bearer ${customerToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("customer cannot read IAM migration status (403)", async ({ request }) => {
+    const r = await request.get(`${API}/iam/migration/status`, {
+      headers: { Authorization: `Bearer ${customerToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("customer cannot read admin merchants list (403)", async ({ request }) => {
+    const r = await request.get(`${API}/merchants`, {
+      headers: { Authorization: `Bearer ${customerToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("customer cannot read admin users list (403)", async ({ request }) => {
+    const r = await request.get(`${API}/users`, {
+      headers: { Authorization: `Bearer ${customerToken}` },
+    });
+    expect(r.status()).toBe(403);
+  });
+
+  test("customer cannot access merchant dashboard API (blocked — 403 or 404)", async ({ request }) => {
+    // Merchant portal routes check for a merchant association before permissions,
+    // so a customer (who has no associated merchant) receives either 403 (permission
+    // denied) or 404 (no merchant found). Both indicate the customer cannot access
+    // the merchant portal — the important invariant is no 2xx success.
+    const r = await request.get(`${API}/merchant/summary`, {
+      headers: { Authorization: `Bearer ${customerToken}` },
+    });
+    expect([403, 404]).toContain(r.status());
+  });
+
+  // ── 12. customer role template has zero enabled permissions ───────────────
+  test("customer role has zero enabled permissions in the role template", async ({ request }) => {
+    const r = await request.get(`${API}/iam/roles`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    expect(r.status()).toBe(200);
+    const body = await r.json();
+    const customerEntry = body.roles.find((e: { role: string }) => e.role === "customer");
+    expect(customerEntry).toBeDefined();
+    const enabledCount = Object.values(customerEntry.permissions as Record<string, boolean>).filter(Boolean).length;
+    expect(enabledCount).toBe(0);
   });
 });
