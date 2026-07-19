@@ -76,6 +76,32 @@ export async function up(db: DrizzleExecutor): Promise<void> {
   await db.execute(
     sql`CREATE INDEX IF NOT EXISTS rp_role_idx ON role_permissions(role)`,
   );
+  // FK: permission_key → permissions.key (cascade — key deleted = row gone)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'rp_permission_key_fk' AND table_name = 'role_permissions'
+      ) THEN
+        ALTER TABLE role_permissions
+          ADD CONSTRAINT rp_permission_key_fk
+          FOREIGN KEY (permission_key) REFERENCES permissions(key) ON DELETE CASCADE;
+      END IF;
+    END $$
+  `);
+  // FK: updated_by_user_id → users.id (set null — actor deleted = null)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'rp_updated_by_fk' AND table_name = 'role_permissions'
+      ) THEN
+        ALTER TABLE role_permissions
+          ADD CONSTRAINT rp_updated_by_fk
+          FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
+      END IF;
+    END $$
+  `);
 
   // ── user_permissions — per-user ALLOW/DENY overrides ────────────────────
   // Super Admin only — SET via PUT /iam/users/:userId/permissions/:key.
@@ -93,6 +119,45 @@ export async function up(db: DrizzleExecutor): Promise<void> {
   await db.execute(
     sql`CREATE INDEX IF NOT EXISTS up_user_id_idx ON user_permissions(user_id)`,
   );
+  // FK: user_id → users.id (cascade — user deleted = overrides gone)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'up_user_id_fk' AND table_name = 'user_permissions'
+      ) THEN
+        ALTER TABLE user_permissions
+          ADD CONSTRAINT up_user_id_fk
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+      END IF;
+    END $$
+  `);
+  // FK: permission_key → permissions.key (cascade — key deleted = override gone)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'up_permission_key_fk' AND table_name = 'user_permissions'
+      ) THEN
+        ALTER TABLE user_permissions
+          ADD CONSTRAINT up_permission_key_fk
+          FOREIGN KEY (permission_key) REFERENCES permissions(key) ON DELETE CASCADE;
+      END IF;
+    END $$
+  `);
+  // FK: updated_by_user_id → users.id (set null — actor deleted = null)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'up_updated_by_fk' AND table_name = 'user_permissions'
+      ) THEN
+        ALTER TABLE user_permissions
+          ADD CONSTRAINT up_updated_by_fk
+          FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
+      END IF;
+    END $$
+  `);
 
   // ── iam_migration_log — runtime migration audit record ───────────────────
   // One row is inserted when POST /iam/migration/run completes.
@@ -106,6 +171,19 @@ export async function up(db: DrizzleExecutor): Promise<void> {
       total_users         INTEGER NOT NULL DEFAULT 0,
       snapshot_json       JSONB
     )
+  `);
+  // FK: executed_by_user_id → users.id (set null — actor deleted = null)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'iml_executed_by_fk' AND table_name = 'iam_migration_log'
+      ) THEN
+        ALTER TABLE iam_migration_log
+          ADD CONSTRAINT iml_executed_by_fk
+          FOREIGN KEY (executed_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
+      END IF;
+    END $$
   `);
 }
 
