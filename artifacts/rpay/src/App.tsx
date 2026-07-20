@@ -178,6 +178,7 @@ import AdminKycReview from "@/pages/admin/kyc-review";
 import MerchantReports from "@/pages/merchant/reports";
 import AdminReports from "@/pages/admin/reports";
 import AdminPlatformProfit from "@/pages/admin/platform-profit";
+import AdminCms from "@/pages/admin/cms";
 import MerchantSupport from "@/pages/merchant/support";
 import MerchantAccountStatement from "@/pages/merchant/account-statement";
 import AdminMerchantStatements from "@/pages/admin/merchant-statements";
@@ -517,6 +518,7 @@ function Router() {
       <Route path="/admin/merchant-verifications"><AdminRoute component={AdminMerchantVerifications} /></Route>
       <Route path="/admin/reports"><AdminRoute component={AdminReports} /></Route>
       <Route path="/admin/platform-profit"><AdminRoute component={AdminPlatformProfit} /></Route>
+      <Route path="/admin/cms"><AdminRoute component={AdminCms} /></Route>
       <Route path="/admin/support-tickets"><AdminRoute component={AdminSupportTickets} /></Route>
       <Route path="/admin/support"><AdminRoute component={AdminSupportTickets} /></Route>
       <Route path="/admin/merchant-statements"><AdminRoute component={AdminMerchantStatements} /></Route>

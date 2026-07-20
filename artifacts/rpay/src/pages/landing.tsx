@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { RasoKartLogo } from "@/components/ui/rasokart-logo";
+import { PromoBannerSlot } from "@/components/ui/promo-banner";
 import { useCompanySettings } from "@/lib/company-settings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -232,6 +233,8 @@ export default function Landing() {
         </SheetContent>
       </Sheet>
 
+      <PromoBannerSlot placement="announcement_bar" />
+
       {/* HERO */}
       <section className="relative flex min-h-screen items-center overflow-hidden pt-16">
         {/* glow blobs — clipped so they can't cause horizontal overflow */}
@@ -284,6 +287,8 @@ export default function Landing() {
         </div>
       </section>
 
+      <PromoBannerSlot placement="hero_bottom" />
+
       {/* SERVICES */}
       <section id="services" className="relative py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -319,6 +324,8 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      <PromoBannerSlot placement="services_bottom" />
 
       {/* MERCHANT FEATURES */}
       <section id="features" className="relative py-24">
@@ -366,6 +373,8 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      <PromoBannerSlot placement="features_bottom" />
 
       {/* PLANS / WHY RASOKART */}
       <section id="plans" className="relative py-24">
@@ -416,6 +425,8 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      <PromoBannerSlot placement="plans_bottom" />
 
       {/* SETTLEMENT DASHBOARD */}
       <section id="settlement" className="relative py-24">
@@ -497,6 +508,8 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      <PromoBannerSlot placement="settlement_bottom" />
 
       {/* API DOCUMENTATION */}
       <section id="api-docs" className="relative py-24">
@@ -615,6 +628,8 @@ export default function Landing() {
         </div>
       </section>
 
+      <PromoBannerSlot placement="api_bottom" />
+
       {/* PAYOUT PORTAL — dedicated payout merchant section */}
       <section id="payout-portal" className="relative py-24 bg-gradient-to-b from-card/10 to-background">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -704,6 +719,8 @@ export default function Landing() {
         </div>
       </section>
 
+      <PromoBannerSlot placement="payout_bottom" />
+
       {/* SECURITY TRUST STRIP */}
       <section className="border-y border-border/40 bg-card/20 py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -722,6 +739,8 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      <PromoBannerSlot placement="trust_bottom" />
 
       {/* CONTACT / APPLY CTA */}
       <section id="contact" className="relative py-24">
@@ -805,6 +824,8 @@ export default function Landing() {
         </div>
       </section>
 
+      <PromoBannerSlot placement="contact_bottom" />
+
       {/* GET THE APP */}
       <section className="py-16 bg-gradient-to-b from-background to-card/30">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 text-center">
@@ -842,6 +863,8 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      <PromoBannerSlot placement="pre_footer" />
 
       {/* FOOTER */}
       <footer className="border-t border-border/40 bg-card/20 py-12">

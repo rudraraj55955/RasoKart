@@ -84,6 +84,7 @@ import dummyDataCleanupRouter from "./dummyDataCleanup";
 import accountStatementRouter from "./accountStatement";
 import tryItPresetsRouter from "./tryItPresets";
 import adminTryItPresetsRouter from "./adminTryItPresets";
+import cmsRouter from "./cms";
 import razorpayOrdersRouter from "./razorpayOrders";
 import razorpayWebhookRouter from "./razorpayWebhook";
 import adminRazorpayRouter from "./adminRazorpay";
@@ -238,6 +239,9 @@ router.use("/iam", iamRouter);
 
 // Admin full-lifecycle agent management (create, suspend, revoke, etc.)
 router.use("/admin/agents", adminAgentsRouter);
+
+// Promotional CMS — Super Admin campaign management + public banner delivery
+router.use("/cms", cmsRouter);
 
 // Public agent activation — verify invite token + set password on first login
 // Mounted BEFORE the auth-guarded /agent router so no token is needed

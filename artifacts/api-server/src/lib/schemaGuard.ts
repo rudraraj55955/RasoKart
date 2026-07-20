@@ -1403,6 +1403,71 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "agents", migration: "backfill_agent_codes" }, "schema_guard_column_added");
 
+  // ── Promotional CMS tables ──────────────────────────────────────────────────
+  // Created BEFORE the IAM migration so a failure there cannot block these.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS promotional_campaigns (
+      id SERIAL PRIMARY KEY,
+      internal_name TEXT NOT NULL,
+      public_title TEXT,
+      subtitle TEXT,
+      description TEXT,
+      badge TEXT,
+      cta_text TEXT,
+      cta_url TEXT,
+      secondary_cta_text TEXT,
+      secondary_cta_url TEXT,
+      desktop_image_url TEXT,
+      tablet_image_url TEXT,
+      mobile_image_url TEXT,
+      video_url TEXT,
+      alt_text TEXT,
+      type TEXT NOT NULL DEFAULT 'text_banner',
+      theme TEXT DEFAULT 'dark',
+      background_color TEXT,
+      gradient_from TEXT,
+      gradient_to TEXT,
+      overlay_opacity INTEGER DEFAULT 40,
+      animation TEXT DEFAULT 'fade',
+      placement TEXT NOT NULL,
+      priority INTEGER DEFAULT 0,
+      display_order INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft',
+      start_at TIMESTAMPTZ,
+      end_at TIMESTAMPTZ,
+      audience TEXT DEFAULT 'all',
+      device_targeting TEXT DEFAULT 'all',
+      language TEXT DEFAULT 'en',
+      autoplay BOOLEAN DEFAULT TRUE,
+      slide_speed_ms INTEGER DEFAULT 5000,
+      infinite_loop BOOLEAN DEFAULT TRUE,
+      show_nav_arrows BOOLEAN DEFAULT TRUE,
+      show_dots BOOLEAN DEFAULT TRUE,
+      pause_on_hover BOOLEAN DEFAULT TRUE,
+      countdown_end_at TIMESTAMPTZ,
+      is_slot_enabled BOOLEAN DEFAULT TRUE,
+      created_by INTEGER,
+      updated_by INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "promotional_campaigns" }, "schema_guard_table_created");
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS promotional_analytics (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      placement TEXT,
+      device_type TEXT,
+      session_id TEXT,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "promotional_analytics" }, "schema_guard_table_created");
+
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.
