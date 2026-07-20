@@ -195,6 +195,8 @@ jobs:
           check https://rasokart.com/admin/legal-pages
           check https://rasokart.com/admin/login
           check https://rasokart.com/merchant/login
+          check https://rasokart.com/agent/login
+          check https://rasokart.com/agent/activate
           check https://rasokart.com/sitemap.xml
           check https://rasokart.com/robots.txt
           echo "--- Contact form POST ---"

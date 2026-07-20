@@ -1379,6 +1379,30 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_payment_url TEXT`);
   logger.info({ table: "qr_codes", migration: "add_missing_qr_cols" }, "schema_guard_column_added");
 
+  // ── agents: extended profile + invite/first-login columns ─────────────────
+  // Original agents table only had basic columns. Extended fields added for
+  // the full Agent Portal: unique agent code (RSK-AG-NNNNNN), employee HR
+  // fields, and the invite/first-login activation flow.
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_code TEXT UNIQUE`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS employee_id TEXT`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS department TEXT`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS team TEXT`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS reporting_manager TEXT`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_token TEXT`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_token_expiry TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'pending'`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS first_login_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE agents ADD COLUMN IF NOT EXISTS password_set_at TIMESTAMPTZ`);
+  logger.info({ table: "agents", migration: "add_agent_portal_columns" }, "schema_guard_column_added");
+
+  // Backfill agent_code for existing agents that have no code yet
+  await db.execute(sql`
+    UPDATE agents
+    SET agent_code = CONCAT('RSK-AG-', LPAD(id::text, 6, '0'))
+    WHERE agent_code IS NULL
+  `);
+  logger.info({ table: "agents", migration: "backfill_agent_codes" }, "schema_guard_column_added");
+
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.

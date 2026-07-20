@@ -15,6 +15,18 @@ export const agentsTable = pgTable("agents", {
   totalCommissionPaid: numeric("total_commission_paid", { precision: 18, scale: 2 }).notNull().default("0"),
   createdByAdminId: integer("created_by_admin_id"),
   notes: text("notes"),
+  // Extended agent profile fields (all nullable for backward compat)
+  agentCode: text("agent_code").unique(),
+  employeeId: text("employee_id"),
+  department: text("department"),
+  team: text("team"),
+  reportingManager: text("reporting_manager"),
+  // Invite / first-login flow
+  inviteToken: text("invite_token"),
+  inviteTokenExpiry: timestamp("invite_token_expiry", { withTimezone: true }),
+  inviteStatus: text("invite_status").notNull().default("pending"),
+  firstLoginAt: timestamp("first_login_at", { withTimezone: true }),
+  passwordSetAt: timestamp("password_set_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

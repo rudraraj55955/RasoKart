@@ -103,6 +103,8 @@ import AdminSocialProviders from "@/pages/admin/social-providers";
 import AdminDataHygiene from "@/pages/admin/data-hygiene";
 import AdminSecureIdSettings from "@/pages/admin/secure-id-settings";
 import AdminIam from "@/pages/admin/iam";
+import AdminAgents from "@/pages/admin/agents";
+import AgentActivate from "@/pages/agent/activate";
 import AdminMerchantOnboarding from "@/pages/admin/merchant-onboarding";
 import MerchantOnboarding from "@/pages/merchant/onboarding";
 import MerchantAutoKyc from "@/pages/merchant/auto-kyc";
@@ -414,6 +416,10 @@ function Router() {
       <Route path="/admin" component={SmartAdminEntry} />
       <Route path="/merchant" component={SmartMerchantEntry} />
       <Route path="/agent" component={AgentLogin} />
+      <Route path="/agent/login" component={AgentLogin} />
+
+      {/* Agent activate — public, no auth required (invite link first-login) */}
+      <Route path="/agent/activate" component={AgentActivate} />
 
       {/* Agent Routes */}
       <Route path="/agent/dashboard"><AgentRoute component={AgentDashboard} /></Route>
@@ -499,6 +505,7 @@ function Router() {
       <Route path="/admin/api-docs"><AdminRoute component={AdminApiDocs} /></Route>
       <Route path="/admin/legal-pages"><AdminRoute component={AdminLegalPages} /></Route>
       <Route path="/admin/iam"><AdminRoute component={AdminIam} /></Route>
+      <Route path="/admin/agents"><AdminRoute component={AdminAgents} /></Route>
 
       {/* Legacy/broken payout routes — redirect to canonical page */}
       <Route path="/admin/cashfree-payout"><Redirect to="/admin/payout-gateway" /></Route>

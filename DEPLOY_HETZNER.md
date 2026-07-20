@@ -292,14 +292,71 @@ server {
 }
 ```
 
+```nginx
+# Role subdomains — all 5 serve the same React SPA (same dist/).
+# The SPA detects hostname at runtime and routes to the correct portal.
+# API always lives on rasokart.com/api — no api.* split.
+#
+# Subdomains: superadmin | admin | merchant | payoutmerchant | agent
+# All already point to 167.233.77.68 via Cloudflare (DNS pre-configured).
+# Cloudflare proxies SSL — no certbot certs needed for subdomains.
+# Only rasokart.com/www needs a certbot cert (or use Cloudflare Full-Strict).
+
+server {
+    listen 443 ssl http2;
+    server_name superadmin.rasokart.com admin.rasokart.com merchant.rasokart.com payoutmerchant.rasokart.com agent.rasokart.com;
+
+    # Use the same cert as the apex domain (or wildcard *.rasokart.com)
+    ssl_certificate     /etc/letsencrypt/live/rasokart.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/rasokart.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # Security headers
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options SAMEORIGIN;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy strict-origin-when-cross-origin;
+    # Allow subdomain iframes to access rasokart.com API (CORS handled by Express)
+    add_header Cross-Origin-Opener-Policy same-origin-allow-popups;
+
+    # Serve same frontend SPA as apex — subdomain portal detection is client-side
+    root /var/www/rasokart/artifacts/rpay/dist/public;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets aggressively
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2|woff|ttf)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
 ```bash
 # Enable site
 ln -s /etc/nginx/sites-available/rasokart /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 
-# Get SSL certificate (www + apex)
-certbot --nginx -d rasokart.com -d www.rasokart.com \
+# Get SSL certificate (www + apex + subdomains — use wildcard)
+# Option A: wildcard cert (recommended — covers all 5 subdomains at once)
+certbot certonly --nginx \
+  -d rasokart.com -d www.rasokart.com -d "*.rasokart.com" \
   --non-interactive --agree-tos -m admin@rasokart.com
+
+# Option B: individual SANs (if DNS challenge not available)
+certbot --nginx \
+  -d rasokart.com -d www.rasokart.com \
+  -d superadmin.rasokart.com -d admin.rasokart.com \
+  -d merchant.rasokart.com -d payoutmerchant.rasokart.com -d agent.rasokart.com \
+  --non-interactive --agree-tos -m admin@rasokart.com
+
+# If using Cloudflare Full (Strict) SSL mode, subdomains are already HTTPS via
+# Cloudflare edge — only the origin-to-Cloudflare cert matters (the apex cert
+# works fine as the origin cert for all subdomains behind Cloudflare proxy).
 ```
 
 ---

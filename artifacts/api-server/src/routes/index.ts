@@ -93,6 +93,8 @@ import publicContactRouter from "./publicContact";
 import policyAcceptanceRouter from "./policyAcceptance";
 import policyVersionsRouter from "./policyVersions";
 import iamRouter from "./iam";
+import adminAgentsRouter from "./adminAgents";
+import agentActivateRouter from "./agentActivate";
 
 const router: IRouter = Router();
 
@@ -233,5 +235,12 @@ router.use(policyVersionsRouter);
 
 // IAM + RBAC control panel
 router.use("/iam", iamRouter);
+
+// Admin full-lifecycle agent management (create, suspend, revoke, etc.)
+router.use("/admin/agents", adminAgentsRouter);
+
+// Public agent activation — verify invite token + set password on first login
+// Mounted BEFORE the auth-guarded /agent router so no token is needed
+router.use("/agent/activate", agentActivateRouter);
 
 export default router;
