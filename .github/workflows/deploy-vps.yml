@@ -95,6 +95,10 @@ jobs:
             # ── [2/9] Pull ────────────────────────────────────────────────────
             echo "=== [2/9] Pull latest main branch ==="
             cd "$APP_DIR"
+            # Ensure origin always points to GitHub — guards against stale Replit
+            # subrepl-* remote URLs that can leave the VPS tracking the wrong repo.
+            git remote set-url origin https://github.com/rudraraj55955/RasoKart.git
+            echo "Remote origin set to GitHub"
             # Back up ecosystem.config.cjs before git reset --hard replaces it
             # with the placeholder version from the repo
             cp "$ECOSYSTEM" /tmp/rasokart_ecosystem_live.cjs
