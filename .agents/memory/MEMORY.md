@@ -65,3 +65,4 @@
 - [Playwright toHaveProperty dot-in-key](playwright-dot-in-property-key.md) — toHaveProperty("a.b") traverses nested objects; for flat keys containing dots use bracket access: obj["a.b"]; affects healthz check keys like "iam_tables.permissions_schema".
 - [Playwright APIRequestContext dispose before body read](playwright-ctx-dispose-before-body.md) — must call r.text() or r.json() BEFORE ctx.dispose(); disposal invalidates the response buffer and causes "Response has been disposed" error.
 - [demo admin@rasokart.com is Super Admin](demo-admin-is-superadmin.md) — admin@rasokart.com has is_super_admin=true; requirePermission is bypassed entirely for SA; E2E tests verifying non-SA admin restriction need a separate non-SA admin account.
+- [qr_codes schema guard](qr-codes-schema-guard.md) — full-row SELECT fails on prod if new columns lack ALTER TABLE guards in schemaGuard.ts

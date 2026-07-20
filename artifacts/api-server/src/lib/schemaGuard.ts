@@ -1360,6 +1360,25 @@ async function runGuard(): Promise<void> {
   // ── signature_failure_alert_logs: backfill cooldown_hours column ──────────
   await db.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER NOT NULL DEFAULT 1`);
 
+  // ── qr_codes: columns added after initial table creation ──────────────────
+  // The original qr_codes table had only the basic columns (id, merchant_id,
+  // type, label, payload, amount, status, created_at, updated_at). All columns
+  // below were added incrementally as features were built but never received
+  // ALTER TABLE guards, causing `SELECT qrCodesTable.*` (full-row selects in
+  // GET /api/qr-codes and GET /api/qr-codes/public/:id) to throw
+  // "column does not exist" → HTTP 500 on production.
+  // ADD COLUMN IF NOT EXISTS is always idempotent — safe to run any number
+  // of times, even if the column already exists.
+  await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS order_id TEXT`);
+  await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS callback_url TEXT`);
+  await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS merchant_reference TEXT`);
+  await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS ekqr_order_id TEXT`);
+  await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS ekqr_payment_url TEXT`);
+  await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_key TEXT`);
+  await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_order_id TEXT`);
+  await db.execute(sql`ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS provider_payment_url TEXT`);
+  logger.info({ table: "qr_codes", migration: "add_missing_qr_cols" }, "schema_guard_column_added");
+
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.
