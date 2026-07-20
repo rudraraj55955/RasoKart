@@ -40,12 +40,12 @@ export interface Campaign {
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 async function trackEvent(campaignId: number, eventType: "impression" | "click", placement: string) {
-  const device = window.innerWidth < 640 ? "mobile" : window.innerWidth < 1024 ? "tablet" : "desktop";
+  const deviceType = window.innerWidth < 640 ? "mobile" : window.innerWidth < 1024 ? "tablet" : "desktop";
   try {
     await fetch(`${BASE}/api/cms/track`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ campaignId, eventType, device, placement, page: window.location.pathname }),
+      body: JSON.stringify({ campaignId, eventType, deviceType, placement }),
     });
   } catch {
     // silent — never fail the UI for analytics

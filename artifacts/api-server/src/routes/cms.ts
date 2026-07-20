@@ -93,7 +93,7 @@ router.get("/public/banners", async (req, res) => {
 
 // POST /api/cms/track — track impression or click (no auth required)
 router.post("/track", async (req, res) => {
-  const { campaignId, eventType, device, placement, page } = req.body as Record<string, unknown>;
+  const { campaignId, eventType, placement, deviceType, sessionId } = req.body as Record<string, unknown>;
 
   if (!campaignId || !["impression", "click"].includes(eventType as string)) {
     return res.status(400).json({ error: "Invalid tracking event" });
@@ -103,10 +103,9 @@ router.post("/track", async (req, res) => {
     await db.insert(promotionalAnalyticsTable).values({
       campaignId: Number(campaignId),
       eventType: eventType as string,
-      device: typeof device === "string" ? device : null,
       placement: typeof placement === "string" ? placement : null,
-      page: typeof page === "string" ? page : null,
-      userAgent: req.headers["user-agent"] ?? null,
+      deviceType: typeof deviceType === "string" ? deviceType : null,
+      sessionId: typeof sessionId === "string" ? sessionId : null,
     });
     return res.json({ ok: true });
   } catch (err) {
@@ -361,9 +360,9 @@ router.get("/analytics", requireAuth, requireAdmin, requireSuperAdmin, async (re
           NULLIF(COUNT(*) FILTER (WHERE pa.event_type = 'impression'), 0),
           2
         ) AS ctr,
-        COUNT(*) FILTER (WHERE pa.device = 'mobile') AS mobile_events,
-        COUNT(*) FILTER (WHERE pa.device = 'desktop') AS desktop_events,
-        COUNT(*) FILTER (WHERE pa.device = 'tablet') AS tablet_events
+        COUNT(*) FILTER (WHERE pa.device_type = 'mobile') AS mobile_events,
+        COUNT(*) FILTER (WHERE pa.device_type = 'desktop') AS desktop_events,
+        COUNT(*) FILTER (WHERE pa.device_type = 'tablet') AS tablet_events
       FROM promotional_analytics pa
       JOIN promotional_campaigns pc ON pc.id = pa.campaign_id
       GROUP BY pa.campaign_id, pc.internal_name, pc.placement, pc.status

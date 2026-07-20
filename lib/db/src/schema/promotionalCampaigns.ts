@@ -1,4 +1,4 @@
-import { boolean, integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 
 export const promotionalCampaignsTable = pgTable("promotional_campaigns", {
   id: serial("id").primaryKey(),
@@ -50,9 +50,9 @@ export const promotionalAnalyticsTable = pgTable("promotional_analytics", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull(),
   eventType: text("event_type").notNull(),
-  device: text("device"),
   placement: text("placement"),
-  page: text("page"),
-  userAgent: text("user_agent"),
+  deviceType: text("device_type"),
+  sessionId: text("session_id"),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

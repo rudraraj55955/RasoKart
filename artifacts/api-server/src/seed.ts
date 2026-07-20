@@ -1851,14 +1851,16 @@ export async function seed() {
   }
 
   // ── Promotional CMS seed ─────────────────────────────────────────────────
+  // Wrapped in its own try-catch so CMS seed failures never abort the wider seed.
+  try {
   const cmsCampaignCount = await db.select({ c: count() }).from(promotionalCampaignsTable);
   if ((cmsCampaignCount[0]?.c ?? 0) === 0) {
     await db.insert(promotionalCampaignsTable).values([
       {
-        internalName: "Zero Setup Fee — Q3 2026",
+        internalName: "Zero Setup Fee Promo",
         publicTitle: "Get Started for ₹0",
-        subtitle: "Zero setup fees for all new merchants through September 2026.",
-        badge: "Limited Time",
+        subtitle: "Zero setup fee for new merchants — no hidden charges, no long-term lock-in.",
+        badge: "New Merchant",
         ctaText: "Apply Now",
         ctaUrl: "/merchant/apply",
         secondaryCtaText: "See Plans",
@@ -1868,7 +1870,7 @@ export async function seed() {
         placement: "hero_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -1892,7 +1894,7 @@ export async function seed() {
         placement: "services_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -1916,7 +1918,7 @@ export async function seed() {
         placement: "features_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -1929,18 +1931,18 @@ export async function seed() {
         isSlotEnabled: true,
       },
       {
-        internalName: "Silver Plan Promo — Save 20%",
-        publicTitle: "Upgrade to Silver & Save 20%",
-        subtitle: "Get full API access, webhooks, and auto-reconciliation. Cancel anytime.",
-        badge: "20% Off",
-        ctaText: "Claim Offer",
+        internalName: "Silver Plan Upgrade Banner",
+        publicTitle: "Unlock the Full Silver Plan",
+        subtitle: "API access, webhooks, and auto-reconciliation — everything you need to scale.",
+        badge: "Full Access",
+        ctaText: "View Plans",
         ctaUrl: "#plans",
         type: "merchant_offer",
         theme: "amber",
         placement: "plans_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -1954,8 +1956,8 @@ export async function seed() {
       },
       {
         internalName: "Auto-Reconciliation Feature Banner",
-        publicTitle: "Settlement in < 2 Hours",
-        subtitle: "Automated reconciliation matches your deposits to payouts — no spreadsheet required.",
+        publicTitle: "Automated Settlement Reconciliation",
+        subtitle: "Smart matching of deposits to payouts — no spreadsheet or manual work required.",
         badge: "Auto",
         ctaText: "See How It Works",
         ctaUrl: "#settlement",
@@ -1964,7 +1966,7 @@ export async function seed() {
         placement: "settlement_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -1988,7 +1990,7 @@ export async function seed() {
         placement: "api_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -2012,7 +2014,7 @@ export async function seed() {
         placement: "payout_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -2025,9 +2027,9 @@ export async function seed() {
         isSlotEnabled: true,
       },
       {
-        internalName: "PCI-DSS Security Announcement",
-        publicTitle: "PCI-DSS Level 1 Certified",
-        subtitle: "Your payments are protected by 256-bit TLS encryption and bank-grade security.",
+        internalName: "Security Banner",
+        publicTitle: "Bank-Grade Security Built In",
+        subtitle: "All payment data is protected by 256-bit TLS encryption with server-side key management.",
         badge: "Security",
         ctaText: "Learn About Our Security",
         ctaUrl: "#contact",
@@ -2036,7 +2038,7 @@ export async function seed() {
         placement: "trust_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -2050,8 +2052,8 @@ export async function seed() {
       },
       {
         internalName: "Referral Campaign — Contact CTA",
-        publicTitle: "Refer a Business, Earn ₹2,000",
-        subtitle: "For every merchant you refer who onboards, you earn a ₹2,000 referral credit.",
+        publicTitle: "Refer a Business, Earn Rewards",
+        subtitle: "Refer a merchant partner who activates on RasoKart and earn referral rewards on their onboarding.",
         badge: "Referral",
         ctaText: "Get Your Link",
         ctaUrl: "/merchant/login",
@@ -2060,7 +2062,7 @@ export async function seed() {
         placement: "contact_bottom",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -2075,7 +2077,7 @@ export async function seed() {
       {
         internalName: "Pre-Footer — Apply Today CTA",
         publicTitle: "Start Collecting Payments Today",
-        subtitle: "Join 10,000+ merchants on India's fastest-growing payment platform.",
+        subtitle: "Join businesses across India who trust RasoKart for reliable, fast payment collection.",
         badge: "Get Started",
         ctaText: "Apply Now — It's Free",
         ctaUrl: "#contact",
@@ -2086,7 +2088,7 @@ export async function seed() {
         placement: "pre_footer",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -2108,7 +2110,7 @@ export async function seed() {
         placement: "announcement_bar",
         priority: 0,
         displayOrder: 0,
-        status: "draft",
+        status: "published",
         audience: "all",
         deviceTargeting: "all",
         language: "en",
@@ -2122,6 +2124,9 @@ export async function seed() {
       },
     ]);
     logger.info("cms_campaigns_seeded");
+  }
+  } catch (cmsErr) {
+    logger.warn({ err: cmsErr }, "cms_campaigns_seed_skipped — table may not exist yet, will retry on next start");
   }
 
   console.log("Seed complete.");
