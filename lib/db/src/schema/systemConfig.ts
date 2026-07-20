@@ -130,6 +130,14 @@ export const SYSTEM_CONFIG_KEYS = {
   // Cleared only by explicit admin DB update; server restarts do not revert the flag.
   CASHFREE_PAYIN_SUSPENDED:  "cashfree_payin_suspended",
   CASHFREE_PAYOUT_SUSPENDED: "cashfree_payout_suspended",
+  // PayU Hosted Checkout — UAT only until provider activates payment modes
+  // Credentials stored encrypted in provider_integrations table (never in system_config).
+  PAYU_ENABLED:    "payu_enabled",
+  PAYU_ENV:        "payu_env",        // "uat" | "live"
+  PAYU_SUSPENDED:  "payu_suspended",
+  PAYU_MIN_AMOUNT: "payu_min_amount",
+  PAYU_MAX_AMOUNT: "payu_max_amount",
+  PAYU_DAILY_LIMIT: "payu_daily_limit",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {
@@ -215,4 +223,10 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.RAZORPAY_MIN_AMOUNT]: "100",
   [SYSTEM_CONFIG_KEYS.RAZORPAY_MAX_AMOUNT]: "500000",
   [SYSTEM_CONFIG_KEYS.RAZORPAY_DAILY_LIMIT]: "1000000",
+  [SYSTEM_CONFIG_KEYS.PAYU_ENABLED]:    "false",
+  [SYSTEM_CONFIG_KEYS.PAYU_ENV]:        "uat",
+  [SYSTEM_CONFIG_KEYS.PAYU_SUSPENDED]:  "false",
+  [SYSTEM_CONFIG_KEYS.PAYU_MIN_AMOUNT]: "1",
+  [SYSTEM_CONFIG_KEYS.PAYU_MAX_AMOUNT]: "200000",
+  [SYSTEM_CONFIG_KEYS.PAYU_DAILY_LIMIT]: "1000000",
 } as const;

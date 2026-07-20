@@ -88,6 +88,9 @@ import cmsRouter from "./cms";
 import razorpayOrdersRouter from "./razorpayOrders";
 import razorpayWebhookRouter from "./razorpayWebhook";
 import adminRazorpayRouter from "./adminRazorpay";
+import payuOrdersRouter from "./payuOrders";
+import payuWebhookRouter from "./payuWebhook";
+import adminPayuRouter from "./adminPayu";
 import payoutMerchantSignupRouter from "./payoutMerchantSignup";
 import socialProvidersRouter from "./socialProviders";
 import publicContactRouter from "./publicContact";
@@ -221,6 +224,13 @@ router.use("/admin/dummy-data-cleanup", dummyDataCleanupRouter);
 router.use("/merchant", razorpayOrdersRouter);
 // Admin Razorpay config, orders, webhook-logs — Super Admin only
 router.use("/admin/razorpay", adminRazorpayRouter);
+
+// PayU Hosted Checkout — public s2s webhook + browser return must be before /payment auth routes
+router.use("/payment", payuWebhookRouter);
+// Merchant-facing PayU routes (initiate, status check)
+router.use("/merchant", payuOrdersRouter);
+// Admin PayU config, credentials, orders — Super Admin only
+router.use("/admin/payu", adminPayuRouter);
 
 // Social provider admin toggles (Super Admin CRUD)
 router.use("/auth/social-providers", socialProvidersRouter);

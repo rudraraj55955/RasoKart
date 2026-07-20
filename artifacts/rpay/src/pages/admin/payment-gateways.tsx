@@ -110,6 +110,353 @@ function RazorpayPayinCard({ onConfigure }: { onConfigure: () => void }) {
   );
 }
 
+// ── PayU overview card ────────────────────────────────────────────────────────
+
+function PayuCard({ onConfigure }: { onConfigure: () => void }) {
+  const [status, setStatus] = useState<{ enabled: boolean; suspended: boolean; env: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/admin/payu/config", { headers: authHeader() })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: any) => {
+        if (d) setStatus({ enabled: d.isEnabled, suspended: false, env: d.environment ?? "uat" });
+      })
+      .catch(() => null)
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <Card className="border-border/50 hover:border-orange-500/30 transition-colors">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
+            <CreditCard className="w-4 h-4 text-orange-400" />
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            {!loading && status && <StatusBadge enabled={status.enabled} />}
+            {!loading && status && <EnvBadge env={status.env} />}
+          </div>
+        </div>
+        <CardTitle className="text-sm font-semibold mt-2">PayU Payin</CardTitle>
+        <CardDescription className="text-xs">
+          Hosted Checkout — UPI, Cards, Netbanking, EMI
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="flex gap-1.5">
+          <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={onConfigure}>
+            <Settings2 className="w-3 h-3 mr-1.5" />Configure
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── PayU config panel ─────────────────────────────────────────────────────────
+
+const PAYU_ONBOARDING_LABELS: Record<string, { label: string; color: string; desc: string }> = {
+  ONBOARDING_PENDING:       { label: "Onboarding Pending",              color: "zinc",   desc: "Save PayU UAT Key and Salt to begin" },
+  UAT_AVAILABLE:            { label: "UAT / Sandbox Available",         color: "amber",  desc: "Sandbox credentials saved. Enable to test payments." },
+  LIVE_PENDING_ACTIVATION:  { label: "Live Payin Pending Activation",   color: "blue",   desc: "Contact PayU support to activate live payment modes" },
+  PAYOUT_PENDING_ACTIVATION:{ label: "Payout Pending Separate Activation", color: "violet", desc: "PayU Payout requires separate provider agreement" },
+};
+
+function PayuOnboardingBadge({ status }: { status: string }) {
+  const cfg = PAYU_ONBOARDING_LABELS[status] ?? PAYU_ONBOARDING_LABELS["ONBOARDING_PENDING"]!;
+  const colorMap: Record<string, string> = {
+    zinc:   "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
+    amber:  "bg-amber-500/10 text-amber-400 border-amber-500/30",
+    blue:   "bg-blue-500/10 text-blue-400 border-blue-500/30",
+    violet: "bg-violet-500/10 text-violet-400 border-violet-500/30",
+  };
+  return (
+    <div className="flex flex-col gap-0.5">
+      <Badge className={`${colorMap[cfg.color] ?? colorMap["zinc"]} text-[10px] h-5 w-fit`}>{cfg.label}</Badge>
+      <p className="text-[10px] text-muted-foreground">{cfg.desc}</p>
+    </div>
+  );
+}
+
+function PayuPanel() {
+  const [config, setConfig]             = useState<any>(null);
+  const [loading, setLoading]           = useState(true);
+  const [key, setKey]                   = useState("");
+  const [salt, setSalt]                 = useState("");
+  const [showKey, setShowKey]           = useState(false);
+  const [showSalt, setShowSalt]         = useState(false);
+  const [enabled, setEnabled]           = useState(false);
+  const [minAmount, setMinAmount]       = useState("1");
+  const [maxAmount, setMaxAmount]       = useState("200000");
+  const [dailyLimit, setDailyLimit]     = useState("1000000");
+  const [saving, setSaving]             = useState(false);
+  const [savingCreds, setSavingCreds]   = useState(false);
+  const [testing, setTesting]           = useState(false);
+  const [initialized, setInitialized]   = useState(false);
+
+  const loadConfig = () => {
+    setLoading(true);
+    fetch("/api/admin/payu/config", { headers: authHeader() })
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then((d: any) => {
+        setConfig(d);
+        if (!initialized) {
+          setEnabled(d.isEnabled ?? false);
+          setInitialized(true);
+        }
+      })
+      .catch(() => toast.error("Failed to load PayU config"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadConfig(); }, []);
+
+  const saveCreds = async () => {
+    if (!key.trim() || !salt.trim()) { toast.error("Both Key and Salt are required"); return; }
+    setSavingCreds(true);
+    try {
+      const r = await fetch("/api/admin/payu/config", {
+        method: "PUT", headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ key: key.trim(), salt: salt.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Failed");
+      toast.success("PayU credentials saved (encrypted)");
+      setKey(""); setSalt("");
+      loadConfig();
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to save credentials");
+    } finally { setSavingCreds(false); }
+  };
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const r = await fetch("/api/admin/payu/settings", {
+        method: "PUT", headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled, environment: "uat",
+          minAmount: parseFloat(minAmount) || 1,
+          maxAmount: parseFloat(maxAmount) || 200000,
+          dailyLimit: parseFloat(dailyLimit) || 1000000,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Failed");
+      toast.success("PayU settings saved");
+      loadConfig();
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to save settings");
+    } finally { setSaving(false); }
+  };
+
+  const testHash = async () => {
+    setTesting(true);
+    try {
+      const r = await fetch("/api/admin/payu/test-hash", {
+        method: "POST", headers: authHeader(),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Test failed");
+      toast.success(`Hash OK — ${d.hashLength} chars, prefix: ${d.hashPrefix}`);
+    } catch (err: any) {
+      toast.error(err.message ?? "Hash test failed");
+    } finally { setTesting(false); }
+  };
+
+  if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground py-8"><Loader2 className="w-4 h-4 animate-spin" />Loading PayU config…</div>;
+
+  const keySet  = config?.keySet  ?? false;
+  const saltSet = config?.saltSet ?? false;
+  const primaryStatus = config?.primaryOnboardingStatus ?? "ONBOARDING_PENDING";
+  const onboardingStatuses: string[] = config?.onboardingStatuses ?? ["ONBOARDING_PENDING"];
+  const capabilities = config?.capabilities ?? {};
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      {/* Header */}
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
+        <div className="p-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
+          <CreditCard className="w-4 h-4 text-orange-400" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium">PayU Hosted Checkout</p>
+          <p className="text-xs text-muted-foreground">UPI, Cards, Netbanking, EMI — credentials stored encrypted in DB</p>
+        </div>
+        <StatusBadge enabled={enabled} />
+      </div>
+
+      {/* Onboarding Status */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-3">
+        <p className="text-sm font-medium">Onboarding Status</p>
+        <div className="space-y-2">
+          {onboardingStatuses.map((s: string) => <PayuOnboardingBadge key={s} status={s} />)}
+        </div>
+      </div>
+
+      {/* Capability Audit */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-2">
+        <p className="text-sm font-medium">Capability Audit</p>
+        <p className="text-[11px] text-muted-foreground mb-2">Status of each PayU feature — no capability is shown as active without actual provider activation.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { key: "hostedCheckout", label: "Hosted Checkout" },
+            { key: "refund",         label: "Refund" },
+            { key: "settlement",     label: "Settlement" },
+            { key: "subscription",   label: "Subscription" },
+            { key: "paymentLinks",   label: "Payment Links" },
+            { key: "payout",         label: "Payout" },
+          ].map(({ key: capKey, label }) => (
+            <div key={capKey} className="flex items-center gap-2 text-xs">
+              {capabilities[capKey]
+                ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                : <XCircle      className="w-3.5 h-3.5 text-zinc-500 shrink-0" />}
+              <span className={capabilities[capKey] ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+            </div>
+          ))}
+        </div>
+        {config?.capabilityNote && (
+          <p className="text-[10px] text-muted-foreground border-t border-border/30 pt-2 mt-1">{config.capabilityNote}</p>
+        )}
+      </div>
+
+      {/* Credentials */}
+      <div className="space-y-4 border border-border/40 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">UAT Credentials</p>
+          <div className="flex gap-1.5">
+            <div className="rounded border border-border/40 px-2 py-1 text-[10px] flex items-center gap-1">
+              <span className="text-muted-foreground">Key:</span>
+              <ConnectedBadge connected={keySet} />
+            </div>
+            <div className="rounded border border-border/40 px-2 py-1 text-[10px] flex items-center gap-1">
+              <span className="text-muted-foreground">Salt:</span>
+              <ConnectedBadge connected={saltSet} />
+            </div>
+          </div>
+        </div>
+        {keySet && config?.keyMasked && (
+          <p className="text-xs text-muted-foreground font-mono">Key: {config.keyMasked}</p>
+        )}
+
+        <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 flex items-start gap-2">
+          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>Enter PayU UAT Key and Salt. Credentials are encrypted with AES-256-GCM using SESSION_SECRET — never stored in plain text.</span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">PayU Key (Merchant Key)</Label>
+            <div className="relative">
+              <Input
+                type={showKey ? "text" : "password"}
+                value={key}
+                onChange={e => setKey(e.target.value)}
+                placeholder={keySet ? "Enter new key to update…" : "PayU UAT Merchant Key"}
+                className="h-8 text-xs pr-8"
+              />
+              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowKey(v => !v)}>
+                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">PayU Salt</Label>
+            <div className="relative">
+              <Input
+                type={showSalt ? "text" : "password"}
+                value={salt}
+                onChange={e => setSalt(e.target.value)}
+                placeholder={saltSet ? "Enter new salt to update…" : "PayU UAT Salt"}
+                className="h-8 text-xs pr-8"
+              />
+              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowSalt(v => !v)}>
+                {showSalt ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Button onClick={saveCreds} disabled={savingCreds || !key.trim() || !salt.trim()} size="sm">
+            {savingCreds ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Shield className="w-3.5 h-3.5 mr-1.5" />Save Credentials</>}
+          </Button>
+          {keySet && saltSet && (
+            <Button variant="outline" size="sm" onClick={testHash} disabled={testing}>
+              {testing ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Testing…</> : <><FlaskConical className="w-3.5 h-3.5 mr-1.5" />Test Hash</>}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Settings */}
+      <div className="space-y-4 border border-border/40 rounded-lg p-4">
+        <p className="text-sm font-medium">Payin Settings (UAT)</p>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm">Enable PayU Payin</p>
+            <p className="text-xs text-muted-foreground">Allow merchants to initiate PayU Hosted Checkout payments</p>
+          </div>
+          <Switch
+            checked={enabled}
+            onCheckedChange={setEnabled}
+            disabled={!keySet || !saltSet}
+          />
+        </div>
+
+        {(!keySet || !saltSet) && (
+          <p className="text-xs text-amber-400 flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5" />Save credentials before enabling
+          </p>
+        )}
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Min Amount (₹)</Label>
+            <Input type="number" value={minAmount} onChange={e => setMinAmount(e.target.value)} className="h-8 text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Max Amount (₹)</Label>
+            <Input type="number" value={maxAmount} onChange={e => setMaxAmount(e.target.value)} className="h-8 text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Daily Limit (₹)</Label>
+            <Input type="number" value={dailyLimit} onChange={e => setDailyLimit(e.target.value)} className="h-8 text-xs" />
+          </div>
+        </div>
+
+        <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-300 flex items-start gap-2">
+          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>Live mode is locked. Contact PayU support and receive live credentials before switching to production. Live activation only after PayU dashboard payment-mode activation.</span>
+        </div>
+
+        <Button onClick={saveSettings} disabled={saving} size="sm">
+          {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Save className="w-3.5 h-3.5 mr-1.5" />Save Settings</>}
+        </Button>
+      </div>
+
+      {/* UAT Test Instructions */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-2">
+        <p className="text-sm font-medium">UAT Test Flow</p>
+        <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+          <li>Save UAT Key + Salt and enable PayU above</li>
+          <li>Merchant initiates a deposit via <code className="font-mono text-foreground">POST /api/merchant/payu/initiate</code></li>
+          <li>Frontend submits a form POST to PayU UAT URL (<code className="font-mono text-foreground">https://test.payu.in/_payment</code>)</li>
+          <li>Use PayU test card: <code className="font-mono text-foreground">5123456789012346</code>, CVV: <code className="font-mono text-foreground">123</code>, Expiry: any future date</li>
+          <li>PayU returns browser to <code className="font-mono text-foreground">/api/payment/payu-return</code> + fires S2S webhook</li>
+          <li>Server verifies SHA-512 hash, atomically credits wallet, redirects merchant to deposits page</li>
+        </ol>
+        <div className="rounded-md border border-zinc-500/20 bg-zinc-500/5 p-2 text-[10px] text-zinc-400 flex items-start gap-1.5 mt-2">
+          <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+          <span>Refund, settlement, and payout are NOT active — these require separate provider activation. Do not present these as working features.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CashfreePayinCard({ onConfigure }: { onConfigure: () => void }) {
   const { data, isLoading } = useGetCashfreeConfig({ request: { headers: authHeader() } });
   return (
@@ -2001,6 +2348,7 @@ export default function AdminPaymentGateways() {
           <TabsContent value="overview" className="mt-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <RazorpayPayinCard onConfigure={() => openConfigTab("razorpay")} />
+              <PayuCard onConfigure={() => openConfigTab("payu")} />
               <CashfreePayinCard onConfigure={() => openConfigTab("cashfree-payin")} />
               <CashfreePayoutCard onConfigure={() => openConfigTab("cashfree-payout")} />
               <EkqrCard onConfigure={() => openConfigTab("ekqr")} />
@@ -2044,6 +2392,9 @@ export default function AdminPaymentGateways() {
                 <TabsTrigger value="razorpay" className="text-xs px-3">
                   <CreditCard className="w-3 h-3 mr-1.5" />Razorpay
                 </TabsTrigger>
+                <TabsTrigger value="payu" className="text-xs px-3">
+                  <CreditCard className="w-3 h-3 mr-1.5" />PayU
+                </TabsTrigger>
                 <TabsTrigger value="cashfree-payin" className="text-xs px-3">
                   <CreditCard className="w-3 h-3 mr-1.5" />Payin Gateway
                 </TabsTrigger>
@@ -2060,6 +2411,7 @@ export default function AdminPaymentGateways() {
                 ))}
               </TabsList>
               <TabsContent value="razorpay"><RazorpayPanel /></TabsContent>
+              <TabsContent value="payu"><PayuPanel /></TabsContent>
               <TabsContent value="cashfree-payin"><CashfreePayinPanel /></TabsContent>
               <TabsContent value="cashfree-payout"><CashfreePayoutPanel /></TabsContent>
               <TabsContent value="ekqr">

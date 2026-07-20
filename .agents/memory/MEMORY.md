@@ -68,4 +68,5 @@
 - [Playwright APIRequestContext dispose before body read](playwright-ctx-dispose-before-body.md) — must call r.text() or r.json() BEFORE ctx.dispose(); disposal invalidates the response buffer and causes "Response has been disposed" error.
 - [demo admin@rasokart.com is Super Admin](demo-admin-is-superadmin.md) — admin@rasokart.com has is_super_admin=true; requirePermission is bypassed entirely for SA; E2E tests verifying non-SA admin restriction need a separate non-SA admin account.
 - [qr_codes schema guard](qr-codes-schema-guard.md) — full-row SELECT fails on prod if new columns lack ALTER TABLE guards in schemaGuard.ts
+- [PayU UAT integration architecture](payu-integration-arch.md) — Hosted Checkout only; creds encrypted in provider_integrations (not system_config); live mode locked until provider activation; capabilities audit is honest (refund/settlement/payout all false).
 - [CMS seed published status](cms-seed-published-status.md) — seed CMS campaigns as 'published'; draft campaigns are invisible on production even after successful VPS deploy.

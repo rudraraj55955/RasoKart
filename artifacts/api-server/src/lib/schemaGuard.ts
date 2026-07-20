@@ -1403,6 +1403,50 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "agents", migration: "backfill_agent_codes" }, "schema_guard_column_added");
 
+  // ── PayU payment tables ──────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS payu_payment_orders (
+      id              SERIAL PRIMARY KEY,
+      merchant_id     INTEGER NOT NULL,
+      txnid           TEXT NOT NULL UNIQUE,
+      amount          NUMERIC(18,2) NOT NULL,
+      productinfo     TEXT NOT NULL,
+      firstname       TEXT,
+      email           TEXT,
+      phone           TEXT,
+      udf1            TEXT,
+      environment     TEXT NOT NULL DEFAULT 'uat',
+      status          TEXT NOT NULL DEFAULT 'INITIATED',
+      mihpayid        TEXT,
+      bank_ref_no     TEXT,
+      payment_mode    TEXT,
+      raw_response    TEXT,
+      hash_verified   BOOLEAN NOT NULL DEFAULT FALSE,
+      failure_reason  TEXT,
+      paid_at         TIMESTAMPTZ,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "payu_payment_orders" }, "schema_guard_table_created");
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS payu_webhook_logs (
+      id                SERIAL PRIMARY KEY,
+      txnid             TEXT,
+      merchant_id       INTEGER,
+      amount            TEXT,
+      status            TEXT,
+      source            TEXT,
+      raw_payload       TEXT NOT NULL,
+      processing_result TEXT NOT NULL,
+      hash_verified     BOOLEAN NOT NULL DEFAULT FALSE,
+      error_message     TEXT,
+      received_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "payu_webhook_logs" }, "schema_guard_table_created");
+
   // ── Promotional CMS tables ──────────────────────────────────────────────────
   // Created BEFORE the IAM migration so a failure there cannot block these.
   await db.execute(sql`

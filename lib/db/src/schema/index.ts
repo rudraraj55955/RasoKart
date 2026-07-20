@@ -87,6 +87,7 @@ export * from "./tryItPresets";
 export * from "./agents";
 export * from "./payoutWalletLoadOrders";
 export * from "./razorpayPayments";
+export * from "./payuPayments";
 export * from "./authProviders";
 export * from "./otpEmailSettings";
 export * from "./policyAcceptances";
