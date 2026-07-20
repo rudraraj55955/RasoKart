@@ -1,10 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Home -->
   <url>
     <loc>https://rasokart.com/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
+
+  <!-- Company -->
+  <url>
+    <loc>https://rasokart.com/about-us</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/careers</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/press-media</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/contact-us</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/whitelabel-solutions</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Legal -->
   <url>
     <loc>https://rasokart.com/privacy-policy</loc>
     <changefreq>monthly</changefreq>
@@ -21,14 +51,73 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://rasokart.com/service-delivery-policy</loc>
+    <loc>https://rasokart.com/cookie-policy</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/acceptable-use-policy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://rasokart.com/contact-us</loc>
+    <loc>https://rasokart.com/intellectual-property-policy</loc>
     <changefreq>monthly</changefreq>
-    <priority>0.9</priority>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/disclaimer</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/service-delivery-policy</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Compliance -->
+  <url>
+    <loc>https://rasokart.com/kyc-aml-policy</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/risk-fraud-prevention</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/data-security-policy</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/pci-dss-security</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/responsible-disclosure</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/security-policy</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/prohibited-businesses</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Customer Support -->
+  <url>
+    <loc>https://rasokart.com/support-center</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://rasokart.com/grievance-redressal-policy</loc>
@@ -36,22 +125,46 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://rasokart.com/pricing-fees-settlement-policy</loc>
+    <loc>https://rasokart.com/grievance-officer</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
+  <url>
+    <loc>https://rasokart.com/escalation-matrix</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/sla-support-timelines</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Developers -->
+  <url>
+    <loc>https://rasokart.com/api-docs</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/integration-guide</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://rasokart.com/upi-collection-api</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Merchant -->
   <url>
     <loc>https://rasokart.com/merchant-agreement</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://rasokart.com/prohibited-businesses</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://rasokart.com/kyc-aml-policy</loc>
+    <loc>https://rasokart.com/pricing-fees-settlement-policy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -61,23 +174,13 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://rasokart.com/chargeback-dispute-policy</loc>
+    <loc>https://rasokart.com/payout-policy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://rasokart.com/cookie-policy</loc>
+    <loc>https://rasokart.com/chargeback-dispute-policy</loc>
     <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://rasokart.com/security-policy</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://rasokart.com/disclaimer</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.7</priority>
   </url>
 </urlset>

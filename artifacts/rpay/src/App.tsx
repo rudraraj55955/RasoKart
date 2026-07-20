@@ -40,6 +40,27 @@ import ChargebackDisputePolicy from "@/pages/chargeback-dispute-policy";
 import CookiePolicyPage from "@/pages/cookie-policy";
 import SecurityPolicyPage from "@/pages/security-policy";
 import DisclaimerPage from "@/pages/disclaimer";
+// Company Pages
+import AboutUs from "@/pages/about-us";
+import Careers from "@/pages/careers";
+import PressMedia from "@/pages/press-media";
+// New Legal Pages
+import AcceptableUsePolicy from "@/pages/acceptable-use-policy";
+import IntellectualPropertyPolicy from "@/pages/intellectual-property-policy";
+import PayoutPolicy from "@/pages/payout-policy";
+// Compliance Pages
+import RiskFraudPrevention from "@/pages/risk-fraud-prevention";
+import DataSecurityPolicy from "@/pages/data-security-policy";
+import PciDssSecurity from "@/pages/pci-dss-security";
+import ResponsibleDisclosure from "@/pages/responsible-disclosure";
+// Support Pages
+import SupportCenter from "@/pages/support-center";
+import GrievanceOfficer from "@/pages/grievance-officer";
+import EscalationMatrix from "@/pages/escalation-matrix";
+import SlaSupportTimelines from "@/pages/sla-support-timelines";
+// Developer Pages
+import ApiDocsPublic from "@/pages/api-docs-public";
+import IntegrationGuide from "@/pages/integration-guide";
 import AdminLegalPages from "@/pages/admin/legal-pages";
 import { CookieConsent } from "@/components/ui/cookie-consent";
 
@@ -567,12 +588,25 @@ function Router() {
       <Route path="/payout-merchant/kyc"><PayoutMerchantRoute component={PayoutMerchantKyc} /></Route>
       {/* Redirect /payout-merchant root to dashboard */}
       <Route path="/payout-merchant"><Redirect to="/payout-merchant/dashboard" /></Route>
-      <Route path="/api-docs"><Redirect to="/merchant/api-docs" /></Route>
+      {/* Public API docs — replaces old redirect to merchant portal */}
+      <Route path="/api-docs" component={ApiDocsPublic} />
 
+      {/* Company pages */}
+      <Route path="/about-us" component={AboutUs} />
+      <Route path="/careers" component={Careers} />
+      <Route path="/press-media" component={PressMedia} />
+
+      {/* Legal pages */}
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/terms-and-conditions" component={TermsAndConditions} />
       <Route path="/refund-cancellation-policy" component={RefundCancellationPolicy} />
       <Route path="/service-delivery-policy" component={ServiceDeliveryPolicy} />
+      <Route path="/cookie-policy" component={CookiePolicyPage} />
+      <Route path="/disclaimer" component={DisclaimerPage} />
+      <Route path="/acceptable-use-policy" component={AcceptableUsePolicy} />
+      <Route path="/intellectual-property-policy" component={IntellectualPropertyPolicy} />
+
+      {/* Merchant / commercial pages */}
       <Route path="/contact-us" component={ContactUs} />
       <Route path="/grievance-redressal-policy" component={GrievanceRedressalPolicy} />
       <Route path="/pricing-fees-settlement-policy" component={PricingFeesSettlementPolicy} />
@@ -580,10 +614,25 @@ function Router() {
       <Route path="/prohibited-businesses" component={ProhibitedBusinesses} />
       <Route path="/kyc-aml-policy" component={KycAmlPolicy} />
       <Route path="/payment-payout-settlement-policy" component={PaymentPayoutSettlementPolicy} />
+      <Route path="/payout-policy" component={PayoutPolicy} />
       <Route path="/chargeback-dispute-policy" component={ChargebackDisputePolicy} />
-      <Route path="/cookie-policy" component={CookiePolicyPage} />
+
+      {/* Compliance pages */}
       <Route path="/security-policy" component={SecurityPolicyPage} />
-      <Route path="/disclaimer" component={DisclaimerPage} />
+      <Route path="/risk-fraud-prevention" component={RiskFraudPrevention} />
+      <Route path="/data-security-policy" component={DataSecurityPolicy} />
+      <Route path="/pci-dss-security" component={PciDssSecurity} />
+      <Route path="/responsible-disclosure" component={ResponsibleDisclosure} />
+
+      {/* Support pages */}
+      <Route path="/support-center" component={SupportCenter} />
+      <Route path="/grievance-officer" component={GrievanceOfficer} />
+      <Route path="/escalation-matrix" component={EscalationMatrix} />
+      <Route path="/sla-support-timelines" component={SlaSupportTimelines} />
+
+      {/* Developer pages */}
+      <Route path="/integration-guide" component={IntegrationGuide} />
+
       <Route path="/upi-collection-api"><PublicPage component={UpiCollectionApi} /></Route>
 
       <Route path="/pay/:slug" component={PayPage} />
