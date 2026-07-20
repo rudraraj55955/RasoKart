@@ -18,6 +18,11 @@
  * Legacy renames handled by up():
  *   role_permission_templates  → role_permissions
  *   user_permission_overrides  → user_permissions
+ *
+ * Ordering note: the permissions catalog INSERT must come BEFORE the FK
+ * constraints on role_permissions/user_permissions so that:
+ *   (a) fresh DBs have no orphan rows when the FK is added, and
+ *   (b) an orphan-cleanup step can safely purge any stale rows before the FK.
  */
 
 import { sql, type SQL } from "drizzle-orm";
@@ -76,32 +81,6 @@ export async function up(db: DrizzleExecutor): Promise<void> {
   await db.execute(
     sql`CREATE INDEX IF NOT EXISTS rp_role_idx ON role_permissions(role)`,
   );
-  // FK: permission_key → permissions.key (cascade — key deleted = row gone)
-  await db.execute(sql`
-    DO $$ BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'rp_permission_key_fk' AND table_name = 'role_permissions'
-      ) THEN
-        ALTER TABLE role_permissions
-          ADD CONSTRAINT rp_permission_key_fk
-          FOREIGN KEY (permission_key) REFERENCES permissions(key) ON DELETE CASCADE;
-      END IF;
-    END $$
-  `);
-  // FK: updated_by_user_id → users.id (set null — actor deleted = null)
-  await db.execute(sql`
-    DO $$ BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'rp_updated_by_fk' AND table_name = 'role_permissions'
-      ) THEN
-        ALTER TABLE role_permissions
-          ADD CONSTRAINT rp_updated_by_fk
-          FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
-      END IF;
-    END $$
-  `);
 
   // ── user_permissions — per-user ALLOW/DENY overrides ────────────────────
   // Super Admin only — SET via PUT /iam/users/:userId/permissions/:key.
@@ -119,45 +98,6 @@ export async function up(db: DrizzleExecutor): Promise<void> {
   await db.execute(
     sql`CREATE INDEX IF NOT EXISTS up_user_id_idx ON user_permissions(user_id)`,
   );
-  // FK: user_id → users.id (cascade — user deleted = overrides gone)
-  await db.execute(sql`
-    DO $$ BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'up_user_id_fk' AND table_name = 'user_permissions'
-      ) THEN
-        ALTER TABLE user_permissions
-          ADD CONSTRAINT up_user_id_fk
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-      END IF;
-    END $$
-  `);
-  // FK: permission_key → permissions.key (cascade — key deleted = override gone)
-  await db.execute(sql`
-    DO $$ BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'up_permission_key_fk' AND table_name = 'user_permissions'
-      ) THEN
-        ALTER TABLE user_permissions
-          ADD CONSTRAINT up_permission_key_fk
-          FOREIGN KEY (permission_key) REFERENCES permissions(key) ON DELETE CASCADE;
-      END IF;
-    END $$
-  `);
-  // FK: updated_by_user_id → users.id (set null — actor deleted = null)
-  await db.execute(sql`
-    DO $$ BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-        WHERE constraint_name = 'up_updated_by_fk' AND table_name = 'user_permissions'
-      ) THEN
-        ALTER TABLE user_permissions
-          ADD CONSTRAINT up_updated_by_fk
-          FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
-      END IF;
-    END $$
-  `);
 
   // ── iam_migration_log — runtime migration audit record ───────────────────
   // One row is inserted when POST /iam/migration/run completes.
@@ -186,10 +126,11 @@ export async function up(db: DrizzleExecutor): Promise<void> {
     END $$
   `);
 
-  // ── Initial backfill: seed the permissions catalog ────────────────────────
-  // Idempotent — ON CONFLICT (key) DO NOTHING preserves any admin edits.
-  // This is the authoritative initial dataset for a fresh deployment.
-  // Runtime seed.ts reconciles additions/removals on subsequent restarts.
+  // ── Seed the permissions catalog BEFORE adding FKs ───────────────────────
+  // Must come before rp_permission_key_fk / up_permission_key_fk so that:
+  //   - fresh DBs: no orphan rows exist when FK is added
+  //   - existing DBs: orphan cleanup below only removes truly unknown keys
+  // ON CONFLICT DO NOTHING preserves any admin-customised descriptions.
   await db.execute(sql`
     INSERT INTO permissions (key, category, is_super_admin_only) VALUES
       -- Admin portal
@@ -262,7 +203,90 @@ export async function up(db: DrizzleExecutor): Promise<void> {
     ON CONFLICT (key) DO NOTHING
   `);
 
-  // ── Initial backfill: seed role_permissions defaults ──────────────────────
+  // ── Orphan cleanup: remove role_permissions / user_permissions rows ───────
+  // whose permission_key no longer exists in the permissions catalog.
+  // This is safe and idempotent — the INSERT INTO role_permissions below will
+  // re-populate any legitimately missing rows.  Prevents FK violations when
+  // the constraint is added on an existing DB with stale rows.
+  await db.execute(sql`
+    DELETE FROM role_permissions
+    WHERE permission_key NOT IN (SELECT key FROM permissions)
+  `);
+  await db.execute(sql`
+    DELETE FROM user_permissions
+    WHERE permission_key NOT IN (SELECT key FROM permissions)
+  `);
+
+  // ── FK constraints (added AFTER permissions catalog is populated) ─────────
+
+  // role_permissions: permission_key → permissions.key
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'rp_permission_key_fk' AND table_name = 'role_permissions'
+      ) THEN
+        ALTER TABLE role_permissions
+          ADD CONSTRAINT rp_permission_key_fk
+          FOREIGN KEY (permission_key) REFERENCES permissions(key) ON DELETE CASCADE;
+      END IF;
+    END $$
+  `);
+  // role_permissions: updated_by_user_id → users.id
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'rp_updated_by_fk' AND table_name = 'role_permissions'
+      ) THEN
+        ALTER TABLE role_permissions
+          ADD CONSTRAINT rp_updated_by_fk
+          FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
+      END IF;
+    END $$
+  `);
+
+  // user_permissions: user_id → users.id
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'up_user_id_fk' AND table_name = 'user_permissions'
+      ) THEN
+        ALTER TABLE user_permissions
+          ADD CONSTRAINT up_user_id_fk
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+      END IF;
+    END $$
+  `);
+  // user_permissions: permission_key → permissions.key
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'up_permission_key_fk' AND table_name = 'user_permissions'
+      ) THEN
+        ALTER TABLE user_permissions
+          ADD CONSTRAINT up_permission_key_fk
+          FOREIGN KEY (permission_key) REFERENCES permissions(key) ON DELETE CASCADE;
+      END IF;
+    END $$
+  `);
+  // user_permissions: updated_by_user_id → users.id
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'up_updated_by_fk' AND table_name = 'user_permissions'
+      ) THEN
+        ALTER TABLE user_permissions
+          ADD CONSTRAINT up_updated_by_fk
+          FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL;
+      END IF;
+    END $$
+  `);
+
+  // ── Seed role_permissions defaults ────────────────────────────────────────
   // Covers all 7 roles (5 canonical + 2 extended payout roles) × all keys.
   // Uses a CROSS JOIN + CASE so the logic mirrors ROLE_DEFAULT_PERMISSIONS in
   // permissions.ts and remains a single idempotent statement.
