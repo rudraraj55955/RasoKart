@@ -665,6 +665,16 @@ router.get("/failover-events", async (req, res, next) => {
       }
     }
 
+    // Safety-net threshold: exhaustion events older than this with no matching
+    // recovery notification are marked "resolved" with an explanatory note rather
+    // than staying "Ongoing" forever. This covers the rare case where the boot
+    // cleanup ran but the notification write failed, or the outage predates the
+    // boot-cleanup feature. Two hours is generous — normal recovery happens in
+    // seconds to minutes; a genuinely ongoing outage past 2h would be investigated
+    // through other channels long before the Failover Events tab.
+    const STALE_ONGOING_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+    const now = Date.now();
+
     const seen = new Set<string>();
     const events: {
       id: number;
@@ -676,6 +686,7 @@ router.get("/failover-events", async (req, res, next) => {
       status: "resolved" | "ongoing";
       resolvedAt: string | null;
       durationSeconds: number | null;
+      note: string | null;
     }[] = [];
 
     for (const r of rows) {
@@ -704,6 +715,17 @@ router.get("/failover-events", async (req, res, next) => {
         ? (recoveryMap.get(exhaustionMeta.outageStartedAt) ?? null)
         : null;
 
+      // Safety-net: if the event is older than the stale-ongoing threshold and
+      // still has no matching recovery notification, treat it as resolved with
+      // an explanatory note. This covers events that pre-date the boot-cleanup
+      // feature, or the rare case where the boot cleanup succeeded in clearing
+      // the system-config row but the notification write failed.
+      const isStale = !recovery && (now - r.createdAt.getTime()) > STALE_ONGOING_THRESHOLD_MS;
+      const effectiveStatus: "resolved" | "ongoing" = (recovery || isStale) ? "resolved" : "ongoing";
+      const note = isStale
+        ? "Auto-closed — no recovery signal was recorded. The server may have restarted during this outage."
+        : null;
+
       events.push({
         id: r.id,
         createdAt: r.createdAt.toISOString(),
@@ -711,9 +733,10 @@ router.get("/failover-events", async (req, res, next) => {
         windowMinutes,
         triggerMerchantId: meta.triggerMerchantId ?? null,
         providersInvolved: providerRows.map(p => p.providerKey),
-        status: recovery ? "resolved" : "ongoing",
+        status: effectiveStatus,
         resolvedAt: recovery?.recoveredAt ?? null,
         durationSeconds: recovery?.durationSeconds ?? null,
+        note,
       });
 
       if (events.length >= limit) break;

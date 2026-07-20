@@ -95,6 +95,7 @@ type FailoverEvent = {
   status: "resolved" | "ongoing";
   resolvedAt: string | null;
   durationSeconds: number | null;
+  note: string | null;
 };
 
 type FailureTrendPoint = {
@@ -1381,6 +1382,9 @@ export default function AdminSmartRouting() {
                                     <span className="text-zinc-500"> · outage lasted <span className="text-amber-300 font-medium">{formatDuration(ev.durationSeconds)}</span></span>
                                   )}
                                 </span>
+                              )}
+                              {ev.status === "resolved" && ev.resolvedAt == null && ev.note != null && (
+                                <span className="text-xs text-zinc-500 italic">{ev.note}</span>
                               )}
                             </div>
                             <p className="text-xs text-zinc-400 mt-1">

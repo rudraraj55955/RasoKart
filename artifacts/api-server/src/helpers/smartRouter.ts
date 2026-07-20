@@ -402,6 +402,141 @@ export async function maybeNotifyGatewayRecovery(logger?: Logger): Promise<void>
   }
 }
 
+/**
+ * On-boot stale-outage cleanup.
+ *
+ * If `PAYIN_CHAIN_EXHAUSTED_SINCE` is still set in the DB but is older than
+ * STALE_OUTAGE_GRACE_PERIOD_MS (default 30 minutes), the server almost certainly
+ * crashed or restarted while a routing-chain outage was in progress and the
+ * recovery notification was never written. Without this guard, the Failover
+ * Events tab would permanently show those events as "Ongoing".
+ *
+ * This function resolves the stale outage exactly like `maybeNotifyGatewayRecovery`
+ * does at runtime, but adds `resolvedViaBootCleanup: true` to the notification
+ * metadata so the UI can distinguish "server restarted mid-outage" from a
+ * clean, fully-observed recovery. Call it once at server startup, after seed().
+ * Best-effort — any failure is logged but must never crash the server.
+ */
+export async function resolveStaleOutageOnBoot(logger?: Logger): Promise<void> {
+  const STALE_OUTAGE_GRACE_PERIOD_MS = 30 * 60 * 1000; // 30 minutes
+  try {
+    const [row] = await db.select().from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE))
+      .limit(1);
+    if (!row) return;
+
+    const exhaustedSince = new Date(row.value);
+    if (isNaN(exhaustedSince.getTime())) {
+      // Corrupted timestamp — clear it so it doesn't block future outage detection
+      await db.delete(systemConfigTable)
+        .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE));
+      logger?.warn({ event: "payin_chain_exhausted_stale_cleared_bad_ts", value: row.value },
+        "payin_chain_exhausted_stale_cleared_bad_ts");
+      return;
+    }
+
+    const ageMs = Date.now() - exhaustedSince.getTime();
+    if (ageMs < STALE_OUTAGE_GRACE_PERIOD_MS) {
+      // Outage is recent — could be a fast restart; leave it for the normal
+      // maybeNotifyGatewayRecovery path to handle on the next successful order.
+      logger?.info({
+        event: "payin_chain_exhausted_recent_skip_boot_cleanup",
+        ageMs,
+        gracePeriodMs: STALE_OUTAGE_GRACE_PERIOD_MS,
+      }, "payin_chain_exhausted_recent_skip_boot_cleanup");
+      return;
+    }
+
+    // Stale outage detected — clear the marker and write a recovery notification.
+    await db.delete(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE));
+
+    const recoveredAt = new Date();
+    const durationSeconds = Math.round((recoveredAt.getTime() - exhaustedSince.getTime()) / 1000);
+
+    const durationLabel = durationSeconds >= 3600
+      ? `${Math.floor(durationSeconds / 3600)}h ${Math.floor((durationSeconds % 3600) / 60)}m`
+      : durationSeconds >= 60
+        ? `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`
+        : `${durationSeconds}s`;
+
+    logger?.warn({
+      event: "payin_chain_exhausted_stale_boot_cleanup",
+      exhaustedSince: exhaustedSince.toISOString(),
+      ageMs,
+      durationSeconds,
+    }, "payin_chain_exhausted_stale_boot_cleanup");
+
+    // Notify affected merchants
+    const affected = await db.selectDistinct({ merchantId: routingLogsTable.merchantId })
+      .from(routingLogsTable)
+      .where(and(
+        gte(routingLogsTable.createdAt, exhaustedSince),
+        eq(routingLogsTable.result, "failed"),
+      ));
+    const merchantIds = affected.map(r => r.merchantId);
+
+    if (merchantIds.length > 0) {
+      const merchantUsers = await db.select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(
+          inArray(usersTable.merchantId, merchantIds),
+          eq(usersTable.role, "merchant"),
+          eq(usersTable.isActive, true),
+        ));
+
+      if (merchantUsers.length > 0) {
+        await createBulkNotifications(merchantUsers.map(u => ({
+          userId: u.id,
+          type: "gateway_recovered" as const,
+          title: "Payment Gateways Are Back Online",
+          body: "Deposit gateways have recovered after a temporary outage. You can now retry your deposit.",
+          metadata: {
+            outageStartedAt: exhaustedSince.toISOString(),
+            recoveredAt: recoveredAt.toISOString(),
+            durationSeconds,
+            resolvedViaBootCleanup: true,
+          },
+        })), { skipPrefCheck: true });
+      }
+    }
+
+    // Always notify all active admins so the Failover Events tab shows the outage as resolved
+    const adminUsers = await db.select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.role, "admin"),
+        eq(usersTable.isActive, true),
+      ));
+
+    if (adminUsers.length > 0) {
+      await createBulkNotifications(adminUsers.map(u => ({
+        userId: u.id,
+        type: "gateway_recovered" as const,
+        title: "Gateway Chain Outage Auto-Resolved",
+        body: `A ${durationLabel} gateway outage was auto-resolved on server restart. The outage started at ${exhaustedSince.toLocaleString()} and no live recovery signal was received. ${merchantIds.length} merchant(s) may have been affected.`,
+        metadata: {
+          outageStartedAt: exhaustedSince.toISOString(),
+          recoveredAt: recoveredAt.toISOString(),
+          durationSeconds,
+          affectedMerchantCount: merchantIds.length,
+          resolvedViaBootCleanup: true,
+        },
+      })), { skipPrefCheck: true });
+
+      logger?.info({
+        event: "payin_gateway_recovery_boot_cleanup_notified",
+        adminCount: adminUsers.length,
+        durationSeconds,
+        affectedMerchantCount: merchantIds.length,
+      }, "payin_gateway_recovery_boot_cleanup_notified");
+    }
+  } catch (err) {
+    logger?.error({ err, event: "payin_chain_exhausted_boot_cleanup_failed" },
+      "payin_chain_exhausted_boot_cleanup_failed");
+  }
+}
+
 export interface RoutingConfigValidation {
   valid: boolean;
   configId: number | null;

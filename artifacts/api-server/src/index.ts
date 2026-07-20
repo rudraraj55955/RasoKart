@@ -28,6 +28,7 @@ import { initNotifReminderScheduler, runNotifReminderScan } from "./helpers/noti
 import { initSnoozeCleanupScheduler, runSnoozeCleanup } from "./helpers/snoozeCleanupScheduler";
 import { initPayoutStuckCleanupScheduler, runStuckPayoutCleanup } from "./helpers/payoutStuckCleanupScheduler";
 import { initGithubSyncLogCleanupScheduler, runGithubSyncLogCleanup } from "./helpers/githubSyncLogCleanupScheduler";
+import { resolveStaleOutageOnBoot } from "./helpers/smartRouter";
 
 const rawPort = process.env["PORT"];
 
@@ -129,6 +130,15 @@ async function main() {
     // missing/empty state gracefully.
     logger.error({ err }, "Seed failed — continuing without full baseline data");
   }
+
+  // Startup sweep: if the server crashed or was restarted while a payin
+  // routing-chain outage was in progress, PAYIN_CHAIN_EXHAUSTED_SINCE may
+  // still be set in the DB with no matching gateway_recovered notification.
+  // Resolve any stale outage older than the grace period so the Failover
+  // Events tab doesn't permanently show those events as "Ongoing".
+  resolveStaleOutageOnBoot(logger).catch((err) => {
+    logger.warn({ err }, "Startup stale-outage cleanup failed");
+  });
 
   await initReconciliationScheduler();
   initAuditReportScheduler();
