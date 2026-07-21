@@ -117,16 +117,10 @@ function RoleTemplatesPanel() {
   const { data: migData } = useGetIamMigrationStatus();
   const qc = useQueryClient();
   const [activeRole, setActiveRole] = useState("admin");
+  const [optimisticState, setOptimisticState] = useState<Record<string, boolean>>({});
+  const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
 
-  const updateMutation = usePutIamRolesRolePermissionKey({
-    mutation: {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getGetIamRolesQueryKey() });
-        toast.success("Role template updated");
-      },
-      onError: (e: Error) => toast.error(e.message),
-    },
-  });
+  const updateMutation = usePutIamRolesRolePermissionKey();
 
   if (rolesLoading || catalogLoading) return <Skeleton className="h-64 w-full" />;
 
@@ -139,6 +133,28 @@ function RoleTemplatesPanel() {
   const categories = Array.from(new Set(catalogKeys.map((k) => k.category)));
 
   const activePerms = roleMap[activeRole] ?? {};
+
+  function handleToggle(role: string, permKey: string, newVal: boolean) {
+    const optKey = `${role}.${permKey}`;
+    setOptimisticState(prev => ({ ...prev, [optKey]: newVal }));
+    setPendingKeys(prev => new Set(prev).add(optKey));
+    updateMutation.mutate(
+      { role, permissionKey: permKey, data: { isEnabled: newVal } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetIamRolesQueryKey() });
+          toast.success("Role template updated");
+          setOptimisticState(prev => { const n = { ...prev }; delete n[optKey]; return n; });
+          setPendingKeys(prev => { const ns = new Set(prev); ns.delete(optKey); return ns; });
+        },
+        onError: (e: Error) => {
+          toast.error(e.message || "Save failed — change reverted");
+          setOptimisticState(prev => { const n = { ...prev }; delete n[optKey]; return n; });
+          setPendingKeys(prev => { const ns = new Set(prev); ns.delete(optKey); return ns; });
+        },
+      }
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -165,21 +181,25 @@ function RoleTemplatesPanel() {
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {keys.map((k) => (
-                          <div key={k.key} className="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-0">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {k.isSuperAdminOnly && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
-                              <span className="text-xs font-mono truncate text-muted-foreground">{k.key}</span>
+                        {keys.map((k) => {
+                          const optKey = `${r}.${k.key}`;
+                          const displayVal = optKey in optimisticState ? optimisticState[optKey] : (activePerms[k.key] ?? false);
+                          const isSaving = pendingKeys.has(optKey);
+                          return (
+                            <div key={k.key} className="flex items-center justify-between gap-3 min-h-[48px] py-1 border-b border-white/5 last:border-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {k.isSuperAdminOnly && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
+                                <span className="text-xs font-mono truncate text-muted-foreground">{k.key}</span>
+                              </div>
+                              <Switch
+                                checked={displayVal}
+                                disabled={!migrated || k.isSuperAdminOnly}
+                                className={isSaving ? "opacity-60" : ""}
+                                onCheckedChange={(checked) => handleToggle(r, k.key, checked)}
+                              />
                             </div>
-                            <Switch
-                              checked={activePerms[k.key] ?? false}
-                              disabled={!migrated || k.isSuperAdminOnly || updateMutation.isPending}
-                              onCheckedChange={(checked) =>
-                                updateMutation.mutate({ role: r, permissionKey: k.key, data: { isEnabled: checked } })
-                              }
-                            />
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </CardContent>
                   </Card>

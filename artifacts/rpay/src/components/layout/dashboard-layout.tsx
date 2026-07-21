@@ -650,11 +650,11 @@ function MobileHeader({
       <button
         type="button"
         onClick={toggleSidebar}
-        className="h-11 w-11 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        className="h-12 w-12 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         aria-label={openMobile ? "Close navigation menu" : "Open navigation menu"}
         aria-expanded={openMobile}
       >
-        {openMobile ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        {openMobile ? <X className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
       </button>
       <Link
         href={logoHref}

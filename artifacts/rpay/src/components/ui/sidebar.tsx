@@ -5,6 +5,7 @@ import { Slot } from "@radix-ui/react-slot"
 import { cva, VariantProps } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
 
+import { useLocation } from "wouter"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -87,6 +88,12 @@ function SidebarProvider({
     },
     [setOpenProp, open]
   )
+
+  // Auto-close mobile drawer on route change (navigation from within the Sheet).
+  const [location] = useLocation()
+  React.useEffect(() => {
+    setOpenMobile(false)
+  }, [location, setOpenMobile])
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {

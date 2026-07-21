@@ -119,7 +119,7 @@ export function PayoutAdminLayout({ children }: PayoutAdminLayoutProps) {
 
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <div className="h-12 border-b border-border/50 flex items-center justify-between px-4 shrink-0">
-            <SidebarTrigger className="h-7 w-7" />
+            <SidebarTrigger className="h-12 w-12 [&>svg]:size-7" />
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Payout Operations</span>
             </div>

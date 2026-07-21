@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey, useGetQuietHoursQueueCount, getGetQuietHoursQueueCountQueryKey, useGetMe, getGetMeQueryKey, useUpdateMyPreferences } from "@workspace/api-client-react";
 import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2, ChevronDown, ChevronUp, VolumeX, CheckCircle2, WifiOff } from "lucide-react";
 import { IN_APP_NOTIF_FIELDS, IN_APP_NOTIF_LABELS, typeToField } from "@/lib/notification-categories";
@@ -67,12 +67,76 @@ interface NotificationBellProps {
   isAdmin?: boolean;
 }
 
+const SOUND_KEY = "rk_sound_enabled";
+const VIBRATE_KEY = "rk_vibrate_enabled";
+
+function playNotificationSound() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    const freqs: [number, number][] = [[880, 0], [1320, 0.13]];
+    freqs.forEach(([freq, delay]) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.32);
+    });
+    setTimeout(() => { try { ctx.close(); } catch { /* ignore */ } }, 900);
+  } catch {
+    /* AudioContext blocked or not supported */
+  }
+}
+
+function triggerVibration() {
+  try {
+    if ("vibrate" in navigator) {
+      navigator.vibrate([120, 60, 80]);
+    }
+  } catch {
+    /* vibration not supported */
+  }
+}
+
 export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [hideMuted, setHideMuted] = useState(false);
   const qc = useQueryClient();
   const [, navigate] = useLocation();
+
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try { return localStorage.getItem(SOUND_KEY) !== "false"; } catch { return true; }
+  });
+  const [vibrateEnabled, setVibrateEnabled] = useState(() => {
+    try { return localStorage.getItem(VIBRATE_KEY) !== "false"; } catch { return true; }
+  });
+  const soundEnabledRef = useRef(soundEnabled);
+  const vibrateEnabledRef = useRef(vibrateEnabled);
+  const lastUnreadRef = useRef<number | null>(null);
+  const vibrateSupported = typeof navigator !== "undefined" && "vibrate" in navigator;
+
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+  useEffect(() => { vibrateEnabledRef.current = vibrateEnabled; }, [vibrateEnabled]);
+
+  function handleSoundToggle(val: boolean) {
+    setSoundEnabled(val);
+    try { localStorage.setItem(SOUND_KEY, val ? "true" : "false"); } catch { /* ignore */ }
+    if (val) playNotificationSound();
+  }
+
+  function handleVibrateToggle(val: boolean) {
+    setVibrateEnabled(val);
+    try { localStorage.setItem(VIBRATE_KEY, val ? "true" : "false"); } catch { /* ignore */ }
+    if (val) triggerVibration();
+  }
 
   const { data, refetch } = useListNotifications({ limit: 10, page: 1 });
   const { data: unreadCountsData } = useGetNotificationUnreadCounts({
@@ -112,6 +176,15 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
     }, 60_000);
     return () => clearInterval(id);
   }, [qc, isAdmin]);
+
+  useEffect(() => {
+    const current = unreadCountsData?.total ?? 0;
+    if (lastUnreadRef.current !== null && current > lastUnreadRef.current) {
+      if (soundEnabledRef.current) playNotificationSound();
+      if (vibrateEnabledRef.current) triggerVibration();
+    }
+    lastUnreadRef.current = current;
+  }, [unreadCountsData?.total]);
 
   const unread = unreadCountsData?.total ?? 0;
   const queueCount = (!isAdmin ? (queueCountData?.count ?? 0) : 0);
@@ -341,6 +414,23 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
             )}
           </div>
 
+          {isAdmin && (
+            <div className="border-t border-border/50 px-4 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
+                  <VolumeX className="w-3 h-3" />
+                  Sound alerts
+                </span>
+                <Switch checked={soundEnabled} onCheckedChange={handleSoundToggle} className="scale-75 origin-right" />
+              </div>
+              {vibrateSupported && (
+                <div className="flex items-center justify-between gap-2 mt-1.5">
+                  <span className="text-[10px] text-muted-foreground/60">Vibration</span>
+                  <Switch checked={vibrateEnabled} onCheckedChange={handleVibrateToggle} className="scale-75 origin-right" />
+                </div>
+              )}
+            </div>
+          )}
           {!isAdmin && queueCount > 0 && (
             <div className="border-t border-border/50 px-4 py-2.5">
               <Link
@@ -389,6 +479,34 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
 
               {showPrefs && (
                 <div className="border-t border-border/40 bg-muted/10">
+                  <div className="px-4 pt-2.5 pb-2 border-b border-border/30">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 flex items-center gap-1 mb-2">
+                      <VolumeX className="w-3 h-3" />
+                      Sound &amp; Vibration
+                    </span>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2 min-h-[40px]">
+                        <span className="text-xs text-foreground">Notification sound</span>
+                        <Switch
+                          checked={soundEnabled}
+                          onCheckedChange={handleSoundToggle}
+                          className="scale-75 origin-right"
+                        />
+                      </div>
+                      {vibrateSupported ? (
+                        <div className="flex items-center justify-between gap-2 min-h-[40px]">
+                          <span className="text-xs text-foreground">Vibration</span>
+                          <Switch
+                            checked={vibrateEnabled}
+                            onCheckedChange={handleVibrateToggle}
+                            className="scale-75 origin-right"
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground/50 italic">Vibration not supported on this device</p>
+                      )}
+                    </div>
+                  </div>
                   <div className="flex items-center justify-between px-4 pt-2.5 pb-1.5">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 flex items-center gap-1">
                       <Bell className="w-3 h-3" />
