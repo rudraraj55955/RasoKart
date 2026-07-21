@@ -40,6 +40,8 @@ interface DivergenceState {
   lastEmailSentPollCount: number;
 }
 
+let divergenceCheckInFlight = false;
+
 function readDivergenceState(): DivergenceState {
   try {
     const raw = readFileSync(DIVERGENCE_STATE_FILE, "utf-8");
@@ -166,6 +168,23 @@ function buildDivergenceResolvedHtml(opts: { repo: string; priorPollCount: numbe
 }
 
 async function maybeNotifyDivergenceTransition(opts: {
+  nowDiverged: boolean;
+  remoteAheadBy: number;
+  repo: string;
+}): Promise<void> {
+  if (divergenceCheckInFlight) {
+    logger.debug("GITHUB_SYNC: Divergence check already in flight — skipping concurrent check to prevent duplicate alerts");
+    return;
+  }
+  divergenceCheckInFlight = true;
+  try {
+    await _maybeNotifyDivergenceTransitionImpl(opts);
+  } finally {
+    divergenceCheckInFlight = false;
+  }
+}
+
+async function _maybeNotifyDivergenceTransitionImpl(opts: {
   nowDiverged: boolean;
   remoteAheadBy: number;
   repo: string;
