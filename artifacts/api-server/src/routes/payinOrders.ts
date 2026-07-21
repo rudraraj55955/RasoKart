@@ -44,11 +44,14 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
     const [chainExhaustedRow] = await db.select().from(systemConfigTable)
       .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE))
       .limit(1);
+    const ugCfg = await loadUpigatewayConfig();
     res.json({
       enabled: cfg.enabled && cfg.upiEnabled && cfg.merchantPayinEnabled,
       minAmount: cfg.minAmount,
       maxAmount: cfg.maxAmount,
       routingHealthy: !chainExhaustedRow,
+      upigatewayMinAmount: ugCfg.enabled ? ugCfg.minAmount : null,
+      upigatewayMaxAmount: ugCfg.enabled ? ugCfg.maxAmount : null,
     });
   } catch (err) { next(err); }
 });

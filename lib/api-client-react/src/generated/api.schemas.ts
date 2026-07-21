@@ -4818,6 +4818,10 @@ export interface PayinOrderStatusCheck {
   maxAmount: number;
   /** False when the payin routing chain is currently exhausted (all configured gateways recently failed) and deposits would immediately fail. */
   routingHealthy: boolean;
+  /** EkQR/UPI Gateway minimum deposit amount configured by admin. Null when the gateway is disabled. */
+  upigatewayMinAmount?: number | null;
+  /** EkQR/UPI Gateway maximum deposit amount configured by admin. Null when the gateway is disabled. */
+  upigatewayMaxAmount?: number | null;
 }
 
 export interface AdminPayinOrderRow {

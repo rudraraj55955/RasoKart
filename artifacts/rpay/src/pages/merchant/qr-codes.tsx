@@ -7,6 +7,7 @@ import {
   useListMerchantConnections,
   useGetQrCodeActivity,
   useGetQrCodeStats,
+  useGetPayinStatus,
 } from "@workspace/api-client-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
@@ -450,6 +451,7 @@ export default function MerchantQrCodes() {
   const { data, isLoading } = useListQrCodes({ type: "dynamic" as any, status: status as any, search, page, limit: 20 });
   const { data: stats } = useGetQrCodeStats();
   const { data: connections } = useListMerchantConnections();
+  const { data: payinStatus } = useGetPayinStatus();
   const createMutation = useCreateQrCode();
   const deleteMutation = useDeleteQrCode();
   const bulkDeleteMutation = useBulkDeleteQrCodes();
@@ -866,6 +868,11 @@ export default function MerchantQrCodes() {
                 <Label>Amount (₹) <span className="text-muted-foreground text-xs">(optional — leave blank for open amount)</span></Label>
                 <Input type="number" step="0.01" placeholder="e.g. 999.00" value={form.amount}
                   onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+                {payinStatus?.upigatewayMinAmount != null && payinStatus?.upigatewayMaxAmount != null && (
+                  <p className="text-xs text-muted-foreground">
+                    Min ₹{payinStatus.upigatewayMinAmount.toLocaleString()} · Max ₹{payinStatus.upigatewayMaxAmount.toLocaleString()}
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>Order ID <span className="text-muted-foreground text-xs">(optional)</span></Label>

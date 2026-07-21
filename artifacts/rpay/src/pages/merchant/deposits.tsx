@@ -2052,6 +2052,11 @@ export default function MerchantDeposits() {
                     value={cfAmount}
                     onChange={e => setCfAmount(e.target.value)}
                   />
+                  {payinStatusData?.minAmount != null && payinStatusData?.maxAmount != null && (
+                    <p className="text-xs text-muted-foreground">
+                      Min ₹{payinStatusData.minAmount.toLocaleString()} · Max ₹{payinStatusData.maxAmount.toLocaleString()}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Customer Phone <span className="text-destructive">*</span></Label>

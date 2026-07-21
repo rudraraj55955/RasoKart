@@ -17699,6 +17699,14 @@ components:
         routingHealthy:
           type: boolean
           description: False when the payin routing chain is currently exhausted (all configured gateways recently failed) and deposits would immediately fail.
+        upigatewayMinAmount:
+          type: number
+          nullable: true
+          description: EkQR/UPI Gateway minimum deposit amount configured by admin. Null when the gateway is disabled.
+        upigatewayMaxAmount:
+          type: number
+          nullable: true
+          description: EkQR/UPI Gateway maximum deposit amount configured by admin. Null when the gateway is disabled.
 
     AdminPayinOrderRow:
       type: object
