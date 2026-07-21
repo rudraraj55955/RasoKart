@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transactionsTable, qrPaymentEventsTable, auditLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, providerIntegrationsTable } from "@workspace/db";
+import { db, qrCodesTable, merchantsTable, merchantConnectionsTable, transactionsTable, qrPaymentEventsTable, auditLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS, providerIntegrationsTable } from "@workspace/db";
 import { eq, and, ilike, count, sql, or, desc, gte, lte, inArray, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { checkPlanLimit, rejectWithLimitError } from "../helpers/planLimits";
@@ -341,15 +341,62 @@ router.post("/", qrCodeCreateLimiter, async (req, res) => {
   // ── EKQR path: if merchant has an active EKQR connection and EKQR is globally enabled ──
   const ekqrConn = connections.find(c => c.provider === "ekqr");
   if (ekqrConn) {
-    // Check global EKQR enabled flag and API key
+    // Check global EKQR enabled flag, API key, and amount limits
     const ekqrRows = await db.select()
       .from(systemConfigTable)
-      .where(inArray(systemConfigTable.key, [SYSTEM_CONFIG_KEYS.EKQR_ENABLED, SYSTEM_CONFIG_KEYS.EKQR_API_KEY]));
+      .where(inArray(systemConfigTable.key, [
+        SYSTEM_CONFIG_KEYS.EKQR_ENABLED,
+        SYSTEM_CONFIG_KEYS.EKQR_API_KEY,
+        SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT,
+        SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT,
+        SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT,
+      ]));
     const ekqrMap = new Map(ekqrRows.map(r => [r.key, r.value]));
     const ekqrEnabled = ekqrMap.get(SYSTEM_CONFIG_KEYS.EKQR_ENABLED) === "true";
     const ekqrApiKey = ekqrMap.get(SYSTEM_CONFIG_KEYS.EKQR_API_KEY) ?? "";
 
     if (ekqrEnabled && ekqrApiKey) {
+      // ── EKQR amount and daily-volume limit enforcement ──
+      // Enforce admin-configured limits before calling the gateway so the
+      // merchant receives a clear 400 rather than a raw provider error.
+      const _eMin = parseFloat(ekqrMap.get(SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MIN_AMOUNT]);
+      const _eMax = parseFloat(ekqrMap.get(SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_MAX_AMOUNT]);
+      const _eDaily = parseFloat(ekqrMap.get(SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.EKQR_DAILY_LIMIT]);
+      const ekqrMinAmount = Number.isFinite(_eMin) ? _eMin : 1;
+      const ekqrMaxAmount = Number.isFinite(_eMax) ? _eMax : 200000;
+      const ekqrDailyLimit = Number.isFinite(_eDaily) ? _eDaily : 1000000;
+
+      const parsedAmount = amount != null ? Number(amount) : null;
+      if (parsedAmount !== null && !isNaN(parsedAmount)) {
+        if (parsedAmount < ekqrMinAmount || parsedAmount > ekqrMaxAmount) {
+          res.status(400).json({ error: `Amount must be between ₹${ekqrMinAmount} and ₹${ekqrMaxAmount}` });
+          return;
+        }
+
+        // Daily limit: sum amounts from today's EKQR QR payment events for this merchant.
+        // Join with qrCodesTable to scope to EKQR-originated QR codes only
+        // (ekqrOrderId IS NOT NULL), so non-EKQR QR payments don't count against
+        // this provider's cap.
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const [dailyRow] = await db
+          .select({ total: sql<string>`COALESCE(SUM(${qrPaymentEventsTable.amount}::numeric), 0)` })
+          .from(qrPaymentEventsTable)
+          .innerJoin(qrCodesTable, and(
+            eq(qrCodesTable.id, qrPaymentEventsTable.qrCodeId),
+            sql`${qrCodesTable.ekqrOrderId} IS NOT NULL`,
+          ))
+          .where(and(
+            eq(qrPaymentEventsTable.merchantId, merchantId),
+            gte(qrPaymentEventsTable.receivedAt, startOfDay),
+          ));
+        const ekqrDailyTotal = Number(dailyRow?.total ?? 0);
+        if (ekqrDailyTotal + parsedAmount > ekqrDailyLimit) {
+          res.status(400).json({ error: "Daily deposit limit reached for this payment method. Please try again tomorrow or contact support." });
+          return;
+        }
+      }
+
       // Insert QR row first to get the ID for client_txn_id
       const clientTxnId = ekqrClientTxnId(Date.now()); // temp ID, will update after insert
       const [row] = await db.insert(qrCodesTable).values({
