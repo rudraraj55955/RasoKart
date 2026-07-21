@@ -4822,6 +4822,10 @@ export interface PayinOrderStatusCheck {
   upigatewayMinAmount?: number | null;
   /** EkQR/UPI Gateway maximum deposit amount configured by admin. Null when the gateway is disabled. */
   upigatewayMaxAmount?: number | null;
+  /** Narrowest minimum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting. */
+  effectiveMinAmount: number;
+  /** Narrowest maximum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting. */
+  effectiveMaxAmount: number;
 }
 
 export interface AdminPayinOrderRow {

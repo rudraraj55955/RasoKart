@@ -45,6 +45,19 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
       .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE))
       .limit(1);
     const ugCfg = await loadUpigatewayConfig();
+
+    // Compute the narrowest range guaranteed to be accepted across all
+    // currently-active providers. When EKQR/UPIGateway is enabled its limits
+    // are often tighter than the global Cashfree limits, so we expose the
+    // intersection so the frontend can validate before submitting and spare
+    // the merchant a confusing 400 after the form is sent.
+    const effectiveMinAmount = ugCfg.enabled
+      ? Math.max(cfg.minAmount, ugCfg.minAmount)
+      : cfg.minAmount;
+    const effectiveMaxAmount = ugCfg.enabled
+      ? Math.min(cfg.maxAmount, ugCfg.maxAmount)
+      : cfg.maxAmount;
+
     res.json({
       enabled: cfg.enabled && cfg.upiEnabled && cfg.merchantPayinEnabled,
       minAmount: cfg.minAmount,
@@ -52,6 +65,8 @@ router.get("/payin/status", requireAuth, async (req, res, next) => {
       routingHealthy: !chainExhaustedRow,
       upigatewayMinAmount: ugCfg.enabled ? ugCfg.minAmount : null,
       upigatewayMaxAmount: ugCfg.enabled ? ugCfg.maxAmount : null,
+      effectiveMinAmount,
+      effectiveMaxAmount,
     });
   } catch (err) { next(err); }
 });

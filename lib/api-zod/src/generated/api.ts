@@ -8441,7 +8441,9 @@ export const GetPayinStatusResponse = zod.object({
   "maxAmount": zod.number(),
   "routingHealthy": zod.boolean().describe('False when the payin routing chain is currently exhausted (all configured gateways recently failed) and deposits would immediately fail.'),
   "upigatewayMinAmount": zod.number().nullish().describe('EkQR\/UPI Gateway minimum deposit amount configured by admin. Null when the gateway is disabled.'),
-  "upigatewayMaxAmount": zod.number().nullish().describe('EkQR\/UPI Gateway maximum deposit amount configured by admin. Null when the gateway is disabled.')
+  "upigatewayMaxAmount": zod.number().nullish().describe('EkQR\/UPI Gateway maximum deposit amount configured by admin. Null when the gateway is disabled.'),
+  "effectiveMinAmount": zod.number().describe('Narrowest minimum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting.'),
+  "effectiveMaxAmount": zod.number().describe('Narrowest maximum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting.')
 })
 
 

@@ -17688,7 +17688,7 @@ components:
 
     PayinOrderStatusCheck:
       type: object
-      required: [enabled, minAmount, maxAmount, routingHealthy]
+      required: [enabled, minAmount, maxAmount, routingHealthy, effectiveMinAmount, effectiveMaxAmount]
       properties:
         enabled:
           type: boolean
@@ -17707,6 +17707,12 @@ components:
           type: number
           nullable: true
           description: EkQR/UPI Gateway maximum deposit amount configured by admin. Null when the gateway is disabled.
+        effectiveMinAmount:
+          type: number
+          description: Narrowest minimum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting.
+        effectiveMaxAmount:
+          type: number
+          description: Narrowest maximum deposit amount across all currently-active providers. Use this for client-side validation so the merchant never hits a provider-level rejection after submitting.
 
     AdminPayinOrderRow:
       type: object

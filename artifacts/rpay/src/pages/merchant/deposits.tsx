@@ -1074,6 +1074,17 @@ export default function MerchantDeposits() {
   const handleCashfreePay = async () => {
     if (!cfAmount || Number(cfAmount) <= 0) { toast.error("Enter a valid amount"); return; }
     if (!cfPhone.trim()) { toast.error("Customer phone number is required"); return; }
+    const depositAmt = Number(cfAmount);
+    const effMin = payinStatusData?.effectiveMinAmount;
+    const effMax = payinStatusData?.effectiveMaxAmount;
+    if (effMin != null && depositAmt < effMin) {
+      toast.error(`Amount must be at least ₹${effMin.toLocaleString()}`);
+      return;
+    }
+    if (effMax != null && depositAmt > effMax) {
+      toast.error(`Amount must not exceed ₹${effMax.toLocaleString()}`);
+      return;
+    }
     setCfCreating(true);
     try {
       const result: any = await createPayinOrder.mutateAsync({
@@ -2052,9 +2063,9 @@ export default function MerchantDeposits() {
                     value={cfAmount}
                     onChange={e => setCfAmount(e.target.value)}
                   />
-                  {payinStatusData?.minAmount != null && payinStatusData?.maxAmount != null && (
+                  {payinStatusData?.effectiveMinAmount != null && payinStatusData?.effectiveMaxAmount != null && (
                     <p className="text-xs text-muted-foreground">
-                      Min ₹{payinStatusData.minAmount.toLocaleString()} · Max ₹{payinStatusData.maxAmount.toLocaleString()}
+                      Min ₹{payinStatusData.effectiveMinAmount.toLocaleString()} · Max ₹{payinStatusData.effectiveMaxAmount.toLocaleString()}
                     </p>
                   )}
                 </div>
