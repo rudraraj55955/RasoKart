@@ -408,6 +408,22 @@ let queryParamRowId = 0;
 
 const TRY_IT_PRESETS_STORAGE_KEY = "rasokart_tryit_presets";
 
+function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
 // Keep these in sync with the server-side constants in
 // artifacts/api-server/src/routes/tryItPresets.ts — enforcing the same caps
 // here gives instant feedback, but the PUT route is the source of truth.
@@ -553,6 +569,16 @@ function renamePresetGlobal(key: string, id: string, newName: string) {
   const presets = all[key];
   if (!Array.isArray(presets)) return;
   all[key] = presets.map((p) => (p.id === id ? { ...p, name: newName } : p));
+  saveAllPresets(all);
+}
+
+function touchPresetLastUsed(method: string, path: string, id: string) {
+  const all = loadAllPresets();
+  const key = presetsStorageKeyFor(method, path);
+  const presets = all[key];
+  if (!Array.isArray(presets)) return;
+  const now = new Date().toISOString();
+  all[key] = presets.map((p) => (p.id === id ? { ...p, lastUsedAt: now } : p));
   saveAllPresets(all);
 }
 
@@ -1014,8 +1040,9 @@ function TryItPanel({
     } else {
       setPresetLoadWarnings(null);
     }
+    touchPresetLastUsed(method, path, preset.id);
     toast.success(`Loaded preset "${preset.name}"`);
-  }, []);
+  }, [method, path]);
 
   const handleDeletePreset = useCallback(
     (id: string) => {
@@ -2025,7 +2052,7 @@ function parsePresetsExportFile(raw: string): PresetsExportFile | null {
   }
 }
 
-type PresetSortOrder = "endpoint" | "name-asc" | "name-desc" | "newest" | "oldest";
+type PresetSortOrder = "endpoint" | "name-asc" | "name-desc" | "newest" | "oldest" | "last-used-recent" | "last-used-stale";
 
 function ManagePresetsDialog({
   open,
@@ -2087,6 +2114,20 @@ function ManagePresetsDialog({
         sorted.sort((a, b) => {
           const ta = parseInt(a.preset.id.split("-")[0] ?? "0", 10);
           const tb = parseInt(b.preset.id.split("-")[0] ?? "0", 10);
+          return ta - tb;
+        });
+        break;
+      case "last-used-recent":
+        sorted.sort((a, b) => {
+          const ta = a.preset.lastUsedAt ? new Date(a.preset.lastUsedAt).getTime() : 0;
+          const tb = b.preset.lastUsedAt ? new Date(b.preset.lastUsedAt).getTime() : 0;
+          return tb - ta;
+        });
+        break;
+      case "last-used-stale":
+        sorted.sort((a, b) => {
+          const ta = a.preset.lastUsedAt ? new Date(a.preset.lastUsedAt).getTime() : 0;
+          const tb = b.preset.lastUsedAt ? new Date(b.preset.lastUsedAt).getTime() : 0;
           return ta - tb;
         });
         break;
@@ -2371,6 +2412,8 @@ function ManagePresetsDialog({
                   <option value="name-desc">Name Z → A</option>
                   <option value="newest">Newest first</option>
                   <option value="oldest">Oldest first</option>
+                  <option value="last-used-recent">Last used (recent)</option>
+                  <option value="last-used-stale">Last used (stale)</option>
                 </select>
               </div>
             </div>
@@ -2470,13 +2513,21 @@ function ManagePresetsDialog({
                             <span className="truncate">{item.preset.name}</span>
                           </button>
                         )}
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <Badge className={`text-[10px] font-bold shrink-0 ${methodColors[item.method] ?? ""}`}>
                             {item.method}
                           </Badge>
                           <code className="text-[11px] font-mono text-muted-foreground truncate">
                             {item.path}
                           </code>
+                          {item.preset.lastUsedAt ? (
+                            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70 shrink-0">
+                              <Clock className="w-2.5 h-2.5" />
+                              {formatRelativeTime(item.preset.lastUsedAt)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground/50 shrink-0">never used</span>
+                          )}
                         </div>
                       </div>
                       <Button

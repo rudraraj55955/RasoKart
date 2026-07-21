@@ -13,6 +13,7 @@ export interface SavedQueryPreset {
   pathValues: Record<string, string>;
   queryParams: { key: string; value: string }[];
   body: string;
+  lastUsedAt?: string;
 }
 
 export interface ScrubbedShareFields {
