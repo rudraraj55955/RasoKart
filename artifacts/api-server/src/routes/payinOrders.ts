@@ -500,8 +500,10 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       // Mark (once) the start of this outage so the next successful routing
       // attempt — for any merchant — knows to fire a merchant-facing
       // "gateways are back online" recovery notification (see
-      // maybeNotifyGatewayRecovery in smartRouter.ts). Best-effort.
-      recordChainExhaustedStart().catch(() => {
+      // maybeNotifyGatewayRecovery in smartRouter.ts). On the very first
+      // exhaustion in a new outage, also fires an immediate admin alert of
+      // type gateway_chain_exhausted. Best-effort.
+      recordChainExhaustedStart({ merchantId, amount: depositAmount, logger: req.log }).catch(() => {
         req.log.error({ event: "payin_chain_exhausted_marker_failed", merchantId }, "payin_chain_exhausted_marker_failed");
       });
 

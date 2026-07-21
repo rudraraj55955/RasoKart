@@ -290,12 +290,68 @@ export async function recordRoutingResult(params: {
  * means the "since" value always reflects when the outage started, not the
  * most recent failed attempt. Cleared by `maybeNotifyGatewayRecovery` once a
  * routing attempt succeeds again.
+ *
+ * When this is the *first* exhaustion in an outage (the insert goes through
+ * rather than being a no-op conflict), all active admins receive an immediate
+ * `gateway_chain_exhausted` in-app notification containing the merchant and
+ * amount that triggered the event. This fires at most once per outage — the
+ * marker is cleared on recovery, so the next exhaustion after a recovery is
+ * treated as a new event.
+ *
+ * Returns { isNew: true } when the outage marker was set for the first time,
+ * { isNew: false } when a prior exhaustion was already in progress.
  */
-export async function recordChainExhaustedStart(): Promise<void> {
-  await db.insert(systemConfigTable).values({
+export async function recordChainExhaustedStart(params: {
+  merchantId: number;
+  amount: number;
+  logger?: Logger;
+}): Promise<{ isNew: boolean }> {
+  const { merchantId, amount, logger } = params;
+
+  const exhaustedAt = new Date().toISOString();
+
+  const inserted = await db.insert(systemConfigTable).values({
     key: SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE,
-    value: new Date().toISOString(),
-  }).onConflictDoNothing();
+    value: exhaustedAt,
+  }).onConflictDoNothing().returning({ key: systemConfigTable.key });
+
+  const isNew = inserted.length > 0;
+
+  if (isNew) {
+    try {
+      const adminUsers = await db.select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(
+          eq(usersTable.role, "admin"),
+          eq(usersTable.isActive, true),
+        ));
+
+      if (adminUsers.length > 0) {
+        await createBulkNotifications(adminUsers.map(u => ({
+          userId: u.id,
+          type: "gateway_chain_exhausted" as const,
+          title: "Gateway Chain Exhausted",
+          body: `All configured payment gateways are failing. Merchant #${merchantId} triggered the exhaustion on a ₹${amount} deposit. Merchants may be unable to initiate deposits — check gateway health immediately.`,
+          metadata: {
+            triggerMerchantId: merchantId,
+            triggerAmount: amount,
+            exhaustedAt,
+          },
+        })), { skipPrefCheck: true });
+
+        logger?.warn({
+          event: "payin_chain_exhausted_admin_notified",
+          merchantId,
+          amount,
+          adminCount: adminUsers.length,
+        }, "payin_chain_exhausted_admin_notified");
+      }
+    } catch (err) {
+      logger?.error({ err, event: "payin_chain_exhausted_notify_failed" }, "payin_chain_exhausted_notify_failed");
+    }
+  }
+
+  return { isNew };
 }
 
 /**

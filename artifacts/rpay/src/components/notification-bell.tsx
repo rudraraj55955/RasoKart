@@ -18,7 +18,7 @@ function notifIcon(type: string) {
   if (type === "report_schedule_auto_paused_admin" || type === "report_schedule_reenabled_by_merchant" || type === "scheduled_report_auto_paused" || type === "scheduled_report_failure" || type === "report_schedule_failures_reset") return <BarChart3 className="w-3.5 h-3.5" />;
   if (type === "preference_change_unknown_device") return <ShieldAlert className="w-3.5 h-3.5" />;
   if (type === "gateway_recovered") return <CheckCircle2 className="w-3.5 h-3.5" />;
-  if (type === "gateway_failover_exhausted") return <WifiOff className="w-3.5 h-3.5" />;
+  if (type === "gateway_failover_exhausted" || type === "gateway_chain_exhausted") return <WifiOff className="w-3.5 h-3.5" />;
   return <Megaphone className="w-3.5 h-3.5" />;
 }
 
@@ -32,6 +32,7 @@ function notifColor(type: string): string {
   if (type === "scheduled_report_failure") return "text-orange-400";
   if (type === "preference_change_unknown_device") return "text-red-400";
   if (type === "gateway_recovered") return "text-emerald-400";
+  if (type === "gateway_chain_exhausted") return "text-rose-400";
   if (type === "gateway_failover_exhausted") return "text-amber-400";
   return "text-blue-400";
 }
@@ -50,7 +51,7 @@ function notifNavTarget(type: string, metadata: unknown): string | null {
   if (type === "preference_change_unknown_device") {
     return "/merchant/security";
   }
-  if (type === "gateway_recovered" || type === "gateway_failover_exhausted") {
+  if (type === "gateway_recovered" || type === "gateway_failover_exhausted" || type === "gateway_chain_exhausted") {
     return "/admin/smart-routing?tab=failover";
   }
   return null;

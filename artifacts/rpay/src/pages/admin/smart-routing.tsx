@@ -87,10 +87,12 @@ type RoutingLog = {
 
 type FailoverEvent = {
   id: number;
+  eventKind: "chain_exhausted" | "threshold_alert";
   createdAt: string;
-  failureCount: number;
-  windowMinutes: number;
+  failureCount: number | null;
+  windowMinutes: number | null;
   triggerMerchantId: number | null;
+  triggerAmount: number | null;
   providersInvolved: string[];
   status: "resolved" | "ongoing";
   resolvedAt: string | null;
@@ -1373,7 +1375,7 @@ export default function AdminSmartRouting() {
                     Recent Chain-Exhaustion Events
                   </CardTitle>
                   <CardDescription className="text-zinc-500 text-xs">
-                    Fired when routing failures cross the alert threshold in a rolling window — all configured gateways failed and merchants may be unable to deposit.
+                    Two alert types are shown: <span className="text-rose-400 font-medium">Chain Exhausted</span> fires immediately on the first exhaustion of a new outage; <span className="text-amber-400 font-medium">Threshold Alert</span> fires when rolling failures cross the configured window threshold.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">
@@ -1385,28 +1387,42 @@ export default function AdminSmartRouting() {
                     <div className="space-y-2">
                       {(failoverEventsQ.data?.events ?? []).map(ev => (
                         <div
-                          key={ev.id}
+                          key={`${ev.eventKind}-${ev.id}`}
                           className={`flex items-start gap-3 p-3 rounded-lg border ${
                             ev.status === "resolved"
                               ? "bg-emerald-500/5 border-emerald-500/20"
-                              : "bg-red-500/5 border-red-500/20"
+                              : ev.eventKind === "chain_exhausted"
+                                ? "bg-rose-500/5 border-rose-500/20"
+                                : "bg-red-500/5 border-red-500/20"
                           }`}
                         >
                           {ev.status === "resolved"
                             ? <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
-                            : <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                            : <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${ev.eventKind === "chain_exhausted" ? "text-rose-400" : "text-red-400"}`} />
                           }
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`text-sm font-medium ${ev.status === "resolved" ? "text-emerald-300" : "text-red-300"}`}>
-                                {ev.failureCount} failures in {ev.windowMinutes}m
-                              </span>
+                              {ev.eventKind === "chain_exhausted" ? (
+                                <>
+                                  <span className={`text-sm font-medium ${ev.status === "resolved" ? "text-emerald-300" : "text-rose-300"}`}>
+                                    Gateway chain exhausted
+                                  </span>
+                                  <Badge className="bg-rose-600/20 text-rose-400 border-rose-600/30 text-xs">Chain Exhausted</Badge>
+                                </>
+                              ) : (
+                                <>
+                                  <span className={`text-sm font-medium ${ev.status === "resolved" ? "text-emerald-300" : "text-red-300"}`}>
+                                    {ev.failureCount} failures in {ev.windowMinutes}m
+                                  </span>
+                                  <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">Threshold Alert</Badge>
+                                </>
+                              )}
                               {ev.status === "resolved"
                                 ? <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">Resolved</Badge>
                                 : <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">Ongoing</Badge>
                               }
                               <span className="text-xs text-zinc-500">
-                                Started: {new Date(ev.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                                {new Date(ev.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                               </span>
                             </div>
                             <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -1426,9 +1442,10 @@ export default function AdminSmartRouting() {
                               Providers tried: {ev.providersInvolved.length > 0
                                 ? ev.providersInvolved.map(p => <span key={p} className="font-mono text-zinc-300">{p}</span>).reduce((a, b) => <>{a}, {b}</>)
                                 : <span className="text-zinc-600">unknown</span>}
-                              {ev.triggerMerchantId != null && <span className="text-zinc-600"> · triggered by merchant #{ev.triggerMerchantId}</span>}
+                              {ev.triggerMerchantId != null && <span className="text-zinc-600"> · merchant #{ev.triggerMerchantId}</span>}
+                              {ev.triggerAmount != null && <span className="text-zinc-600"> · ₹{ev.triggerAmount}</span>}
                             </p>
-                            {alertSettingsQ.data != null && (
+                            {ev.eventKind === "threshold_alert" && alertSettingsQ.data != null && (
                               ev.failureCount !== alertSettingsQ.data.threshold ||
                               ev.windowMinutes !== alertSettingsQ.data.windowMinutes
                                 ? (
