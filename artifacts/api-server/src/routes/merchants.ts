@@ -443,10 +443,21 @@ router.patch("/me", async (req, res) => {
   if (typeof phone === "string") {
     const trimmed = phone.trim();
     if (!trimmed) { res.status(400).json({ error: "Phone cannot be empty" }); return; }
+    if (!/\d/.test(trimmed)) { res.status(400).json({ error: "Phone number must contain at least one digit" }); return; }
     updates.phone = trimmed.slice(0, 50);
   }
   if ("website" in (req.body ?? {})) {
     const w = typeof website === "string" ? website.trim().slice(0, 500) : null;
+    if (w) {
+      try {
+        const parsed = new URL(w);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          res.status(400).json({ error: "Website must start with http:// or https://" }); return;
+        }
+      } catch {
+        res.status(400).json({ error: "Website must be a valid URL (e.g. https://yourbusiness.com)" }); return;
+      }
+    }
     updates.website = w || null;
   }
 

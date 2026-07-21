@@ -35,6 +35,8 @@ export default function MerchantProfile() {
   const [contactName, setContactName] = useState("");
   const [phone, setPhone] = useState("");
   const [website, setWebsite] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  const [websiteError, setWebsiteError] = useState("");
 
   useEffect(() => {
     if (me && !editing) {
@@ -51,8 +53,29 @@ export default function MerchantProfile() {
     phone !== ((me as any)?.phone ?? "") ||
     website !== ((me as any)?.website ?? "");
 
+  const validatePhone = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) return "Phone is required";
+    if (!/\d/.test(trimmed)) return "Phone must contain at least one digit";
+    return "";
+  };
+
+  const validateWebsite = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "Website must start with http:// or https://";
+    } catch {
+      return "Website must be a valid URL (e.g. https://yourbusiness.com)";
+    }
+    return "";
+  };
+
   const handleCancel = () => {
     setEditing(false);
+    setPhoneError("");
+    setWebsiteError("");
     if (me) {
       setBusinessName((me as any).businessName ?? "");
       setContactName((me as any).contactName ?? "");
@@ -64,7 +87,11 @@ export default function MerchantProfile() {
   const handleSave = () => {
     if (!businessName.trim()) { toast.error("Business name is required"); return; }
     if (!contactName.trim()) { toast.error("Contact name is required"); return; }
-    if (!phone.trim()) { toast.error("Phone is required"); return; }
+    const pErr = validatePhone(phone);
+    const wErr = validateWebsite(website);
+    setPhoneError(pErr);
+    setWebsiteError(wErr);
+    if (pErr || wErr) return;
 
     const data: Record<string, string | null> = {};
     if (businessName.trim() !== ((me as any)?.businessName ?? "")) data.businessName = businessName.trim();
@@ -180,13 +207,22 @@ export default function MerchantProfile() {
                         <Phone className="w-3.5 h-3.5" />Phone Number
                       </Label>
                       {editing ? (
-                        <Input
-                          id="phone"
-                          value={phone}
-                          onChange={e => setPhone(e.target.value.slice(0, 50))}
-                          placeholder="+91 98765 43210"
-                          maxLength={50}
-                        />
+                        <>
+                          <Input
+                            id="phone"
+                            value={phone}
+                            onChange={e => {
+                              const v = e.target.value.slice(0, 50);
+                              setPhone(v);
+                              setPhoneError(validatePhone(v));
+                            }}
+                            placeholder="+91 98765 43210"
+                            maxLength={50}
+                            aria-invalid={!!phoneError}
+                            className={phoneError ? "border-rose-500 focus-visible:ring-rose-500" : ""}
+                          />
+                          {phoneError && <p className="text-xs text-rose-400">{phoneError}</p>}
+                        </>
                       ) : (
                         <p className="text-sm font-medium py-2 px-3 bg-muted/30 rounded-md border border-border/50 min-h-[40px]">
                           {merchant?.phone || <span className="text-muted-foreground italic">Not set</span>}
@@ -199,13 +235,22 @@ export default function MerchantProfile() {
                         <Globe className="w-3.5 h-3.5" />Website <span className="text-muted-foreground/60 font-normal">(optional)</span>
                       </Label>
                       {editing ? (
-                        <Input
-                          id="website"
-                          value={website}
-                          onChange={e => setWebsite(e.target.value.slice(0, 500))}
-                          placeholder="https://yourbusiness.com"
-                          maxLength={500}
-                        />
+                        <>
+                          <Input
+                            id="website"
+                            value={website}
+                            onChange={e => {
+                              const v = e.target.value.slice(0, 500);
+                              setWebsite(v);
+                              setWebsiteError(validateWebsite(v));
+                            }}
+                            placeholder="https://yourbusiness.com"
+                            maxLength={500}
+                            aria-invalid={!!websiteError}
+                            className={websiteError ? "border-rose-500 focus-visible:ring-rose-500" : ""}
+                          />
+                          {websiteError && <p className="text-xs text-rose-400">{websiteError}</p>}
+                        </>
                       ) : (
                         <p className="text-sm font-medium py-2 px-3 bg-muted/30 rounded-md border border-border/50 min-h-[40px]">
                           {merchant?.website
