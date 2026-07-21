@@ -5,7 +5,7 @@ import { logger } from "../lib/logger";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { db, systemSettingsTable, auditLogsTable, usersTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { runGithubSyncLogCleanup, getLastGithubSyncLogCleanupResult } from "../helpers/githubSyncLogCleanupScheduler";
+import { runGithubSyncLogCleanup, getLastGithubSyncLogCleanupResult, CLEANUP_ALERT_SNOOZE_KEY } from "../helpers/githubSyncLogCleanupScheduler";
 import { sendMail } from "../helpers/mailer";
 
 const router = Router();
@@ -470,6 +470,68 @@ router.get("/cleanup-logs/last", async (req, res, next) => {
       return;
     }
     res.json({ hasRun: true, deleted: result.deleted, errors: result.errors, ranAt: result.ranAt });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/github-sync/cleanup-alert-snooze
+router.get("/cleanup-alert-snooze", async (req, res, next) => {
+  try {
+    const [row] = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, CLEANUP_ALERT_SNOOZE_KEY))
+      .limit(1);
+    const snoozedUntil = row?.value ?? null;
+    const active = snoozedUntil != null && new Date(snoozedUntil) > new Date();
+    res.json({ snoozedUntil: active ? snoozedUntil : null, active });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/github-sync/cleanup-alert-snooze
+router.post("/cleanup-alert-snooze", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const days = typeof req.body?.days === "number" ? req.body.days : 0;
+
+    let snoozedUntil: string | null = null;
+    if (days > 0 && days <= 365) {
+      const until = new Date();
+      until.setDate(until.getDate() + days);
+      snoozedUntil = until.toISOString();
+    }
+
+    if (snoozedUntil != null) {
+      await db
+        .insert(systemSettingsTable)
+        .values({ key: CLEANUP_ALERT_SNOOZE_KEY, value: snoozedUntil, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: systemSettingsTable.key,
+          set: { value: snoozedUntil, updatedAt: new Date() },
+        });
+    } else {
+      await db.delete(systemSettingsTable).where(eq(systemSettingsTable.key, CLEANUP_ALERT_SNOOZE_KEY));
+    }
+
+    try {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: snoozedUntil ? "github_sync_cleanup_alert_snoozed" : "github_sync_cleanup_alert_unsnoozed",
+        targetType: "system_config",
+        targetId: null,
+        details: snoozedUntil ? JSON.stringify({ snoozedUntil, days }) : null,
+        ipAddress: req.ip ?? null,
+      });
+    } catch (auditErr) {
+      req.log.error({ err: auditErr }, "Failed to write audit log for cleanup alert snooze");
+    }
+
+    const active = snoozedUntil != null;
+    res.json({ snoozedUntil, active });
   } catch (err) {
     next(err);
   }

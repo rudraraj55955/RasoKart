@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey, useGetQuietHoursQueueCount, getGetQuietHoursQueueCountQueryKey, useGetMe, getGetMeQueryKey, useUpdateMyPreferences } from "@workspace/api-client-react";
-import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2, ChevronDown, ChevronUp, VolumeX, CheckCircle2, WifiOff } from "lucide-react";
+import { useListNotifications, useMarkAllNotificationsRead, useMarkNotificationRead, useGetNotificationUnreadCounts, getGetNotificationUnreadCountsQueryKey, useGetQuietHoursQueueCount, getGetQuietHoursQueueCountQueryKey, useGetMe, getGetMeQueryKey, useUpdateMyPreferences, useSetGithubSyncCleanupAlertSnooze, getGetGithubSyncCleanupAlertSnoozeQueryKey } from "@workspace/api-client-react";
+import { Bell, BellOff, Check, CheckCheck, CreditCard, Zap, AlertCircle, Megaphone, BarChart3, ShieldAlert, Mail, ShieldCheck, Settings2, ChevronDown, ChevronUp, VolumeX, CheckCircle2, WifiOff, Clock } from "lucide-react";
 import { IN_APP_NOTIF_FIELDS, IN_APP_NOTIF_LABELS, typeToField } from "@/lib/notification-categories";
 import type { InAppNotifField } from "@/lib/notification-categories";
 import { Button } from "@/components/ui/button";
@@ -202,6 +202,14 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
     mutation: {
       onSuccess: (updated) => {
         qc.setQueryData(getGetMeQueryKey(), (old: any) => ({ ...old, ...updated }));
+      },
+    },
+  });
+
+  const { mutate: snoozeCleanupAlert, isPending: snoozingCleanupAlert } = useSetGithubSyncCleanupAlertSnooze({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetGithubSyncCleanupAlertSnoozeQueryKey() });
       },
     },
   });
@@ -429,6 +437,20 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
                             </a>
                           ) : null;
                         })()}
+                        {n.type === "cleanup_failure_repeated" && isAdmin && (
+                          <button
+                            type="button"
+                            disabled={snoozingCleanupAlert}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              snoozeCleanupAlert({ data: { days: 7 } });
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 mt-1 disabled:opacity-50"
+                          >
+                            <Clock className="w-3 h-3" />
+                            Snooze for 7 days
+                          </button>
+                        )}
                         <p className="text-[10px] text-muted-foreground/50 mt-0.5">
                           {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                         </p>

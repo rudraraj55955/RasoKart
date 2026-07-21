@@ -187,6 +187,7 @@ import type {
   GetWebhookLogAttempts200,
   GetWebhookLogsParams,
   GetWebhookPlatformDefaults200,
+  GithubSyncCleanupAlertSnooze,
   GithubSyncConfig,
   GithubSyncDivergence,
   GithubSyncHistory,
@@ -415,6 +416,7 @@ import type {
   SendReportNow200,
   ServiceActivationRequestBody,
   ServiceActivationResponse,
+  SetGithubSyncCleanupAlertSnoozeBody,
   SetMerchantTryItPresets200,
   SetMerchantTryItPresetsInput,
   SetProductVisibilityBody,
@@ -23516,6 +23518,156 @@ export const useRunGithubSyncLogCleanup = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRunGithubSyncLogCleanupMutationOptions(options));
+    }
+
+export const getGetGithubSyncCleanupAlertSnoozeUrl = () => {
+
+
+
+
+  return `/api/github-sync/cleanup-alert-snooze`
+}
+
+/**
+ * Returns whether the nightly cleanup failure alert is currently snoozed and when the snooze expires.
+ * @summary Get the current cleanup failure alert snooze state
+ */
+export const getGithubSyncCleanupAlertSnooze = async ( options?: RequestInit): Promise<GithubSyncCleanupAlertSnooze> => {
+
+  return customFetch<GithubSyncCleanupAlertSnooze>(getGetGithubSyncCleanupAlertSnoozeUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGithubSyncCleanupAlertSnoozeQueryKey = () => {
+    return [
+    `/api/github-sync/cleanup-alert-snooze`
+    ] as const;
+    }
+
+
+export const getGetGithubSyncCleanupAlertSnoozeQueryOptions = <TData = Awaited<ReturnType<typeof getGithubSyncCleanupAlertSnooze>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncCleanupAlertSnooze>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGithubSyncCleanupAlertSnoozeQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGithubSyncCleanupAlertSnooze>>> = ({ signal }) => getGithubSyncCleanupAlertSnooze({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncCleanupAlertSnooze>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGithubSyncCleanupAlertSnoozeQueryResult = NonNullable<Awaited<ReturnType<typeof getGithubSyncCleanupAlertSnooze>>>
+export type GetGithubSyncCleanupAlertSnoozeQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the current cleanup failure alert snooze state
+ */
+
+export function useGetGithubSyncCleanupAlertSnooze<TData = Awaited<ReturnType<typeof getGithubSyncCleanupAlertSnooze>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGithubSyncCleanupAlertSnooze>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGithubSyncCleanupAlertSnoozeQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSetGithubSyncCleanupAlertSnoozeUrl = () => {
+
+
+
+
+  return `/api/github-sync/cleanup-alert-snooze`
+}
+
+/**
+ * Snooze the repeated cleanup failure alert for N days (pass days 1–365) or clear the snooze (pass days=0 or omit).
+ * @summary Snooze or unsnooze the cleanup failure alert
+ */
+export const setGithubSyncCleanupAlertSnooze = async (setGithubSyncCleanupAlertSnoozeBody: SetGithubSyncCleanupAlertSnoozeBody, options?: RequestInit): Promise<GithubSyncCleanupAlertSnooze> => {
+
+  return customFetch<GithubSyncCleanupAlertSnooze>(getSetGithubSyncCleanupAlertSnoozeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      setGithubSyncCleanupAlertSnoozeBody,)
+  }
+);}
+
+
+
+
+export const getSetGithubSyncCleanupAlertSnoozeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGithubSyncCleanupAlertSnooze>>, TError,{data: BodyType<SetGithubSyncCleanupAlertSnoozeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setGithubSyncCleanupAlertSnooze>>, TError,{data: BodyType<SetGithubSyncCleanupAlertSnoozeBody>}, TContext> => {
+
+const mutationKey = ['setGithubSyncCleanupAlertSnooze'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setGithubSyncCleanupAlertSnooze>>, {data: BodyType<SetGithubSyncCleanupAlertSnoozeBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setGithubSyncCleanupAlertSnooze(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetGithubSyncCleanupAlertSnoozeMutationResult = NonNullable<Awaited<ReturnType<typeof setGithubSyncCleanupAlertSnooze>>>
+    export type SetGithubSyncCleanupAlertSnoozeMutationBody = BodyType<SetGithubSyncCleanupAlertSnoozeBody>
+    export type SetGithubSyncCleanupAlertSnoozeMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Snooze or unsnooze the cleanup failure alert
+ */
+export const useSetGithubSyncCleanupAlertSnooze = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGithubSyncCleanupAlertSnooze>>, TError,{data: BodyType<SetGithubSyncCleanupAlertSnoozeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setGithubSyncCleanupAlertSnooze>>,
+        TError,
+        {data: BodyType<SetGithubSyncCleanupAlertSnoozeBody>},
+        TContext
+      > => {
+      return useMutation(getSetGithubSyncCleanupAlertSnoozeMutationOptions(options));
     }
 
 export const getGetGithubSyncLastCleanupUrl = () => {

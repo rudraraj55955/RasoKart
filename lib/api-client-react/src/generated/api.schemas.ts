@@ -247,6 +247,16 @@ export interface GithubSyncHistory {
   entries: GithubSyncHistoryEntry[];
 }
 
+export interface GithubSyncCleanupAlertSnooze {
+  /** Whether the cleanup failure alert snooze is currently active. */
+  active: boolean;
+  /**
+     * ISO timestamp when the snooze expires, or null if not snoozed.
+     * @nullable
+     */
+  snoozedUntil: string | null;
+}
+
 export interface GithubSyncLastCleanup {
   /** Whether the orphaned log file cleanup has ever run (nightly scheduler, startup sweep, or manual trigger) */
   hasRun: boolean;
@@ -7960,6 +7970,15 @@ export type RunGithubSyncLogCleanup200 = {
   deleted: number;
   /** Number of files that could not be deleted due to filesystem errors. */
   errors: number;
+};
+
+export type SetGithubSyncCleanupAlertSnoozeBody = {
+  /**
+     * Number of days to snooze. Pass 0 or omit to clear the active snooze.
+     * @minimum 0
+     * @maximum 365
+     */
+  days?: number;
 };
 
 export type ListCashfreePaymentLogsParams = {

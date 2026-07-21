@@ -7,6 +7,7 @@ import { db, notificationsTable, systemSettingsTable, usersTable } from "@worksp
 
 const LAST_CLEANUP_SETTING_KEY = "github_sync_last_cleanup";
 const FAILURE_STREAK_SETTING_KEY = "github_sync_cleanup_failure_streak";
+export const CLEANUP_ALERT_SNOOZE_KEY = "github_sync_cleanup_alert_snoozed_until";
 
 /**
  * Number of consecutive scheduled nightly runs that must report errors > 0
@@ -114,6 +115,21 @@ async function persistFailureStreak(streak: FailureStreak): Promise<void> {
       });
   } catch (err) {
     logger.error({ err }, "Failed to persist GitHub sync cleanup failure streak");
+  }
+}
+
+async function isCleanupAlertSnoozed(): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, CLEANUP_ALERT_SNOOZE_KEY))
+      .limit(1);
+    if (!row?.value) return false;
+    return new Date(row.value) > new Date();
+  } catch (err) {
+    logger.error({ err }, "Failed to read GitHub sync cleanup alert snooze setting");
+    return false;
   }
 }
 
@@ -225,7 +241,15 @@ export async function runGithubSyncLogCleanup(opts?: { source?: "scheduled" | "m
       await persistFailureStreak(updatedStreak);
 
       if (newCount >= CONSECUTIVE_FAILURE_THRESHOLD) {
-        await notifyAdminsOfRepeatedCleanupFailure(updatedStreak, errors);
+        const snoozed = await isCleanupAlertSnoozed();
+        if (snoozed) {
+          logger.info(
+            { consecutiveFailures: newCount, errorsTonight: errors },
+            "GitHub sync cleanup failure alert suppressed — admin has snoozed it",
+          );
+        } else {
+          await notifyAdminsOfRepeatedCleanupFailure(updatedStreak, errors);
+        }
       }
     } else if (streak.count > 0) {
       // Clean scheduled run — reset the streak.

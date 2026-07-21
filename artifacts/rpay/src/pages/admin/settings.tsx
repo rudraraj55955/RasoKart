@@ -12,7 +12,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useResetSignatureFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useResetSignatureFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetGithubSyncCleanupAlertSnooze, useSetGithubSyncCleanupAlertSnooze, getGetGithubSyncCleanupAlertSnoozeQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -1170,6 +1170,15 @@ export default function AdminSettings() {
 
   const [githubSyncLogCleanupResult, setGithubSyncLogCleanupResult] = useState<{ deleted: number; errors: number } | null>(null);
   const { data: githubSyncLastCleanup } = useGetGithubSyncLastCleanup({ query: { staleTime: 30_000 } } as any);
+  const { data: cleanupAlertSnooze } = useGetGithubSyncCleanupAlertSnooze({ query: { staleTime: 30_000 } } as any);
+  const { mutate: setCleanupAlertSnooze, isPending: settingCleanupAlertSnooze } = useSetGithubSyncCleanupAlertSnooze({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetGithubSyncCleanupAlertSnoozeQueryKey() });
+      },
+      onError: (err: Error) => toast.error(`Failed to update snooze: ${err.message}`),
+    },
+  });
   const { mutate: runLogCleanupNow, isPending: runningLogCleanup } = useRunGithubSyncLogCleanup({
     mutation: {
       onSuccess: (res) => {
@@ -3803,16 +3812,49 @@ export default function AdminSettings() {
                 </p>
               )}
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="shrink-0"
-              onClick={() => runLogCleanupNow()}
-              disabled={runningLogCleanup}
-            >
-              <Trash2 className={`w-3.5 h-3.5 mr-1.5`} />
-              {runningLogCleanup ? "Cleaning…" : "Run cleanup"}
-            </Button>
+            <div className="flex flex-col gap-1.5 shrink-0 items-end">
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => runLogCleanupNow()}
+                disabled={runningLogCleanup}
+              >
+                <Trash2 className={`w-3.5 h-3.5 mr-1.5`} />
+                {runningLogCleanup ? "Cleaning…" : "Run cleanup"}
+              </Button>
+              {cleanupAlertSnooze?.active && cleanupAlertSnooze.snoozedUntil ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="shrink-0 text-amber-400 hover:text-amber-300 h-7 px-2 text-xs"
+                  disabled={settingCleanupAlertSnooze}
+                  onClick={() => {
+                    setCleanupAlertSnooze({ data: { days: 0 } }, {
+                      onSuccess: () => toast.success("Cleanup failure alert re-enabled"),
+                    });
+                  }}
+                >
+                  <Clock className="w-3 h-3 mr-1" />
+                  Snoozed until {new Date(cleanupAlertSnooze.snoozedUntil).toLocaleDateString()} · Unsnooze
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="shrink-0 text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
+                  disabled={settingCleanupAlertSnooze}
+                  onClick={() => {
+                    setCleanupAlertSnooze({ data: { days: 7 } }, {
+                      onSuccess: () => toast.success("Cleanup failure alert snoozed for 7 days"),
+                    });
+                  }}
+                >
+                  <Clock className="w-3 h-3 mr-1" />
+                  Snooze alert 7 days
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">

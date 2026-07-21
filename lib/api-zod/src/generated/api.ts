@@ -7857,6 +7857,35 @@ export const RunGithubSyncLogCleanupResponse = zod.object({
 
 
 /**
+ * Returns whether the nightly cleanup failure alert is currently snoozed and when the snooze expires.
+ * @summary Get the current cleanup failure alert snooze state
+ */
+export const GetGithubSyncCleanupAlertSnoozeResponse = zod.object({
+  "active": zod.boolean().describe('Whether the cleanup failure alert snooze is currently active.'),
+  "snoozedUntil": zod.string().nullable().describe('ISO timestamp when the snooze expires, or null if not snoozed.')
+})
+
+
+/**
+ * Snooze the repeated cleanup failure alert for N days (pass days 1–365) or clear the snooze (pass days=0 or omit).
+ * @summary Snooze or unsnooze the cleanup failure alert
+ */
+export const setGithubSyncCleanupAlertSnoozeBodyDaysMin = 0;
+export const setGithubSyncCleanupAlertSnoozeBodyDaysMax = 365;
+
+
+
+export const SetGithubSyncCleanupAlertSnoozeBody = zod.object({
+  "days": zod.number().min(setGithubSyncCleanupAlertSnoozeBodyDaysMin).max(setGithubSyncCleanupAlertSnoozeBodyDaysMax).optional().describe('Number of days to snooze. Pass 0 or omit to clear the active snooze.')
+})
+
+export const SetGithubSyncCleanupAlertSnoozeResponse = zod.object({
+  "active": zod.boolean().describe('Whether the cleanup failure alert snooze is currently active.'),
+  "snoozedUntil": zod.string().nullable().describe('ISO timestamp when the snooze expires, or null if not snoozed.')
+})
+
+
+/**
  * Returns the outcome of the most recent orphaned-log-file cleanup, whether triggered by the nightly scheduler, the startup sweep, or an admin manually clicking "Run cleanup". Persists across server restarts and page refreshes.
  * @summary Get metadata about the most recent orphaned log file cleanup run
  */
