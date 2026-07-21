@@ -1290,6 +1290,15 @@ function TryItPanel({
         <span className="text-xs font-mono text-foreground/70 truncate flex-1">
           {method} {path}
         </span>
+        {presets.length > 0 && (
+          <Badge
+            variant="secondary"
+            className="text-[10px] shrink-0 tabular-nums"
+            title={`${presets.length} saved preset${presets.length === 1 ? "" : "s"} for this endpoint`}
+          >
+            {presets.length} preset{presets.length === 1 ? "" : "s"}
+          </Badge>
+        )}
         {sharedMatch && (
           <Badge className="text-[10px] bg-primary/20 text-primary border-primary/30 shrink-0">
             From shared link
