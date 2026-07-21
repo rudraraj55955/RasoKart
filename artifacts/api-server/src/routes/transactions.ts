@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, transactionsTable, merchantsTable, qrCodesTable, virtualAccountsTable, ledgerEntriesTable, auditLogsTable, merchantConnectionsTable, paymentLinksTable, usersTable } from "@workspace/db";
-import { eq, ilike, and, count, sql, gte, lte, or, inArray, sum } from "drizzle-orm";
+import { eq, ilike, and, count, sql, gte, lte, or, inArray, notInArray, sum } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { maybeNotifyProviderLimit, maybeNotifyProviderLimitReset } from "../helpers/providerLimitNotifier";
 
@@ -115,7 +115,7 @@ async function checkProviderLimitAfterDeposit(merchantId: number, connectionId: 
 router.get("/", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { type, status, search, merchantId, dateFrom, dateTo, amountMin, amountMax, connectionProvider, paymentLinkId, page = "1", limit = "20" } = req.query as Record<string, string>;
+    const { type, status, search, merchantId, demo = "exclude", dateFrom, dateTo, amountMin, amountMax, connectionProvider, paymentLinkId, page = "1", limit = "20" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -126,6 +126,13 @@ router.get("/", async (req, res, next) => {
     if (type && type !== "all") conditions.push(eq(transactionsTable.type, type));
     if (status && status !== "all") conditions.push(eq(transactionsTable.status, status));
     if (merchantId && user.role === "admin") conditions.push(eq(transactionsTable.merchantId, parseInt(merchantId)));
+    // Demo environment filter — enforced at DB query level (not just frontend).
+    // Default for admin is 'exclude' so the production view shows only real merchant activity.
+    if (user.role === "admin") {
+      if (demo === "exclude") conditions.push(notInArray(transactionsTable.merchantId, [1, 2, 3, 80]));
+      else if (demo === "only") conditions.push(inArray(transactionsTable.merchantId, [1, 2, 3, 80]));
+      // demo === "all": no additional constraint — show everything
+    }
     if (connectionProvider) {
       const matchingConnectionIds = db
         .select({ id: merchantConnectionsTable.id })

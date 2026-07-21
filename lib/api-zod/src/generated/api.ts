@@ -2076,7 +2076,8 @@ export const ListTransactionsQueryParams = zod.object({
   "connectionProvider": zod.enum(['phonepe', 'paytm', 'bharatpe', 'yono_sbi', 'hdfc_smarthub', 'upi_id']).optional(),
   "paymentLinkId": zod.coerce.number().optional(),
   "page": zod.coerce.number().optional(),
-  "limit": zod.coerce.number().optional()
+  "limit": zod.coerce.number().optional(),
+  "demo": zod.enum(['exclude', 'only', 'all']).optional().describe('Filter by demo\/production environment (admin only). Default: exclude — shows only real production transactions. Use \'only\' to see seed\/demo data. Use \'all\' to see everything.')
 })
 
 export const ListTransactionsResponse = zod.object({
@@ -6082,9 +6083,10 @@ export const GetDashboardRiskResponse = zod.object({
  * @summary Get webhook health summary (admin only)
  */
 export const GetDashboardWebhookHealthResponse = zod.object({
-  "failedCount": zod.number().describe('Total permanently-failed webhook logs in the last 24 hours'),
-  "affectedMerchants": zod.number().describe('Number of distinct merchants with failed webhooks in the last 24 hours'),
-  "windowHours": zod.number().describe('The time window in hours used for this summary')
+  "failedCount": zod.number().describe('Failed webhook deliveries for production merchants in the selected health window'),
+  "affectedMerchants": zod.number().describe('Number of distinct production merchants with failed webhooks in the health window'),
+  "windowHours": zod.number().describe('The time window in hours used for this summary'),
+  "totalUnresolvedFailed": zod.number().describe('All-time total failed webhook deliveries for production merchants (not limited to the window). Non-zero means there are outstanding failures regardless of age.')
 })
 
 

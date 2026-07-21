@@ -377,6 +377,7 @@ export * from './listStorageCleanupRunsParams';
 export * from './listSupportTicketsParams';
 export * from './listSupportTicketsStatus';
 export * from './listTransactionsConnectionProvider';
+export * from './listTransactionsDemo';
 export * from './listTransactionsParams';
 export * from './listTransactionsStatus';
 export * from './listTransactionsType';

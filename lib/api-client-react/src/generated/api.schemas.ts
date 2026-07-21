@@ -3573,12 +3573,14 @@ export interface AdminNotificationListResponse {
 }
 
 export interface WebhookHealthSummary {
-  /** Total permanently-failed webhook logs in the last 24 hours */
+  /** Failed webhook deliveries for production merchants in the selected health window */
   failedCount: number;
-  /** Number of distinct merchants with failed webhooks in the last 24 hours */
+  /** Number of distinct production merchants with failed webhooks in the health window */
   affectedMerchants: number;
   /** The time window in hours used for this summary */
   windowHours: number;
+  /** All-time total failed webhook deliveries for production merchants (not limited to the window). Non-zero means there are outstanding failures regardless of age. */
+  totalUnresolvedFailed: number;
 }
 
 export type AdminRiskStatsTopFailingMerchantsItem = {
@@ -6583,6 +6585,10 @@ connectionProvider?: ListTransactionsConnectionProvider;
 paymentLinkId?: number;
 page?: number;
 limit?: number;
+/**
+ * Filter by demo/production environment (admin only). Default: exclude — shows only real production transactions. Use 'only' to see seed/demo data. Use 'all' to see everything.
+ */
+demo?: ListTransactionsDemo;
 };
 
 export type ListTransactionsType = typeof ListTransactionsType[keyof typeof ListTransactionsType];
@@ -6614,6 +6620,15 @@ export const ListTransactionsConnectionProvider = {
   yono_sbi: 'yono_sbi',
   hdfc_smarthub: 'hdfc_smarthub',
   upi_id: 'upi_id',
+} as const;
+
+export type ListTransactionsDemo = typeof ListTransactionsDemo[keyof typeof ListTransactionsDemo];
+
+
+export const ListTransactionsDemo = {
+  exclude: 'exclude',
+  only: 'only',
+  all: 'all',
 } as const;
 
 export type SearchByUtrParams = {

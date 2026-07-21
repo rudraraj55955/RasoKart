@@ -7,6 +7,11 @@ import { requireAuth, requireAdmin } from "../middlewares/auth";
 const router = Router();
 router.use(requireAuth);
 
+/** Known seed/demo merchant IDs — excluded from all production-facing admin KPIs and charts.
+ *  Cleared automatically in the UI once a real merchant is onboarded (totalMerchants > 0).
+ *  When adding a new permanent seed merchant, append its ID here. */
+const DEMO_MERCHANT_IDS = [1, 2, 3, 80];
+
 const GITHUB_SYNC_HISTORY_FILE = new URL("../../../.github-sync-history.json", import.meta.url).pathname;
 const DEFAULT_GITHUB_SYNC_FAILURE_THRESHOLD = 3;
 
@@ -54,7 +59,12 @@ router.get("/stats", async (req, res, next) => {
   try {
     const user = (req as any).user;
     const isAdmin = user.role === "admin";
-    const whereClause = isAdmin ? undefined : eq(transactionsTable.merchantId, user.merchantId!);
+    // Production-only filter at DB level:
+    // - admin: exclude known demo/seed merchants so KPIs reflect real production data
+    // - merchant: restrict to their own data only
+    const merchantFilter = isAdmin
+      ? notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS)
+      : eq(transactionsTable.merchantId, user.merchantId!);
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -62,44 +72,30 @@ router.get("/stats", async (req, res, next) => {
     const [depositStats] = await db
       .select({ total: sql<number>`COALESCE(SUM(CAST(${transactionsTable.amount} AS DECIMAL)), 0)` })
       .from(transactionsTable)
-      .where(whereClause
-        ? and(eq(transactionsTable.type, "deposit"), whereClause)
-        : eq(transactionsTable.type, "deposit"));
+      .where(and(eq(transactionsTable.type, "deposit"), merchantFilter));
 
     const [withdrawalStats] = await db
       .select({ total: sql<number>`COALESCE(SUM(CAST(${transactionsTable.amount} AS DECIMAL)), 0)` })
       .from(transactionsTable)
-      .where(whereClause
-        ? and(eq(transactionsTable.type, "withdrawal"), whereClause)
-        : eq(transactionsTable.type, "withdrawal"));
+      .where(and(eq(transactionsTable.type, "withdrawal"), merchantFilter));
 
     const [pendingCount] = await db.select({ count: count() }).from(transactionsTable)
-      .where(whereClause
-        ? and(eq(transactionsTable.status, "pending"), whereClause)
-        : eq(transactionsTable.status, "pending"));
+      .where(and(eq(transactionsTable.status, "pending"), merchantFilter));
 
     const [successCount] = await db.select({ count: count() }).from(transactionsTable)
-      .where(whereClause
-        ? and(eq(transactionsTable.status, "success"), whereClause)
-        : eq(transactionsTable.status, "success"));
+      .where(and(eq(transactionsTable.status, "success"), merchantFilter));
 
     const [failedCount] = await db.select({ count: count() }).from(transactionsTable)
-      .where(whereClause
-        ? and(eq(transactionsTable.status, "failed"), whereClause)
-        : eq(transactionsTable.status, "failed"));
+      .where(and(eq(transactionsTable.status, "failed"), merchantFilter));
 
     // Today's deposits
-    const todayDepositWhere = whereClause
-      ? and(eq(transactionsTable.type, "deposit"), eq(transactionsTable.status, "success"), whereClause, gte(transactionsTable.createdAt, todayStart))
-      : and(eq(transactionsTable.type, "deposit"), eq(transactionsTable.status, "success"), gte(transactionsTable.createdAt, todayStart));
-
     const [todayDepositStats] = await db
       .select({
         cnt: count(),
         total: sql<number>`COALESCE(SUM(CAST(${transactionsTable.amount} AS DECIMAL)), 0)`,
       })
       .from(transactionsTable)
-      .where(todayDepositWhere);
+      .where(and(eq(transactionsTable.type, "deposit"), eq(transactionsTable.status, "success"), merchantFilter, gte(transactionsTable.createdAt, todayStart)));
 
     // QR and VA counts
     let qrCount = 0;
@@ -112,33 +108,30 @@ router.get("/stats", async (req, res, next) => {
       qrCount = qr.count;
       vaCount = va.count;
     } else if (isAdmin) {
-      const [qr] = await db.select({ count: count() }).from(qrCodesTable).where(eq(qrCodesTable.status, "active"));
-      const [va] = await db.select({ count: count() }).from(virtualAccountsTable).where(eq(virtualAccountsTable.status, "active"));
+      // Exclude demo merchants from active QR/VA counts too
+      const [qr] = await db.select({ count: count() }).from(qrCodesTable)
+        .where(and(eq(qrCodesTable.status, "active"), notInArray(qrCodesTable.merchantId, DEMO_MERCHANT_IDS)));
+      const [va] = await db.select({ count: count() }).from(virtualAccountsTable)
+        .where(and(eq(virtualAccountsTable.status, "active"), notInArray(virtualAccountsTable.merchantId, DEMO_MERCHANT_IDS)));
       qrCount = qr.count;
       vaCount = va.count;
     }
 
+    // Real (non-demo) merchant counts — demo merchants are already excluded from all KPIs above.
+    // totalMerchants = 0 means no real merchants have onboarded yet.
     let totalMerchants = 0;
     let pendingMerchants = 0;
     if (isAdmin) {
-      const [tm] = await db.select({ count: count() }).from(merchantsTable);
-      const [pm] = await db.select({ count: count() }).from(merchantsTable).where(eq(merchantsTable.status, "pending"));
+      const [tm] = await db.select({ count: count() }).from(merchantsTable)
+        .where(notInArray(merchantsTable.id, DEMO_MERCHANT_IDS));
+      const [pm] = await db.select({ count: count() }).from(merchantsTable)
+        .where(and(eq(merchantsTable.status, "pending"), notInArray(merchantsTable.id, DEMO_MERCHANT_IDS)));
       totalMerchants = tm.count;
       pendingMerchants = pm.count;
     }
 
-    // Detect if all current data is from known seed/demo merchants (IDs created by seed.ts)
-    // demoDataOnly = true signals the frontend to show a demo-environment warning banner.
-    // Cleared automatically once a real (non-seed) merchant is onboarded.
-    let demoDataOnly = false;
-    if (isAdmin && totalMerchants > 0) {
-      const SEED_MERCHANT_IDS = [1, 2, 3, 80];
-      const [realMerchants] = await db
-        .select({ count: count() })
-        .from(merchantsTable)
-        .where(notInArray(merchantsTable.id, SEED_MERCHANT_IDS));
-      demoDataOnly = realMerchants.count === 0;
-    }
+    // demoDataOnly: true when no real merchant has onboarded yet (totalMerchants already excludes demo).
+    const demoDataOnly = isAdmin && totalMerchants === 0;
 
     const totalDeposits = Number(depositStats?.total ?? 0);
     const totalWithdrawals = Number(withdrawalStats?.total ?? 0);
@@ -185,8 +178,8 @@ router.get("/chart", async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const whereClause = isAdmin
-      ? gte(transactionsTable.createdAt, thirtyDaysAgo)
+    const chartFilter = isAdmin
+      ? and(gte(transactionsTable.createdAt, thirtyDaysAgo), notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS))
       : and(gte(transactionsTable.createdAt, thirtyDaysAgo), eq(transactionsTable.merchantId, user.merchantId!));
 
     const rows = await db
@@ -196,7 +189,7 @@ router.get("/chart", async (req, res, next) => {
         total: sql<number>`COALESCE(SUM(CAST(${transactionsTable.amount} AS DECIMAL)), 0)`,
       })
       .from(transactionsTable)
-      .where(whereClause)
+      .where(chartFilter)
       .groupBy(sql`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM-DD')`, transactionsTable.type)
       .orderBy(sql`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM-DD')`);
 
@@ -235,7 +228,11 @@ router.get("/providers", async (req, res, next) => {
         failedCount: sql<number>`SUM(CASE WHEN ${transactionsTable.status} = 'failed' THEN 1 ELSE 0 END)`,
       })
       .from(transactionsTable)
-      .where(and(eq(transactionsTable.type, "deposit"), sql`${transactionsTable.provider} IS NOT NULL`))
+      .where(and(
+        eq(transactionsTable.type, "deposit"),
+        sql`${transactionsTable.provider} IS NOT NULL`,
+        notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS),
+      ))
       .groupBy(transactionsTable.provider);
 
     // Build a provider name map from the providers catalogue
@@ -278,6 +275,7 @@ router.get("/merchants", async (req, res, next) => {
       })
       .from(transactionsTable)
       .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
+      .where(notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS))
       .groupBy(transactionsTable.merchantId, merchantsTable.businessName, transactionsTable.type);
 
     const merchantMap: Record<number, { merchantId: number; merchantName: string; totalDeposits: number; totalWithdrawals: number; txCount: number }> = {};
@@ -314,7 +312,9 @@ router.get("/notifications", async (req, res, next) => {
 
     const notifications: any[] = [];
 
-    const [pm] = await db.select({ count: count() }).from(merchantsTable).where(eq(merchantsTable.status, "pending"));
+    // Only show notification for pending real (non-demo) merchants
+    const [pm] = await db.select({ count: count() }).from(merchantsTable)
+      .where(and(eq(merchantsTable.status, "pending"), notInArray(merchantsTable.id, DEMO_MERCHANT_IDS)));
     if (pm.count > 0) {
       notifications.push({
         id: "pending-merchants",
@@ -326,7 +326,9 @@ router.get("/notifications", async (req, res, next) => {
       });
     }
 
-    const [pt] = await db.select({ count: count() }).from(transactionsTable).where(eq(transactionsTable.status, "pending"));
+    // Only count pending transactions from real (non-demo) merchants
+    const [pt] = await db.select({ count: count() }).from(transactionsTable)
+      .where(and(eq(transactionsTable.status, "pending"), notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS)));
     if (pt.count > 0) {
       notifications.push({
         id: "pending-txns",
@@ -339,9 +341,14 @@ router.get("/notifications", async (req, res, next) => {
     }
 
     // Use the same 24-hour window as the webhook-health card so counts stay consistent.
+    // Exclude demo merchants so demo seed webhook failures don't pollute admin alerts.
     const callbackSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [fc] = await db.select({ count: count() }).from(callbackLogsTable)
-      .where(and(eq(callbackLogsTable.status, "failed"), gte(callbackLogsTable.createdAt, callbackSince)));
+      .where(and(
+        eq(callbackLogsTable.status, "failed"),
+        gte(callbackLogsTable.createdAt, callbackSince),
+        notInArray(callbackLogsTable.merchantId, DEMO_MERCHANT_IDS),
+      ));
     if (fc.count > 0) {
       notifications.push({
         id: "failed-callbacks",
@@ -412,13 +419,19 @@ router.get("/risk", async (req, res, next) => {
 
     const HIGH_VALUE_THRESHOLD = 100000;
 
+    // All risk metrics exclude demo/seed merchants for accurate production monitoring
     const [hv] = await db
       .select({ count: count() })
       .from(transactionsTable)
-      .where(sql`CAST(${transactionsTable.amount} AS DECIMAL) > ${HIGH_VALUE_THRESHOLD}`);
+      .where(and(
+        sql`CAST(${transactionsTable.amount} AS DECIMAL) > ${HIGH_VALUE_THRESHOLD}`,
+        notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS),
+      ));
 
-    const [total] = await db.select({ count: count() }).from(transactionsTable);
-    const [failed] = await db.select({ count: count() }).from(transactionsTable).where(eq(transactionsTable.status, "failed"));
+    const [total] = await db.select({ count: count() }).from(transactionsTable)
+      .where(notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS));
+    const [failed] = await db.select({ count: count() }).from(transactionsTable)
+      .where(and(eq(transactionsTable.status, "failed"), notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS)));
 
     const failedRatePercent = total.count > 0 ? Math.round((failed.count / total.count) * 1000) / 10 : 0;
 
@@ -431,6 +444,7 @@ router.get("/risk", async (req, res, next) => {
       })
       .from(transactionsTable)
       .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
+      .where(notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS))
       .groupBy(transactionsTable.merchantId, merchantsTable.businessName);
 
     const topFailingMerchants = merchantStats
@@ -497,12 +511,14 @@ router.get("/webhook-health", requireAdmin, async (req, res, next) => {
     const windowHours = 24;
     const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
 
+    // Exclude demo/seed merchants from webhook health metrics
     const [failedRow] = await db
       .select({ failedCount: count() })
       .from(callbackLogsTable)
       .where(and(
         eq(callbackLogsTable.status, "failed"),
         gte(callbackLogsTable.createdAt, since),
+        notInArray(callbackLogsTable.merchantId, DEMO_MERCHANT_IDS),
       ));
 
     const [merchantRow] = await db
@@ -511,12 +527,23 @@ router.get("/webhook-health", requireAdmin, async (req, res, next) => {
       .where(and(
         eq(callbackLogsTable.status, "failed"),
         gte(callbackLogsTable.createdAt, since),
+        notInArray(callbackLogsTable.merchantId, DEMO_MERCHANT_IDS),
+      ));
+
+    // All-time total unresolved failed webhook deliveries for production merchants
+    const [totalUnresolvedRow] = await db
+      .select({ totalFailed: count() })
+      .from(callbackLogsTable)
+      .where(and(
+        eq(callbackLogsTable.status, "failed"),
+        notInArray(callbackLogsTable.merchantId, DEMO_MERCHANT_IDS),
       ));
 
     res.json({
       failedCount: failedRow?.failedCount ?? 0,
       affectedMerchants: merchantRow?.affectedMerchants ?? 0,
       windowHours,
+      totalUnresolvedFailed: totalUnresolvedRow?.totalFailed ?? 0,
     });
   } catch (err) {
     next(err);

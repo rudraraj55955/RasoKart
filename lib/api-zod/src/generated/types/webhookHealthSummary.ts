@@ -7,10 +7,12 @@
  */
 
 export interface WebhookHealthSummary {
-  /** Total permanently-failed webhook logs in the last 24 hours */
+  /** Failed webhook deliveries for production merchants in the selected health window */
   failedCount: number;
-  /** Number of distinct merchants with failed webhooks in the last 24 hours */
+  /** Number of distinct production merchants with failed webhooks in the health window */
   affectedMerchants: number;
   /** The time window in hours used for this summary */
   windowHours: number;
+  /** All-time total failed webhook deliveries for production merchants (not limited to the window). Non-zero means there are outstanding failures regardless of age. */
+  totalUnresolvedFailed: number;
 }

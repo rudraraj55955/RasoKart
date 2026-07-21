@@ -189,24 +189,31 @@ export default function AdminDashboard() {
       )}
 
       {webhookHealth && (() => {
-        const hasFailed = webhookHealth.failedCount > 0;
+        const hasFailed24h = webhookHealth.failedCount > 0;
+        const hasAnyUnresolved = (webhookHealth.totalUnresolvedFailed ?? 0) > 0;
+        const hasAny = hasFailed24h || hasAnyUnresolved;
         return (
           <Link href="/admin/callbacks?status=failed">
-            <Card className={`cursor-pointer transition-all hover:border-border/80 ${hasFailed ? "border-rose-500/40 bg-rose-500/5 hover:bg-rose-500/10" : "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10"}`}>
+            <Card className={`cursor-pointer transition-all hover:border-border/80 ${hasAny ? "border-rose-500/40 bg-rose-500/5 hover:bg-rose-500/10" : "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10"}`}>
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${hasFailed ? "bg-rose-500/15" : "bg-emerald-500/15"}`}>
-                      <Webhook className={`w-4 h-4 ${hasFailed ? "text-rose-400" : "text-emerald-400"}`} />
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${hasAny ? "bg-rose-500/15" : "bg-emerald-500/15"}`}>
+                      <Webhook className={`w-4 h-4 ${hasAny ? "text-rose-400" : "text-emerald-400"}`} />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Webhook Health — Last 24h</p>
-                      {hasFailed ? (
+                      <p className="text-xs text-muted-foreground">Webhook Health</p>
+                      {hasFailed24h ? (
                         <p className="text-sm font-semibold text-rose-400">
-                          {webhookHealth.failedCount} failed {webhookHealth.failedCount === 1 ? "delivery" : "deliveries"} across {webhookHealth.affectedMerchants} {webhookHealth.affectedMerchants === 1 ? "merchant" : "merchants"}
+                          {webhookHealth.failedCount} failed in 24h · {webhookHealth.affectedMerchants} {webhookHealth.affectedMerchants === 1 ? "merchant" : "merchants"}
                         </p>
                       ) : (
-                        <p className="text-sm font-semibold text-emerald-400">All webhooks healthy — no failures</p>
+                        <p className="text-sm font-semibold text-emerald-400">No failures in last 24h</p>
+                      )}
+                      {(webhookHealth.totalUnresolvedFailed ?? 0) > 0 && (
+                        <p className="text-xs text-amber-400 mt-0.5">
+                          {webhookHealth.totalUnresolvedFailed} unresolved total (all time)
+                        </p>
                       )}
                     </div>
                   </div>

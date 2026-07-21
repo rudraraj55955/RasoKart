@@ -754,10 +754,10 @@ export async function seed() {
       { name: "ICICI Eazypay",        slug: "icici_eazypay",   category: "bank",    status: "sandbox",     description: "ICICI Bank Eazypay merchant collection gateway",             sortOrder: 11 },
       { name: "Axis Bank Pay",        slug: "axis_pay",        category: "bank",    status: "sandbox",     description: "Axis Bank merchant payment gateway",                         sortOrder: 12 },
       { name: "Kotak Smart Collect",  slug: "kotak_smart",     category: "bank",    status: "sandbox",     description: "Kotak Mahindra Smart Collect merchant digital payments",     sortOrder: 13 },
-      { name: "Razorpay",             slug: "razorpay",        category: "gateway", status: "live",        description: "Razorpay full-stack payment gateway (cards, UPI, wallets)", sortOrder: 14 },
+      { name: "Razorpay",             slug: "razorpay",        category: "gateway", status: "coming_soon", description: "Razorpay full-stack payment gateway (cards, UPI, wallets)", sortOrder: 14 },
       { name: "Cashfree Payments",    slug: "cashfree",        category: "gateway", status: "live",        description: "Cashfree multi-mode payment gateway",                        sortOrder: 15 },
       { name: "PayU",                 slug: "payu",            category: "gateway", status: "live",        description: "PayU merchant payment gateway",                              sortOrder: 16 },
-      { name: "EKQR / UPI Gateway",   slug: "ekqr",            category: "gateway", status: "live",        description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17 },
+      { name: "EKQR / UPI Gateway",   slug: "ekqr",            category: "gateway", status: "sandbox",     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17 },
     ];
     for (const p of PROVIDERS) {
       await db.insert(providersTable).values(p).onConflictDoUpdate({ target: providersTable.slug, set: { name: p.name, status: p.status, sortOrder: p.sortOrder } });
@@ -767,9 +767,9 @@ export async function seed() {
 
   // ── Idempotent upsert for EKQR (ensures it exists even on already-seeded DBs) ─
   await db.insert(providersTable).values({
-    name: "EKQR / UPI Gateway", slug: "ekqr", category: "gateway", status: "live",
+    name: "EKQR / UPI Gateway", slug: "ekqr", category: "gateway", status: "sandbox",
     description: "EKQR UPI payment gateway — dynamic QR & auto-credit deposits", sortOrder: 17,
-  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "EKQR / UPI Gateway", status: "live", sortOrder: 17 } });
+  }).onConflictDoUpdate({ target: providersTable.slug, set: { name: "EKQR / UPI Gateway", status: "sandbox", sortOrder: 17 } });
 
   // Note: provider_integrations UPI columns (is_custom, *_encrypted, etc) are
   // now guaranteed by ensureSchemaGuard() above — see lib/schemaGuard.ts.

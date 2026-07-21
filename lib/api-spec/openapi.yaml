@@ -1898,6 +1898,12 @@ paths:
           in: query
           schema:
             type: integer
+        - name: demo
+          in: query
+          description: "Filter by demo/production environment (admin only). Default: exclude — shows only real production transactions. Use 'only' to see seed/demo data. Use 'all' to see everything."
+          schema:
+            type: string
+            enum: [exclude, only, all]
       responses:
         "200":
           description: List of transactions
@@ -15949,17 +15955,20 @@ components:
 
     WebhookHealthSummary:
       type: object
-      required: [failedCount, affectedMerchants, windowHours]
+      required: [failedCount, affectedMerchants, windowHours, totalUnresolvedFailed]
       properties:
         failedCount:
           type: integer
-          description: Total permanently-failed webhook logs in the last 24 hours
+          description: Failed webhook deliveries for production merchants in the selected health window
         affectedMerchants:
           type: integer
-          description: Number of distinct merchants with failed webhooks in the last 24 hours
+          description: Number of distinct production merchants with failed webhooks in the health window
         windowHours:
           type: integer
           description: The time window in hours used for this summary
+        totalUnresolvedFailed:
+          type: integer
+          description: All-time total failed webhook deliveries for production merchants (not limited to the window). Non-zero means there are outstanding failures regardless of age.
 
     AdminRiskStats:
       type: object
