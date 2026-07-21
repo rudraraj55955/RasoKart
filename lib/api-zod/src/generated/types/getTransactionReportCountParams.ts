@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetTransactionReportCountConnectionProvider } from './getTransactionReportCountConnectionProvider';
+import type { GetTransactionReportCountEnv } from './getTransactionReportCountEnv';
 import type { GetTransactionReportCountSource } from './getTransactionReportCountSource';
 import type { GetTransactionReportCountStatus } from './getTransactionReportCountStatus';
 import type { GetTransactionReportCountType } from './getTransactionReportCountType';
@@ -21,4 +22,8 @@ dateFrom?: string;
 dateTo?: string;
 connectionProvider?: GetTransactionReportCountConnectionProvider;
 source?: GetTransactionReportCountSource;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetTransactionReportCountEnv;
 };

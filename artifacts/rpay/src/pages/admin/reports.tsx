@@ -100,6 +100,7 @@ import {
   Mail,
   BellOff,
   Bell,
+  Globe,
 } from "lucide-react";
 import { format, formatDistanceToNow, subDays, startOfMonth, endOfMonth, subMonths, eachDayOfInterval, parseISO } from "date-fns";
 import {
@@ -149,6 +150,29 @@ const DATE_PRESETS = [
     },
   },
 ];
+
+function EnvBadge({ env }: { env: string }) {
+  if (env === "demo") return (
+    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-amber-500/40 text-amber-400 font-normal">
+      Test / Demo
+    </Badge>
+  );
+  if (env === "sandbox") return (
+    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/40 text-blue-400 font-normal">
+      Sandbox / UAT
+    </Badge>
+  );
+  if (env === "all") return (
+    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-border text-muted-foreground font-normal">
+      All Environments
+    </Badge>
+  );
+  return (
+    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-emerald-500/40 text-emerald-400 font-normal">
+      Production
+    </Badge>
+  );
+}
 
 function fmt(amount: number) {
   return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -650,7 +674,9 @@ function ScheduleHistoryDialog({
 
 function ScheduledReportsPanel() {
   const qc = useQueryClient();
-  const { data, isLoading } = useListMerchantReportSchedules();
+  const scheduleSearchStr = useSearch();
+  const scheduleEnv = new URLSearchParams(scheduleSearchStr).get("env") ?? "production";
+  const { data, isLoading } = useListMerchantReportSchedules({ env: scheduleEnv as "production" | "demo" | "sandbox" | "all" });
   const schedules = data?.schedules ?? [];
 
   const upsert = useUpsertAdminMerchantReportSchedule();
@@ -2092,6 +2118,7 @@ function DeliveryHistoryPanel() {
   const merchantFilter = _qp.get("merchantId") ?? "all";
   const successFilter = _qp.get("success") ?? "all";
   const triggeredByFilter = _qp.get("triggeredBy") ?? "all";
+  const envFilter = _qp.get("env") ?? "production";
   // Support both `dateFrom`/`dateTo` (URL-native) and `from`/`to` (deep-link from auto-pause panel)
   const dateFrom = _qp.get("dateFrom") || _qp.get("from") || "";
   const dateTo = _qp.get("dateTo") || _qp.get("to") || "";
@@ -2153,6 +2180,7 @@ function DeliveryHistoryPanel() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     limit: 200,
+    env: envFilter as "production" | "demo" | "sandbox" | "all",
   };
 
   const { data, isLoading, isFetching } = useGetAdminReportDeliveryHistory(params);
@@ -2364,6 +2392,7 @@ function DeliveryHistoryPanel() {
           <CalendarClock className="w-4 h-4 text-primary" />
           Report Delivery History
           {(isLoading || isFetching) && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+          <EnvBadge env={envFilter} />
         </div>
         <p className="text-xs text-muted-foreground">
           Per-attempt delivery log across all merchants — failures, auto-pauses, and successes in one view. Each attempt records how it was triggered (manual send, bulk overdue sweep, or automated scheduler).
@@ -3097,6 +3126,9 @@ export default function AdminReports() {
   const txActivePreset     = _qp.get("txPreset");
   const [txExporting, setTxExporting] = useState<"pdf" | "xlsx" | null>(null);
 
+  const env = _qp.get("env") ?? "production";
+  const setEnv = (v: string) => setFilter({ env: v === "production" ? null : v });
+
   const setTxDateFrom = (v: string) => setFilter({ txFrom: v || null, txPreset: null });
   const setTxDateTo   = (v: string) => setFilter({ txTo: v || null, txPreset: null });
   const setType               = (v: string) => setFilter({ txType:     v === "all" ? null : v });
@@ -3146,6 +3178,7 @@ export default function AdminReports() {
     connectionProvider: connectionProvider !== "all" ? (connectionProvider as "phonepe" | "paytm" | "bharatpe" | "yono_sbi" | "hdfc_smarthub" | "upi_id") : undefined,
     source: source !== "all" ? (source as "qr_code" | "virtual_account" | "payment_link" | "direct") : undefined,
     merchantId: txMerchantId !== "all" ? parseInt(txMerchantId) : undefined,
+    env: env as "production" | "demo" | "sandbox" | "all",
   };
 
   const stlParams = {
@@ -3154,11 +3187,13 @@ export default function AdminReports() {
     status: stlStatus !== "all" ? (stlStatus as "pending" | "processing" | "approved" | "rejected" | "paid" | "cancelled") : undefined,
     settlementId: settlementId ? parseInt(settlementId) : undefined,
     merchantId: stlMerchantId !== "all" ? parseInt(stlMerchantId) : undefined,
+    env: env as "production" | "demo" | "sandbox" | "all",
   };
 
   const dhParams = {
     dateFrom: dhDateFrom || undefined,
     dateTo: dhDateTo || undefined,
+    env: env as "production" | "demo" | "sandbox" | "all",
   };
 
   const { user: dhUser } = useAuth();
@@ -3684,7 +3719,7 @@ export default function AdminReports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <BarChart3 className="w-6 h-6 text-primary" />
@@ -3693,6 +3728,20 @@ export default function AdminReports() {
           <p className="text-muted-foreground text-sm mt-1">
             Generate and download reports across all merchants
           </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+          <Select value={env} onValueChange={setEnv}>
+            <SelectTrigger className="h-8 w-44 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="production">Production</SelectItem>
+              <SelectItem value="sandbox">Sandbox / UAT</SelectItem>
+              <SelectItem value="demo">Test / Demo</SelectItem>
+              <SelectItem value="all">All Environments</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -3708,6 +3757,7 @@ export default function AdminReports() {
               {(dhLoading || dhFetching) && (
                 <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
               )}
+              <EnvBadge env={env} />
               <button
                 type="button"
                 onClick={() => handleTabChange("delivery-health")}

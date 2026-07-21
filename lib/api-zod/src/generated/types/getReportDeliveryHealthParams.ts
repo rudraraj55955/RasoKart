@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetReportDeliveryHealthEnv } from './getReportDeliveryHealthEnv';
 
 export type GetReportDeliveryHealthParams = {
 /**
@@ -15,4 +16,8 @@ dateFrom?: string;
  * ISO date — end of the period, inclusive (defaults to today)
  */
 dateTo?: string;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetReportDeliveryHealthEnv;
 };

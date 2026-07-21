@@ -233,6 +233,7 @@ import type {
   ListMerchantCredentialEventsParams,
   ListMerchantFeaturesParams,
   ListMerchantReportSchedules200,
+  ListMerchantReportSchedulesParams,
   ListMerchantSavedFilters200,
   ListMerchantSavedFiltersParams,
   ListMerchantsParams,
@@ -6461,20 +6462,27 @@ export const useSendReportNow = <TError = ErrorType<void>,
       return useMutation(getSendReportNowMutationOptions(options));
     }
 
-export const getListMerchantReportSchedulesUrl = () => {
+export const getListMerchantReportSchedulesUrl = (params?: ListMerchantReportSchedulesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/reports/schedules`
+  return stringifiedParams.length > 0 ? `/api/reports/schedules?${stringifiedParams}` : `/api/reports/schedules`
 }
 
 /**
  * @summary Admin — list all merchants' report schedules
  */
-export const listMerchantReportSchedules = async ( options?: RequestInit): Promise<ListMerchantReportSchedules200> => {
+export const listMerchantReportSchedules = async (params?: ListMerchantReportSchedulesParams, options?: RequestInit): Promise<ListMerchantReportSchedules200> => {
 
-  return customFetch<ListMerchantReportSchedules200>(getListMerchantReportSchedulesUrl(),
+  return customFetch<ListMerchantReportSchedules200>(getListMerchantReportSchedulesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6487,23 +6495,23 @@ export const listMerchantReportSchedules = async ( options?: RequestInit): Promi
 
 
 
-export const getListMerchantReportSchedulesQueryKey = () => {
+export const getListMerchantReportSchedulesQueryKey = (params?: ListMerchantReportSchedulesParams,) => {
     return [
-    `/api/reports/schedules`
+    `/api/reports/schedules`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListMerchantReportSchedulesQueryOptions = <TData = Awaited<ReturnType<typeof listMerchantReportSchedules>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantReportSchedules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListMerchantReportSchedulesQueryOptions = <TData = Awaited<ReturnType<typeof listMerchantReportSchedules>>, TError = ErrorType<void>>(params?: ListMerchantReportSchedulesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantReportSchedules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListMerchantReportSchedulesQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListMerchantReportSchedulesQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMerchantReportSchedules>>> = ({ signal }) => listMerchantReportSchedules({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMerchantReportSchedules>>> = ({ signal }) => listMerchantReportSchedules(params, { signal, ...requestOptions });
 
 
 
@@ -6521,11 +6529,11 @@ export type ListMerchantReportSchedulesQueryError = ErrorType<void>
  */
 
 export function useListMerchantReportSchedules<TData = Awaited<ReturnType<typeof listMerchantReportSchedules>>, TError = ErrorType<void>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantReportSchedules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListMerchantReportSchedulesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMerchantReportSchedules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListMerchantReportSchedulesQueryOptions(options)
+  const queryOptions = getListMerchantReportSchedulesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

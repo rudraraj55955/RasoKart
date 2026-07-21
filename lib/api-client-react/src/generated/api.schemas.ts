@@ -6689,6 +6689,10 @@ settlementId?: number;
 merchantId?: number;
 dateFrom?: string;
 dateTo?: string;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetSettlementReportEnv;
 };
 
 export type GetSettlementReportStatus = typeof GetSettlementReportStatus[keyof typeof GetSettlementReportStatus];
@@ -6701,6 +6705,16 @@ export const GetSettlementReportStatus = {
   rejected: 'rejected',
   paid: 'paid',
   cancelled: 'cancelled',
+  all: 'all',
+} as const;
+
+export type GetSettlementReportEnv = typeof GetSettlementReportEnv[keyof typeof GetSettlementReportEnv];
+
+
+export const GetSettlementReportEnv = {
+  production: 'production',
+  demo: 'demo',
+  sandbox: 'sandbox',
   all: 'all',
 } as const;
 
@@ -6720,6 +6734,10 @@ connectionProvider?: GetTransactionReportConnectionProvider;
  * Filter by transaction source channel
  */
 source?: GetTransactionReportSource;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetTransactionReportEnv;
 };
 
 export type GetTransactionReportType = typeof GetTransactionReportType[keyof typeof GetTransactionReportType];
@@ -6763,6 +6781,16 @@ export const GetTransactionReportSource = {
   direct: 'direct',
 } as const;
 
+export type GetTransactionReportEnv = typeof GetTransactionReportEnv[keyof typeof GetTransactionReportEnv];
+
+
+export const GetTransactionReportEnv = {
+  production: 'production',
+  demo: 'demo',
+  sandbox: 'sandbox',
+  all: 'all',
+} as const;
+
 export type GetTransactionReportCountParams = {
 type?: GetTransactionReportCountType;
 status?: GetTransactionReportCountStatus;
@@ -6774,6 +6802,10 @@ dateFrom?: string;
 dateTo?: string;
 connectionProvider?: GetTransactionReportCountConnectionProvider;
 source?: GetTransactionReportCountSource;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetTransactionReportCountEnv;
 };
 
 export type GetTransactionReportCountType = typeof GetTransactionReportCountType[keyof typeof GetTransactionReportCountType];
@@ -6817,6 +6849,16 @@ export const GetTransactionReportCountSource = {
   direct: 'direct',
 } as const;
 
+export type GetTransactionReportCountEnv = typeof GetTransactionReportCountEnv[keyof typeof GetTransactionReportCountEnv];
+
+
+export const GetTransactionReportCountEnv = {
+  production: 'production',
+  demo: 'demo',
+  sandbox: 'sandbox',
+  all: 'all',
+} as const;
+
 export type GetTransactionReportCount200 = {
   count: number;
 };
@@ -6829,6 +6871,10 @@ status?: GetSettlementReportCountStatus;
 merchantId?: number;
 dateFrom?: string;
 dateTo?: string;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetSettlementReportCountEnv;
 };
 
 export type GetSettlementReportCountStatus = typeof GetSettlementReportCountStatus[keyof typeof GetSettlementReportCountStatus];
@@ -6841,6 +6887,16 @@ export const GetSettlementReportCountStatus = {
   rejected: 'rejected',
   paid: 'paid',
   cancelled: 'cancelled',
+  all: 'all',
+} as const;
+
+export type GetSettlementReportCountEnv = typeof GetSettlementReportCountEnv[keyof typeof GetSettlementReportCountEnv];
+
+
+export const GetSettlementReportCountEnv = {
+  production: 'production',
+  demo: 'demo',
+  sandbox: 'sandbox',
   all: 'all',
 } as const;
 
@@ -6954,6 +7010,23 @@ export type SendReportNow200 = {
   to: string;
 };
 
+export type ListMerchantReportSchedulesParams = {
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: ListMerchantReportSchedulesEnv;
+};
+
+export type ListMerchantReportSchedulesEnv = typeof ListMerchantReportSchedulesEnv[keyof typeof ListMerchantReportSchedulesEnv];
+
+
+export const ListMerchantReportSchedulesEnv = {
+  production: 'production',
+  demo: 'demo',
+  sandbox: 'sandbox',
+  all: 'all',
+} as const;
+
 export type ListMerchantReportSchedules200 = {
   schedules: AdminReportSchedule[];
 };
@@ -7060,6 +7133,10 @@ triggeredBy?: GetAdminReportDeliveryHistoryTriggeredBy;
  * @maximum 200
  */
 limit?: number;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetAdminReportDeliveryHistoryEnv;
 };
 
 export type GetAdminReportDeliveryHistorySuccess = typeof GetAdminReportDeliveryHistorySuccess[keyof typeof GetAdminReportDeliveryHistorySuccess];
@@ -7077,6 +7154,16 @@ export const GetAdminReportDeliveryHistoryTriggeredBy = {
   manual: 'manual',
   bulk: 'bulk',
   scheduler: 'scheduler',
+} as const;
+
+export type GetAdminReportDeliveryHistoryEnv = typeof GetAdminReportDeliveryHistoryEnv[keyof typeof GetAdminReportDeliveryHistoryEnv];
+
+
+export const GetAdminReportDeliveryHistoryEnv = {
+  production: 'production',
+  demo: 'demo',
+  sandbox: 'sandbox',
+  all: 'all',
 } as const;
 
 export type GetAdminReportDeliveryHistory200 = {
@@ -7127,7 +7214,21 @@ dateFrom?: string;
  * ISO date — end of the period, inclusive (defaults to today)
  */
 dateTo?: string;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetReportDeliveryHealthEnv;
 };
+
+export type GetReportDeliveryHealthEnv = typeof GetReportDeliveryHealthEnv[keyof typeof GetReportDeliveryHealthEnv];
+
+
+export const GetReportDeliveryHealthEnv = {
+  production: 'production',
+  demo: 'demo',
+  sandbox: 'sandbox',
+  all: 'all',
+} as const;
 
 export type GetReportDeliveryHealth200 = {
   stats: DeliveryHealthStats;

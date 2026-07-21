@@ -50,10 +50,15 @@ async function getAdminDigestEmails(): Promise<{ email: string; id: number }[]> 
   return rows;
 }
 
-export async function buildHealthData(from: Date, to?: Date): Promise<{ merchants: MerchantHealthRow[]; stats: DigestStats }> {
+export async function buildHealthData(from: Date, to?: Date, env?: string): Promise<{ merchants: MerchantHealthRow[]; stats: DigestStats }> {
   const dateConditions = to
     ? and(gte(reportDeliveryLogsTable.attemptedAt, from), lte(reportDeliveryLogsTable.attemptedAt, to))
     : gte(reportDeliveryLogsTable.attemptedAt, from);
+
+  const effectiveEnv = env ?? "production";
+  const where = effectiveEnv !== "all"
+    ? and(dateConditions, eq(merchantsTable.environment, effectiveEnv))
+    : dateConditions;
 
   const logsWithMerchant = await db
     .select({
@@ -65,7 +70,7 @@ export async function buildHealthData(from: Date, to?: Date): Promise<{ merchant
     })
     .from(reportDeliveryLogsTable)
     .innerJoin(merchantsTable, eq(reportDeliveryLogsTable.merchantId, merchantsTable.id))
-    .where(dateConditions)
+    .where(where)
     .groupBy(reportDeliveryLogsTable.merchantId, merchantsTable.businessName);
 
   const scheduleStatusMap = new Map<number, boolean>();

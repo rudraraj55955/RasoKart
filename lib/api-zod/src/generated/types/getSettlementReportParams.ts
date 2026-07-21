@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetSettlementReportEnv } from './getSettlementReportEnv';
 import type { GetSettlementReportStatus } from './getSettlementReportStatus';
 
 export type GetSettlementReportParams = {
@@ -19,4 +20,8 @@ settlementId?: number;
 merchantId?: number;
 dateFrom?: string;
 dateTo?: string;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetSettlementReportEnv;
 };

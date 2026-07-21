@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetAdminReportDeliveryHistoryEnv } from './getAdminReportDeliveryHistoryEnv';
 import type { GetAdminReportDeliveryHistorySuccess } from './getAdminReportDeliveryHistorySuccess';
 import type { GetAdminReportDeliveryHistoryTriggeredBy } from './getAdminReportDeliveryHistoryTriggeredBy';
 
@@ -35,4 +36,8 @@ triggeredBy?: GetAdminReportDeliveryHistoryTriggeredBy;
  * @maximum 200
  */
 limit?: number;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetAdminReportDeliveryHistoryEnv;
 };

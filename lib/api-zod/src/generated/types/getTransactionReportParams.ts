@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetTransactionReportConnectionProvider } from './getTransactionReportConnectionProvider';
+import type { GetTransactionReportEnv } from './getTransactionReportEnv';
 import type { GetTransactionReportSource } from './getTransactionReportSource';
 import type { GetTransactionReportStatus } from './getTransactionReportStatus';
 import type { GetTransactionReportType } from './getTransactionReportType';
@@ -26,4 +27,8 @@ connectionProvider?: GetTransactionReportConnectionProvider;
  * Filter by transaction source channel
  */
 source?: GetTransactionReportSource;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetTransactionReportEnv;
 };

@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetSettlementReportCountEnv } from './getSettlementReportCountEnv';
 import type { GetSettlementReportCountStatus } from './getSettlementReportCountStatus';
 
 export type GetSettlementReportCountParams = {
@@ -15,4 +16,8 @@ status?: GetSettlementReportCountStatus;
 merchantId?: number;
 dateFrom?: string;
 dateTo?: string;
+/**
+ * Admin only — filter by merchant environment (default production)
+ */
+env?: GetSettlementReportCountEnv;
 };

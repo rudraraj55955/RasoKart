@@ -137,6 +137,13 @@ router.get("/transactions", async (req, res, next) => {
     } else if (merchantId) {
       conditions.push(eq(transactionsTable.merchantId, parseInt(merchantId as string)));
     }
+    if (user.role === "admin") {
+      const envParam = (req.query["env"] as string | undefined) ?? "production";
+      if (envParam !== "all") {
+        const envSubq = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, envParam));
+        conditions.push(inArray(transactionsTable.merchantId, envSubq));
+      }
+    }
     if (type && type !== "all") conditions.push(eq(transactionsTable.type, type));
     if (status && status !== "all") conditions.push(eq(transactionsTable.status, status));
     if (connectionProvider) {
@@ -270,6 +277,13 @@ router.get("/settlements", async (req, res, next) => {
     } else if (merchantId) {
       conditions.push(eq(settlementsTable.merchantId, parseInt(merchantId as string)));
     }
+    if (user.role === "admin") {
+      const envParam = (req.query["env"] as string | undefined) ?? "production";
+      if (envParam !== "all") {
+        const envSubq = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, envParam));
+        conditions.push(inArray(settlementsTable.merchantId, envSubq));
+      }
+    }
     if (status && status !== "all") conditions.push(eq(settlementsTable.status, status));
     if (settlementId) conditions.push(eq(settlementsTable.id, parseInt(settlementId as string)));
     if (dateFrom) conditions.push(gte(settlementsTable.createdAt, new Date(dateFrom)));
@@ -353,6 +367,13 @@ router.get("/transactions/count", async (req, res, next) => {
     } else if (merchantId) {
       conditions.push(eq(transactionsTable.merchantId, parseInt(merchantId as string)));
     }
+    if (user.role === "admin") {
+      const envParam = (req.query["env"] as string | undefined) ?? "production";
+      if (envParam !== "all") {
+        const envSubq = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, envParam));
+        conditions.push(inArray(transactionsTable.merchantId, envSubq));
+      }
+    }
     if (type && type !== "all") conditions.push(eq(transactionsTable.type, type));
     if (status && status !== "all") conditions.push(eq(transactionsTable.status, status));
     if (connectionProvider) {
@@ -416,6 +437,13 @@ router.get("/settlements/count", async (req, res, next) => {
       conditions.push(eq(settlementsTable.merchantId, user.merchantId!));
     } else if (merchantId) {
       conditions.push(eq(settlementsTable.merchantId, parseInt(merchantId as string)));
+    }
+    if (user.role === "admin") {
+      const envParam = (req.query["env"] as string | undefined) ?? "production";
+      if (envParam !== "all") {
+        const envSubq = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, envParam));
+        conditions.push(inArray(settlementsTable.merchantId, envSubq));
+      }
     }
     if (status && status !== "all") conditions.push(eq(settlementsTable.status, status));
     if (dateFrom) conditions.push(gte(settlementsTable.createdAt, new Date(dateFrom)));
@@ -857,8 +885,14 @@ router.get("/schedules/delivery-history", requireAdmin, async (req, res, next) =
     const rawLimit = parseInt((req.query["limit"] as string) ?? "100");
     const limit = isNaN(rawLimit) ? 100 : Math.min(Math.max(rawLimit, 1), 200);
 
+    const envParam = (req.query["env"] as string | undefined) ?? "production";
+
     const conditions = [];
     if (merchantId) conditions.push(eq(reportDeliveryLogsTable.merchantId, parseInt(merchantId as string)));
+    if (envParam !== "all") {
+      const envSubq = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, envParam));
+      conditions.push(inArray(reportDeliveryLogsTable.merchantId, envSubq));
+    }
     if (dateFrom) conditions.push(gte(reportDeliveryLogsTable.attemptedAt, new Date(dateFrom)));
     if (dateTo) {
       const endOfDay = new Date(dateTo);
@@ -900,6 +934,7 @@ router.get("/schedules/delivery-history", requireAdmin, async (req, res, next) =
 // GET /api/reports/schedules — admin: list all merchants' schedules
 router.get("/schedules", requireAdmin, async (req, res, next) => {
   try {
+    const envParam = (req.query["env"] as string | undefined) ?? "production";
     const rows = await db
       .select({
         schedule: reportSchedulesTable,
@@ -908,6 +943,7 @@ router.get("/schedules", requireAdmin, async (req, res, next) => {
       })
       .from(reportSchedulesTable)
       .innerJoin(merchantsTable, eq(reportSchedulesTable.merchantId, merchantsTable.id))
+      .where(envParam !== "all" ? eq(merchantsTable.environment, envParam) : undefined)
       .orderBy(merchantsTable.businessName);
 
     const allMerchantIds = rows.map(r => r.schedule.merchantId);
@@ -1705,6 +1741,7 @@ router.post("/schedules/:merchantId/logs/:logId/retry", requireAdmin, async (req
 router.get("/delivery-health", requireAdmin, async (req, res, next) => {
   try {
     const { dateFrom, dateTo } = req.query as Record<string, string>;
+    const envParam = (req.query["env"] as string | undefined) ?? "production";
 
     let from: Date;
     let to: Date;
@@ -1727,7 +1764,7 @@ router.get("/delivery-health", requireAdmin, async (req, res, next) => {
       return;
     }
 
-    const { merchants, stats } = await buildHealthData(from, to);
+    const { merchants, stats } = await buildHealthData(from, to, envParam);
 
     res.json({
       stats: {

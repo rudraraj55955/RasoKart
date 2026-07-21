@@ -2119,6 +2119,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum: [production, demo, sandbox, all]
+          description: Admin only — filter by merchant environment (default production)
       responses:
         "200":
           description: Settlement report data
@@ -2177,6 +2183,12 @@ paths:
             type: string
             enum: [qr_code, virtual_account, payment_link, direct]
           description: Filter by transaction source channel
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum: [production, demo, sandbox, all]
+          description: Admin only — filter by merchant environment (default production)
       responses:
         "200":
           description: Transaction report data
@@ -2226,6 +2238,12 @@ paths:
           schema:
             type: string
             enum: [qr_code, virtual_account, payment_link, direct]
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum: [production, demo, sandbox, all]
+          description: Admin only — filter by merchant environment (default production)
       responses:
         "200":
           description: Record count
@@ -2264,6 +2282,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum: [production, demo, sandbox, all]
+          description: Admin only — filter by merchant environment (default production)
       responses:
         "200":
           description: Record count
@@ -2482,6 +2506,13 @@ paths:
       operationId: listMerchantReportSchedules
       tags: [reports]
       summary: Admin — list all merchants' report schedules
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum: [production, demo, sandbox, all]
+          description: Admin only — filter by merchant environment (default production)
       responses:
         "200":
           description: List of all schedules with merchant info
@@ -2710,6 +2741,12 @@ paths:
             maximum: 200
             default: 100
           description: Maximum rows to return (default 100, max 200)
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum: [production, demo, sandbox, all]
+          description: Admin only — filter by merchant environment (default production)
       responses:
         "200":
           description: Delivery log rows newest-first
@@ -2925,6 +2962,12 @@ paths:
           schema:
             type: string
           description: ISO date — end of the period, inclusive (defaults to today)
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum: [production, demo, sandbox, all]
+          description: Admin only — filter by merchant environment (default production)
       responses:
         "200":
           description: Delivery health summary

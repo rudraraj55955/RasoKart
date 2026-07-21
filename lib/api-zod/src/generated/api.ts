@@ -2266,7 +2266,8 @@ export const GetSettlementReportQueryParams = zod.object({
   "settlementId": zod.coerce.number().optional().describe('Filter by a specific settlement ID'),
   "merchantId": zod.coerce.number().optional().describe('Admin only — scope report to a specific merchant'),
   "dateFrom": zod.coerce.string().optional(),
-  "dateTo": zod.coerce.string().optional()
+  "dateTo": zod.coerce.string().optional(),
+  "env": zod.enum(['production', 'demo', 'sandbox', 'all']).optional().describe('Admin only — filter by merchant environment (default production)')
 })
 
 export const GetSettlementReportResponse = zod.object({
@@ -2314,7 +2315,8 @@ export const GetTransactionReportQueryParams = zod.object({
   "amountMin": zod.coerce.number().optional(),
   "amountMax": zod.coerce.number().optional(),
   "connectionProvider": zod.enum(['phonepe', 'paytm', 'bharatpe', 'yono_sbi', 'hdfc_smarthub', 'upi_id']).optional(),
-  "source": zod.enum(['qr_code', 'virtual_account', 'payment_link', 'direct']).optional().describe('Filter by transaction source channel')
+  "source": zod.enum(['qr_code', 'virtual_account', 'payment_link', 'direct']).optional().describe('Filter by transaction source channel'),
+  "env": zod.enum(['production', 'demo', 'sandbox', 'all']).optional().describe('Admin only — filter by merchant environment (default production)')
 })
 
 export const GetTransactionReportResponse = zod.object({
@@ -2362,7 +2364,8 @@ export const GetTransactionReportCountQueryParams = zod.object({
   "dateFrom": zod.coerce.string().optional(),
   "dateTo": zod.coerce.string().optional(),
   "connectionProvider": zod.enum(['phonepe', 'paytm', 'bharatpe', 'yono_sbi', 'hdfc_smarthub', 'upi_id']).optional(),
-  "source": zod.enum(['qr_code', 'virtual_account', 'payment_link', 'direct']).optional()
+  "source": zod.enum(['qr_code', 'virtual_account', 'payment_link', 'direct']).optional(),
+  "env": zod.enum(['production', 'demo', 'sandbox', 'all']).optional().describe('Admin only — filter by merchant environment (default production)')
 })
 
 export const GetTransactionReportCountResponse = zod.object({
@@ -2377,7 +2380,8 @@ export const GetSettlementReportCountQueryParams = zod.object({
   "status": zod.enum(['pending', 'processing', 'approved', 'rejected', 'paid', 'cancelled', 'all']).optional(),
   "merchantId": zod.coerce.number().optional().describe('Admin only — scope to a specific merchant'),
   "dateFrom": zod.coerce.string().optional(),
-  "dateTo": zod.coerce.string().optional()
+  "dateTo": zod.coerce.string().optional(),
+  "env": zod.enum(['production', 'demo', 'sandbox', 'all']).optional().describe('Admin only — filter by merchant environment (default production)')
 })
 
 export const GetSettlementReportCountResponse = zod.object({
@@ -2618,6 +2622,10 @@ export const SendReportNowResponse = zod.object({
 /**
  * @summary Admin — list all merchants' report schedules
  */
+export const ListMerchantReportSchedulesQueryParams = zod.object({
+  "env": zod.enum(['production', 'demo', 'sandbox', 'all']).optional().describe('Admin only — filter by merchant environment (default production)')
+})
+
 export const listMerchantReportSchedulesResponseSchedulesItemDayOfWeekMin = 0;
 export const listMerchantReportSchedulesResponseSchedulesItemDayOfWeekMax = 6;
 
@@ -2844,7 +2852,8 @@ export const GetAdminReportDeliveryHistoryQueryParams = zod.object({
   "dateTo": zod.coerce.string().optional().describe('ISO date — only return attempts on or before this date'),
   "success": zod.enum(['true', 'false']).optional().describe('Filter by outcome (omit for all)'),
   "triggeredBy": zod.enum(['manual', 'bulk', 'scheduler']).optional().describe('Filter by what triggered the delivery — manual (send-now), bulk (send-all-overdue), or scheduler (automated cron)'),
-  "limit": zod.coerce.number().min(1).max(getAdminReportDeliveryHistoryQueryLimitMax).default(getAdminReportDeliveryHistoryQueryLimitDefault).describe('Maximum rows to return (default 100, max 200)')
+  "limit": zod.coerce.number().min(1).max(getAdminReportDeliveryHistoryQueryLimitMax).default(getAdminReportDeliveryHistoryQueryLimitDefault).describe('Maximum rows to return (default 100, max 200)'),
+  "env": zod.enum(['production', 'demo', 'sandbox', 'all']).optional().describe('Admin only — filter by merchant environment (default production)')
 })
 
 export const GetAdminReportDeliveryHistoryResponse = zod.object({
@@ -3057,7 +3066,8 @@ export const PreviewAdminMerchantReportScheduleEmailResponse = zod.object({
  */
 export const GetReportDeliveryHealthQueryParams = zod.object({
   "dateFrom": zod.coerce.string().optional().describe('ISO date — start of the period (defaults to 7 days ago)'),
-  "dateTo": zod.coerce.string().optional().describe('ISO date — end of the period, inclusive (defaults to today)')
+  "dateTo": zod.coerce.string().optional().describe('ISO date — end of the period, inclusive (defaults to today)'),
+  "env": zod.enum(['production', 'demo', 'sandbox', 'all']).optional().describe('Admin only — filter by merchant environment (default production)')
 })
 
 export const GetReportDeliveryHealthResponse = zod.object({
