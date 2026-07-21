@@ -76,6 +76,7 @@
     "vite": "catalog:",
     "wouter": "^3.3.5",
     "xlsx": "^0.18.5",
+    "tsx": "catalog:",
     "zod": "catalog:"
   },
   "dependencies": {

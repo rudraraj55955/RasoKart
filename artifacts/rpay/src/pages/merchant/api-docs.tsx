@@ -10,6 +10,15 @@ import {
   isValidElement,
   type ReactNode,
 } from "react";
+import {
+  looksLikeCredential,
+  scrubFields,
+  scrubCredentialsFromPreset,
+  scrubCredentialsFromAllPresets,
+  scrubCredentialsForShare,
+  type SavedQueryPreset,
+  type ScrubbedShareFields,
+} from "@/lib/api-docs-scrub";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -190,15 +199,6 @@ interface TryItPanelProps {
    * the Bearer token — e.g. "X-Api-Key" for the payment callback endpoint.
    */
   apiKeyHeader?: string;
-}
-
-function looksLikeCredential(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  if (trimmed.startsWith("rasokart_live_") || trimmed.startsWith("rasokart_secret_")) return true;
-  const parts = trimmed.split(".");
-  if (parts.length === 3 && parts[0].startsWith("ey") && parts[1].startsWith("ey")) return true;
-  return false;
 }
 
 function walkJsonStrings(value: unknown, path: string, found: { path: string; value: string }[]) {
@@ -406,14 +406,6 @@ function extractPathParams(path: string): string[] {
 
 let queryParamRowId = 0;
 
-interface SavedQueryPreset {
-  id: string;
-  name: string;
-  pathValues: Record<string, string>;
-  queryParams: { key: string; value: string }[];
-  body: string;
-}
-
 const TRY_IT_PRESETS_STORAGE_KEY = "rasokart_tryit_presets";
 
 // Keep these in sync with the server-side constants in
@@ -539,99 +531,6 @@ function parsePresetsKey(key: string): { method: string; path: string } {
   const spaceIdx = key.indexOf(" ");
   if (spaceIdx === -1) return { method: "", path: key };
   return { method: key.slice(0, spaceIdx), path: key.slice(spaceIdx + 1) };
-}
-
-/**
- * Shared credential-scrubbing core used by both the share-link and export flows.
- *
- * Walks pathValues, queryParams, and the JSON body, replacing any
- * credential-shaped value (per `looksLikeCredential`) with "[REDACTED]".
- *
- * When `onRedacted` is supplied it is called with a human-readable label for
- * every field that was stripped — the share-link flow uses this to build the
- * summary shown to the sender and recipient. The export flow omits it.
- */
-function scrubFields(
-  pathValues: Record<string, string>,
-  queryParams: { key: string; value: string }[],
-  body: string,
-  onRedacted?: (label: string) => void
-): { pathValues: Record<string, string>; queryParams: { key: string; value: string }[]; body: string } {
-  const outPathValues: Record<string, string> = {};
-  for (const [key, val] of Object.entries(pathValues)) {
-    if (looksLikeCredential(val)) {
-      outPathValues[key] = "[REDACTED]";
-      onRedacted?.(`path param "{${key}}"`);
-    } else {
-      outPathValues[key] = val;
-    }
-  }
-
-  const outQueryParams = queryParams.map((row) => {
-    if (looksLikeCredential(row.value)) {
-      onRedacted?.(`query param "${row.key}"`);
-      return { key: row.key, value: "[REDACTED]" };
-    }
-    return row;
-  });
-
-  let outBody = body;
-  if (body.trim()) {
-    try {
-      const parsed = JSON.parse(body) as unknown;
-      const scrubJsonValue = (value: unknown, path: string): unknown => {
-        if (typeof value === "string") {
-          if (looksLikeCredential(value)) {
-            onRedacted?.(path ? `body field "${path}"` : "request body");
-            return "[REDACTED]";
-          }
-          return value;
-        } else if (Array.isArray(value)) {
-          return value.map((item, i) => scrubJsonValue(item, `${path}[${i}]`));
-        } else if (value !== null && typeof value === "object") {
-          const out: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-            out[k] = scrubJsonValue(v, path ? `${path}.${k}` : k);
-          }
-          return out;
-        }
-        return value;
-      };
-      outBody = JSON.stringify(scrubJsonValue(parsed, ""), null, 2);
-    } catch {
-      if (looksLikeCredential(body)) {
-        onRedacted?.("request body");
-        outBody = "[REDACTED]";
-      }
-    }
-  }
-
-  return { pathValues: outPathValues, queryParams: outQueryParams, body: outBody };
-}
-
-/**
- * Deep-scrubs any field that looks like a credential (via `looksLikeCredential`)
- * out of a preset before it's ever serialized into an export file. Presets don't
- * intentionally store bearer tokens today, but this is a defense-in-depth guard
- * in case a token ever lands in pathValues/queryParams/body.
- */
-function scrubCredentialsFromPreset(preset: SavedQueryPreset): SavedQueryPreset {
-  const { pathValues, queryParams, body } = scrubFields(
-    preset.pathValues,
-    preset.queryParams,
-    preset.body
-  );
-  return { ...preset, pathValues, queryParams, body };
-}
-
-function scrubCredentialsFromAllPresets(
-  all: Record<string, SavedQueryPreset[]>
-): Record<string, SavedQueryPreset[]> {
-  const scrubbed: Record<string, SavedQueryPreset[]> = {};
-  for (const [key, presets] of Object.entries(all)) {
-    scrubbed[key] = presets.map(scrubCredentialsFromPreset);
-  }
-  return scrubbed;
 }
 
 function loadAllPresetsFlat(): FlatPreset[] {
@@ -816,33 +715,6 @@ function decodeSharedPreset(encoded: string): SharedTryItPreset | null {
   } catch {
     return null;
   }
-}
-
-interface ScrubbedShareFields {
-  pathValues: Record<string, string>;
-  queryParams: { key: string; value: string }[];
-  body: string;
-  redactedFields: string[];
-}
-
-/**
- * Blanks any credential-shaped value out of the fields that get encoded into a share link,
- * replacing it with "[REDACTED]" and returning the human-readable labels of what was stripped
- * so the sender can be shown a summary and the recipient can be shown a note.
- *
- * Delegates scrubbing to the shared `scrubFields` core; this adapter only adds
- * the `redactedFields` collection used by the share-link UI.
- */
-function scrubCredentialsForShare(
-  pathValues: Record<string, string>,
-  queryParams: { key: string; value: string }[],
-  body: string
-): ScrubbedShareFields {
-  const redactedFields: string[] = [];
-  const scrubbed = scrubFields(pathValues, queryParams, body, (label) =>
-    redactedFields.push(label)
-  );
-  return { ...scrubbed, redactedFields };
 }
 
 function buildSharedPresetUrl(preset: SharedTryItPreset): string {
