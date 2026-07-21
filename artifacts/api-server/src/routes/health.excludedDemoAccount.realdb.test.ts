@@ -14,6 +14,11 @@
  *   3. DB-table exclusion: insert into demo_account_removals → must get 200.
  *   4. After removing the DB exclusion row (hash still broken): must get 503
  *      again, confirming the exclusion—not luck—was responsible for the 200.
+ *
+ * A second describe block covers the all-excluded edge case: when every entry
+ * in DEMO_CREDENTIALS is excluded simultaneously (activeCredentials.length === 0),
+ * the health route must still return HTTP 200 with demo_credentials: true.
+ * This guards the short-circuit branch at health.ts line ~142.
  */
 
 import { describe, it, before, after } from "node:test";
@@ -150,5 +155,125 @@ describe("GET /api/healthz/deep — excluded demo account does not trip deploy g
       false,
       "expected demo_credentials check to be false after exclusion row removed",
     );
+  });
+});
+
+/**
+ * All-excluded edge case: when every entry in DEMO_CREDENTIALS is excluded at
+ * once, activeCredentials.length === 0 and the health route must short-circuit
+ * to demo_credentials: true (HTTP 200). This is intentional behaviour — the
+ * operator has explicitly removed every documented account from this env.
+ *
+ * Two variants:
+ *   A. Env-var: SEED_EXCLUDE_DEMO_EMAILS contains every email.
+ *   B. DB table: demo_account_removals contains a row for every email.
+ *
+ * No hash tampering is required — the short-circuit fires before any DB user
+ * query when the active-credentials list is empty.
+ */
+describe("GET /api/healthz/deep — all demo accounts excluded returns 200 (real DB)", () => {
+  let server: http.Server;
+  const allEmails = DEMO_CREDENTIALS.map((c) => c.email);
+
+  before(async () => {
+    assert.ok(
+      allEmails.length > 0,
+      "DEMO_CREDENTIALS must not be empty for this test to be meaningful",
+    );
+    server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  });
+
+  after(async () => {
+    delete process.env["SEED_EXCLUDE_DEMO_EMAILS"];
+
+    for (const email of allEmails) {
+      await db
+        .delete(demoAccountRemovalsTable)
+        .where(eq(demoAccountRemovalsTable.email, email));
+    }
+
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("returns 200 with demo_credentials: true when ALL accounts excluded via SEED_EXCLUDE_DEMO_EMAILS", async () => {
+    process.env["SEED_EXCLUDE_DEMO_EMAILS"] = allEmails.join(",");
+    try {
+      const res = await get(server, "/api/healthz/deep");
+      assert.equal(
+        res.status,
+        200,
+        `expected HTTP 200 when all ${allEmails.length} demo accounts are excluded via env var`,
+      );
+      assert.equal(
+        (res.body["checks"] as Record<string, boolean>)["demo_credentials"],
+        true,
+        "expected demo_credentials check to be true when all accounts excluded via env var",
+      );
+    } finally {
+      delete process.env["SEED_EXCLUDE_DEMO_EMAILS"];
+    }
+  });
+
+  it("returns 200 with demo_credentials: true when ALL accounts excluded via demo_account_removals table", async () => {
+    for (const email of allEmails) {
+      await db
+        .insert(demoAccountRemovalsTable)
+        .values({ email })
+        .onConflictDoNothing();
+    }
+    try {
+      const res = await get(server, "/api/healthz/deep");
+      assert.equal(
+        res.status,
+        200,
+        `expected HTTP 200 when all ${allEmails.length} demo accounts are excluded via DB table`,
+      );
+      assert.equal(
+        (res.body["checks"] as Record<string, boolean>)["demo_credentials"],
+        true,
+        "expected demo_credentials check to be true when all accounts excluded via DB table",
+      );
+    } finally {
+      for (const email of allEmails) {
+        await db
+          .delete(demoAccountRemovalsTable)
+          .where(eq(demoAccountRemovalsTable.email, email));
+      }
+    }
+  });
+
+  it("returns 200 with demo_credentials: true when ALL accounts excluded via mixed env-var and DB", async () => {
+    const half = Math.ceil(allEmails.length / 2);
+    const envEmails = allEmails.slice(0, half);
+    const dbEmails = allEmails.slice(half);
+
+    process.env["SEED_EXCLUDE_DEMO_EMAILS"] = envEmails.join(",");
+    for (const email of dbEmails) {
+      await db
+        .insert(demoAccountRemovalsTable)
+        .values({ email })
+        .onConflictDoNothing();
+    }
+    try {
+      const res = await get(server, "/api/healthz/deep");
+      assert.equal(
+        res.status,
+        200,
+        "expected HTTP 200 when all accounts excluded across env-var and DB table combined",
+      );
+      assert.equal(
+        (res.body["checks"] as Record<string, boolean>)["demo_credentials"],
+        true,
+        "expected demo_credentials check to be true when all accounts excluded via mixed sources",
+      );
+    } finally {
+      delete process.env["SEED_EXCLUDE_DEMO_EMAILS"];
+      for (const email of dbEmails) {
+        await db
+          .delete(demoAccountRemovalsTable)
+          .where(eq(demoAccountRemovalsTable.email, email));
+      }
+    }
   });
 });
