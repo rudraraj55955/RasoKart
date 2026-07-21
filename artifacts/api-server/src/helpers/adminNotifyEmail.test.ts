@@ -7,6 +7,7 @@ import {
   buildReportScheduleAutoPausedHtml,
   buildReportScheduleResumedHtml,
   buildStuckEkqrHtml,
+  buildCredentialRotationHtml,
 } from "./adminNotifyEmail";
 
 const TEST_BANNER_TEXT = "THIS IS A TEST";
@@ -172,5 +173,30 @@ describe("buildStuckEkqrHtml", () => {
 
   it("omits the TEST banner when isTest is omitted", () => {
     assertBannerAbsent(buildStuckEkqrHtml(base), "isTest omitted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCredentialRotationHtml
+// ---------------------------------------------------------------------------
+
+describe("buildCredentialRotationHtml", () => {
+  const base = {
+    gateway: "cashfree",
+    changedFields: ["clientId", "clientSecret"],
+    actorEmail: "admin@rasokart.com",
+    timestamp: "2026-07-21T10:00:00.000Z",
+  };
+
+  it("includes the amber TEST banner div when isTest is true", () => {
+    assertBannerPresent(buildCredentialRotationHtml({ ...base, isTest: true }), "isTest:true");
+  });
+
+  it("omits the TEST banner when isTest is false", () => {
+    assertBannerAbsent(buildCredentialRotationHtml({ ...base, isTest: false }), "isTest:false");
+  });
+
+  it("omits the TEST banner when isTest is omitted", () => {
+    assertBannerAbsent(buildCredentialRotationHtml(base), "isTest omitted");
   });
 });
