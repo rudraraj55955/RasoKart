@@ -182,6 +182,11 @@ export interface GithubSyncConfig {
   renotifyInterval: number;
   /** What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded. */
   divergeAction: GithubSyncConfigDivergeAction;
+  /**
+     * Number of consecutive nightly cleanup runs that must report file-deletion errors before admins are alerted. Defaults to 3.
+     * @minimum 1
+     */
+  cleanupFailureThreshold: number;
 }
 
 /**
@@ -266,6 +271,10 @@ export interface GithubSyncLastCleanup {
   errors?: number;
   /** ISO timestamp of when the last cleanup run completed. Only present when hasRun is true. */
   ranAt?: string;
+  /** Number of consecutive scheduled nightly cleanup runs that have reported at least one file-deletion error. Resets to 0 after a clean run. */
+  failureStreak: number;
+  /** Configured number of consecutive failing nights required before admins are notified (github_sync_cleanup_failure_threshold system_config key, defaults to 3). */
+  failureThreshold: number;
 }
 
 export interface GithubSyncDivergence {
@@ -7958,6 +7967,11 @@ export type UpdateGithubSyncConfigBody = {
   renotifyInterval?: number;
   /** What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins. */
   divergeAction?: UpdateGithubSyncConfigBodyDivergeAction;
+  /**
+     * Number of consecutive nightly log cleanup errors before admins are notified. Defaults to 3.
+     * @minimum 1
+     */
+  cleanupFailureThreshold?: number;
 };
 
 export type RunGithubSyncBody = {

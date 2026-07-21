@@ -24,4 +24,9 @@ export type UpdateGithubSyncConfigBody = {
   renotifyInterval?: number;
   /** What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins. */
   divergeAction?: UpdateGithubSyncConfigBodyDivergeAction;
+  /**
+     * Number of consecutive nightly log cleanup errors before admins are notified. Defaults to 3.
+     * @minimum 1
+     */
+  cleanupFailureThreshold?: number;
 };

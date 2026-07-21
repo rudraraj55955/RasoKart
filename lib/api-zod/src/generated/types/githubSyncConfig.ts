@@ -24,4 +24,9 @@ export interface GithubSyncConfig {
   renotifyInterval: number;
   /** What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded. */
   divergeAction: GithubSyncConfigDivergeAction;
+  /**
+     * Number of consecutive nightly cleanup runs that must report file-deletion errors before admins are alerted. Defaults to 3.
+     * @minimum 1
+     */
+  cleanupFailureThreshold: number;
 }

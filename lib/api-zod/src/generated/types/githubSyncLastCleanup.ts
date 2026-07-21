@@ -15,4 +15,8 @@ export interface GithubSyncLastCleanup {
   errors?: number;
   /** ISO timestamp of when the last cleanup run completed. Only present when hasRun is true. */
   ranAt?: Date;
+  /** Number of consecutive scheduled nightly cleanup runs that have reported at least one file-deletion error. Resets to 0 after a clean run. */
+  failureStreak: number;
+  /** Configured number of consecutive failing nights required before admins are notified (github_sync_cleanup_failure_threshold system_config key, defaults to 3). */
+  failureThreshold: number;
 }

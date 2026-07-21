@@ -6,15 +6,16 @@ import { and, eq } from "drizzle-orm";
 import { db, notificationsTable, systemSettingsTable, usersTable } from "@workspace/db";
 
 const LAST_CLEANUP_SETTING_KEY = "github_sync_last_cleanup";
-const FAILURE_STREAK_SETTING_KEY = "github_sync_cleanup_failure_streak";
+export const FAILURE_STREAK_SETTING_KEY = "github_sync_cleanup_failure_streak";
 export const CLEANUP_ALERT_SNOOZE_KEY = "github_sync_cleanup_alert_snoozed_until";
+export const CLEANUP_FAILURE_THRESHOLD_KEY = "github_sync_cleanup_failure_threshold";
 
 /**
- * Number of consecutive scheduled nightly runs that must report errors > 0
- * before admins are notified.  Each subsequent failing night re-alerts (deduped
- * per calendar day) so the problem doesn't go unnoticed while it persists.
+ * Default number of consecutive scheduled nightly runs that must report errors > 0
+ * before admins are notified. Can be overridden via system_config
+ * (key: github_sync_cleanup_failure_threshold).
  */
-const CONSECUTIVE_FAILURE_THRESHOLD = 3;
+export const DEFAULT_CLEANUP_FAILURE_THRESHOLD = 3;
 
 const HISTORY_FILE = fileURLToPath(
   new URL("../../../../.github-sync-history.json", import.meta.url),
@@ -76,7 +77,23 @@ export async function getLastGithubSyncLogCleanupResult(): Promise<{ deleted: nu
   }
 }
 
-async function readFailureStreak(): Promise<FailureStreak> {
+export async function getCleanupFailureThreshold(): Promise<number> {
+  try {
+    const [row] = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(eq(systemSettingsTable.key, CLEANUP_FAILURE_THRESHOLD_KEY))
+      .limit(1);
+    if (!row?.value) return DEFAULT_CLEANUP_FAILURE_THRESHOLD;
+    const parsed = parseInt(row.value, 10);
+    return Number.isFinite(parsed) && parsed >= 1 ? parsed : DEFAULT_CLEANUP_FAILURE_THRESHOLD;
+  } catch (err) {
+    logger.error({ err }, "Failed to read GitHub sync cleanup failure threshold");
+    return DEFAULT_CLEANUP_FAILURE_THRESHOLD;
+  }
+}
+
+export async function readFailureStreak(): Promise<FailureStreak> {
   try {
     const [row] = await db
       .select()
@@ -232,6 +249,7 @@ export async function runGithubSyncLogCleanup(opts?: { source?: "scheduled" | "m
   if (opts?.source === "scheduled") {
     const todayDate = new Date().toISOString().slice(0, 10);
     const streak = await readFailureStreak();
+    const threshold = await getCleanupFailureThreshold();
 
     if (errors > 0) {
       // Only count each calendar day once (guards against the cron firing twice
@@ -240,7 +258,7 @@ export async function runGithubSyncLogCleanup(opts?: { source?: "scheduled" | "m
       const updatedStreak: FailureStreak = { count: newCount, lastFailedDate: todayDate };
       await persistFailureStreak(updatedStreak);
 
-      if (newCount >= CONSECUTIVE_FAILURE_THRESHOLD) {
+      if (newCount >= threshold) {
         const snoozed = await isCleanupAlertSnoozed();
         if (snoozed) {
           logger.info(

@@ -365,6 +365,7 @@ export default function AdminSettings() {
   const [githubSyncSchedule, setGithubSyncSchedule] = useState<string>("0 2 * * *");
   const [githubSyncFailureThreshold, setGithubSyncFailureThreshold] = useState<number>(3);
   const [githubSyncRenotifyInterval, setGithubSyncRenotifyInterval] = useState<number>(10);
+  const [githubSyncCleanupFailureThreshold, setGithubSyncCleanupFailureThreshold] = useState<number>(3);
   const [githubSyncDivergeAction, setGithubSyncDivergeAction] = useState<"alert_only" | "alert_and_push">("alert_only");
   const [githubSyncInitialized, setGithubSyncInitialized] = useState(false);
 
@@ -1069,6 +1070,7 @@ export default function AdminSettings() {
       setGithubSyncFailureThreshold(githubSyncConfig.failureThreshold);
       setGithubSyncRenotifyInterval(githubSyncConfig.renotifyInterval);
       setGithubSyncDivergeAction(githubSyncConfig.divergeAction === "alert_and_push" ? "alert_and_push" : "alert_only");
+      setGithubSyncCleanupFailureThreshold(githubSyncConfig.cleanupFailureThreshold);
       setGithubSyncInitialized(true);
     }
   }, [githubSyncInitialized, githubSyncConfig]);
@@ -1078,13 +1080,15 @@ export default function AdminSettings() {
   const currentGithubSyncFailureThreshold = githubSyncConfig?.failureThreshold ?? 3;
   const currentGithubSyncRenotifyInterval = githubSyncConfig?.renotifyInterval ?? 10;
   const currentGithubSyncDivergeAction: "alert_only" | "alert_and_push" = githubSyncConfig?.divergeAction === "alert_and_push" ? "alert_and_push" : "alert_only";
+  const currentGithubSyncCleanupFailureThreshold = githubSyncConfig?.cleanupFailureThreshold ?? 3;
   const githubSyncUnchanged =
     githubSyncEnabled === currentGithubSyncEnabled &&
     githubSyncSchedule === currentGithubSyncSchedule &&
     githubSyncFailureThreshold === currentGithubSyncFailureThreshold &&
     githubSyncRenotifyInterval === currentGithubSyncRenotifyInterval &&
-    githubSyncDivergeAction === currentGithubSyncDivergeAction;
-  const githubSyncThresholdsValid = githubSyncFailureThreshold >= 1 && githubSyncRenotifyInterval >= 1;
+    githubSyncDivergeAction === currentGithubSyncDivergeAction &&
+    githubSyncCleanupFailureThreshold === currentGithubSyncCleanupFailureThreshold;
+  const githubSyncThresholdsValid = githubSyncFailureThreshold >= 1 && githubSyncRenotifyInterval >= 1 && githubSyncCleanupFailureThreshold >= 1;
 
   const { mutate: saveGithubSyncConfig, isPending: savingGithubSyncConfig } = useUpdateGithubSyncConfig({
     mutation: {
@@ -1092,11 +1096,13 @@ export default function AdminSettings() {
         toast.success("GitHub sync settings saved");
         setGithubSyncInitialized(false);
         qc.invalidateQueries({ queryKey: getGetGithubSyncConfigQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetGithubSyncLastCleanupQueryKey() });
         setGithubSyncEnabled(updated.enabled);
         setGithubSyncSchedule(updated.schedule);
         setGithubSyncFailureThreshold(updated.failureThreshold);
         setGithubSyncRenotifyInterval(updated.renotifyInterval);
         setGithubSyncDivergeAction(updated.divergeAction === "alert_and_push" ? "alert_and_push" : "alert_only");
+        setGithubSyncCleanupFailureThreshold(updated.cleanupFailureThreshold);
         setGithubSyncInitialized(true);
       },
       onError: (err: Error) => toast.error(err.message),
@@ -3811,6 +3817,14 @@ export default function AdminSettings() {
                   })()}
                 </p>
               )}
+              {githubSyncLastCleanup != null && (
+                <p className={`text-xs mt-1 ${(githubSyncLastCleanup.failureStreak ?? 0) > 0 ? ((githubSyncLastCleanup.failureStreak ?? 0) >= (githubSyncLastCleanup.failureThreshold ?? 3) ? "text-red-400" : "text-amber-400") : "text-muted-foreground"}`}>
+                  Consecutive error nights: <span className="font-medium">{githubSyncLastCleanup.failureStreak ?? 0} / {githubSyncLastCleanup.failureThreshold ?? 3}</span>
+                  {(githubSyncLastCleanup.failureStreak ?? 0) >= (githubSyncLastCleanup.failureThreshold ?? 3) && (
+                    <span className="ml-1">— alert threshold reached</span>
+                  )}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1.5 shrink-0 items-end">
               <Button
@@ -3942,6 +3956,22 @@ export default function AdminSettings() {
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="github-sync-cleanup-failure-threshold" className="text-sm">Log cleanup alert threshold</Label>
+            <Input
+              id="github-sync-cleanup-failure-threshold"
+              type="number"
+              min={1}
+              step={1}
+              value={githubSyncCleanupFailureThreshold}
+              onChange={e => setGithubSyncCleanupFailureThreshold(parseInt(e.target.value, 10) || 0)}
+              className="max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Consecutive nightly log cleanup errors before admins are notified. Current streak: <span className={`font-medium ${(githubSyncLastCleanup?.failureStreak ?? 0) >= githubSyncCleanupFailureThreshold ? "text-red-400" : "text-foreground"}`}>{githubSyncLastCleanup?.failureStreak ?? 0} / {githubSyncCleanupFailureThreshold}</span>.
+            </p>
+          </div>
+
           <div className="space-y-3 rounded-lg border border-border/50 bg-muted/5 p-4">
             <div>
               <p className="text-sm font-medium text-foreground">On diverged remote</p>
@@ -3991,6 +4021,7 @@ export default function AdminSettings() {
                   failureThreshold: githubSyncFailureThreshold,
                   renotifyInterval: githubSyncRenotifyInterval,
                   divergeAction: githubSyncDivergeAction,
+                  cleanupFailureThreshold: githubSyncCleanupFailureThreshold,
                 },
               })}
               disabled={savingGithubSyncConfig || githubSyncUnchanged || !githubSyncThresholdsValid}
@@ -4008,6 +4039,7 @@ export default function AdminSettings() {
                   setGithubSyncFailureThreshold(currentGithubSyncFailureThreshold);
                   setGithubSyncRenotifyInterval(currentGithubSyncRenotifyInterval);
                   setGithubSyncDivergeAction(currentGithubSyncDivergeAction);
+                  setGithubSyncCleanupFailureThreshold(currentGithubSyncCleanupFailureThreshold);
                 }}
                 disabled={savingGithubSyncConfig}
               >

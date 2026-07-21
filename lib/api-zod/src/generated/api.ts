@@ -7776,12 +7776,14 @@ export const DeleteMerchantSavedFilterResponse = zod.object({
 
 
 
+
 export const GetGithubSyncConfigResponse = zod.object({
   "enabled": zod.boolean().describe('Whether the GitHub sync job is enabled'),
   "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
   "failureThreshold": zod.number().min(1).describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire. Defaults to 3.'),
   "renotifyInterval": zod.number().min(1).describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.'),
-  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).describe('What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded.')
+  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).describe('What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded.'),
+  "cleanupFailureThreshold": zod.number().min(1).describe('Number of consecutive nightly cleanup runs that must report file-deletion errors before admins are alerted. Defaults to 3.')
 })
 
 
@@ -7792,13 +7794,16 @@ export const GetGithubSyncConfigResponse = zod.object({
 
 
 
+
 export const UpdateGithubSyncConfigBody = zod.object({
   "enabled": zod.boolean().optional().describe('Whether the GitHub sync job is enabled'),
   "schedule": zod.string().optional().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
   "failureThreshold": zod.number().min(1).optional().describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire.'),
   "renotifyInterval": zod.number().min(1).optional().describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it.'),
-  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).optional().describe('What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins.')
+  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).optional().describe('What the scheduled sync should do when the remote has diverged commits. alert_only skips the push; alert_and_push force-pushes but emails admins.'),
+  "cleanupFailureThreshold": zod.number().min(1).optional().describe('Number of consecutive nightly log cleanup errors before admins are notified. Defaults to 3.')
 })
+
 
 
 
@@ -7809,7 +7814,8 @@ export const UpdateGithubSyncConfigResponse = zod.object({
   "schedule": zod.string().describe('Cron expression for the sync schedule (e.g. \"0 2 \* \* \*\")'),
   "failureThreshold": zod.number().min(1).describe('Number of consecutive sync failures required before the admin dashboard banner and the escalation email fire. Defaults to 3.'),
   "renotifyInterval": zod.number().min(1).describe('Once the failure threshold is crossed, only re-send the escalation email every N additional consecutive failures beyond it. Defaults to 10.'),
-  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).describe('What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded.')
+  "divergeAction": zod.enum(['alert_only', 'alert_and_push']).describe('What the scheduled sync should do when the remote has commits not present locally (diverged history). alert_only: skip the push and send an email alert (safe default for unattended runs). alert_and_push: force-push anyway but also send an alert email so admins know commits were discarded.'),
+  "cleanupFailureThreshold": zod.number().min(1).describe('Number of consecutive nightly cleanup runs that must report file-deletion errors before admins are alerted. Defaults to 3.')
 })
 
 
@@ -7893,7 +7899,9 @@ export const GetGithubSyncLastCleanupResponse = zod.object({
   "hasRun": zod.boolean().describe('Whether the orphaned log file cleanup has ever run (nightly scheduler, startup sweep, or manual trigger)'),
   "deleted": zod.number().optional().describe('Number of orphaned log files deleted in the last run. Only present when hasRun is true.'),
   "errors": zod.number().optional().describe('Number of files that could not be deleted in the last run due to filesystem errors. Only present when hasRun is true.'),
-  "ranAt": zod.coerce.date().optional().describe('ISO timestamp of when the last cleanup run completed. Only present when hasRun is true.')
+  "ranAt": zod.coerce.date().optional().describe('ISO timestamp of when the last cleanup run completed. Only present when hasRun is true.'),
+  "failureStreak": zod.number().describe('Number of consecutive scheduled nightly cleanup runs that have reported at least one file-deletion error. Resets to 0 after a clean run.'),
+  "failureThreshold": zod.number().describe('Configured number of consecutive failing nights required before admins are notified (github_sync_cleanup_failure_threshold system_config key, defaults to 3).')
 })
 
 

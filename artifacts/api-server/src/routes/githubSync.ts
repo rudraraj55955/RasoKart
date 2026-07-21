@@ -5,7 +5,7 @@ import { logger } from "../lib/logger";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { db, systemSettingsTable, auditLogsTable, usersTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { runGithubSyncLogCleanup, getLastGithubSyncLogCleanupResult, CLEANUP_ALERT_SNOOZE_KEY } from "../helpers/githubSyncLogCleanupScheduler";
+import { runGithubSyncLogCleanup, getLastGithubSyncLogCleanupResult, CLEANUP_ALERT_SNOOZE_KEY, readFailureStreak, getCleanupFailureThreshold, CLEANUP_FAILURE_THRESHOLD_KEY } from "../helpers/githubSyncLogCleanupScheduler";
 import { sendMail } from "../helpers/mailer";
 
 const router = Router();
@@ -23,6 +23,7 @@ const GITHUB_SYNC_KEYS = [
   "github_sync_failure_threshold",
   "github_sync_renotify_interval",
   "github_sync_diverge_action",
+  "github_sync_cleanup_failure_threshold",
 ] as const;
 const REMOTE_NAME = "github";
 const GITHUB_REPO = process.env["GITHUB_REPO"] ?? "rudraraj55955/RPAY";
@@ -220,8 +221,9 @@ router.get("/config", async (req, res, next) => {
     const renotifyInterval = parseInt(map["github_sync_renotify_interval"] ?? "", 10) || DEFAULT_RENOTIFY_INTERVAL;
     const rawDivergeAction = map["github_sync_diverge_action"];
     const divergeAction = rawDivergeAction === "alert_and_push" ? "alert_and_push" : DEFAULT_DIVERGE_ACTION;
+    const cleanupFailureThreshold = parseInt(map["github_sync_cleanup_failure_threshold"] ?? "", 10) || 3;
 
-    res.json({ enabled, schedule, failureThreshold, renotifyInterval, divergeAction });
+    res.json({ enabled, schedule, failureThreshold, renotifyInterval, divergeAction, cleanupFailureThreshold });
   } catch (err) {
     next(err);
   }
@@ -231,12 +233,13 @@ router.get("/config", async (req, res, next) => {
 router.put("/config", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { enabled, schedule, failureThreshold, renotifyInterval, divergeAction } = req.body as {
+    const { enabled, schedule, failureThreshold, renotifyInterval, divergeAction, cleanupFailureThreshold } = req.body as {
       enabled?: boolean;
       schedule?: string;
       failureThreshold?: number;
       renotifyInterval?: number;
       divergeAction?: string;
+      cleanupFailureThreshold?: number;
     };
 
     if (enabled !== undefined && typeof enabled !== "boolean") {
@@ -278,6 +281,13 @@ router.put("/config", async (req, res, next) => {
       return;
     }
 
+    if (cleanupFailureThreshold !== undefined) {
+      if (typeof cleanupFailureThreshold !== "number" || !Number.isInteger(cleanupFailureThreshold) || cleanupFailureThreshold < 1) {
+        res.status(400).json({ error: "cleanupFailureThreshold must be a positive integer" });
+        return;
+      }
+    }
+
     const now = new Date();
     const upserts: Array<{ key: string; value: string }> = [];
 
@@ -295,6 +305,9 @@ router.put("/config", async (req, res, next) => {
     }
     if (divergeAction !== undefined) {
       upserts.push({ key: "github_sync_diverge_action", value: divergeAction });
+    }
+    if (cleanupFailureThreshold !== undefined) {
+      upserts.push({ key: CLEANUP_FAILURE_THRESHOLD_KEY, value: String(cleanupFailureThreshold) });
     }
 
     for (const { key, value } of upserts) {
@@ -334,6 +347,7 @@ router.put("/config", async (req, res, next) => {
     const finalRenotifyInterval = parseInt(map["github_sync_renotify_interval"] ?? "", 10) || DEFAULT_RENOTIFY_INTERVAL;
     const rawFinalDivergeAction = map["github_sync_diverge_action"];
     const finalDivergeAction = rawFinalDivergeAction === "alert_and_push" ? "alert_and_push" : DEFAULT_DIVERGE_ACTION;
+    const finalCleanupFailureThreshold = parseInt(map["github_sync_cleanup_failure_threshold"] ?? "", 10) || 3;
 
     res.json({
       enabled: finalEnabled,
@@ -341,6 +355,7 @@ router.put("/config", async (req, res, next) => {
       failureThreshold: finalFailureThreshold,
       renotifyInterval: finalRenotifyInterval,
       divergeAction: finalDivergeAction,
+      cleanupFailureThreshold: finalCleanupFailureThreshold,
     });
   } catch (err) {
     next(err);
@@ -464,12 +479,16 @@ router.get("/divergence", (req, res) => {
 // GET /api/github-sync/cleanup-logs/last
 router.get("/cleanup-logs/last", async (req, res, next) => {
   try {
-    const result = await getLastGithubSyncLogCleanupResult();
+    const [result, streak, threshold] = await Promise.all([
+      getLastGithubSyncLogCleanupResult(),
+      readFailureStreak(),
+      getCleanupFailureThreshold(),
+    ]);
     if (!result) {
-      res.json({ hasRun: false });
+      res.json({ hasRun: false, failureStreak: streak.count, failureThreshold: threshold });
       return;
     }
-    res.json({ hasRun: true, deleted: result.deleted, errors: result.errors, ranAt: result.ranAt });
+    res.json({ hasRun: true, deleted: result.deleted, errors: result.errors, ranAt: result.ranAt, failureStreak: streak.count, failureThreshold: threshold });
   } catch (err) {
     next(err);
   }
