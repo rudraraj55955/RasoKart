@@ -111,6 +111,60 @@ function buildDivergenceAlertHtml(opts: { repo: string; remoteAheadBy: number; f
 </html>`;
 }
 
+function buildDivergenceResolvedHtml(opts: { repo: string; priorPollCount: number; firstDetectedAt: string }): string {
+  const { repo, priorPollCount, firstDetectedAt } = opts;
+  const timestamp = new Date().toISOString();
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #1a1a1a; border-radius: 8px; overflow: hidden; border: 1px solid #2a2a2a;">
+    <div style="background: #14532d; padding: 20px 24px;">
+      <h1 style="margin: 0; font-size: 20px; color: #fff; letter-spacing: 0.5px;">RasoKart — GitHub Remote Divergence Resolved</h1>
+      <p style="margin: 4px 0 0; color: #86efac; font-size: 13px;">The remote branch is no longer ahead of local HEAD</p>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin: 0 0 16px; color: #4ade80; font-size: 14px; font-weight: 600;">
+        &#x2705; Remote <strong>${repo}</strong> is back in sync — the divergence that triggered the earlier alert has been resolved.
+      </p>
+      <p style="margin: 0 0 20px; color: #a1a1aa; font-size: 13px;">
+        The remote branch no longer has commits ahead of local HEAD. Scheduled syncs will proceed normally.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px; width: 40%;">Repository</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; font-weight: 600;">${repo}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Diverged for (polls)</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px; color: #4ade80; font-weight: 600;">${priorPollCount}</td>
+        </tr>
+        <tr style="background: #111;">
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">First Detected At</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">${firstDetectedAt}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; color: #a1a1aa; font-size: 13px;">Resolved At</td>
+          <td style="padding: 10px 14px; border: 1px solid #2a2a2a; font-size: 13px;">${timestamp}</td>
+        </tr>
+      </table>
+
+      <p style="margin: 0; color: #71717a; font-size: 12px;">
+        No action is needed. You will only receive this email after a divergence that previously triggered an alert.
+      </p>
+    </div>
+    <div style="padding: 14px 24px; background: #111; border-top: 1px solid #2a2a2a;">
+      <p style="margin: 0; color: #52525b; font-size: 11px;">
+        This alert was sent automatically by RasoKart when the admin dashboard detected that remote divergence was resolved. To stop receiving these emails, update your notification preferences in Admin Settings.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 async function maybeNotifyDivergenceTransition(opts: {
   nowDiverged: boolean;
   remoteAheadBy: number;
@@ -122,6 +176,44 @@ async function maybeNotifyDivergenceTransition(opts: {
   if (!nowDiverged) {
     if (state.diverged) {
       writeDivergenceState({ diverged: false, consecutivePollsDiverged: 0, firstDetectedAt: null, lastEmailSentPollCount: 0 });
+      if (state.lastEmailSentPollCount > 0) {
+        try {
+          const admins = await db
+            .select({ email: usersTable.email })
+            .from(usersTable)
+            .where(
+              and(
+                eq(usersTable.role, "admin"),
+                eq(usersTable.isActive, true),
+                eq(usersTable.githubSyncFailureAlertEmails, true),
+              ),
+            );
+
+          if (admins.length === 0) {
+            logger.info("GITHUB_SYNC: No admins opted in to sync alert emails — skipping divergence resolved email");
+          } else {
+            const subject = `[RasoKart] ✅ GitHub Remote Divergence Resolved — ${repo}`;
+            const html = buildDivergenceResolvedHtml({
+              repo,
+              priorPollCount: state.consecutivePollsDiverged,
+              firstDetectedAt: state.firstDetectedAt ?? new Date().toISOString(),
+            });
+
+            const results = await Promise.allSettled(
+              admins.map(a => sendMail({ to: a.email, subject, html })),
+            );
+
+            const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+            const failed = results.length - sent;
+            logger.info(
+              { sent, failed, priorPollCount: state.consecutivePollsDiverged },
+              "GITHUB_SYNC: Divergence resolved email dispatched",
+            );
+          }
+        } catch (err) {
+          logger.error({ err }, "GITHUB_SYNC: Failed to send divergence resolved emails");
+        }
+      }
     }
     return;
   }
