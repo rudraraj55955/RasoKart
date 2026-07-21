@@ -22,8 +22,32 @@ import { inArray } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 
+const BASE_URL = "http://localhost:80/api";
+
 async function run() {
   console.log("=== RasoKart Demo Credential Verification ===\n");
+
+  // Guard: skip gracefully when the API server is not reachable.
+  // This prevents confusing connection-refused fetch errors during CI runs or
+  // cold deploys where the API server hasn't started yet.
+  try {
+    const probe = await fetch(`${BASE_URL}/healthz`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!probe.ok) {
+      console.log(
+        `⚠  API server responded with HTTP ${probe.status} on /api/healthz.\n` +
+          "   Skipping demo credential verification — ensure the API server is healthy before running this check.\n",
+      );
+      process.exit(0);
+    }
+  } catch {
+    console.log(
+      "⚠  API server not reachable at localhost:80 — ensure it is running before running this check.\n" +
+        "   Skipping demo credential verification.\n",
+    );
+    process.exit(0);
+  }
 
   const emails = DEMO_CREDENTIALS.map((c) => c.email);
   const rows = await db
