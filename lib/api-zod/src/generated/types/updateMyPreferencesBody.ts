@@ -71,4 +71,8 @@ export type UpdateMyPreferencesBody = {
      * @nullable
      */
   quietHoursTimezone?: string | null;
+  /** Whether the user wants notification sounds. Persisted per-user in the database. */
+  notificationSoundEnabled?: boolean;
+  /** Whether the user wants notification vibration. Persisted per-user in the database. */
+  notificationVibrationEnabled?: boolean;
 };

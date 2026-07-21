@@ -81,6 +81,8 @@ export const LoginResponse = zod.object({
   "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "reportsBadgeSnoozedUntil": zod.string().nullish().describe('ISO timestamp until which the admin\'s reports sidebar badge is snoozed. Null means not snoozed. Deprecated — use badgeSnoozedUntil.'),
   "badgeSnoozedUntil": zod.record(zod.string(), zod.string()).nullish().describe('Map of badge key to ISO timestamp until which that badge is snoozed. Keys include \"reports\" and \"audit\". Null or absent key means not snoozed.'),
+  "notificationSoundEnabled": zod.boolean().optional().describe('Whether the user has notification sounds enabled. Source of truth is the database; localStorage is only a temporary cache.'),
+  "notificationVibrationEnabled": zod.boolean().optional().describe('Whether the user has notification vibration enabled. Source of truth is the database; localStorage is only a temporary cache.'),
   "createdAt": zod.string()
 })
 })
@@ -177,6 +179,8 @@ export const VerifyMerchantOtpResponse = zod.object({
   "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "reportsBadgeSnoozedUntil": zod.string().nullish().describe('ISO timestamp until which the admin\'s reports sidebar badge is snoozed. Null means not snoozed. Deprecated — use badgeSnoozedUntil.'),
   "badgeSnoozedUntil": zod.record(zod.string(), zod.string()).nullish().describe('Map of badge key to ISO timestamp until which that badge is snoozed. Keys include \"reports\" and \"audit\". Null or absent key means not snoozed.'),
+  "notificationSoundEnabled": zod.boolean().optional().describe('Whether the user has notification sounds enabled. Source of truth is the database; localStorage is only a temporary cache.'),
+  "notificationVibrationEnabled": zod.boolean().optional().describe('Whether the user has notification vibration enabled. Source of truth is the database; localStorage is only a temporary cache.'),
   "createdAt": zod.string()
 })
 })
@@ -267,6 +271,8 @@ export const GetMeResponse = zod.object({
   "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "reportsBadgeSnoozedUntil": zod.string().nullish().describe('ISO timestamp until which the admin\'s reports sidebar badge is snoozed. Null means not snoozed. Deprecated — use badgeSnoozedUntil.'),
   "badgeSnoozedUntil": zod.record(zod.string(), zod.string()).nullish().describe('Map of badge key to ISO timestamp until which that badge is snoozed. Keys include \"reports\" and \"audit\". Null or absent key means not snoozed.'),
+  "notificationSoundEnabled": zod.boolean().optional().describe('Whether the user has notification sounds enabled. Source of truth is the database; localStorage is only a temporary cache.'),
+  "notificationVibrationEnabled": zod.boolean().optional().describe('Whether the user has notification vibration enabled. Source of truth is the database; localStorage is only a temporary cache.'),
   "createdAt": zod.string()
 })
 
@@ -306,7 +312,9 @@ export const UpdateMyPreferencesBody = zod.object({
   "planChangeNotifs": zod.boolean().optional().describe('Whether the merchant wants in-app notifications when their plan is changed.'),
   "quietHoursStart": zod.string().nullish().describe('Start of quiet hours window in HH:mm 24h format (e.g. \"22:00\"). Null clears quiet hours.'),
   "quietHoursEnd": zod.string().nullish().describe('End of quiet hours window in HH:mm 24h format (e.g. \"07:00\"). Null clears quiet hours.'),
-  "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for interpreting quiet hours (e.g. \"Asia\/Kolkata\"). Null clears quiet hours.')
+  "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for interpreting quiet hours (e.g. \"Asia\/Kolkata\"). Null clears quiet hours.'),
+  "notificationSoundEnabled": zod.boolean().optional().describe('Whether the user wants notification sounds. Persisted per-user in the database.'),
+  "notificationVibrationEnabled": zod.boolean().optional().describe('Whether the user wants notification vibration. Persisted per-user in the database.')
 })
 
 export const UpdateMyPreferencesResponse = zod.object({
@@ -364,6 +372,8 @@ export const UpdateMyPreferencesResponse = zod.object({
   "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "reportsBadgeSnoozedUntil": zod.string().nullish().describe('ISO timestamp until which the admin\'s reports sidebar badge is snoozed. Null means not snoozed. Deprecated — use badgeSnoozedUntil.'),
   "badgeSnoozedUntil": zod.record(zod.string(), zod.string()).nullish().describe('Map of badge key to ISO timestamp until which that badge is snoozed. Keys include \"reports\" and \"audit\". Null or absent key means not snoozed.'),
+  "notificationSoundEnabled": zod.boolean().optional().describe('Whether the user has notification sounds enabled. Source of truth is the database; localStorage is only a temporary cache.'),
+  "notificationVibrationEnabled": zod.boolean().optional().describe('Whether the user has notification vibration enabled. Source of truth is the database; localStorage is only a temporary cache.'),
   "createdAt": zod.string()
 })
 
@@ -4492,6 +4502,8 @@ export const ListUsersResponse = zod.object({
   "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "reportsBadgeSnoozedUntil": zod.string().nullish().describe('ISO timestamp until which the admin\'s reports sidebar badge is snoozed. Null means not snoozed. Deprecated — use badgeSnoozedUntil.'),
   "badgeSnoozedUntil": zod.record(zod.string(), zod.string()).nullish().describe('Map of badge key to ISO timestamp until which that badge is snoozed. Keys include \"reports\" and \"audit\". Null or absent key means not snoozed.'),
+  "notificationSoundEnabled": zod.boolean().optional().describe('Whether the user has notification sounds enabled. Source of truth is the database; localStorage is only a temporary cache.'),
+  "notificationVibrationEnabled": zod.boolean().optional().describe('Whether the user has notification vibration enabled. Source of truth is the database; localStorage is only a temporary cache.'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -4580,6 +4592,8 @@ export const UpdateUserResponse = zod.object({
   "quietHoursTimezone": zod.string().nullish().describe('IANA timezone for quiet hours interpretation (e.g. \"Asia\/Kolkata\"). Null means quiet hours disabled.'),
   "reportsBadgeSnoozedUntil": zod.string().nullish().describe('ISO timestamp until which the admin\'s reports sidebar badge is snoozed. Null means not snoozed. Deprecated — use badgeSnoozedUntil.'),
   "badgeSnoozedUntil": zod.record(zod.string(), zod.string()).nullish().describe('Map of badge key to ISO timestamp until which that badge is snoozed. Keys include \"reports\" and \"audit\". Null or absent key means not snoozed.'),
+  "notificationSoundEnabled": zod.boolean().optional().describe('Whether the user has notification sounds enabled. Source of truth is the database; localStorage is only a temporary cache.'),
+  "notificationVibrationEnabled": zod.boolean().optional().describe('Whether the user has notification vibration enabled. Source of truth is the database; localStorage is only a temporary cache.'),
   "createdAt": zod.string()
 })
 

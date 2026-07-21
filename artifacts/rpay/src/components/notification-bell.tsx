@@ -70,28 +70,39 @@ interface NotificationBellProps {
 const SOUND_KEY = "rk_sound_enabled";
 const VIBRATE_KEY = "rk_vibrate_enabled";
 
-function playNotificationSound() {
+function playWebAudioChime() {
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
-    const gain = ctx.createGain();
-    gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
-    const freqs: [number, number][] = [[880, 0], [1320, 0.13]];
-    freqs.forEach(([freq, delay]) => {
+    const tones: [number, number][] = [[880, 0], [660, 0.35], [523, 0.7]];
+    tones.forEach(([freq, delay]) => {
       const osc = ctx.createOscillator();
+      const tGain = ctx.createGain();
       osc.type = "sine";
       osc.frequency.value = freq;
-      osc.connect(gain);
+      tGain.gain.setValueAtTime(0, ctx.currentTime + delay);
+      tGain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + delay + 0.02);
+      tGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.5);
+      osc.connect(tGain);
+      tGain.connect(ctx.destination);
       osc.start(ctx.currentTime + delay);
-      osc.stop(ctx.currentTime + delay + 0.32);
+      osc.stop(ctx.currentTime + delay + 0.5);
     });
-    setTimeout(() => { try { ctx.close(); } catch { /* ignore */ } }, 900);
+    setTimeout(() => { try { ctx.close(); } catch { /* ignore */ } }, 2000);
+  } catch { /* AudioContext blocked or not supported */ }
+}
+
+function playNotificationSound() {
+  try {
+    const audio = new Audio("/notification.ogg");
+    audio.volume = 0.75;
+    const promise = audio.play();
+    if (promise !== undefined) {
+      promise.catch(() => { playWebAudioChime(); });
+    }
   } catch {
-    /* AudioContext blocked or not supported */
+    playWebAudioChime();
   }
 }
 
@@ -112,29 +123,58 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
 
+  // localStorage provides immediate cache; server is authoritative source of truth
   const [soundEnabled, setSoundEnabled] = useState(() => {
     try { return localStorage.getItem(SOUND_KEY) !== "false"; } catch { return true; }
   });
   const [vibrateEnabled, setVibrateEnabled] = useState(() => {
     try { return localStorage.getItem(VIBRATE_KEY) !== "false"; } catch { return true; }
   });
+  const [savingSound, setSavingSound] = useState(false);
+  const [savingVibrate, setSavingVibrate] = useState(false);
   const soundEnabledRef = useRef(soundEnabled);
   const vibrateEnabledRef = useRef(vibrateEnabled);
   const lastUnreadRef = useRef<number | null>(null);
+  const soundSyncedRef = useRef(false);
+  const vibrateSyncedRef = useRef(false);
   const vibrateSupported = typeof navigator !== "undefined" && "vibrate" in navigator;
 
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
   useEffect(() => { vibrateEnabledRef.current = vibrateEnabled; }, [vibrateEnabled]);
 
   function handleSoundToggle(val: boolean) {
+    const prev = soundEnabled;
     setSoundEnabled(val);
+    soundEnabledRef.current = val;
     try { localStorage.setItem(SOUND_KEY, val ? "true" : "false"); } catch { /* ignore */ }
+    setSavingSound(true);
+    updatePrefs({ notificationSoundEnabled: val } as any, {
+      onSuccess: () => { setSavingSound(false); },
+      onError: () => {
+        setSoundEnabled(prev);
+        soundEnabledRef.current = prev;
+        try { localStorage.setItem(SOUND_KEY, prev ? "true" : "false"); } catch { /* ignore */ }
+        setSavingSound(false);
+      },
+    });
     if (val) playNotificationSound();
   }
 
   function handleVibrateToggle(val: boolean) {
+    const prev = vibrateEnabled;
     setVibrateEnabled(val);
+    vibrateEnabledRef.current = val;
     try { localStorage.setItem(VIBRATE_KEY, val ? "true" : "false"); } catch { /* ignore */ }
+    setSavingVibrate(true);
+    updatePrefs({ notificationVibrationEnabled: val } as any, {
+      onSuccess: () => { setSavingVibrate(false); },
+      onError: () => {
+        setVibrateEnabled(prev);
+        vibrateEnabledRef.current = prev;
+        try { localStorage.setItem(VIBRATE_KEY, prev ? "true" : "false"); } catch { /* ignore */ }
+        setSavingVibrate(false);
+      },
+    });
     if (val) triggerVibration();
   }
 
@@ -154,7 +194,7 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
       enabled: !isAdmin,
     },
   });
-  const { data: meData } = useGetMe({ query: { queryKey: getGetMeQueryKey(), enabled: !isAdmin } });
+  const { data: meData } = useGetMe({ query: { queryKey: getGetMeQueryKey(), enabled: true } });
   const markAll = useMarkAllNotificationsRead();
   const markOne = useMarkNotificationRead();
 
@@ -165,6 +205,27 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
       },
     },
   });
+
+  // Sync from server once meData loads (server is authoritative; localStorage is a temp cache)
+  useEffect(() => {
+    if (meData != null && !soundSyncedRef.current) {
+      soundSyncedRef.current = true;
+      const serverVal = (meData as any).notificationSoundEnabled ?? true;
+      setSoundEnabled(serverVal);
+      soundEnabledRef.current = serverVal;
+      try { localStorage.setItem(SOUND_KEY, serverVal ? "true" : "false"); } catch { /* ignore */ }
+    }
+  }, [meData]);
+
+  useEffect(() => {
+    if (meData != null && !vibrateSyncedRef.current) {
+      vibrateSyncedRef.current = true;
+      const serverVal = (meData as any).notificationVibrationEnabled ?? true;
+      setVibrateEnabled(serverVal);
+      vibrateEnabledRef.current = serverVal;
+      try { localStorage.setItem(VIBRATE_KEY, serverVal ? "true" : "false"); } catch { /* ignore */ }
+    }
+  }, [meData]);
 
   useEffect(() => {
     const id = setInterval(() => {

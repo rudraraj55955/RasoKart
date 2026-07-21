@@ -55,6 +55,8 @@ export const usersTable = pgTable("users", {
   passwordUpdatedAt: timestamp("password_updated_at", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   lastLoginMethod: text("last_login_method"), // password | otp | google | apple | microsoft | facebook
+  notificationSoundEnabled: boolean("notification_sound_enabled").notNull().default(true),
+  notificationVibrationEnabled: boolean("notification_vibration_enabled").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -470,20 +470,35 @@ router.get("/risk", async (req, res, next) => {
 });
 
 // GET /api/dashboard/recon-summary — latest reconciliation run summary (admin only)
+// Respects the same demo/production environment split as the main dashboard stats.
 router.get("/recon-summary", async (req, res, next) => {
   try {
     const user = (req as any).user;
     if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
 
+    // Determine environment using the same logic as GET /api/dashboard/stats
+    const [tmRow] = await db
+      .select({ count: count() })
+      .from(merchantsTable)
+      .where(notInArray(merchantsTable.id, DEMO_MERCHANT_IDS));
+    const totalNonDemoMerchants = Number(tmRow?.count ?? 0);
+    const demoDataOnly = totalNonDemoMerchants === 0;
+    const environment: "demo" | "production" = demoDataOnly ? "demo" : "production";
+
+    // In demo mode show runs from demo merchants; in production show only non-demo runs
+    const envFilter = demoDataOnly
+      ? inArray(reconciliationRunsTable.merchantId, DEMO_MERCHANT_IDS)
+      : notInArray(reconciliationRunsTable.merchantId, DEMO_MERCHANT_IDS);
+
     const [run] = await db
       .select()
       .from(reconciliationRunsTable)
-      .where(eq(reconciliationRunsTable.status, "complete"))
+      .where(and(eq(reconciliationRunsTable.status, "complete"), envFilter))
       .orderBy(sql`${reconciliationRunsTable.runAt} DESC`)
       .limit(1);
 
     if (!run) {
-      res.json(null);
+      res.json({ demoDataOnly, environment });
       return;
     }
 
@@ -499,6 +514,10 @@ router.get("/recon-summary", async (req, res, next) => {
       matchedAmount: Number(run.matchedAmount),
       unmatchedAmount: Number(run.unmatchedAmount),
       triggeredBy: run.triggeredBy,
+      status: run.status,
+      merchantId: run.merchantId,
+      demoDataOnly,
+      environment,
     });
   } catch (err) {
     next(err);

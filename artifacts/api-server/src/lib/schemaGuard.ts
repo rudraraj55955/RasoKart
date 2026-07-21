@@ -1512,6 +1512,10 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "promotional_analytics" }, "schema_guard_table_created");
 
+  // ── notification sound / vibration preference columns ────────────────────────
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_sound_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_vibration_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.

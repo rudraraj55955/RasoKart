@@ -375,6 +375,12 @@ paths:
                 quietHoursTimezone:
                   type: ["string", "null"]
                   description: IANA timezone for interpreting quiet hours (e.g. "Asia/Kolkata"). Null clears quiet hours.
+                notificationSoundEnabled:
+                  type: boolean
+                  description: Whether the user wants notification sounds. Persisted per-user in the database.
+                notificationVibrationEnabled:
+                  type: boolean
+                  description: Whether the user wants notification vibration. Persisted per-user in the database.
       responses:
         "200":
           description: Updated preferences
@@ -12579,6 +12585,12 @@ components:
           description: Map of badge key to ISO timestamp until which that badge is snoozed. Keys include "reports" and "audit". Null or absent key means not snoozed.
           additionalProperties:
             type: string
+        notificationSoundEnabled:
+          type: boolean
+          description: Whether the user has notification sounds enabled. Source of truth is the database; localStorage is only a temporary cache.
+        notificationVibrationEnabled:
+          type: boolean
+          description: Whether the user has notification vibration enabled. Source of truth is the database; localStorage is only a temporary cache.
         createdAt:
           type: string
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, merchantsTable, usersTable, merchantPlansTable, plansTable, planHistoryTable, auditLogsTable, invoicesTable, apiKeysTable, credentialEventsTable, webhooksTable, webhookFailureAlertLogsTable, merchantKycTable, demoAccountRemovalsTable } from "@workspace/db";
-import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull, inArray } from "drizzle-orm";
+import { eq, ilike, and, or, count, sql, desc, lt, lte, gte, isNotNull, inArray, notInArray } from "drizzle-orm";
 import { maskIp } from "../helpers/apiKeyEmail";
 import { loadWebhookRetryConfig } from "../helpers/callbackRetry";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
@@ -366,10 +366,28 @@ router.get("/webhook-failure-counts", requireAdmin, async (req, res, next) => {
   }
 });
 
+/** Seed/demo merchant IDs — must stay in sync with dashboard.ts DEMO_MERCHANT_IDS */
+const DEMO_MERCHANT_IDS = [1, 2, 3, 80];
+
 // GET /api/merchants/email-opt-out-stats  (admin only)
-// Returns per-email-type opt-out counts across all merchant users
+// Returns per-email-type opt-out counts scoped to the same environment (demo vs production)
+// as the main dashboard Total Merchants KPI.
 router.get("/email-opt-out-stats", requireAdmin, async (req, res, next) => {
   try {
+    // Determine environment: same logic as dashboard.ts totalMerchants
+    const [tmRow] = await db
+      .select({ count: count() })
+      .from(merchantsTable)
+      .where(notInArray(merchantsTable.id, DEMO_MERCHANT_IDS));
+    const totalNonDemoMerchants = Number(tmRow?.count ?? 0);
+    const demoDataOnly = totalNonDemoMerchants === 0;
+    const environment: "demo" | "production" = demoDataOnly ? "demo" : "production";
+
+    // Filter merchant users to match environment
+    const merchantIdFilter = demoDataOnly
+      ? inArray(merchantsTable.id, DEMO_MERCHANT_IDS)
+      : notInArray(merchantsTable.id, DEMO_MERCHANT_IDS);
+
     const [row] = await db
       .select({
         settlementEmails: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.settlementStateChangedEmails} = false)`,
@@ -382,7 +400,8 @@ router.get("/email-opt-out-stats", requireAdmin, async (req, res, next) => {
         total: count(),
       })
       .from(usersTable)
-      .where(eq(usersTable.role, "merchant"));
+      .innerJoin(merchantsTable, eq(usersTable.merchantId, merchantsTable.id))
+      .where(and(eq(usersTable.role, "merchant"), merchantIdFilter));
 
     res.json({
       settlementEmails: Number(row.settlementEmails),
@@ -393,6 +412,8 @@ router.get("/email-opt-out-stats", requireAdmin, async (req, res, next) => {
       reconciliationAlertEmails: Number(row.reconciliationAlertEmails),
       weeklyDigestEmails: Number(row.weeklyDigestEmails),
       totalMerchantUsers: Number(row.total),
+      demoDataOnly,
+      environment,
     });
   } catch (err) {
     next(err);

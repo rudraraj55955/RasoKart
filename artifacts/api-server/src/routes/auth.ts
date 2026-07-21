@@ -739,6 +739,8 @@ router.get("/me", requireAuth, async (req, res, next) => {
         quietHoursStart: usersTable.quietHoursStart,
         quietHoursEnd: usersTable.quietHoursEnd,
         quietHoursTimezone: usersTable.quietHoursTimezone,
+        notificationSoundEnabled: usersTable.notificationSoundEnabled,
+        notificationVibrationEnabled: usersTable.notificationVibrationEnabled,
         reportsBadgeSnoozedUntil: usersTable.reportsBadgeSnoozedUntil,
         badgeSnoozedUntil: usersTable.badgeSnoozedUntil,
       })
@@ -819,6 +821,8 @@ router.get("/me", requireAuth, async (req, res, next) => {
       quietHoursStart: row?.quietHoursStart ?? null,
       quietHoursEnd: row?.quietHoursEnd ?? null,
       quietHoursTimezone: row?.quietHoursTimezone ?? null,
+      notificationSoundEnabled: row?.notificationSoundEnabled ?? true,
+      notificationVibrationEnabled: row?.notificationVibrationEnabled ?? true,
       reportsBadgeSnoozedUntil: snoozeIso,
       badgeSnoozedUntil: Object.keys(badgeSnoozedUntil).length > 0 ? badgeSnoozedUntil : null,
       createdAt: user.createdAt,
@@ -833,7 +837,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
 router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone } = req.body;
+    const { reconciliationAlertEmails, planExpiryAlertEmails, settlementStateEmails, signatureFailureAlertEmails, webhookFailureEmails, reportFailureAlertEmails, githubSyncFailureAlertEmails, weeklyDeliveryDigestEmails, apiKeyGeneratedEmails, apiKeyRevokedEmails, loginAlertEmails, reportScheduleChangedEmails, settlementStateChangedEmails, ekqrSyncAlertEmails, planChangeEmails, reconciliationAlertNotifs, planExpiryAlertNotifs, settlementStateNotifs, signatureFailureAlertNotifs, webhookFailureNotifs, ekqrSyncAlertNotifs, reportFailureAlertNotifs, weeklyDeliveryDigestNotifs, apiKeyGeneratedNotifs, apiKeyRevokedNotifs, loginAlertNotifs, reportScheduleChangedNotifs, settlementStateChangedNotifs, planChangeNotifs, quietHoursStart, quietHoursEnd, quietHoursTimezone, notificationSoundEnabled, notificationVibrationEnabled } = req.body;
 
     const patch: Record<string, boolean | Date | string | null | Record<string, string>> = {};
 
@@ -1013,6 +1017,22 @@ router.put("/preferences", requireAuth, prefChangeLimiter, async (req, res, next
         }
       }
       patch["quietHoursTimezone"] = quietHoursTimezone;
+    }
+
+    if (notificationSoundEnabled !== undefined) {
+      if (typeof notificationSoundEnabled !== "boolean") {
+        res.status(400).json({ error: "notificationSoundEnabled must be a boolean" });
+        return;
+      }
+      patch["notificationSoundEnabled"] = notificationSoundEnabled;
+    }
+
+    if (notificationVibrationEnabled !== undefined) {
+      if (typeof notificationVibrationEnabled !== "boolean") {
+        res.status(400).json({ error: "notificationVibrationEnabled must be a boolean" });
+        return;
+      }
+      patch["notificationVibrationEnabled"] = notificationVibrationEnabled;
     }
 
     if (Object.keys(patch).length === 0) {

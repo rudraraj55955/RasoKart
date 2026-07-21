@@ -149,5 +149,9 @@ export interface User {
      * @nullable
      */
   badgeSnoozedUntil?: UserBadgeSnoozedUntil;
+  /** Whether the user has notification sounds enabled. Source of truth is the database; localStorage is only a temporary cache. */
+  notificationSoundEnabled?: boolean;
+  /** Whether the user has notification vibration enabled. Source of truth is the database; localStorage is only a temporary cache. */
+  notificationVibrationEnabled?: boolean;
   createdAt: string;
 }

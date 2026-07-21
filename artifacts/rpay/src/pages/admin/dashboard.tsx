@@ -316,6 +316,9 @@ export default function AdminDashboard() {
                   <span className="text-xs text-muted-foreground">
                     {emailOptOut.totalMerchantUsers} merchant {emailOptOut.totalMerchantUsers === 1 ? "account" : "accounts"}
                   </span>
+                  {(emailOptOut as any).demoDataOnly && (
+                    <span className="rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-semibold px-2 py-0.5 border border-amber-500/30 uppercase tracking-wide">Demo</span>
+                  )}
                 </div>
                 <Link href="/admin/merchants">
                   <span className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
@@ -360,7 +363,7 @@ export default function AdminDashboard() {
         );
       })()}
 
-      {reconSummary && reconSummary.runId != null && (() => {
+      {reconSummary != null && reconSummary.runId != null && (() => {
         const hasUnmatched = (reconSummary.totalUnmatched ?? 0) > 0;
         return (
           <Card className={hasUnmatched ? "border-rose-500/40 bg-rose-500/5" : "border-emerald-500/30 bg-emerald-500/5"}>
@@ -372,6 +375,9 @@ export default function AdminDashboard() {
                   <span className={`rounded-full text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide ${reconSummary.triggeredBy === "manual" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-zinc-500/20 text-zinc-400 border-zinc-500/30"}`}>
                     {reconSummary.triggeredBy === "manual" ? "Manual" : "Auto"}
                   </span>
+                  {(reconSummary as any).demoDataOnly && (
+                    <span className="rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-semibold px-2 py-0.5 border border-amber-500/30 uppercase tracking-wide">Demo</span>
+                  )}
                   {hasUnmatched && (
                     <span className="rounded-full bg-rose-500/20 text-rose-400 text-[10px] font-semibold px-2 py-0.5 border border-rose-500/30 uppercase tracking-wide">
                       Needs Review
