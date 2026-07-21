@@ -727,7 +727,13 @@ function TryItPanel({
   );
   const [presetName, setPresetName] = useState("");
   const [presetCredentialWarnings, setPresetCredentialWarnings] = useState<string[]>([]);
-  const [presetLoadWarnings, setPresetLoadWarnings] = useState<{ id: string; warnings: string[] } | null>(null);
+  const [presetLoadWarnings, setPresetLoadWarnings] = useState<{
+    id: string;
+    warnings: string[];
+    originQueryParamKeys: string[];
+    originPathParamKeys: string[];
+    originBodyPaths: string[];
+  } | null>(null);
 
   const suggestedExpiryMinutes = useMemo(
     () => (sharedMatch?.expiresAt ? findClosestExpiryOption(sharedMatch.expiresAt) : null),
@@ -753,6 +759,63 @@ function TryItPanel({
 
   useEffect(() => {
     setPresetCredentialWarnings([]);
+  }, [body, queryParams, pathValues]);
+
+  useEffect(() => {
+    setPresetLoadWarnings((prev) => {
+      if (!prev) return prev;
+
+      const activeQueryParams = prev.originQueryParamKeys.filter((key) => {
+        const row = queryParams.find((r) => r.key === key);
+        return row ? looksLikeCredential(row.value) : false;
+      });
+
+      const activePathParams = prev.originPathParamKeys.filter((key) =>
+        looksLikeCredential(pathValues[key] ?? "")
+      );
+
+      let activeBodyPaths: string[] = [];
+      if (prev.originBodyPaths.length > 0) {
+        if (prev.originBodyPaths.includes("") && looksLikeCredential(body)) {
+          activeBodyPaths = [""];
+        } else {
+          const currentBodyCredPaths = new Set<string>();
+          try {
+            const parsed = JSON.parse(body) as unknown;
+            const found: { path: string; value: string }[] = [];
+            walkJsonStrings(parsed, "", found);
+            found.forEach((f) => currentBodyCredPaths.add(f.path));
+          } catch {
+            // body is not valid JSON — raw credential check handled above
+          }
+          activeBodyPaths = prev.originBodyPaths.filter((p) => currentBodyCredPaths.has(p));
+        }
+      }
+
+      const totalActive = activeQueryParams.length + activePathParams.length + activeBodyPaths.length;
+      if (totalActive === 0) return null;
+
+      const newWarnings: string[] = [];
+      for (const key of activeQueryParams) {
+        const row = queryParams.find((r) => r.key === key);
+        if (row) newWarnings.push(`query param "${key}" = "${truncateCredentialValue(row.value)}"`);
+      }
+      for (const key of activePathParams) {
+        const val = pathValues[key] ?? "";
+        newWarnings.push(`path param "{${key}}" = "${truncateCredentialValue(val)}"`);
+      }
+      for (const p of activeBodyPaths) {
+        newWarnings.push(p ? `body field "${p}"` : "request body");
+      }
+
+      if (
+        newWarnings.length === prev.warnings.length &&
+        newWarnings.every((w, i) => w === prev.warnings[i])
+      ) {
+        return prev;
+      }
+      return { ...prev, warnings: newWarnings };
+    });
   }, [body, queryParams, pathValues]);
 
   const params = extractPathParams(path);
@@ -926,7 +989,28 @@ function TryItPanel({
       );
       setBody(preset.body);
       const warnings = collectCredentialWarnings(preset.queryParams, preset.body, preset.pathValues);
-      setPresetLoadWarnings(warnings.length > 0 ? { id: preset.id, warnings } : null);
+      if (warnings.length > 0) {
+        const originQueryParamKeys = preset.queryParams
+          .filter((row) => row.key.trim() && looksLikeCredential(row.value))
+          .map((row) => row.key);
+        const originPathParamKeys = Object.entries(preset.pathValues)
+          .filter(([, val]) => looksLikeCredential(val))
+          .map(([key]) => key);
+        const originBodyPaths: string[] = [];
+        if (preset.body.trim()) {
+          try {
+            const parsed = JSON.parse(preset.body) as unknown;
+            const found: { path: string; value: string }[] = [];
+            walkJsonStrings(parsed, "", found);
+            found.forEach((f) => originBodyPaths.push(f.path));
+          } catch {
+            if (looksLikeCredential(preset.body)) originBodyPaths.push("");
+          }
+        }
+        setPresetLoadWarnings({ id: preset.id, warnings, originQueryParamKeys, originPathParamKeys, originBodyPaths });
+      } else {
+        setPresetLoadWarnings(null);
+      }
       toast.success(`Preset "${preset.name}" loaded`);
     },
     []
