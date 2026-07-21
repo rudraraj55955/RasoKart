@@ -20,7 +20,8 @@
     "verify-priority-conflict-tests": "tsx ./src/verify-priority-conflict-tests.ts",
     "test:otp-auth": "playwright test --config=playwright.config.ts e2e/otp-auth.spec.ts",
     "verify-iam-migration": "tsx ./src/verify-iam-migration.ts",
-    "test:iam-role-matrix": "playwright test --config=playwright.config.ts e2e/iam-role-matrix.spec.ts"
+    "test:iam-role-matrix": "playwright test --config=playwright.config.ts e2e/iam-role-matrix.spec.ts",
+    "test:gateway-filter-sync": "playwright test --config=playwright.config.ts e2e/gateway-filter-sync.spec.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
