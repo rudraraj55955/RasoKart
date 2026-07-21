@@ -1330,6 +1330,41 @@ export default function AdminSmartRouting() {
                 Chain-exhaustion events fire when all configured gateways fail repeatedly within a rolling window. Review recent outages and per-provider failure trends here.
               </p>
 
+              {/* Active alert settings summary banner */}
+              {alertSettingsQ.isLoading ? (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/50 text-zinc-500 text-sm">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  Loading alert settings…
+                </div>
+              ) : alertSettingsQ.isError ? (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/50 text-zinc-500 text-sm">
+                  <AlertTriangle className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                  Couldn't load current alert settings — threshold context unavailable.
+                </div>
+              ) : alertSettingsQ.data ? (
+                <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <p className="text-sm text-zinc-300">
+                    <span className="text-amber-300 font-medium">Active alert threshold:</span>{" "}
+                    alert fires when routing failures exceed{" "}
+                    <span className="text-white font-semibold">{alertSettingsQ.data.threshold}</span>{" "}
+                    within a{" "}
+                    <span className="text-white font-semibold">
+                      {alertSettingsQ.data.windowMinutes >= 60
+                        ? `${alertSettingsQ.data.windowMinutes / 60}h`
+                        : `${alertSettingsQ.data.windowMinutes}m`}
+                    </span>{" "}
+                    rolling window.{" "}
+                    <button
+                      className="text-amber-400/70 hover:text-amber-300 underline underline-offset-2 text-xs ml-0.5"
+                      onClick={() => setActiveTab("config")}
+                    >
+                      Edit in Routing Strategy tab
+                    </button>
+                  </p>
+                </div>
+              ) : null}
+
               {/* Recent chain-exhaustion events */}
               <Card className="bg-zinc-900 border-zinc-800">
                 <CardHeader className="pb-3">
@@ -1393,6 +1428,24 @@ export default function AdminSmartRouting() {
                                 : <span className="text-zinc-600">unknown</span>}
                               {ev.triggerMerchantId != null && <span className="text-zinc-600"> · triggered by merchant #{ev.triggerMerchantId}</span>}
                             </p>
+                            {alertSettingsQ.data != null && (
+                              ev.failureCount !== alertSettingsQ.data.threshold ||
+                              ev.windowMinutes !== alertSettingsQ.data.windowMinutes
+                                ? (
+                                  <p className="text-xs text-zinc-500 mt-1 italic">
+                                    ⚠ Threshold has since changed — current config is{" "}
+                                    <span className="text-zinc-400 not-italic font-medium">{alertSettingsQ.data.threshold}</span>{" "}
+                                    failures in{" "}
+                                    <span className="text-zinc-400 not-italic font-medium">
+                                      {alertSettingsQ.data.windowMinutes >= 60
+                                        ? `${alertSettingsQ.data.windowMinutes / 60}h`
+                                        : `${alertSettingsQ.data.windowMinutes}m`}
+                                    </span>
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-emerald-600/70 mt-1">✓ Matches current config</p>
+                                )
+                            )}
                           </div>
                         </div>
                       ))}
