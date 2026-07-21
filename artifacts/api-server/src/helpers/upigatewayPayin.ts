@@ -15,6 +15,7 @@ export interface UpigatewayConfig {
   webhookSecret: string;
   minAmount: number;
   maxAmount: number;
+  dailyLimit: number;
   merchantAccess: boolean;
   apiKeySet: boolean;
   apiKeyMasked: string;
@@ -34,6 +35,7 @@ const CONFIG_KEYS = [
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_CHECK_STATUS_ENDPOINT,
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_MIN_AMOUNT,
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_MAX_AMOUNT,
+  SYSTEM_CONFIG_KEYS.UPIGATEWAY_DAILY_LIMIT,
   SYSTEM_CONFIG_KEYS.UPIGATEWAY_MERCHANT_ACCESS,
 ] as const;
 
@@ -73,6 +75,7 @@ export async function loadUpigatewayConfig(): Promise<UpigatewayConfig> {
     webhookSecret: rawSecret,
     minAmount: parseInt(map.get(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MIN_AMOUNT) ?? "1") || 1,
     maxAmount: parseInt(map.get(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MAX_AMOUNT) ?? "200000") || 200000,
+    dailyLimit: parseInt(map.get(SYSTEM_CONFIG_KEYS.UPIGATEWAY_DAILY_LIMIT) ?? "1000000") || 1000000,
     merchantAccess: (map.get(SYSTEM_CONFIG_KEYS.UPIGATEWAY_MERCHANT_ACCESS) ?? "false") === "true",
     apiKeySet: rawApiKey.length > 0,
     apiKeyMasked: maskSecret(rawApiKey),

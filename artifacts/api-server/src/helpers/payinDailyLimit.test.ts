@@ -92,4 +92,106 @@ describe("getMerchantDailyPaidTotal", () => {
     const rendered = renderSqlLike(capturedWhere);
     assert.match(rendered, /COALESCE/i);
   });
+
+  // ── providerKey filter tests ──────────────────────────────────────────────
+
+  it("includes a providerKey column filter in the WHERE clause when providerKey is supplied", async () => {
+    let capturedWhere: any = null;
+    (db as any).select = () => ({
+      from: () => ({
+        where: async (whereClause: any) => {
+          capturedWhere = whereClause;
+          return [{ total: "0" }];
+        },
+      }),
+    });
+
+    await getMerchantDailyPaidTotal(1, new Date(), "upigateway");
+
+    const rendered = renderSqlLike(capturedWhere);
+    assert.match(
+      rendered,
+      /upigateway/,
+      "WHERE clause must reference the providerKey value when providerKey is supplied",
+    );
+  });
+
+  it("does NOT include a providerKey filter in the WHERE clause when providerKey is omitted", async () => {
+    let capturedWhere: any = null;
+    (db as any).select = () => ({
+      from: () => ({
+        where: async (whereClause: any) => {
+          capturedWhere = whereClause;
+          return [{ total: "0" }];
+        },
+      }),
+    });
+
+    await getMerchantDailyPaidTotal(1, new Date());
+
+    const rendered = renderSqlLike(capturedWhere);
+    assert.ok(
+      !rendered.includes("upigateway") && !rendered.includes("cashfree"),
+      `WHERE clause must not include any providerKey value when providerKey is omitted. Got: ${rendered}`,
+    );
+  });
+
+  it("counts only rows matching the given providerKey — non-matching provider rows are excluded", async () => {
+    let capturedWhere: any = null;
+    let callCount = 0;
+
+    (db as any).select = () => ({
+      from: () => ({
+        where: async (whereClause: any) => {
+          callCount++;
+          capturedWhere = whereClause;
+          return [{ total: "800.00" }];
+        },
+      }),
+    });
+
+    const total = await getMerchantDailyPaidTotal(42, new Date(), "upigateway");
+
+    assert.equal(total, 800, "should return the aggregate total from the filtered query");
+    assert.equal(callCount, 1, "should execute exactly one query");
+
+    const rendered = renderSqlLike(capturedWhere);
+    assert.match(
+      rendered,
+      /upigateway/,
+      "the executed query must include the providerKey filter",
+    );
+  });
+
+  it("uses a different WHERE predicate for different providerKey values", async () => {
+    const capturedWheres: string[] = [];
+
+    (db as any).select = () => ({
+      from: () => ({
+        where: async (whereClause: any) => {
+          capturedWheres.push(renderSqlLike(whereClause));
+          return [{ total: "0" }];
+        },
+      }),
+    });
+
+    await getMerchantDailyPaidTotal(1, new Date(), "upigateway");
+    await getMerchantDailyPaidTotal(1, new Date(), "cashfree_payin");
+    await getMerchantDailyPaidTotal(1, new Date());
+
+    assert.equal(capturedWheres.length, 3);
+
+    assert.ok(
+      capturedWheres[0]!.includes("upigateway"),
+      "first call (upigateway) must include upigateway in WHERE",
+    );
+    assert.ok(
+      capturedWheres[1]!.includes("cashfree_payin"),
+      "second call (cashfree_payin) must include cashfree_payin in WHERE",
+    );
+    assert.ok(
+      !capturedWheres[2]!.includes("upigateway") && !capturedWheres[2]!.includes("cashfree_payin"),
+      "third call (no providerKey) must NOT include any providerKey value in WHERE",
+    );
+  });
 });

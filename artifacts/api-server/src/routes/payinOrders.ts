@@ -250,11 +250,32 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
         // ── UPIGateway provider-level amount limits ──
         // Enforce admin-configured min/max amounts (from UPIGATEWAY_ system_config
         // keys, surfaced via loadUpigatewayConfig) before dispatching to the
-        // provider. Returns 400 with a clear message so the merchant never sees
+        // provider. Returns 422 with a clear message so the merchant never sees
         // a raw provider error for an admin-controlled limit.
         if (depositAmount < ugCfg.minAmount || depositAmount > ugCfg.maxAmount) {
           req.log.warn({ event: "payin_upigateway_amount_limit_rejected", merchantId, depositAmount, min: ugCfg.minAmount, max: ugCfg.maxAmount }, "payin_upigateway_amount_limit_rejected");
-          res.status(400).json({ error: `Amount must be between ₹${ugCfg.minAmount} and ₹${ugCfg.maxAmount}` });
+          res.status(422).json({ error: `Amount must be between ₹${ugCfg.minAmount} and ₹${ugCfg.maxAmount}` });
+          return;
+        }
+
+        // ── UPIGateway provider-scoped daily volume check ──
+        // Count only deposits already routed through this provider today so the
+        // EKQR-specific daily cap is enforced independently of the global limit.
+        // Fail-closed: if the lookup throws we cannot safely determine headroom,
+        // so we reject rather than allow a potentially over-limit order through.
+        let ekqrDailyTotal: number;
+        try {
+          const ekqrStartOfDay = new Date();
+          ekqrStartOfDay.setHours(0, 0, 0, 0);
+          ekqrDailyTotal = await getMerchantDailyPaidTotal(merchantId, ekqrStartOfDay, decision.providerKey);
+        } catch (err) {
+          req.log.error({ event: "payin_upigateway_daily_check_error", merchantId, err }, "payin_upigateway_daily_check_error");
+          res.status(422).json({ error: "Unable to verify daily deposit limit. Please try again later." });
+          return;
+        }
+        if (ekqrDailyTotal + depositAmount > ugCfg.dailyLimit) {
+          req.log.warn({ event: "payin_upigateway_daily_limit_rejected", merchantId, ekqrDailyTotal, depositAmount, dailyLimit: ugCfg.dailyLimit }, "payin_upigateway_daily_limit_rejected");
+          res.status(422).json({ error: "Daily deposit limit reached for this provider. Please try again tomorrow or contact support." });
           return;
         }
 
