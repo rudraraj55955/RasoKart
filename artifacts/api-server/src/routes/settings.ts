@@ -187,6 +187,18 @@ router.put("/report-delivery-retries", async (req, res, next) => {
       return;
     }
 
+    const currentRows = await db
+      .select()
+      .from(systemSettingsTable)
+      .where(inArray(systemSettingsTable.key, [...REPORT_DELIVERY_KEYS]));
+    const currentMap = Object.fromEntries(currentRows.map(r => [r.key, r.value]));
+    const currentMax = currentMap["report_delivery_max_attempts"] != null
+      ? parseInt(currentMap["report_delivery_max_attempts"] as string, 10)
+      : REPORT_DELIVERY_MAX_ATTEMPTS_DEFAULT;
+    const currentBackoff = currentMap["report_delivery_backoff_base_ms"] != null
+      ? parseInt(currentMap["report_delivery_backoff_base_ms"] as string, 10)
+      : REPORT_DELIVERY_BACKOFF_BASE_MS_DEFAULT;
+
     const now = new Date();
     const upserts = [
       { key: "report_delivery_max_attempts", value: String(parsedMax) },
@@ -203,18 +215,20 @@ router.put("/report-delivery-retries", async (req, res, next) => {
         });
     }
 
-    try {
-      await db.insert(auditLogsTable).values({
-        adminId: user.id,
-        adminEmail: user.email,
-        action: "setting_updated",
-        targetType: "system_config",
-        targetId: null,
-        details: JSON.stringify({ key: "report_delivery_retries", maxAttempts: parsedMax, backoffBaseMs: parsedBackoff }),
-        ipAddress: req.ip ?? null,
-      });
-    } catch (auditErr) {
-      req.log.error({ err: auditErr }, "Failed to write audit log for report_delivery_retries update");
+    if (currentMax !== parsedMax || currentBackoff !== parsedBackoff) {
+      try {
+        await db.insert(auditLogsTable).values({
+          adminId: user.id,
+          adminEmail: user.email,
+          action: "setting_updated",
+          targetType: "system_config",
+          targetId: null,
+          details: JSON.stringify({ key: "report_delivery_retries", maxAttempts: parsedMax, backoffBaseMs: parsedBackoff }),
+          ipAddress: req.ip ?? null,
+        });
+      } catch (auditErr) {
+        req.log.error({ err: auditErr }, "Failed to write audit log for report_delivery_retries update");
+      }
     }
 
     res.json({ maxAttempts: parsedMax, backoffBaseMs: parsedBackoff });

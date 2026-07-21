@@ -125,6 +125,8 @@ router.put("/reconciliation", async (req, res, next) => {
 
     const enabledValue = enabled !== undefined ? enabled : true;
 
+    const currentConfig = await getReconConfig();
+
     const entries = [
       { key: SYSTEM_CONFIG_KEYS.RECONCILIATION_HOUR, value: String(hour), updatedByEmail: user.email },
       { key: SYSTEM_CONFIG_KEYS.RECONCILIATION_MINUTE, value: String(minute), updatedByEmail: user.email },
@@ -144,15 +146,23 @@ router.put("/reconciliation", async (req, res, next) => {
 
     await rescheduleFromDb();
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "reconciliation", hour, minute, lookbackDays, enabled: enabledValue }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    const isNoOp =
+      currentConfig.hour === hour &&
+      currentConfig.minute === minute &&
+      currentConfig.lookbackDays === lookbackDays &&
+      currentConfig.enabled === enabledValue;
+
+    if (!isNoOp) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "reconciliation", hour, minute, lookbackDays, enabled: enabledValue }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ hour, minute, lookbackDays, enabled: enabledValue }, "Reconciliation schedule config updated");
 
@@ -191,6 +201,8 @@ router.put("/qr-cleanup", async (req, res, next) => {
       return;
     }
 
+    const currentRetentionDays = await loadQrCleanupRetentionDays();
+
     await db
       .insert(systemConfigTable)
       .values({
@@ -207,15 +219,17 @@ router.put("/qr-cleanup", async (req, res, next) => {
         },
       });
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "qr_cleanup", retentionDays }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (currentRetentionDays !== retentionDays) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "qr_cleanup", retentionDays }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ retentionDays }, "QR cleanup retention config updated");
 
@@ -254,6 +268,8 @@ router.put("/va-cleanup", async (req, res, next) => {
       return;
     }
 
+    const currentRetentionDays = await loadVaCleanupRetentionDays();
+
     await db
       .insert(systemConfigTable)
       .values({
@@ -270,15 +286,17 @@ router.put("/va-cleanup", async (req, res, next) => {
         },
       });
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "va_cleanup", retentionDays }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (currentRetentionDays !== retentionDays) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "va_cleanup", retentionDays }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ retentionDays }, "VA cleanup retention config updated");
 
@@ -426,6 +444,15 @@ router.put("/signature-failure-alert", async (req, res, next) => {
       return;
     }
 
+    const sigKeys = [
+      SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD,
+      SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS,
+    ];
+    const currentRows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, sigKeys));
+    const currentMap = new Map(currentRows.map((r) => [r.key, r.value]));
+    const currentThreshold = parseInt(currentMap.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD]);
+    const currentCooldownHours = parseInt(currentMap.get(SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS]);
+
     const entries = [
       { key: SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_THRESHOLD, value: String(threshold), updatedByEmail: user.email },
       { key: SYSTEM_CONFIG_KEYS.SIGNATURE_FAILURE_ALERT_COOLDOWN_HOURS, value: String(cooldownHours), updatedByEmail: user.email },
@@ -443,15 +470,17 @@ router.put("/signature-failure-alert", async (req, res, next) => {
 
     resetAlertRateLimit();
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "signature_failure_alert", threshold, cooldownHours }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (currentThreshold !== threshold || currentCooldownHours !== cooldownHours) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "signature_failure_alert", threshold, cooldownHours }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ threshold, cooldownHours }, "Signature failure alert config updated — rate-limit reset");
 
@@ -516,6 +545,12 @@ router.put("/credential-rotation-alert-recipients", async (req, res, next) => {
     const dedupedRecipients = Array.from(new Set(normalized));
     const value = dedupedRecipients.join(",");
 
+    const currentRows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.CREDENTIAL_ROTATION_EXTRA_RECIPIENTS));
+    const currentValue = currentRows[0]?.value ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.CREDENTIAL_ROTATION_EXTRA_RECIPIENTS];
+
     await db
       .insert(systemConfigTable)
       .values({
@@ -528,15 +563,17 @@ router.put("/credential-rotation-alert-recipients", async (req, res, next) => {
         set: { value, updatedByEmail: user.email, updatedAt: sql`now()` },
       });
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "credential_rotation_alert_recipients", extraRecipients: dedupedRecipients }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (currentValue !== value) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "credential_rotation_alert_recipients", extraRecipients: dedupedRecipients }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ extraRecipients: dedupedRecipients }, "Credential rotation alert extra recipients updated");
 
@@ -572,6 +609,8 @@ router.put("/test-email-retention", async (req, res, next) => {
       return;
     }
 
+    const currentRetentionDays = await loadTestEmailRetentionDays();
+
     await db
       .insert(systemConfigTable)
       .values({
@@ -588,15 +627,17 @@ router.put("/test-email-retention", async (req, res, next) => {
         },
       });
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "test_email_retention", retentionDays }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (currentRetentionDays !== retentionDays) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "test_email_retention", retentionDays }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ retentionDays }, "Test email history retention config updated");
 
@@ -701,6 +742,19 @@ router.put("/webhook-retries", async (req, res, next) => {
       return;
     }
 
+    const whRetryKeys = [
+      SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_MAX_ATTEMPTS,
+      SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_1,
+      SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_2,
+      SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_3,
+    ];
+    const currentWhRows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, whRetryKeys));
+    const currentWhMap = new Map(currentWhRows.map((r) => [r.key, r.value]));
+    const currentMaxAttempts = parseInt(currentWhMap.get(SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_MAX_ATTEMPTS) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_MAX_ATTEMPTS]);
+    const currentDelay1 = parseInt(currentWhMap.get(SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_1) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_1]);
+    const currentDelay2 = parseInt(currentWhMap.get(SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_2) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_2]);
+    const currentDelay3 = parseInt(currentWhMap.get(SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_3) ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_3]);
+
     const entries = [
       { key: SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_MAX_ATTEMPTS, value: String(maxAttempts), updatedByEmail: user.email },
       { key: SYSTEM_CONFIG_KEYS.WEBHOOK_RETRY_DELAY_1, value: String(delay1), updatedByEmail: user.email },
@@ -718,15 +772,22 @@ router.put("/webhook-retries", async (req, res, next) => {
         });
     }
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "webhook_retries", maxAttempts, delay1, delay2, delay3 }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (
+      currentMaxAttempts !== maxAttempts ||
+      currentDelay1 !== delay1 ||
+      currentDelay2 !== delay2 ||
+      currentDelay3 !== delay3
+    ) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "webhook_retries", maxAttempts, delay1, delay2, delay3 }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ maxAttempts, delay1, delay2, delay3 }, "Webhook retry config updated");
 
@@ -816,6 +877,14 @@ router.put("/webhook-failure-alert", async (req, res, next) => {
       return;
     }
 
+    const currentWhfRows = await db
+      .select()
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.WEBHOOK_FAILURE_ALERT_COOLDOWN_HOURS));
+    const currentCooldownHours = parseInt(
+      currentWhfRows[0]?.value ?? SYSTEM_CONFIG_DEFAULTS[SYSTEM_CONFIG_KEYS.WEBHOOK_FAILURE_ALERT_COOLDOWN_HOURS]
+    );
+
     await db
       .insert(systemConfigTable)
       .values({
@@ -828,15 +897,17 @@ router.put("/webhook-failure-alert", async (req, res, next) => {
         set: { value: String(cooldownHours), updatedByEmail: user.email, updatedAt: sql`now()` },
       });
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "webhook_failure_alert", cooldownHours }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (currentCooldownHours !== cooldownHours) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "webhook_failure_alert", cooldownHours }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ cooldownHours }, "Webhook failure alert cooldown config updated");
 
@@ -1153,6 +1224,8 @@ router.put("/audit-report-retention", async (req, res, next) => {
       return;
     }
 
+    const currentRetentionDays = await loadAuditReportLogRetentionDays();
+
     await db
       .insert(systemConfigTable)
       .values({
@@ -1169,15 +1242,17 @@ router.put("/audit-report-retention", async (req, res, next) => {
         },
       });
 
-    await db.insert(auditLogsTable).values({
-      adminId: user.id,
-      adminEmail: user.email,
-      action: "system_config_updated",
-      targetType: "system_config",
-      targetId: null,
-      details: JSON.stringify({ section: "audit_report_log_retention", retentionDays }),
-      ipAddress: (req as any).ip ?? null,
-    });
+    if (currentRetentionDays !== retentionDays) {
+      await db.insert(auditLogsTable).values({
+        adminId: user.id,
+        adminEmail: user.email,
+        action: "system_config_updated",
+        targetType: "system_config",
+        targetId: null,
+        details: JSON.stringify({ section: "audit_report_log_retention", retentionDays }),
+        ipAddress: (req as any).ip ?? null,
+      });
+    }
 
     req.log.info({ retentionDays }, "Audit report log retention config updated");
 
