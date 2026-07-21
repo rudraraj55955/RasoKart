@@ -26,6 +26,9 @@ BASE_PATH=/ pnpm --filter @workspace/rpay run build
 # Confirm the deploy applied schema/columns correctly AND that every documented
 # demo/test account can authenticate (password hash, role, active). This is the
 # same deep check Replit uses as the autoscale startup gate (see artifact.toml).
+# The response includes a "commit" field with the SHA baked in at build time —
+# compare it against the HEAD of the repo to confirm the correct code is live:
+#   git rev-parse HEAD
 curl -s https://rasokart.com/api/healthz/deep
 
 # For Hetzner (PM2) deploys, also run the standalone credential check for a

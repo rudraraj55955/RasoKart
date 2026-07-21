@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
@@ -9,6 +10,18 @@ import { rm } from "node:fs/promises";
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+
+// Resolve the deployed commit SHA.  Priority order:
+//   1. COMMIT_SHA env var (set by CI/GitHub Actions at build time)
+//   2. git rev-parse HEAD (local dev builds)
+//   3. "unknown" (fallback when git is not available)
+const commitSha = process.env.COMMIT_SHA ?? (() => {
+  try {
+    return execSync("git rev-parse HEAD", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  } catch {
+    return "unknown";
+  }
+})();
 
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
@@ -103,6 +116,12 @@ async function buildAll() {
       "fontkit",
       "brotli",
     ],
+    // Bake the commit SHA into the bundle so /api/healthz/deep can report it.
+    // In CI, COMMIT_SHA is set by GitHub Actions before the build step.
+    // In local dev builds, the git SHA is resolved above from `git rev-parse HEAD`.
+    define: {
+      __COMMIT_SHA__: JSON.stringify(commitSha),
+    },
     sourcemap: "linked",
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it

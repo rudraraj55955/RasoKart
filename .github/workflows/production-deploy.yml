@@ -146,6 +146,9 @@ jobs:
         run: pnpm run build
         env:
           VITE_E2E: "true"
+          # Bake the exact pushed SHA into the API bundle so /api/healthz/deep
+          # reports it and the post-deploy SHA assertion can verify it remotely.
+          COMMIT_SHA: ${{ github.sha }}
 
       - name: Run database migrations (throwaway CI database only)
         run: pnpm --filter @workspace/scripts run db-migrate
@@ -379,6 +382,19 @@ jobs:
       - name: Verify production deep health after deploy
         run: curl -fsS https://rasokart.com/api/healthz/deep
 
+      - name: Assert deployed commit SHA matches pushed commit
+        run: |
+          DEPLOYED_SHA=$(curl -fsS https://rasokart.com/api/healthz/deep \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('commit',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          echo "Expected SHA : $EXPECTED_SHA"
+          echo "Deployed SHA : $DEPLOYED_SHA"
+          if [ "$DEPLOYED_SHA" != "$EXPECTED_SHA" ]; then
+            echo "ERROR: SHA mismatch — VPS is serving $DEPLOYED_SHA, expected $EXPECTED_SHA"
+            exit 1
+          fi
+          echo "SHA assertion passed: $DEPLOYED_SHA is live"
+
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/deploy_key
@@ -500,6 +516,19 @@ jobs:
 
       - name: Verify production deep health after deploy
         run: curl -fsS https://rasokart.com/api/healthz/deep
+
+      - name: Assert deployed commit SHA matches pushed commit
+        run: |
+          DEPLOYED_SHA=$(curl -fsS https://rasokart.com/api/healthz/deep \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('commit',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          echo "Expected SHA : $EXPECTED_SHA"
+          echo "Deployed SHA : $DEPLOYED_SHA"
+          if [ "$DEPLOYED_SHA" != "$EXPECTED_SHA" ]; then
+            echo "ERROR: SHA mismatch — VPS is serving $DEPLOYED_SHA, expected $EXPECTED_SHA"
+            exit 1
+          fi
+          echo "SHA assertion passed: $DEPLOYED_SHA is live"
 
       - name: Cleanup SSH key
         if: always()

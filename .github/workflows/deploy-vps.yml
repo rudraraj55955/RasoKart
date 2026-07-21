@@ -166,6 +166,19 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Assert deployed commit SHA matches pushed commit
+        run: |
+          DEPLOYED_SHA=$(curl -fsS https://rasokart.com/api/healthz/deep \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('commit',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          echo "Expected SHA : $EXPECTED_SHA"
+          echo "Deployed SHA : $DEPLOYED_SHA"
+          if [ "$DEPLOYED_SHA" != "$EXPECTED_SHA" ]; then
+            echo "ERROR: SHA mismatch — VPS is serving $DEPLOYED_SHA, expected $EXPECTED_SHA"
+            exit 1
+          fi
+          echo "SHA assertion passed: $DEPLOYED_SHA is live"
+
       - name: Check all policy pages, API routes, and static files
         run: |
           set -e

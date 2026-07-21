@@ -5,6 +5,14 @@ import { pool, db, usersTable, demoAccountRemovalsTable } from "@workspace/db";
 import { DEMO_CREDENTIALS } from "@workspace/demo-credentials";
 import { logger } from "../lib/logger";
 
+// Injected at build time by esbuild define (see build.mjs).
+// Falls back to the COMMIT_SHA env var (useful when running the uncompiled source
+// directly in development), then to "unknown".
+declare const __COMMIT_SHA__: string;
+const COMMIT_SHA: string = (() => {
+  try { return __COMMIT_SHA__; } catch { return process.env.COMMIT_SHA ?? "unknown"; }
+})();
+
 const router: IRouter = Router();
 
 // Lightweight liveness check — no DB access, always fast, used by load
@@ -14,7 +22,7 @@ router.get("/health", (_req, res) => {
 });
 
 router.get("/healthz", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", commit: COMMIT_SHA });
 });
 
 // DEMO_CREDENTIALS imported from @workspace/demo-credentials — single source
@@ -191,7 +199,7 @@ router.get("/healthz/deep", async (_req, res) => {
   }
 
   const allOk = Object.values(checks).every(Boolean);
-  res.status(allOk ? 200 : 503).json({ status: allOk ? "ok" : "degraded", checks });
+  res.status(allOk ? 200 : 503).json({ status: allOk ? "ok" : "degraded", commit: COMMIT_SHA, checks });
 });
 
 export default router;
