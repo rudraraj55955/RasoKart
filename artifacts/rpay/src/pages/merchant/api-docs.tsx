@@ -1836,19 +1836,33 @@ function TryItPanel({
                 )}
               </Tooltip>
             </TooltipProvider>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs gap-1.5"
-              onClick={handleCopyCurl}
-            >
-              {curlCopied ? (
-                <Check className="w-3 h-3 text-emerald-400" />
-              ) : (
-                <Copy className="w-3 h-3" />
-              )}
-              {curlCopied ? "Copied!" : "Copy as cURL"}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1.5"
+                      onClick={handleCopyCurl}
+                      disabled={redactedPlaceholderFields.length > 0}
+                    >
+                      {curlCopied ? (
+                        <Check className="w-3 h-3 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
+                      {curlCopied ? "Copied!" : "Copy as cURL"}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {redactedPlaceholderFields.length > 0 && (
+                  <TooltipContent side="top">
+                    Replace the [REDACTED] placeholder{redactedPlaceholderFields.length > 1 ? "s" : ""} before copying
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
             <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
