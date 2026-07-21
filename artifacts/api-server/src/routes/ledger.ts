@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, ledgerEntriesTable, merchantsTable, auditLogsTable, transactionsTable, systemConfigTable, SYSTEM_CONFIG_KEYS } from "@workspace/db";
-import { eq, and, count, gte, lte, sql, desc, asc, notExists, inArray } from "drizzle-orm";
+import { eq, and, count, gte, lte, sql, desc, asc, notExists, inArray, notInArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -24,7 +24,7 @@ function mapEntry(e: typeof ledgerEntriesTable.$inferSelect, merchantName?: stri
 router.get("/", async (req, res, next) => {
   try {
     const user = (req as any).user;
-    const { merchantId, type, dateFrom, dateTo, page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { merchantId, type, dateFrom, dateTo, env = "production", page = "1", limit = "50" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
@@ -41,6 +41,11 @@ router.get("/", async (req, res, next) => {
       const end = new Date(dateTo);
       end.setHours(23, 59, 59, 999);
       conditions.push(lte(ledgerEntriesTable.createdAt, end));
+    }
+    if (user.role === "admin") {
+      const prodIds = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, "production"));
+      if (env === "production") conditions.push(inArray(ledgerEntriesTable.merchantId, prodIds));
+      else if (env === "demo") conditions.push(notInArray(ledgerEntriesTable.merchantId, prodIds));
     }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;

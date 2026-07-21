@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, merchantWalletsTable, walletLedgerTable, walletHoldsTable, walletChargesTable, merchantsTable, auditLogsTable } from "@workspace/db";
-import { eq, and, desc, count, ilike, or, sql, lt } from "drizzle-orm";
+import { eq, and, desc, count, ilike, or, sql, lt, ne } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -179,14 +179,22 @@ router.get("/me/ledger", async (req, res, next) => {
 // GET /api/wallets — list all merchant wallets
 router.get("/", requireAdmin, async (req, res, next) => {
   try {
-    const { search = "", page = "1", limit = "20" } = req.query as Record<string, string>;
+    const { search = "", env = "production", page = "1", limit = "20" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
 
-    const merchantCondition = search.trim()
+    const envCond = env === "production"
+      ? eq(merchantsTable.environment, "production")
+      : env === "demo"
+        ? ne(merchantsTable.environment, "production")
+        : undefined;
+
+    const searchCond = search.trim()
       ? or(ilike(merchantsTable.businessName, `%${search.trim()}%`), ilike(merchantsTable.email, `%${search.trim()}%`))
       : undefined;
+
+    const merchantCondition = and(envCond, searchCond);
 
     const baseQuery = db.select({
       wallet: merchantWalletsTable,

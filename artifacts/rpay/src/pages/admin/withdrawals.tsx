@@ -80,6 +80,7 @@ function buildShareText(
 export default function AdminWithdrawals() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("all");
+  const [env, setEnv] = useState("production");
   const [page, setPage] = useState(1);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -101,7 +102,7 @@ export default function AdminWithdrawals() {
     shareUrlLoading: boolean;
   } | null>(null);
 
-  const { data, isLoading, isError } = useListWithdrawals({ status: status as any, page, limit: 20 });
+  const { data, isLoading, isError } = useListWithdrawals({ status: status as any, env: env as any, page, limit: 20 });
   const approveMutation = useApproveWithdrawal();
   const rejectMutation = useRejectWithdrawal();
 
@@ -318,6 +319,14 @@ export default function AdminWithdrawals() {
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={env} onValueChange={v => { setEnv(v); setPage(1); }}>
+            <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="production">Production</SelectItem>
+              <SelectItem value="demo">Demo / Test</SelectItem>
+              <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
         </CardHeader>

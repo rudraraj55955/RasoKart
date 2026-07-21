@@ -59,6 +59,7 @@ export default function AdminLedger() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  const [env, setEnv] = useState("production");
 
   const [adjOpen, setAdjOpen] = useState(false);
   const [adjMerchant, setAdjMerchant] = useState("");
@@ -83,6 +84,7 @@ export default function AdminLedger() {
     type: type !== "all" ? type : undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    env: env as any,
     page,
     limit: PAGE_SIZE,
   };
@@ -237,6 +239,16 @@ export default function AdminLedger() {
                 <SelectItem value="adjustment">Adjustment</SelectItem>
                 <SelectItem value="fee">Fee</SelectItem>
                 <SelectItem value="refund">Refund</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={env} onValueChange={v => { setEnv(v); setPage(1); }}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Environment" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="demo">Demo / Test</SelectItem>
+                <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
             {(preset === "custom" || preset === "all") && (

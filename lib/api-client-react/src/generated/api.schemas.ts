@@ -6594,9 +6594,9 @@ paymentLinkId?: number;
 page?: number;
 limit?: number;
 /**
- * Filter by demo/production environment (admin only). Default: exclude — shows only real production transactions. Use 'only' to see seed/demo data. Use 'all' to see everything.
+ * Environment filter (admin only). Default: production — shows only verified production merchant transactions. Use 'demo' to see seed/test data. Use 'all' to see everything.
  */
-demo?: ListTransactionsDemo;
+env?: ListTransactionsEnv;
 };
 
 export type ListTransactionsType = typeof ListTransactionsType[keyof typeof ListTransactionsType];
@@ -6630,12 +6630,12 @@ export const ListTransactionsConnectionProvider = {
   upi_id: 'upi_id',
 } as const;
 
-export type ListTransactionsDemo = typeof ListTransactionsDemo[keyof typeof ListTransactionsDemo];
+export type ListTransactionsEnv = typeof ListTransactionsEnv[keyof typeof ListTransactionsEnv];
 
 
-export const ListTransactionsDemo = {
-  exclude: 'exclude',
-  only: 'only',
+export const ListTransactionsEnv = {
+  production: 'production',
+  demo: 'demo',
   all: 'all',
 } as const;
 
@@ -7133,6 +7133,10 @@ status?: ListWithdrawalsStatus;
 merchantId?: number;
 page?: number;
 limit?: number;
+/**
+ * Environment filter (admin only). Default: production.
+ */
+env?: ListWithdrawalsEnv;
 };
 
 export type ListWithdrawalsStatus = typeof ListWithdrawalsStatus[keyof typeof ListWithdrawalsStatus];
@@ -7142,6 +7146,15 @@ export const ListWithdrawalsStatus = {
   pending: 'pending',
   approved: 'approved',
   rejected: 'rejected',
+  all: 'all',
+} as const;
+
+export type ListWithdrawalsEnv = typeof ListWithdrawalsEnv[keyof typeof ListWithdrawalsEnv];
+
+
+export const ListWithdrawalsEnv = {
+  production: 'production',
+  demo: 'demo',
   all: 'all',
 } as const;
 
@@ -7386,6 +7399,10 @@ dateFrom?: string;
 dateTo?: string;
 page?: number;
 limit?: number;
+/**
+ * Environment filter (admin only). Default: production.
+ */
+env?: ListSettlementsEnv;
 };
 
 export type ListSettlementsStatus = typeof ListSettlementsStatus[keyof typeof ListSettlementsStatus];
@@ -7398,6 +7415,15 @@ export const ListSettlementsStatus = {
   rejected: 'rejected',
   paid: 'paid',
   cancelled: 'cancelled',
+  all: 'all',
+} as const;
+
+export type ListSettlementsEnv = typeof ListSettlementsEnv[keyof typeof ListSettlementsEnv];
+
+
+export const ListSettlementsEnv = {
+  production: 'production',
+  demo: 'demo',
   all: 'all',
 } as const;
 

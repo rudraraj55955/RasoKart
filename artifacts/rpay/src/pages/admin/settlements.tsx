@@ -194,6 +194,8 @@ export default function AdminSettlements() {
   const [bulkRemark, setBulkRemark] = useState("");
   const [bulkError, setBulkError] = useState("");
 
+  const [env, setEnv] = useState("production");
+
   const [smartInput, setSmartInput] = useState("");
   const [smartFilter, setSmartFilter] = useState<SmartFilter | null>(null);
   const [smartError, setSmartError] = useState("");
@@ -254,6 +256,7 @@ export default function AdminSettlements() {
     status: activeStatus as any,
     dateFrom: activeDateFrom,
     dateTo: activeDateTo,
+    env: env as any,
     page,
     limit: 20,
   });
@@ -1000,6 +1003,14 @@ export default function AdminSettlements() {
                   <SelectItem value="approved">Approved</SelectItem>
                   <SelectItem value="rejected">Rejected</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={env} onValueChange={v => { setEnv(v); setPage(1); }}>
+                <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="production">Production</SelectItem>
+                  <SelectItem value="demo">Demo / Test</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
                 </SelectContent>
               </Select>
             </div>

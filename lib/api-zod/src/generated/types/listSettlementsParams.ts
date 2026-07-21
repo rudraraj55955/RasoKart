@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListSettlementsEnv } from './listSettlementsEnv';
 import type { ListSettlementsStatus } from './listSettlementsStatus';
 
 export type ListSettlementsParams = {
@@ -14,4 +15,8 @@ dateFrom?: string;
 dateTo?: string;
 page?: number;
 limit?: number;
+/**
+ * Environment filter (admin only). Default: production.
+ */
+env?: ListSettlementsEnv;
 };

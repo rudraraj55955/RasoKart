@@ -316,7 +316,8 @@ export async function seed() {
       balance: "0",
       totalDeposits: "0",
       totalWithdrawals: "0",
-    }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Demo Merchant" } }).returning();
+      environment: "demo",
+    }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Demo Merchant", environment: "demo" } }).returning();
   }
 
   if (merchant2) {
@@ -329,7 +330,8 @@ export async function seed() {
       balance: "0",
       totalDeposits: "0",
       totalWithdrawals: "0",
-    }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Merchant Two" } }).returning();
+      environment: "demo",
+    }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Merchant Two", environment: "demo" } }).returning();
   }
 
   if (merchant3) {
@@ -342,7 +344,8 @@ export async function seed() {
       balance: "0",
       totalDeposits: "0",
       totalWithdrawals: "0",
-    }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Demo Merchant 3" } }).returning();
+      environment: "demo",
+    }).onConflictDoUpdate({ target: merchantsTable.email, set: { status: "approved", contactName: "Demo Merchant 3", environment: "demo" } }).returning();
   }
 
   // Link user accounts to their merchant rows so merchant-facing routes work

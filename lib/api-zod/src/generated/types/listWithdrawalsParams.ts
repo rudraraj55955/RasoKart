@@ -5,6 +5,7 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListWithdrawalsEnv } from './listWithdrawalsEnv';
 import type { ListWithdrawalsStatus } from './listWithdrawalsStatus';
 
 export type ListWithdrawalsParams = {
@@ -12,4 +13,8 @@ status?: ListWithdrawalsStatus;
 merchantId?: number;
 page?: number;
 limit?: number;
+/**
+ * Environment filter (admin only). Default: production.
+ */
+env?: ListWithdrawalsEnv;
 };

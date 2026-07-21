@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, ChevronLeft, ChevronRight, Wallet, ArrowRight, TrendingUp, Users } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function getToken() { return localStorage.getItem("rasokart_token") ?? ""; }
 async function apiGet(path: string) {
@@ -40,11 +41,12 @@ const STATUS_COLOR: Record<string, string> = {
 export default function AdminWallets() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [env, setEnv] = useState("production");
   const LIMIT = 20;
 
   const { data, isLoading } = useQuery<{ data: WalletRow[]; total: number; page: number; limit: number }>({
-    queryKey: ["admin-wallets-list", search, page],
-    queryFn: () => apiGet(`/wallets?search=${encodeURIComponent(search)}&page=${page}&limit=${LIMIT}`),
+    queryKey: ["admin-wallets-list", search, page, env],
+    queryFn: () => apiGet(`/wallets?search=${encodeURIComponent(search)}&page=${page}&limit=${LIMIT}&env=${env}`),
   });
 
   const rows = data?.data ?? [];
@@ -84,11 +86,21 @@ export default function AdminWallets() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-        <Input placeholder="Search merchants…" value={search} onChange={e => handleSearch(e.target.value)}
-          className="pl-9 border-border/60 bg-background text-sm" />
+      {/* Search + env filter */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="Search merchants…" value={search} onChange={e => handleSearch(e.target.value)}
+            className="pl-9 border-border/60 bg-background text-sm" />
+        </div>
+        <Select value={env} onValueChange={v => { setEnv(v); setPage(1); }}>
+          <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="production">Production</SelectItem>
+            <SelectItem value="demo">Demo / Test</SelectItem>
+            <SelectItem value="all">All</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Table */}

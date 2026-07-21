@@ -1904,12 +1904,12 @@ paths:
           in: query
           schema:
             type: integer
-        - name: demo
+        - name: env
           in: query
-          description: "Filter by demo/production environment (admin only). Default: exclude — shows only real production transactions. Use 'only' to see seed/demo data. Use 'all' to see everything."
+          description: "Environment filter (admin only). Default: production — shows only verified production merchant transactions. Use 'demo' to see seed/test data. Use 'all' to see everything."
           schema:
             type: string
-            enum: [exclude, only, all]
+            enum: [production, demo, all]
       responses:
         "200":
           description: List of transactions
@@ -3052,6 +3052,12 @@ paths:
           in: query
           schema:
             type: integer
+        - name: env
+          in: query
+          description: "Environment filter (admin only). Default: production."
+          schema:
+            type: string
+            enum: [production, demo, all]
       responses:
         "200":
           description: List of withdrawals
@@ -4095,6 +4101,12 @@ paths:
           in: query
           schema:
             type: integer
+        - name: env
+          in: query
+          description: "Environment filter (admin only). Default: production."
+          schema:
+            type: string
+            enum: [production, demo, all]
       responses:
         "200":
           description: List of settlements

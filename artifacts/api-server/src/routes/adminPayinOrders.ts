@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, cashfreePaymentOrdersTable, merchantsTable, auditLogsTable } from "@workspace/db";
-import { eq, and, gte, lte, sql, desc, ilike, or } from "drizzle-orm";
+import { eq, and, gte, lte, sql, desc, ilike, or, inArray, notInArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -13,7 +13,7 @@ router.use(requireAuth, requireAdmin);
  * contract used on the merchant side.
  */
 function buildFilters(query: Record<string, string>) {
-  const { status, merchantId, search, dateFrom, dateTo } = query;
+  const { status, merchantId, search, dateFrom, dateTo, env = "production" } = query;
   const conditions = [];
   if (status && status !== "all") conditions.push(eq(cashfreePaymentOrdersTable.status, status));
   if (merchantId) conditions.push(eq(cashfreePaymentOrdersTable.merchantId, parseInt(merchantId)));
@@ -31,6 +31,10 @@ function buildFilters(query: Record<string, string>) {
     end.setHours(23, 59, 59, 999);
     conditions.push(lte(cashfreePaymentOrdersTable.createdAt, end));
   }
+  // Environment filter — default to 'production' so admin views reflect only real orders.
+  const prodIds = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, "production"));
+  if (env === "production") conditions.push(inArray(cashfreePaymentOrdersTable.merchantId, prodIds));
+  else if (env === "demo") conditions.push(notInArray(cashfreePaymentOrdersTable.merchantId, prodIds));
   return conditions.length > 0 ? and(...conditions) : undefined;
 }
 

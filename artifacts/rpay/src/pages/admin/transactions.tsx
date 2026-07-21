@@ -827,16 +827,16 @@ export default function AdminTransactions() {
     type:       { default: "all", allow: ["all", "deposit", "withdrawal"] },
     status:     { default: "all", allow: ["all", "success", "pending", "failed"] },
     provider:   { default: "all" },
-    demoFilter: { default: "exclude", allow: ["exclude", "only", "all"] },
+    env: { default: "production", allow: ["production", "demo", "all"] },
   });
   const type       = urlFilters.type as "all" | "deposit" | "withdrawal";
   const status     = urlFilters.status as "all" | "success" | "pending" | "failed";
   const provider   = urlFilters.provider;
-  const demoFilter = urlFilters.demoFilter as "exclude" | "only" | "all";
-  function setType(v: string)       { urlFilters.set("type", v); }
-  function setStatus(v: string)     { urlFilters.set("status", v); }
-  function setProvider(v: string)   { urlFilters.set("provider", v); }
-  function setDemoFilter(v: string) { urlFilters.set("demoFilter", v); setPage(1); }
+  const env = urlFilters.env as "production" | "demo" | "all";
+  function setType(v: string)   { urlFilters.set("type", v); }
+  function setStatus(v: string) { urlFilters.set("status", v); }
+  function setProvider(v: string) { urlFilters.set("provider", v); }
+  function setEnv(v: string) { urlFilters.set("env", v); setPage(1); }
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -902,7 +902,7 @@ export default function AdminTransactions() {
     dateTo: activeDateTo || undefined,
     connectionProvider: provider !== "all" ? provider as any : undefined,
     paymentLinkId: paymentLinkId ?? undefined,
-    demo: demoFilter as any,
+    env: env as any,
     ...(amountMin != null ? { amountMin } : {}),
     ...(amountMax != null ? { amountMax } : {}),
     page,
@@ -1337,11 +1337,11 @@ export default function AdminTransactions() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={demoFilter} onValueChange={setDemoFilter}>
+              <Select value={env} onValueChange={setEnv}>
                 <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="exclude">Production Only</SelectItem>
-                  <SelectItem value="only">Test / Demo</SelectItem>
+                  <SelectItem value="production">Production Only</SelectItem>
+                  <SelectItem value="demo">Demo / Test</SelectItem>
                   <SelectItem value="all">All Environments</SelectItem>
                 </SelectContent>
               </Select>

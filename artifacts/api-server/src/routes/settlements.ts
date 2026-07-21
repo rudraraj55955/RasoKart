@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { CreateSettlementBody } from "@workspace/api-zod";
 import { db, settlementsTable, merchantsTable, ledgerEntriesTable, usersTable, auditLogsTable } from "@workspace/db";
-import { eq, and, count, sql, gte, lte, sum } from "drizzle-orm";
+import { eq, and, count, sql, gte, lte, sum, inArray, notInArray } from "drizzle-orm";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
 import { PERMISSIONS } from "../permissions";
 import { requireModule } from "../middlewares/checkModule";
@@ -53,23 +53,31 @@ function mapSettlement(s: typeof settlementsTable.$inferSelect, merchantName?: s
 }
 
 // GET /api/settlements/stats  (admin only)
-router.get("/stats", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMENTS), async (_req, res) => {
+router.get("/stats", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMENTS), async (req, res) => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const env = (req.query as Record<string, string>).env ?? "production";
+  const prodIds = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, "production"));
+  const envCond = env === "production"
+    ? inArray(settlementsTable.merchantId, prodIds)
+    : env === "demo"
+      ? notInArray(settlementsTable.merchantId, prodIds)
+      : undefined;
 
   const [pendingRow] = await db
     .select({ total: sum(settlementsTable.requestedAmount) })
     .from(settlementsTable)
-    .where(eq(settlementsTable.status, "pending"));
+    .where(and(eq(settlementsTable.status, "pending"), envCond));
 
   const [paidRow] = await db
     .select({ total: sum(settlementsTable.requestedAmount) })
     .from(settlementsTable)
-    .where(and(eq(settlementsTable.status, "paid"), gte(settlementsTable.paidAt, startOfMonth)));
+    .where(and(eq(settlementsTable.status, "paid"), gte(settlementsTable.paidAt, startOfMonth), envCond));
 
   const statusRows = await db
     .select({ status: settlementsTable.status, cnt: count() })
     .from(settlementsTable)
+    .where(envCond)
     .groupBy(settlementsTable.status);
 
   const counts: Record<string, number> = {};
@@ -85,7 +93,7 @@ router.get("/stats", requireAdmin, requirePermission(PERMISSIONS.ADMIN_SETTLEMEN
 // GET /api/settlements
 router.get("/", async (req, res) => {
   const user = (req as any).user;
-  const { merchantId, status, dateFrom, dateTo, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { merchantId, status, dateFrom, dateTo, env = "production", page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -96,6 +104,11 @@ router.get("/", async (req, res) => {
   if (status && status !== "all") conditions.push(eq(settlementsTable.status, status));
   if (dateFrom) conditions.push(gte(settlementsTable.createdAt, new Date(dateFrom)));
   if (dateTo) conditions.push(lte(settlementsTable.createdAt, new Date(dateTo)));
+  if (user.role === "admin") {
+    const prodIds = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, "production"));
+    if (env === "production") conditions.push(inArray(settlementsTable.merchantId, prodIds));
+    else if (env === "demo") conditions.push(notInArray(settlementsTable.merchantId, prodIds));
+  }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [{ total }] = await db.select({ total: count() }).from(settlementsTable).where(where);

@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ListTransactionsConnectionProvider } from './listTransactionsConnectionProvider';
-import type { ListTransactionsDemo } from './listTransactionsDemo';
+import type { ListTransactionsEnv } from './listTransactionsEnv';
 import type { ListTransactionsStatus } from './listTransactionsStatus';
 import type { ListTransactionsType } from './listTransactionsType';
 
@@ -24,7 +24,7 @@ paymentLinkId?: number;
 page?: number;
 limit?: number;
 /**
- * Filter by demo/production environment (admin only). Default: exclude — shows only real production transactions. Use 'only' to see seed/demo data. Use 'all' to see everything.
+ * Environment filter (admin only). Default: production — shows only verified production merchant transactions. Use 'demo' to see seed/test data. Use 'all' to see everything.
  */
-demo?: ListTransactionsDemo;
+env?: ListTransactionsEnv;
 };

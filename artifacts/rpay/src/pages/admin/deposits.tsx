@@ -362,9 +362,14 @@ function AdminPayinOrdersPanel() {
 
 export default function AdminDeposits() {
   const [search, setSearch] = useState("");
-  const urlFilters = useUrlFilters({ status: { default: "all", allow: ["all", "success", "pending", "failed"] } });
+  const urlFilters = useUrlFilters({
+    status: { default: "all", allow: ["all", "success", "pending", "failed"] },
+    env: { default: "production", allow: ["production", "demo", "all"] },
+  });
   const { status } = urlFilters;
+  const env = urlFilters.env as "production" | "demo" | "all";
   function setStatus(v: string) { urlFilters.set("status", v); }
+  function setEnv(v: string) { urlFilters.set("env", v); setPage(1); }
   const [merchantId, setMerchantId] = useState("");
   const [page, setPage] = useState(1);
 
@@ -419,6 +424,7 @@ export default function AdminDeposits() {
     dateTo: activeDateTo,
     ...(amountMin != null ? { amountMin } : {}),
     ...(amountMax != null ? { amountMax } : {}),
+    env: env as any,
     page,
     limit: 20,
   });
@@ -950,6 +956,14 @@ export default function AdminDeposits() {
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="success">Success</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={env} onValueChange={setEnv}>
+              <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="demo">Demo / Test</SelectItem>
+                <SelectItem value="all">All</SelectItem>
               </SelectContent>
             </Select>
           </div>

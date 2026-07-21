@@ -597,6 +597,18 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS payout_fee_json JSONB`);
   logger.info({ table: "merchants", migration: "add_payout_merchant_cols" }, "schema_guard_column_added");
 
+  // ── merchants: environment classification ─────────────────────────────────
+  await db.execute(sql`ALTER TABLE merchants ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'production'`);
+  // Backfill known demo/seed merchants that existed before this column was added.
+  // This UPDATE is idempotent (only changes rows that are still set to 'production').
+  await db.execute(sql`
+    UPDATE merchants
+    SET environment = 'demo'
+    WHERE email IN ('merchant@demo.com','merchant2@demo.com','merchant3@demo.com','payout_test@demo.com')
+      AND environment = 'production'
+  `);
+  logger.info({ table: "merchants", migration: "add_environment_col" }, "schema_guard_column_added");
+
   // ── merchant_kyc_data new columns (aadhaar_status, udyam, bank_holder_name) ─
   await db.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS aadhaar_status TEXT DEFAULT 'PENDING'`);
   await db.execute(sql`ALTER TABLE merchant_kyc_data ADD COLUMN IF NOT EXISTS bank_holder_name TEXT`);

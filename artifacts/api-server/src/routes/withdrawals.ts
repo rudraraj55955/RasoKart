@@ -14,7 +14,7 @@ import {
 } from "@workspace/db";
 import { buildPayoutSlipPdf } from "../helpers/payoutSlipPdf";
 import type { PayoutSlipData, PayoutDisplayStatus } from "../helpers/payoutSlipPdf";
-import { eq, and, count, sum, sql, inArray, ne, isNull } from "drizzle-orm";
+import { eq, and, count, sum, sql, inArray, notInArray, ne, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { signSlipShareToken } from "../helpers/payoutSlipShare";
 import { requireModule } from "../middlewares/checkModule";
@@ -410,7 +410,7 @@ async function dispatchPayoutTransfer(
 // GET /api/withdrawals
 router.get("/", async (req, res) => {
   const user = (req as any).user;
-  const { status, merchantId, transferStatus, page = "1", limit = "20" } =
+  const { status, merchantId, transferStatus, env = "production", page = "1", limit = "20" } =
     req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
@@ -424,6 +424,11 @@ router.get("/", async (req, res) => {
     conditions.push(eq(withdrawalsTable.transferStatus, transferStatus));
   if (merchantId && isAdmin)
     conditions.push(eq(withdrawalsTable.merchantId, parseInt(merchantId)));
+  if (isAdmin) {
+    const prodIds = db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, "production"));
+    if (env === "production") conditions.push(inArray(withdrawalsTable.merchantId, prodIds));
+    else if (env === "demo") conditions.push(notInArray(withdrawalsTable.merchantId, prodIds));
+  }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 

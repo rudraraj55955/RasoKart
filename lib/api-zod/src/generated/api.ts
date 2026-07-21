@@ -2087,7 +2087,7 @@ export const ListTransactionsQueryParams = zod.object({
   "paymentLinkId": zod.coerce.number().optional(),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional(),
-  "demo": zod.enum(['exclude', 'only', 'all']).optional().describe('Filter by demo\/production environment (admin only). Default: exclude — shows only real production transactions. Use \'only\' to see seed\/demo data. Use \'all\' to see everything.')
+  "env": zod.enum(['production', 'demo', 'all']).optional().describe('Environment filter (admin only). Default: production — shows only verified production merchant transactions. Use \'demo\' to see seed\/test data. Use \'all\' to see everything.')
 })
 
 export const ListTransactionsResponse = zod.object({
@@ -3160,7 +3160,8 @@ export const ListWithdrawalsQueryParams = zod.object({
   "status": zod.enum(['pending', 'approved', 'rejected', 'all']).optional(),
   "merchantId": zod.coerce.number().optional(),
   "page": zod.coerce.number().optional(),
-  "limit": zod.coerce.number().optional()
+  "limit": zod.coerce.number().optional(),
+  "env": zod.enum(['production', 'demo', 'all']).optional().describe('Environment filter (admin only). Default: production.')
 })
 
 export const ListWithdrawalsResponse = zod.object({
@@ -4193,7 +4194,8 @@ export const ListSettlementsQueryParams = zod.object({
   "dateFrom": zod.coerce.string().optional(),
   "dateTo": zod.coerce.string().optional(),
   "page": zod.coerce.number().optional(),
-  "limit": zod.coerce.number().optional()
+  "limit": zod.coerce.number().optional(),
+  "env": zod.enum(['production', 'demo', 'all']).optional().describe('Environment filter (admin only). Default: production.')
 })
 
 export const ListSettlementsResponse = zod.object({

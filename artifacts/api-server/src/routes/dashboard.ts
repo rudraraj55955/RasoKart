@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { readFileSync } from "fs";
 import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable } from "@workspace/db";
-import { eq, sql, and, gte, count, countDistinct, inArray, notInArray, lte, isNotNull } from "drizzle-orm";
+import { eq, sql, and, gte, count, countDistinct, inArray, notInArray, ne, lte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -10,7 +10,10 @@ router.use(requireAuth);
 /** Known seed/demo merchant IDs — excluded from all production-facing admin KPIs and charts.
  *  Cleared automatically in the UI once a real merchant is onboarded (totalMerchants > 0).
  *  When adding a new permanent seed merchant, append its ID here. */
-const DEMO_MERCHANT_IDS = [1, 2, 3, 80];
+// Subquery helpers — prefer merchants.environment column over hardcoded IDs so
+// newly classified merchants are automatically included/excluded.
+const getProdMerchantIds = () =>
+  db.select({ id: merchantsTable.id }).from(merchantsTable).where(eq(merchantsTable.environment, "production"));
 
 const GITHUB_SYNC_HISTORY_FILE = new URL("../../../.github-sync-history.json", import.meta.url).pathname;
 const DEFAULT_GITHUB_SYNC_FAILURE_THRESHOLD = 3;
@@ -59,11 +62,16 @@ router.get("/stats", async (req, res, next) => {
   try {
     const user = (req as any).user;
     const isAdmin = user.role === "admin";
-    // Production-only filter at DB level:
-    // - admin: exclude known demo/seed merchants so KPIs reflect real production data
-    // - merchant: restrict to their own data only
+    // Environment filter: admin can switch between production/demo/all via ?env= param.
+    // Default is 'production' so KPIs always reflect verified production data.
+    const envParam = isAdmin ? ((req.query as Record<string, string>).env ?? "production") : null;
+    const prodIds = getProdMerchantIds();
     const merchantFilter = isAdmin
-      ? notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS)
+      ? (envParam === "production"
+          ? inArray(transactionsTable.merchantId, prodIds)
+          : envParam === "demo"
+            ? notInArray(transactionsTable.merchantId, prodIds)
+            : undefined)
       : eq(transactionsTable.merchantId, user.merchantId!);
 
     const todayStart = new Date();
@@ -108,30 +116,35 @@ router.get("/stats", async (req, res, next) => {
       qrCount = qr.count;
       vaCount = va.count;
     } else if (isAdmin) {
-      // Exclude demo merchants from active QR/VA counts too
+      const qrEnvCond = envParam === "production" ? inArray(qrCodesTable.merchantId, prodIds)
+        : envParam === "demo" ? notInArray(qrCodesTable.merchantId, prodIds) : undefined;
+      const vaEnvCond = envParam === "production" ? inArray(virtualAccountsTable.merchantId, prodIds)
+        : envParam === "demo" ? notInArray(virtualAccountsTable.merchantId, prodIds) : undefined;
       const [qr] = await db.select({ count: count() }).from(qrCodesTable)
-        .where(and(eq(qrCodesTable.status, "active"), notInArray(qrCodesTable.merchantId, DEMO_MERCHANT_IDS)));
+        .where(and(eq(qrCodesTable.status, "active"), qrEnvCond));
       const [va] = await db.select({ count: count() }).from(virtualAccountsTable)
-        .where(and(eq(virtualAccountsTable.status, "active"), notInArray(virtualAccountsTable.merchantId, DEMO_MERCHANT_IDS)));
+        .where(and(eq(virtualAccountsTable.status, "active"), vaEnvCond));
       qrCount = qr.count;
       vaCount = va.count;
     }
 
-    // Real (non-demo) merchant counts — demo merchants are already excluded from all KPIs above.
-    // totalMerchants = 0 means no real merchants have onboarded yet.
+    // Merchant counts filtered by environment param.
+    // totalMerchants = 0 in production mode means no real merchants have onboarded yet.
     let totalMerchants = 0;
     let pendingMerchants = 0;
     if (isAdmin) {
-      const [tm] = await db.select({ count: count() }).from(merchantsTable)
-        .where(notInArray(merchantsTable.id, DEMO_MERCHANT_IDS));
+      const envMerchCond = envParam === "production"
+        ? eq(merchantsTable.environment, "production")
+        : envParam === "demo" ? ne(merchantsTable.environment, "production") : undefined;
+      const [tm] = await db.select({ count: count() }).from(merchantsTable).where(envMerchCond);
       const [pm] = await db.select({ count: count() }).from(merchantsTable)
-        .where(and(eq(merchantsTable.status, "pending"), notInArray(merchantsTable.id, DEMO_MERCHANT_IDS)));
+        .where(and(eq(merchantsTable.status, "pending"), envMerchCond));
       totalMerchants = tm.count;
       pendingMerchants = pm.count;
     }
 
-    // demoDataOnly: true when no real merchant has onboarded yet (totalMerchants already excludes demo).
-    const demoDataOnly = isAdmin && totalMerchants === 0;
+    // demoDataOnly: true when no production merchant exists OR admin explicitly requested demo view.
+    const demoDataOnly = isAdmin && (envParam === "demo" || (envParam === "production" && totalMerchants === 0));
 
     const totalDeposits = Number(depositStats?.total ?? 0);
     const totalWithdrawals = Number(withdrawalStats?.total ?? 0);
@@ -179,7 +192,7 @@ router.get("/chart", async (req, res, next) => {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const chartFilter = isAdmin
-      ? and(gte(transactionsTable.createdAt, thirtyDaysAgo), notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS))
+      ? and(gte(transactionsTable.createdAt, thirtyDaysAgo), inArray(transactionsTable.merchantId, getProdMerchantIds()))
       : and(gte(transactionsTable.createdAt, thirtyDaysAgo), eq(transactionsTable.merchantId, user.merchantId!));
 
     const rows = await db
@@ -231,7 +244,7 @@ router.get("/providers", async (req, res, next) => {
       .where(and(
         eq(transactionsTable.type, "deposit"),
         sql`${transactionsTable.provider} IS NOT NULL`,
-        notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS),
+        inArray(transactionsTable.merchantId, getProdMerchantIds()),
       ))
       .groupBy(transactionsTable.provider);
 
@@ -275,7 +288,7 @@ router.get("/merchants", async (req, res, next) => {
       })
       .from(transactionsTable)
       .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
-      .where(notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS))
+      .where(inArray(transactionsTable.merchantId, getProdMerchantIds()))
       .groupBy(transactionsTable.merchantId, merchantsTable.businessName, transactionsTable.type);
 
     const merchantMap: Record<number, { merchantId: number; merchantName: string; totalDeposits: number; totalWithdrawals: number; txCount: number }> = {};
@@ -314,7 +327,7 @@ router.get("/notifications", async (req, res, next) => {
 
     // Only show notification for pending real (non-demo) merchants
     const [pm] = await db.select({ count: count() }).from(merchantsTable)
-      .where(and(eq(merchantsTable.status, "pending"), notInArray(merchantsTable.id, DEMO_MERCHANT_IDS)));
+      .where(and(eq(merchantsTable.status, "pending"), eq(merchantsTable.environment, "production")));
     if (pm.count > 0) {
       notifications.push({
         id: "pending-merchants",
@@ -328,7 +341,7 @@ router.get("/notifications", async (req, res, next) => {
 
     // Only count pending transactions from real (non-demo) merchants
     const [pt] = await db.select({ count: count() }).from(transactionsTable)
-      .where(and(eq(transactionsTable.status, "pending"), notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS)));
+      .where(and(eq(transactionsTable.status, "pending"), inArray(transactionsTable.merchantId, getProdMerchantIds())));
     if (pt.count > 0) {
       notifications.push({
         id: "pending-txns",
@@ -347,7 +360,7 @@ router.get("/notifications", async (req, res, next) => {
       .where(and(
         eq(callbackLogsTable.status, "failed"),
         gte(callbackLogsTable.createdAt, callbackSince),
-        notInArray(callbackLogsTable.merchantId, DEMO_MERCHANT_IDS),
+        inArray(callbackLogsTable.merchantId, getProdMerchantIds()),
       ));
     if (fc.count > 0) {
       notifications.push({
@@ -425,13 +438,13 @@ router.get("/risk", async (req, res, next) => {
       .from(transactionsTable)
       .where(and(
         sql`CAST(${transactionsTable.amount} AS DECIMAL) > ${HIGH_VALUE_THRESHOLD}`,
-        notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS),
+        inArray(transactionsTable.merchantId, getProdMerchantIds()),
       ));
 
     const [total] = await db.select({ count: count() }).from(transactionsTable)
-      .where(notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS));
+      .where(inArray(transactionsTable.merchantId, getProdMerchantIds()));
     const [failed] = await db.select({ count: count() }).from(transactionsTable)
-      .where(and(eq(transactionsTable.status, "failed"), notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS)));
+      .where(and(eq(transactionsTable.status, "failed"), inArray(transactionsTable.merchantId, getProdMerchantIds())));
 
     const failedRatePercent = total.count > 0 ? Math.round((failed.count / total.count) * 1000) / 10 : 0;
 
@@ -444,7 +457,7 @@ router.get("/risk", async (req, res, next) => {
       })
       .from(transactionsTable)
       .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
-      .where(notInArray(transactionsTable.merchantId, DEMO_MERCHANT_IDS))
+      .where(inArray(transactionsTable.merchantId, getProdMerchantIds()))
       .groupBy(transactionsTable.merchantId, merchantsTable.businessName);
 
     const topFailingMerchants = merchantStats
@@ -476,19 +489,20 @@ router.get("/recon-summary", async (req, res, next) => {
     const user = (req as any).user;
     if (user.role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
 
-    // Determine environment using the same logic as GET /api/dashboard/stats
+    // Determine environment: production mode unless no real merchants exist yet
     const [tmRow] = await db
       .select({ count: count() })
       .from(merchantsTable)
-      .where(notInArray(merchantsTable.id, DEMO_MERCHANT_IDS));
-    const totalNonDemoMerchants = Number(tmRow?.count ?? 0);
-    const demoDataOnly = totalNonDemoMerchants === 0;
+      .where(eq(merchantsTable.environment, "production"));
+    const totalProdMerchants = Number(tmRow?.count ?? 0);
+    const demoDataOnly = totalProdMerchants === 0;
     const environment: "demo" | "production" = demoDataOnly ? "demo" : "production";
 
-    // In demo mode show runs from demo merchants; in production show only non-demo runs
+    const prodReconIds = getProdMerchantIds();
+    // In demo mode show runs from demo merchants; in production show only production runs
     const envFilter = demoDataOnly
-      ? inArray(reconciliationRunsTable.merchantId, DEMO_MERCHANT_IDS)
-      : notInArray(reconciliationRunsTable.merchantId, DEMO_MERCHANT_IDS);
+      ? notInArray(reconciliationRunsTable.merchantId, prodReconIds)
+      : inArray(reconciliationRunsTable.merchantId, prodReconIds);
 
     const [run] = await db
       .select()
@@ -537,7 +551,7 @@ router.get("/webhook-health", requireAdmin, async (req, res, next) => {
       .where(and(
         eq(callbackLogsTable.status, "failed"),
         gte(callbackLogsTable.createdAt, since),
-        notInArray(callbackLogsTable.merchantId, DEMO_MERCHANT_IDS),
+        inArray(callbackLogsTable.merchantId, getProdMerchantIds()),
       ));
 
     const [merchantRow] = await db
@@ -546,7 +560,7 @@ router.get("/webhook-health", requireAdmin, async (req, res, next) => {
       .where(and(
         eq(callbackLogsTable.status, "failed"),
         gte(callbackLogsTable.createdAt, since),
-        notInArray(callbackLogsTable.merchantId, DEMO_MERCHANT_IDS),
+        inArray(callbackLogsTable.merchantId, getProdMerchantIds()),
       ));
 
     // All-time total unresolved failed webhook deliveries for production merchants
@@ -555,7 +569,7 @@ router.get("/webhook-health", requireAdmin, async (req, res, next) => {
       .from(callbackLogsTable)
       .where(and(
         eq(callbackLogsTable.status, "failed"),
-        notInArray(callbackLogsTable.merchantId, DEMO_MERCHANT_IDS),
+        inArray(callbackLogsTable.merchantId, getProdMerchantIds()),
       ));
 
     res.json({

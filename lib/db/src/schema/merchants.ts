@@ -51,6 +51,7 @@ export const merchantsTable = pgTable("merchants", {
   forceApprovedByEmail: text("force_approved_by_email"),
   forceApproveReason: text("force_approve_reason"),
   forceApproveKycStatus: text("force_approve_kyc_status"),
+  environment: text("environment").notNull().default("production"), // production | demo | sandbox | test | uat | seed
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
