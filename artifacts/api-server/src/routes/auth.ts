@@ -1510,6 +1510,19 @@ const otpRequestLimiter = makeRateLimiter({
   },
 });
 
+// Per-identifier OTP request limiter (5 per hour, survives IP rotation)
+const otpRequestPerIdentifierLimiter = makeRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many OTP requests for this account. Please try again later." },
+  keyGenerator: (req) => {
+    const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
+    if (!identifier) return null;
+    return `otp-req-id:${hashIdentifier(identifier)}`;
+  },
+});
+
 const otpVerifyLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -1532,6 +1545,19 @@ const otpResendLimiter = makeRateLimiter({
   },
 });
 
+// Per-identifier OTP resend limiter (5 per hour, survives IP rotation)
+const otpResendPerIdentifierLimiter = makeRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many resend requests for this account. Please try again later." },
+  keyGenerator: (req) => {
+    const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
+    if (!identifier) return null;
+    return `otp-resend-id:${hashIdentifier(identifier)}`;
+  },
+});
+
 const passwordForgotLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 5,
@@ -1540,6 +1566,19 @@ const passwordForgotLimiter = makeRateLimiter({
   keyGenerator: (req) => {
     const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
     return `pwd-forgot:${safeIpKey(req)}:${identifier}`;
+  },
+});
+
+// Per-identifier forgot-password limiter (5 per hour, survives IP rotation)
+const passwordForgotPerIdentifierLimiter = makeRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many password reset requests for this account. Please try again later." },
+  keyGenerator: (req) => {
+    const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
+    if (!identifier) return null;
+    return `pwd-forgot-id:${hashIdentifier(identifier)}`;
   },
 });
 
@@ -1558,6 +1597,21 @@ function requestIp(req: import("express").Request): string | null {
   return (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
     ?? req.socket.remoteAddress
     ?? null;
+}
+
+/**
+ * Constant-time response floor for OTP/forgot-password endpoints.
+ * Ensures all branches (unknown identifier, cooldown, real OTP creation) take
+ * at least OTP_MIN_RESPONSE_MS milliseconds so timing cannot distinguish
+ * whether an account exists.
+ */
+const OTP_MIN_RESPONSE_MS = 600;
+
+async function padToMinResponseTime(tStart: number): Promise<void> {
+  const remaining = OTP_MIN_RESPONSE_MS - (Date.now() - tStart);
+  if (remaining > 0) {
+    await new Promise<void>(resolve => setTimeout(resolve, remaining));
+  }
 }
 
 /** Looks up the merchant user account matching an email or phone identifier, without revealing existence to the caller. */
@@ -1634,29 +1688,32 @@ async function createAndSendOtp(opts: {
 
   const isPhone = !isEmailIdentifier(identifier);
 
+  // Fire-and-forget: decouple delivery latency from response time so SMS/email
+  // provider delays cannot leak timing information about whether an OTP was sent.
   if (isPhone) {
-    const smsResult = await sendOtpSms({
+    sendOtpSms({
       mobile: identifier.replace(/\D/g, ""),
       otp,
       purpose,
       merchantId: user.merchantId,
+    }).then(smsResult => {
+      req.log.info({ purpose, smsSent: smsResult.sent, provider: smsResult.provider, fallback: smsResult.fallbackUsed }, "merchant_otp_sent");
     }).catch((err: unknown) => {
       req.log.warn({ err, purpose }, "merchant_otp_sms_error");
-      return { sent: false, provider: null, fallbackUsed: false };
     });
-    req.log.info({ purpose, smsSent: smsResult.sent, provider: smsResult.provider, fallback: smsResult.fallbackUsed }, "merchant_otp_sent");
   } else {
-    const sent = await sendMerchantOtpEmail({ to: user.email, otp, purpose }).catch((err: unknown) => {
+    sendMerchantOtpEmail({ to: user.email, otp, purpose }).then(sent => {
+      req.log.info({ purpose, sent }, "merchant_otp_sent");
+    }).catch((err: unknown) => {
       req.log.warn({ err, purpose }, "merchant_otp_send_error");
-      return false;
     });
-    req.log.info({ purpose, sent }, "merchant_otp_sent");
   }
 }
 
 // POST /api/auth/merchant/otp/resend — dedicated resend (enforces maxResendCount from settings)
-router.post("/merchant/otp/resend", otpResendLimiter, async (req, res, next) => {
+router.post("/merchant/otp/resend", otpResendLimiter, otpResendPerIdentifierLimiter, async (req, res, next) => {
   try {
+    const _tOtpStart = Date.now();
     const { identifier } = req.body as { identifier?: string };
     if (!identifier || typeof identifier !== "string") {
       res.status(400).json({ error: "identifier is required" });
@@ -1664,6 +1721,7 @@ router.post("/merchant/otp/resend", otpResendLimiter, async (req, res, next) => 
     }
     const user = await findMerchantUserByIdentifier(identifier);
     if (!user) {
+      await padToMinResponseTime(_tOtpStart);
       res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
       return;
     }
@@ -1684,6 +1742,7 @@ router.post("/merchant/otp/resend", otpResendLimiter, async (req, res, next) => 
       return;
     }
     await createAndSendOtp({ req, identifier, purpose: "LOGIN", user });
+    await padToMinResponseTime(_tOtpStart);
     res.json({ message: "A new code has been sent." });
   } catch (err) {
     next(err);
@@ -1691,8 +1750,9 @@ router.post("/merchant/otp/resend", otpResendLimiter, async (req, res, next) => 
 });
 
 // POST /api/auth/merchant/otp/request
-router.post("/merchant/otp/request", otpRequestLimiter, async (req, res, next) => {
+router.post("/merchant/otp/request", otpRequestLimiter, otpRequestPerIdentifierLimiter, async (req, res, next) => {
   try {
+    const _tOtpStart = Date.now();
     const { identifier } = req.body as { identifier?: string };
     if (!identifier || typeof identifier !== "string") {
       res.status(400).json({ error: "identifier is required" });
@@ -1701,10 +1761,12 @@ router.post("/merchant/otp/request", otpRequestLimiter, async (req, res, next) =
     const user = await findMerchantUserByIdentifier(identifier);
     if (!user) {
       req.log.info({ purpose: "LOGIN", hasUser: false }, "merchant_otp_requested");
+      await padToMinResponseTime(_tOtpStart);
       res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
       return;
     }
     await createAndSendOtp({ req, identifier, purpose: "LOGIN", user });
+    await padToMinResponseTime(_tOtpStart);
     res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
   } catch (err) {
     next(err);
@@ -1816,8 +1878,9 @@ router.post("/merchant/otp/verify", otpVerifyLimiter, async (req, res, next) => 
 });
 
 // POST /api/auth/merchant/password/forgot
-router.post("/merchant/password/forgot", passwordForgotLimiter, async (req, res, next) => {
+router.post("/merchant/password/forgot", passwordForgotLimiter, passwordForgotPerIdentifierLimiter, async (req, res, next) => {
   try {
+    const _tOtpStart = Date.now();
     const { identifier } = req.body as { identifier?: string };
     if (!identifier || typeof identifier !== "string") {
       res.status(400).json({ error: "identifier is required" });
@@ -1826,10 +1889,12 @@ router.post("/merchant/password/forgot", passwordForgotLimiter, async (req, res,
     const user = await findMerchantUserByIdentifier(identifier);
     if (!user) {
       req.log.info({ purpose: "PASSWORD_RESET", hasUser: false }, "merchant_otp_requested");
+      await padToMinResponseTime(_tOtpStart);
       res.json({ message: SAFE_PASSWORD_RESET_MESSAGE });
       return;
     }
     await createAndSendOtp({ req, identifier, purpose: "PASSWORD_RESET", user });
+    await padToMinResponseTime(_tOtpStart);
     res.json({ message: SAFE_PASSWORD_RESET_MESSAGE });
   } catch (err) {
     next(err);
@@ -1919,6 +1984,19 @@ const adminOtpRequestLimiter = makeRateLimiter({
   },
 });
 
+// Per-identifier admin OTP request limiter (5 per hour, survives IP rotation)
+const adminOtpRequestPerIdentifierLimiter = makeRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many OTP requests for this account. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    if (!email) return null;
+    return `admin-otp-req-id:${hashIdentifier(email)}`;
+  },
+});
+
 const adminOtpVerifyLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -1938,6 +2016,19 @@ const adminOtpResendLimiter = makeRateLimiter({
   keyGenerator: (req) => {
     const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
     return `admin-otp-resend:${safeIpKey(req)}:${email}`;
+  },
+});
+
+// Per-identifier admin OTP resend limiter (5 per hour, survives IP rotation)
+const adminOtpResendPerIdentifierLimiter = makeRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many resend requests for this account. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    if (!email) return null;
+    return `admin-otp-resend-id:${hashIdentifier(email)}`;
   },
 });
 
@@ -1985,16 +2076,18 @@ async function createAndSendAdminOtp(opts: {
 
   req.log.info({ purpose: "ADMIN_LOGIN", userId }, "admin_otp_created");
 
-  const sent = await sendMerchantOtpEmail({ to: email, otp, purpose: "LOGIN" }).catch((err: unknown) => {
+  // Fire-and-forget: decouple email delivery latency from response time.
+  sendMerchantOtpEmail({ to: email, otp, purpose: "LOGIN" }).then(sent => {
+    req.log.info({ purpose: "ADMIN_LOGIN", sent }, "admin_otp_sent");
+  }).catch((err: unknown) => {
     req.log.warn({ err, purpose: "ADMIN_LOGIN" }, "admin_otp_email_error");
-    return false;
   });
-  req.log.info({ purpose: "ADMIN_LOGIN", sent }, "admin_otp_sent");
 }
 
 // POST /api/auth/admin/otp/request
-router.post("/admin/otp/request", adminOtpRequestLimiter, async (req, res, next) => {
+router.post("/admin/otp/request", adminOtpRequestLimiter, adminOtpRequestPerIdentifierLimiter, async (req, res, next) => {
   try {
+    const _tOtpStart = Date.now();
     const { email } = req.body as { email?: string };
     if (!email || typeof email !== "string") {
       res.status(400).json({ error: "email is required" });
@@ -2009,11 +2102,13 @@ router.post("/admin/otp/request", adminOtpRequestLimiter, async (req, res, next)
 
     if (!adminUser || !adminUser.isActive) {
       req.log.info({ purpose: "ADMIN_LOGIN", hasUser: false }, "admin_otp_requested");
+      await padToMinResponseTime(_tOtpStart);
       res.json({ message: SAFE_ADMIN_OTP_MESSAGE });
       return;
     }
 
     await createAndSendAdminOtp({ req, email: normalizedEmail, userId: adminUser.id });
+    await padToMinResponseTime(_tOtpStart);
     res.json({ message: SAFE_ADMIN_OTP_MESSAGE });
   } catch (err) {
     next(err);
@@ -2021,8 +2116,9 @@ router.post("/admin/otp/request", adminOtpRequestLimiter, async (req, res, next)
 });
 
 // POST /api/auth/admin/otp/resend
-router.post("/admin/otp/resend", adminOtpResendLimiter, async (req, res, next) => {
+router.post("/admin/otp/resend", adminOtpResendLimiter, adminOtpResendPerIdentifierLimiter, async (req, res, next) => {
   try {
+    const _tOtpStart = Date.now();
     const { email } = req.body as { email?: string };
     if (!email || typeof email !== "string") {
       res.status(400).json({ error: "email is required" });
@@ -2036,6 +2132,7 @@ router.post("/admin/otp/resend", adminOtpResendLimiter, async (req, res, next) =
       .limit(1);
 
     if (!adminUser || !adminUser.isActive) {
+      await padToMinResponseTime(_tOtpStart);
       res.json({ message: SAFE_ADMIN_OTP_MESSAGE });
       return;
     }
@@ -2058,6 +2155,7 @@ router.post("/admin/otp/resend", adminOtpResendLimiter, async (req, res, next) =
     }
 
     await createAndSendAdminOtp({ req, email: normalizedEmail, userId: adminUser.id });
+    await padToMinResponseTime(_tOtpStart);
     res.json({ message: "A new code has been sent." });
   } catch (err) {
     next(err);
@@ -2475,6 +2573,19 @@ const adminPasswordForgotLimiter = makeRateLimiter({
   },
 });
 
+// Per-identifier admin forgot-password limiter (5 per hour, survives IP rotation)
+const adminPasswordForgotPerIdentifierLimiter = makeRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  store: new DbRateLimitStore(),
+  message: { error: "Too many password reset requests for this account. Please try again later." },
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === "string" ? (req.body.email as string).toLowerCase().trim() : "";
+    if (!email) return null;
+    return `admin-pwd-forgot-id:${hashIdentifier(email)}`;
+  },
+});
+
 const adminPasswordResetLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -2489,8 +2600,9 @@ const adminPasswordResetLimiter = makeRateLimiter({
 const SAFE_ADMIN_PASSWORD_RESET_MESSAGE = "If this admin account exists, a password reset code has been sent.";
 
 // POST /api/auth/admin/password/forgot
-router.post("/admin/password/forgot", adminPasswordForgotLimiter, async (req, res, next) => {
+router.post("/admin/password/forgot", adminPasswordForgotLimiter, adminPasswordForgotPerIdentifierLimiter, async (req, res, next) => {
   try {
+    const _tOtpStart = Date.now();
     const { email } = req.body as { email?: string };
     if (!email || typeof email !== "string") {
       res.status(400).json({ error: "email is required" });
@@ -2506,6 +2618,7 @@ router.post("/admin/password/forgot", adminPasswordForgotLimiter, async (req, re
 
     if (!adminUser || !adminUser.isActive) {
       req.log.info({ purpose: "ADMIN_PASSWORD_RESET", hasUser: false }, "admin_pwd_reset_requested");
+      await padToMinResponseTime(_tOtpStart);
       res.json({ message: SAFE_ADMIN_PASSWORD_RESET_MESSAGE });
       return;
     }
@@ -2525,6 +2638,7 @@ router.post("/admin/password/forgot", adminPasswordForgotLimiter, async (req, re
       .limit(1);
 
     if (existing && Date.now() - existing.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS) {
+      await padToMinResponseTime(_tOtpStart);
       res.json({ message: SAFE_ADMIN_PASSWORD_RESET_MESSAGE });
       return;
     }
@@ -2546,12 +2660,14 @@ router.post("/admin/password/forgot", adminPasswordForgotLimiter, async (req, re
 
     req.log.info({ purpose: "ADMIN_PASSWORD_RESET", userId: adminUser.id }, "admin_pwd_reset_otp_created");
 
-    const sent = await sendMerchantOtpEmail({ to: normalizedEmail, otp, purpose: "ADMIN_PASSWORD_RESET" }).catch((err: unknown) => {
+    // Fire-and-forget: decouple email delivery latency from response time.
+    sendMerchantOtpEmail({ to: normalizedEmail, otp, purpose: "ADMIN_PASSWORD_RESET" }).then(sent => {
+      req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent }, "admin_pwd_reset_otp_sent");
+    }).catch((err: unknown) => {
       req.log.warn({ err, purpose: "ADMIN_PASSWORD_RESET" }, "admin_pwd_reset_email_error");
-      return false;
     });
-    req.log.info({ purpose: "ADMIN_PASSWORD_RESET", sent }, "admin_pwd_reset_otp_sent");
 
+    await padToMinResponseTime(_tOtpStart);
     res.json({ message: SAFE_ADMIN_PASSWORD_RESET_MESSAGE });
   } catch (err) {
     next(err);
