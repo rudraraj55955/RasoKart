@@ -477,7 +477,8 @@ export const GetDashboardStatsResponse = zod.object({
   "todayDepositAmount": zod.number(),
   "qrCount": zod.number(),
   "vaCount": zod.number(),
-  "pendingSettlementAmount": zod.number().optional()
+  "pendingSettlementAmount": zod.number().optional(),
+  "demoDataOnly": zod.boolean().optional().describe('True when all merchants are known seed\/demo accounts. Cleared automatically once a real merchant is onboarded.')
 })
 
 

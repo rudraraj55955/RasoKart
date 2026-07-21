@@ -14543,6 +14543,9 @@ components:
           type: integer
         pendingSettlementAmount:
           type: number
+        demoDataOnly:
+          type: boolean
+          description: "True when all merchants are known seed/demo accounts. Cleared automatically once a real merchant is onboarded."
 
     SimulatePaymentInput:
       type: object

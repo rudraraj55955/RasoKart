@@ -20,4 +20,6 @@ export interface DashboardStats {
   qrCount: number;
   vaCount: number;
   pendingSettlementAmount?: number;
+  /** True when all merchants are known seed/demo accounts. Cleared automatically once a real merchant is onboarded. */
+  demoDataOnly?: boolean;
 }

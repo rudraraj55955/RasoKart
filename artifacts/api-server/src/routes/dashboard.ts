@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { readFileSync } from "fs";
 import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable } from "@workspace/db";
-import { eq, sql, and, gte, count, countDistinct, inArray, lte, isNotNull } from "drizzle-orm";
+import { eq, sql, and, gte, count, countDistinct, inArray, notInArray, lte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 
 const router = Router();
@@ -127,6 +127,19 @@ router.get("/stats", async (req, res, next) => {
       pendingMerchants = pm.count;
     }
 
+    // Detect if all current data is from known seed/demo merchants (IDs created by seed.ts)
+    // demoDataOnly = true signals the frontend to show a demo-environment warning banner.
+    // Cleared automatically once a real (non-seed) merchant is onboarded.
+    let demoDataOnly = false;
+    if (isAdmin && totalMerchants > 0) {
+      const SEED_MERCHANT_IDS = [1, 2, 3, 80];
+      const [realMerchants] = await db
+        .select({ count: count() })
+        .from(merchantsTable)
+        .where(notInArray(merchantsTable.id, SEED_MERCHANT_IDS));
+      demoDataOnly = realMerchants.count === 0;
+    }
+
     const totalDeposits = Number(depositStats?.total ?? 0);
     const totalWithdrawals = Number(withdrawalStats?.total ?? 0);
 
@@ -155,6 +168,7 @@ router.get("/stats", async (req, res, next) => {
       todayDepositAmount: Number(todayDepositStats?.total ?? 0),
       qrCount,
       vaCount,
+      demoDataOnly,
       ...(pendingSettlementAmount !== undefined ? { pendingSettlementAmount } : {}),
     });
   } catch (err) {
@@ -324,12 +338,15 @@ router.get("/notifications", async (req, res, next) => {
       });
     }
 
-    const [fc] = await db.select({ count: count() }).from(callbackLogsTable).where(eq(callbackLogsTable.status, "failed"));
+    // Use the same 24-hour window as the webhook-health card so counts stay consistent.
+    const callbackSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [fc] = await db.select({ count: count() }).from(callbackLogsTable)
+      .where(and(eq(callbackLogsTable.status, "failed"), gte(callbackLogsTable.createdAt, callbackSince)));
     if (fc.count > 0) {
       notifications.push({
         id: "failed-callbacks",
         type: "failed_callbacks",
-        message: `${fc.count} webhook callback${fc.count > 1 ? "s" : ""} failed delivery`,
+        message: `${fc.count} webhook callback${fc.count > 1 ? "s" : ""} failed delivery in the last 24h`,
         severity: "error",
         link: "/admin/webhook-logs",
         createdAt: new Date().toISOString(),
