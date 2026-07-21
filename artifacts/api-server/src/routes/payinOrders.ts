@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, cashfreePaymentOrdersTable, providerIntegrationsTable, PAYIN_ORDER_STATUS, routingLogsTable, notificationsTable, usersTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
-import { eq, and, gte, sql, inArray } from "drizzle-orm";
+import { db, cashfreePaymentOrdersTable, providerIntegrationsTable, PAYIN_ORDER_STATUS, routingLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
 import { cashfreeCreateOrder, cashfreeGetOrder } from "../helpers/cashfree";
 import { decryptSecret } from "../helpers/cryptoUtils";
 import { requireAuth } from "../middlewares/auth";
@@ -9,6 +9,7 @@ import { ensurePayinOrdersSchemaGuard } from "../helpers/payinSchemaGuard";
 import { getMerchantDailyPaidTotal } from "../helpers/payinDailyLimit";
 import { insertPayinOrderWithFallback } from "../helpers/payinOrderInsert";
 import { selectProvider, recordRoutingResult, recordChainExhaustedStart, maybeNotifyGatewayRecovery, validateRoutingConfig } from "../helpers/smartRouter";
+import { maybeFireFailoverAlert } from "../helpers/payinFailoverAlert";
 import { createCustomGatewayOrder } from "../helpers/customGatewayClient";
 import { loadUpigatewayConfig, upigatewayCreateOrder } from "../helpers/upigatewayPayin";
 
@@ -505,99 +506,8 @@ router.post("/payin/orders", requireAuth, async (req, res) => {
       });
 
       // ── Admin alert: rolling-window failover exhaustion ───────────────────
-      // Fire a notification to all active admins when routing failures in the
-      // rolling window exceed the configured threshold. A per-window dedup
-      // check prevents alert floods (one alert per window max, across all
-      // admins). Threshold and window are admin-configurable via system_config.
-      // This runs best-effort — never blocks or alters the 503 response.
-      try {
-        // Read threshold and window from system_config (fall back to defaults)
-        const alertConfigRows = await db
-          .select({ key: systemConfigTable.key, value: systemConfigTable.value })
-          .from(systemConfigTable)
-          .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD));
-        const alertWindowRows = await db
-          .select({ key: systemConfigTable.key, value: systemConfigTable.value })
-          .from(systemConfigTable)
-          .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES));
-        const rawThreshold = parseInt(alertConfigRows[0]?.value ?? "5");
-        const rawWindow = parseInt(alertWindowRows[0]?.value ?? "60");
-        const FAILOVER_ALERT_THRESHOLD = (Number.isFinite(rawThreshold) && rawThreshold >= 1) ? rawThreshold : 5;
-        const FAILOVER_WINDOW_MINUTES = (Number.isFinite(rawWindow) && rawWindow >= 1) ? rawWindow : 60;
-        const FAILOVER_WINDOW_MS = FAILOVER_WINDOW_MINUTES * 60 * 1000;
-        const windowStart = new Date(Date.now() - FAILOVER_WINDOW_MS);
-
-        // Count all routing_logs failures in the rolling window (global, all merchants)
-        const [countRow] = await db
-          .select({ count: sql<number>`COUNT(*)::int` })
-          .from(routingLogsTable)
-          .where(and(
-            gte(routingLogsTable.createdAt, windowStart),
-            eq(routingLogsTable.result, "failed"),
-          ));
-        const failureCount = countRow?.count ?? 0;
-
-        if (failureCount >= FAILOVER_ALERT_THRESHOLD) {
-          // Dedup: only alert once per hour — check if any admin already has
-          // a gateway_failover_exhausted notification from within this window.
-          const [existingAlert] = await db
-            .select({ id: notificationsTable.id })
-            .from(notificationsTable)
-            .where(and(
-              eq(notificationsTable.type, "gateway_failover_exhausted"),
-              gte(notificationsTable.createdAt, windowStart),
-            ))
-            .limit(1);
-
-          if (!existingAlert) {
-            // Fetch all active admin user IDs
-            const adminUsers = await db
-              .select({ id: usersTable.id })
-              .from(usersTable)
-              .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
-
-            if (adminUsers.length > 0) {
-              // Read the canonical outage start time so the Failover Events tab
-              // can correlate this alert with its matching gateway_recovered
-              // notification using an exact key match on outageStartedAt.
-              const [chainMarker] = await db
-                .select({ value: systemConfigTable.value })
-                .from(systemConfigTable)
-                .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE))
-                .limit(1);
-              const outageStartedAt = chainMarker?.value ?? new Date().toISOString();
-
-              const windowLabel = FAILOVER_WINDOW_MINUTES >= 60
-                ? `${FAILOVER_WINDOW_MINUTES / 60}h`
-                : `${FAILOVER_WINDOW_MINUTES}m`;
-              await db.insert(notificationsTable).values(
-                adminUsers.map(u => ({
-                  userId: u.id,
-                  type: "gateway_failover_exhausted" as const,
-                  title: "Payment Gateway Failover Chain Exhausted",
-                  body: `All configured payment gateways failed ${failureCount} times in the last ${windowLabel}. Merchants may be unable to initiate deposits. Please review gateway health and routing configuration immediately.`,
-                  metadata: {
-                    failureCount,
-                    windowMinutes: FAILOVER_WINDOW_MINUTES,
-                    triggerMerchantId: merchantId,
-                    outageStartedAt,
-                  },
-                })),
-              ).onConflictDoNothing();
-
-              req.log.warn({
-                event: "payin_failover_exhausted_admin_notified",
-                merchantId,
-                failureCount,
-                adminCount: adminUsers.length,
-              }, "payin_failover_exhausted_admin_notified");
-            }
-          }
-        }
-      } catch (alertErr) {
-        // Best-effort — never let notification failure affect the 503 response
-        req.log.error({ event: "payin_failover_alert_failed", merchantId }, "payin_failover_alert_failed");
-      }
+      // Delegate to the extracted helper. Best-effort — never blocks the 503.
+      await maybeFireFailoverAlert(merchantId, req.log);
 
       res.status(503).json({ error: "Payment is temporarily unavailable. All configured gateways could not process the request. Please try again later or contact support." });
       return;
