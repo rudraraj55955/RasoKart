@@ -1,15 +1,16 @@
 /**
  * verify-alert-email-samples.ts
  *
- * End-to-end smoke test for all 6 admin alert email "send-sample" endpoints.
+ * End-to-end smoke test for all 7 admin alert email "send-sample" endpoints.
+ * Covered: 6 preference-gated alerts + 1 mandatory credential-rotation alert.
  *
  * Steps:
  *  1. Snapshot original SMTP config AND admin alert preferences directly from
  *     the DB (so we can do a lossless restore regardless of API masking)
  *  2. Create a temporary Ethereal test SMTP account (free, no signup needed)
  *  3. Write Ethereal SMTP creds into system_settings via DB upsert
- *  4. Enable all 6 alert email preferences for the admin user via DB update
- *  5. Call each of the 6 send-sample endpoints via HTTP (as the admin user)
+ *  4. Enable all 6 preference-gated alert email preferences for the admin user via DB update
+ *  5. Call each of the 7 send-sample endpoints via HTTP (as the admin user)
  *  6. Query the audit_logs table to confirm test_email_sent rows
  *  7. Verify each preview endpoint returns valid HTML
  *  8. Restore ORIGINAL SMTP rows and admin preferences via DB (lossless)
@@ -391,7 +392,7 @@ async function run() {
     // 6. Record timestamp for audit log narrowing
     const testStartTime = new Date();
 
-    // 7. Call all 6 send-sample endpoints
+    // 7. Call all 7 send-sample endpoints (6 preference-gated + 1 mandatory)
     const ALERTS: Array<{
       name: string;
       endpoint: string;
@@ -441,9 +442,18 @@ async function run() {
         previewEndpoint: "/settings/report-resumed-alert/preview",
         previewKeywords: ["Resumed", "Report"],
       },
+      // Mandatory security alert — no preference gate; always sent to ALL active admins.
+      // Adding it here ensures a regression that silently drops all recipients is caught.
+      {
+        name: "Credential Rotation Alert",
+        endpoint: "/settings/credential-rotation-alert/send-sample",
+        auditType: "credential_rotation_alert",
+        previewEndpoint: "/settings/credential-rotation-alert/preview",
+        previewKeywords: ["Credential", "Client ID"],
+      },
     ];
 
-    console.log("── Step 5: Calling all 6 send-sample endpoints …\n");
+    console.log("── Step 5: Calling all 7 send-sample endpoints …\n");
     const sendResults: CheckResult[] = [];
 
     for (const alert of ALERTS) {
