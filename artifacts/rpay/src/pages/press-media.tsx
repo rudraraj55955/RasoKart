@@ -7,7 +7,7 @@ import { Newspaper, Mail, Building2, Globe, Phone, Download, FileText, Shield } 
 
 const LAST_UPDATED = "20 July 2026";
 const CIN = "U47820RJ2025PTC109583";
-const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
+const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
 const WEBSITE = "https://rasokart.com";
 
 const boilerplate = `RasoKart is a secure payment gateway SaaS platform operated by Nickey Collection Private Limited (CIN: U47820RJ2025PTC109583), incorporated in Jaipur, Rajasthan, India in December 2025. RasoKart helps businesses of all sizes collect payments, manage payouts, and grow with confidence through a fully-integrated payments operating system — including QR codes, virtual accounts, API-based payment collection, merchant self-serve dashboards, and a distributed agent network.`;

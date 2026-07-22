@@ -20,8 +20,9 @@ import {
   Building,
 } from "lucide-react";
 
-const LAST_UPDATED = "16 July 2026";
+const LAST_UPDATED = "22 July 2026";
 const CIN = "U47820RJ2025PTC109583";
+const GSTIN = "08AALCN0945P1ZT";
 
 const sections: LegalSection[] = [
   { id: "overview", icon: FileText, title: "Overview", color: "text-cyan-400" },
@@ -46,11 +47,17 @@ export default function GrievanceRedressalPolicy() {
       badgeText="Grievance Policy"
       sections={sections}
       intro={
-        <p className="text-muted-foreground leading-relaxed max-w-2xl mt-3">
-          <strong className="text-foreground">{companyName}</strong> ("RasoKart") is committed to
-          addressing merchant and customer grievances promptly and fairly. This policy sets out the
-          mechanism for filing, escalating, and resolving grievances in accordance with applicable law.
-        </p>
+        <div className="space-y-3 mt-3">
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-5 py-4 text-sm text-amber-200 leading-relaxed max-w-2xl">
+            <strong className="text-amber-100">Regulatory Disclosure:</strong>{" "}
+            RasoKart is a software and technology platform operated by NICKEY COLLECTION PRIVATE LIMITED (CIN: {CIN} · GSTIN: {GSTIN}). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds.
+          </div>
+          <p className="text-muted-foreground leading-relaxed max-w-2xl">
+            <strong className="text-foreground">{companyName}</strong> ("RasoKart") is committed to
+            addressing merchant and customer grievances promptly and fairly. This policy sets out the
+            mechanism for filing, escalating, and resolving grievances in accordance with applicable law.
+          </p>
+        </div>
       }
     >
       {/* 1. Overview */}
@@ -176,11 +183,11 @@ export default function GrievanceRedressalPolicy() {
                 <p className="text-sm text-muted-foreground mb-2">Grievance Officer, {companyName}</p>
               )}
               <p className="text-sm text-muted-foreground">
-                {companyName}
+                NICKEY COLLECTION PRIVATE LIMITED
                 <br />
-                CIN: {CIN}
+                CIN: {CIN} · GSTIN: {GSTIN}
                 <br />
-                P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan
+                P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur, Rajasthan – 302012, India
               </p>
               {supportEmail && (
                 <a
@@ -307,10 +314,10 @@ export default function GrievanceRedressalPolicy() {
         <SectionAnchor id="contact" />
         <SectionHeading icon={Phone} title="10. Contact Us" color="text-teal-400" id="contact" />
         <div className="rounded-xl border border-border/50 bg-card/40 p-5 space-y-2">
-          <p className="text-sm font-semibold text-foreground">{companyName}</p>
-          <p className="text-sm text-muted-foreground">CIN: {CIN}</p>
+          <p className="text-sm font-semibold text-foreground">NICKEY COLLECTION PRIVATE LIMITED</p>
+          <p className="text-xs text-muted-foreground/70">CIN: {CIN} · GSTIN: {GSTIN}</p>
           <p className="text-sm text-muted-foreground">
-            P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan
+            P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur, Rajasthan – 302012, India
           </p>
           {supportPhone && (
             <a href={`tel:${supportPhone}`} className="block text-sm text-muted-foreground hover:text-foreground transition-colors">

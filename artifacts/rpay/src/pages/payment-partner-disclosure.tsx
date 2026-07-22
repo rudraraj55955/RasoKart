@@ -22,7 +22,7 @@ const LAST_UPDATED = "22 July 2026";
 const CIN = "U47820RJ2025PTC109583";
 const GSTIN = "08AALCN0945P1ZT";
 const REGISTERED_ADDRESS =
-  "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
+  "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
 const WEBSITE = "https://rasokart.com";
 
 export default function PaymentPartnerDisclosure() {
@@ -100,10 +100,13 @@ export default function PaymentPartnerDisclosure() {
             <h2 className="text-2xl font-bold tracking-tight mb-5">About Nickey Collection Private Limited</h2>
             <div className="rounded-xl border border-border/50 bg-card/40 divide-y divide-border/40">
               {[
-                { label: "Legal Name", value: "Nickey Collection Private Limited" },
+                { label: "Legal Name", value: "NICKEY COLLECTION PRIVATE LIMITED" },
                 { label: "Brand Name", value: "RasoKart" },
                 { label: "CIN", value: CIN },
                 { label: "GSTIN", value: GSTIN },
+                { label: "Incorporated", value: "12 December 2025" },
+                { label: "Registrar of Companies", value: "ROC Jaipur" },
+                { label: "Company Status", value: "Active" },
                 { label: "Nature of Business", value: "Software & IT-Enabled Technology Platform" },
                 { label: "Website", value: WEBSITE },
                 { label: "Registered Office", value: REGISTERED_ADDRESS },

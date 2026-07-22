@@ -11,7 +11,7 @@ import {
 const LAST_UPDATED = "20 July 2026";
 const CIN = "U47820RJ2025PTC109583";
 const INCORPORATION_DATE = "12 December 2025";
-const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
+const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
 
 const values = [
   { icon: Shield, title: "Security First", color: "text-emerald-400", desc: "Every API call, merchant record, and data point is protected with encryption and multi-layer security controls." },
@@ -29,12 +29,16 @@ const milestones = [
 
 const GSTIN = "08AALCN0945P1ZT";
 
+const ROC = "ROC Jaipur";
+
 const facts = [
-  { label: "Legal Name", value: "Nickey Collection Private Limited" },
+  { label: "Legal Name", value: "NICKEY COLLECTION PRIVATE LIMITED" },
   { label: "Brand Name", value: "RasoKart" },
   { label: "CIN", value: CIN },
   { label: "GSTIN", value: GSTIN },
   { label: "Incorporated", value: INCORPORATION_DATE },
+  { label: "Registrar", value: ROC },
+  { label: "Status", value: "Active" },
   { label: "Headquarters", value: "Jaipur, Rajasthan, India" },
   { label: "Category", value: "Software & Technology Platform" },
 ];

@@ -170,7 +170,7 @@ export function SiteFooter() {
         {/* Bottom bar */}
         <div className="border-t border-border/40 pt-5 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground/60 text-center sm:text-left">
-            © {new Date().getFullYear()} {companyName || "Nickey Collection Private Limited"}. All rights reserved. CIN: U47820RJ2025PTC109583 · GSTIN: 08AALCN0945P1ZT.
+            © {new Date().getFullYear()} NICKEY COLLECTION PRIVATE LIMITED. All rights reserved. CIN: U47820RJ2025PTC109583 · GSTIN: 08AALCN0945P1ZT.
           </p>
           <div className="flex items-center gap-4 text-xs text-muted-foreground/60">
             <Link href="/privacy-policy" className="hover:text-muted-foreground transition-colors">

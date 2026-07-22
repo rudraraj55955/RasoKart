@@ -25,8 +25,9 @@ import {
   Globe,
 } from "lucide-react";
 
-const LAST_UPDATED = "16 July 2026";
+const LAST_UPDATED = "22 July 2026";
 const CIN = "U47820RJ2025PTC109583";
+const GSTIN = "08AALCN0945P1ZT";
 const WEBSITE = "https://rasokart.com";
 const EFFECTIVE_DATE = "16 July 2026";
 
@@ -320,10 +321,10 @@ export default function TermsAndConditions() {
           For questions or concerns regarding these Terms, please contact us:
         </p>
         <div className="rounded-xl border border-border/50 bg-card/40 p-5 space-y-2">
-          <p className="text-sm font-semibold text-foreground">{companyName}</p>
-          <p className="text-sm text-muted-foreground">CIN: {CIN}</p>
+          <p className="text-sm font-semibold text-foreground">NICKEY COLLECTION PRIVATE LIMITED</p>
+          <p className="text-xs text-muted-foreground/70">CIN: {CIN} · GSTIN: {GSTIN}</p>
           <p className="text-sm text-muted-foreground">
-            P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan, India
+            P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur, Rajasthan – 302012, India
           </p>
           {supportPhone && (
             <a href={`tel:${supportPhone}`} className="block text-sm text-muted-foreground hover:text-foreground transition-colors">

@@ -162,7 +162,7 @@ export default function LegalLayout({
             {/* Footer note */}
             <div className="border-t border-border/40 pt-8">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-muted-foreground/60">
-                <span>© {new Date().getFullYear()} Nickey Collection Private Limited. All rights reserved.</span>
+                <span>© {new Date().getFullYear()} NICKEY COLLECTION PRIVATE LIMITED. All rights reserved.</span>
                 <div className="flex items-center gap-4">
                   <span>Last Updated: {lastUpdated}</span>
                   <Link href="/" className="hover:text-muted-foreground transition-colors">

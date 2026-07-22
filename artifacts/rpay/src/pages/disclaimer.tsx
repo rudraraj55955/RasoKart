@@ -184,7 +184,7 @@ export default function Disclaimer() {
           <p className="text-sm font-semibold text-foreground">{companyName}</p>
           <p className="text-sm text-muted-foreground">CIN: U47820RJ2025PTC109583</p>
           <p className="text-sm text-muted-foreground">
-            P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan
+            P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur – 302012, Rajasthan
           </p>
           {supportPhone && (
             <a href={`tel:${supportPhone}`} className="block text-sm text-muted-foreground hover:text-foreground">

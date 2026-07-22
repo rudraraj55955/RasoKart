@@ -9,7 +9,9 @@ import LegalLayout, {
 import { useCompanySettings } from "@/lib/company-settings";
 import { Cookie, FileText, Settings, Globe, Shield, Clock, Phone, Database } from "lucide-react";
 
-const LAST_UPDATED = "16 July 2026";
+const LAST_UPDATED = "22 July 2026";
+const CIN = "U47820RJ2025PTC109583";
+const GSTIN = "08AALCN0945P1ZT";
 
 const sections: LegalSection[] = [
   { id: "what-are-cookies", icon: Cookie, title: "What Are Cookies?", color: "text-cyan-400" },
@@ -33,12 +35,18 @@ export default function CookiePolicy() {
       badgeText="Cookie Policy"
       sections={sections}
       intro={
-        <p className="text-muted-foreground leading-relaxed max-w-2xl mt-3">
-          This Cookie Policy explains how <strong className="text-foreground">{companyName}</strong>{" "}
-          ("RasoKart", "we", "our", or "us") uses cookies and similar technologies on the RasoKart
-          platform. By continuing to use the Platform, you consent to the use of cookies as described
-          in this policy.
-        </p>
+        <div className="space-y-3 mt-3">
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-5 py-4 text-sm text-amber-200 leading-relaxed max-w-2xl">
+            <strong className="text-amber-100">Regulatory Disclosure:</strong>{" "}
+            RasoKart is a software and technology platform operated by NICKEY COLLECTION PRIVATE LIMITED (CIN: {CIN} · GSTIN: {GSTIN}). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds.
+          </div>
+          <p className="text-muted-foreground leading-relaxed max-w-2xl">
+            This Cookie Policy explains how <strong className="text-foreground">{companyName}</strong>{" "}
+            ("RasoKart", "we", "our", or "us") uses cookies and similar technologies on the RasoKart
+            platform. By continuing to use the Platform, you consent to the use of cookies as described
+            in this policy.
+          </p>
+        </div>
       }
     >
       {/* 1. What Are Cookies */}

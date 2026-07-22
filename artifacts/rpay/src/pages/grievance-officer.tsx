@@ -10,7 +10,7 @@ import {
 
 const LAST_UPDATED = "20 July 2026";
 const CIN = "U47820RJ2025PTC109583";
-const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
+const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
 
 const sections: LegalSection[] = [
   { id: "overview", icon: FileText, title: "Overview", color: "text-cyan-400" },

@@ -21,8 +21,7 @@ import {
   FileText,
 } from "lucide-react";
 
-const LAST_UPDATED = "16 July 2026";
-const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
+const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwar Road, Jhotwara, Jaipur, Rajasthan – 302012, India";
 const WEBSITE = "https://rasokart.com";
 
 const categories = [
@@ -287,9 +286,12 @@ export default function ContactUs() {
                 <div className="flex items-start gap-3">
                   <MapPin className="w-4 h-4 text-muted-foreground/60 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-xs font-semibold text-foreground mb-0.5">{companyName}</p>
+                    <p className="text-xs font-semibold text-foreground mb-0.5">NICKEY COLLECTION PRIVATE LIMITED</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">{resolvedAddress}</p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">CIN: U47820RJ2025PTC109583</p>
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">CIN: U47820RJ2025PTC109583</p>
+                    <p className="text-xs text-muted-foreground/60">GSTIN: 08AALCN0945P1ZT</p>
+                    <p className="text-xs text-muted-foreground/60">Incorporated: 12 December 2025 · ROC Jaipur</p>
+                    <p className="text-xs text-muted-foreground/60">Status: Active</p>
                   </div>
                 </div>
 

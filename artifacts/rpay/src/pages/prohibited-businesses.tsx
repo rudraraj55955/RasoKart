@@ -17,7 +17,9 @@ import {
   BookOpen,
 } from "lucide-react";
 
-const LAST_UPDATED = "16 July 2026";
+const LAST_UPDATED = "22 July 2026";
+const CIN = "U47820RJ2025PTC109583";
+const GSTIN = "08AALCN0945P1ZT";
 
 const sections: LegalSection[] = [
   { id: "overview", icon: FileText, title: "Overview", color: "text-cyan-400" },
@@ -130,7 +132,6 @@ const categoryGroups = [
 
 export default function ProhibitedBusinesses() {
   const { companyName, supportPhone, supportEmail } = useCompanySettings();
-
   return (
     <LegalLayout
       title="Prohibited Businesses"
@@ -138,13 +139,19 @@ export default function ProhibitedBusinesses() {
       badgeText="Acceptable Use"
       sections={sections}
       intro={
-        <p className="text-muted-foreground leading-relaxed max-w-2xl mt-3">
-          This policy lists the business categories and activities that are strictly prohibited on the
-          RasoKart platform operated by{" "}
-          <strong className="text-foreground">{companyName}</strong>. Merchants found operating in any
-          prohibited category will have their accounts suspended and settlement funds may be withheld
-          pending investigation.
-        </p>
+        <div className="space-y-3 mt-3">
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-5 py-4 text-sm text-amber-200 leading-relaxed max-w-2xl">
+            <strong className="text-amber-100">Regulatory Disclosure:</strong>{" "}
+            RasoKart is a software and technology platform operated by NICKEY COLLECTION PRIVATE LIMITED (CIN: {CIN} · GSTIN: {GSTIN}). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds.
+          </div>
+          <p className="text-muted-foreground leading-relaxed max-w-2xl">
+            This policy lists the business categories and activities that are strictly prohibited on the
+            RasoKart platform operated by{" "}
+            <strong className="text-foreground">{companyName}</strong>. Merchants found operating in any
+            prohibited category will have their accounts suspended and settlement funds may be withheld
+            pending investigation.
+          </p>
+        </div>
       }
     >
       {/* 1. Overview */}
