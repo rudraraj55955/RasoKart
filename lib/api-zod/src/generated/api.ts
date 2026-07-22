@@ -10670,6 +10670,91 @@ export const VerifyRazorpayXResponse = zod.object({
 
 
 /**
+ * @summary Update a Razorpay product capability entry
+ */
+export const UpdateRazorpayCapabilityParams = zod.object({
+  "productKey": zod.coerce.string()
+})
+
+export const UpdateRazorpayCapabilityBody = zod.object({
+  "implNotes": zod.string().nullish(),
+  "docsUrl": zod.string().nullish(),
+  "capabilityStatus": zod.string().nullish(),
+  "isEnabled": zod.boolean().nullish(),
+  "approvalReason": zod.string().nullish(),
+  "testModeStatus": zod.string().nullish(),
+  "liveModeStatus": zod.string().nullish()
+})
+
+export const UpdateRazorpayCapabilityResponse = zod.object({
+  "capability": zod.object({
+
+}).passthrough().optional()
+})
+
+
+/**
+ * @summary List Razorpay refunds (paginated)
+ */
+export const listRazorpayRefundsQueryPageDefault = 1;
+export const listRazorpayRefundsQueryLimitDefault = 20;
+
+export const ListRazorpayRefundsQueryParams = zod.object({
+  "page": zod.coerce.number().default(listRazorpayRefundsQueryPageDefault),
+  "limit": zod.coerce.number().default(listRazorpayRefundsQueryLimitDefault)
+})
+
+export const ListRazorpayRefundsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "orderId": zod.number().optional(),
+  "razorpayPaymentId": zod.string().optional(),
+  "razorpayRefundId": zod.string().nullish(),
+  "amount": zod.string().optional(),
+  "currency": zod.string().optional(),
+  "status": zod.string().optional(),
+  "speed": zod.string().optional(),
+  "notes": zod.string().nullish(),
+  "initiatedByAdminId": zod.number().nullish(),
+  "initiatedByEmail": zod.string().nullish(),
+  "processedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Initiate a Razorpay refund for a payment
+ */
+export const InitiateRazorpayRefundBody = zod.object({
+  "razorpayPaymentId": zod.string(),
+  "orderId": zod.number(),
+  "amount": zod.number().optional().describe('Amount in paise (integer). Omit for full refund.'),
+  "speed": zod.enum(['normal', 'optimum']).optional(),
+  "notes": zod.string().nullish()
+})
+
+
+/**
+ * @summary Fetch live status of a Razorpay refund from the provider
+ */
+export const GetRazorpayRefundStatusParams = zod.object({
+  "refundId": zod.coerce.string()
+})
+
+export const GetRazorpayRefundStatusResponse = zod.object({
+  "status": zod.string().optional(),
+  "raw": zod.object({
+
+}).passthrough().optional()
+})
+
+
+/**
  * @summary List Razorpay webhook logs (super admin only)
  */
 export const listRazorpayWebhookLogsQueryPageDefault = 1;

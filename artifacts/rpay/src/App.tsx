@@ -148,6 +148,7 @@ import AdminRazorpayTransactions from "@/pages/admin/razorpay-transactions";
 import AdminRazorpayWebhookLogs from "@/pages/admin/razorpay-webhook-logs";
 import AdminRazorpayCapabilities from "@/pages/admin/razorpay-capabilities";
 import AdminRazorpayAnalytics from "@/pages/admin/razorpay-analytics";
+import AdminRazorpayRefunds from "@/pages/admin/razorpay-refunds";
 import PayPage from "@/pages/pay";
 import QrPayPage from "@/pages/qr-pay";
 import VaPayPage from "@/pages/va-pay";
@@ -483,6 +484,7 @@ function Router() {
       <Route path="/admin/razorpay-webhook-logs"><AdminRoute component={AdminRazorpayWebhookLogs} /></Route>
       <Route path="/admin/razorpay-capabilities"><AdminRoute component={AdminRazorpayCapabilities} /></Route>
       <Route path="/admin/razorpay-analytics"><AdminRoute component={AdminRazorpayAnalytics} /></Route>
+      <Route path="/admin/razorpay-refunds"><AdminRoute component={AdminRazorpayRefunds} /></Route>
       <Route path="/admin/webhook-logs"><AdminRoute component={AdminWebhookLogs} /></Route>
       <Route path="/admin/payout-webhook-logs"><AdminRoute component={AdminPayoutWebhookLogs} /></Route>
       <Route path="/admin/api-monitoring"><AdminRoute component={AdminApiMonitoring} /></Route>

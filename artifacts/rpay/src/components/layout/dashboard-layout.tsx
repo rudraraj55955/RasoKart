@@ -379,6 +379,7 @@ const ADMIN_NAV = [
     items: [
       { title: "Razorpay Analytics", icon: BarChart3, href: "/admin/razorpay-analytics" },
       { title: "Razorpay Transactions", icon: CreditCard, href: "/admin/razorpay-transactions" },
+      { title: "Razorpay Refunds", icon: ArrowDownLeft, href: "/admin/razorpay-refunds" },
       { title: "Razorpay Webhook Logs", icon: Webhook, href: "/admin/razorpay-webhook-logs" },
       { title: "Razorpay Capabilities", icon: Zap, href: "/admin/razorpay-capabilities" },
     ],

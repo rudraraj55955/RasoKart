@@ -6250,6 +6250,30 @@ export interface RazorpayWebhookLogsResponse {
   limit: number;
 }
 
+export interface RazorpayRefund {
+  id?: number;
+  orderId?: number;
+  razorpayPaymentId?: string;
+  razorpayRefundId?: string | null;
+  amount?: string;
+  currency?: string;
+  status?: string;
+  speed?: string;
+  notes?: string | null;
+  initiatedByAdminId?: number | null;
+  initiatedByEmail?: string | null;
+  processedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RazorpayRefundsListResponse {
+  data: RazorpayRefund[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export type UpdateMyPreferencesBody = {
   reconciliationAlertEmails?: boolean;
   planExpiryAlertEmails?: boolean;
@@ -8460,6 +8484,55 @@ export type VerifyRazorpayX200 = {
   activated?: boolean;
   message?: string;
   verifiedAt?: string;
+};
+
+export type UpdateRazorpayCapabilityBody = {
+  implNotes?: string | null;
+  docsUrl?: string | null;
+  capabilityStatus?: string | null;
+  isEnabled?: boolean | null;
+  approvalReason?: string | null;
+  testModeStatus?: string | null;
+  liveModeStatus?: string | null;
+};
+
+export type UpdateRazorpayCapability200Capability = { [key: string]: unknown };
+
+export type UpdateRazorpayCapability200 = {
+  capability?: UpdateRazorpayCapability200Capability;
+};
+
+export type ListRazorpayRefundsParams = {
+page?: number;
+limit?: number;
+};
+
+export type InitiateRazorpayRefundBodySpeed = typeof InitiateRazorpayRefundBodySpeed[keyof typeof InitiateRazorpayRefundBodySpeed];
+
+
+export const InitiateRazorpayRefundBodySpeed = {
+  normal: 'normal',
+  optimum: 'optimum',
+} as const;
+
+export type InitiateRazorpayRefundBody = {
+  razorpayPaymentId: string;
+  orderId: number;
+  /** Amount in paise (integer). Omit for full refund. */
+  amount?: number;
+  speed?: InitiateRazorpayRefundBodySpeed;
+  notes?: string | null;
+};
+
+export type InitiateRazorpayRefund201 = {
+  refund?: RazorpayRefund;
+};
+
+export type GetRazorpayRefundStatus200Raw = { [key: string]: unknown };
+
+export type GetRazorpayRefundStatus200 = {
+  status?: string;
+  raw?: GetRazorpayRefundStatus200Raw;
 };
 
 export type ListRazorpayWebhookLogsParams = {

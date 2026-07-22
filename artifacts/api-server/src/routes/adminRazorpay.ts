@@ -24,7 +24,7 @@ async function loadRazorpayCfgMap(): Promise<Map<string, string>> {
  * Returns Razorpay payin configuration.
  * Never returns credential values — only whether each is configured.
  */
-router.get("/config", requireSuperAdmin, async (req, res, next) => {
+router.get("/config", requirePermission("razorpay_settings_view"), async (req, res, next) => {
   try {
     const cfg = await loadRazorpayCfgMap();
     const keyId        = process.env["RAZORPAY_KEY_ID"]        ?? "";
@@ -49,7 +49,7 @@ router.get("/config", requireSuperAdmin, async (req, res, next) => {
  * Update Razorpay payin configuration (enable/disable, limits).
  * Credentials are environment-variable-only and cannot be set via this endpoint.
  */
-router.put("/config", requireSuperAdmin, async (req, res, next) => {
+router.put("/config", requirePermission("razorpay_settings_manage"), async (req, res, next) => {
   try {
     const user = (req as any).user;
     const { enabled, minAmount, maxAmount, dailyLimit } = req.body as {
@@ -181,7 +181,7 @@ router.get("/orders/export/csv", async (req, res, next) => {
  * Super-admin-only paginated list of Razorpay webhook logs.
  * Logs are masked — no raw sensitive payloads.
  */
-router.get("/webhook-logs", requireSuperAdmin, async (req, res, next) => {
+router.get("/webhook-logs", requirePermission("razorpay_webhooks_view"), async (req, res, next) => {
   try {
     const page   = Math.max(1, parseInt(req.query["page"] as string ?? "1", 10) || 1);
     const limit  = Math.min(100, parseInt(req.query["limit"] as string ?? "20", 10) || 20);
@@ -224,7 +224,7 @@ router.get("/webhook-logs", requireSuperAdmin, async (req, res, next) => {
  * Returns all Razorpay product capability entries from provider_products.
  * Includes a summary count by capabilityStatus.
  */
-router.get("/capabilities", requireSuperAdmin, async (req, res, next) => {
+router.get("/capabilities", requirePermission("razorpay_capabilities_view"), async (req, res, next) => {
   try {
     const rows = await db
       .select()
@@ -247,7 +247,7 @@ router.get("/capabilities", requireSuperAdmin, async (req, res, next) => {
  * Update notes, status, docsUrl, or any non-credential field for one capability row.
  * Only existing rows can be updated.
  */
-router.patch("/capabilities/:productKey", requireSuperAdmin, async (req, res, next) => {
+router.patch("/capabilities/:productKey", requirePermission("razorpay_capabilities_test"), async (req, res, next) => {
   try {
     const productKey = req.params["productKey"] as string;
     const { implNotes, docsUrl, capabilityStatus, isEnabled, approvalReason, testModeStatus, liveModeStatus } =
@@ -297,7 +297,7 @@ router.patch("/capabilities/:productKey", requireSuperAdmin, async (req, res, ne
  * Aggregated Razorpay analytics from razorpay_payment_orders.
  * Includes KPIs, error breakdown, and method breakdown.
  */
-router.get("/analytics", requirePermission("admin_razorpay"), async (req, res, next) => {
+router.get("/analytics", requirePermission("razorpay_analytics_view"), async (req, res, next) => {
   try {
     const [kpis] = await db
       .select({
@@ -377,7 +377,7 @@ router.get("/analytics", requirePermission("admin_razorpay"), async (req, res, n
  * GET /api/admin/razorpay/refunds
  * Paginated list of all initiated Razorpay refunds.
  */
-router.get("/refunds", requireSuperAdmin, async (req, res, next) => {
+router.get("/refunds", requirePermission("razorpay_refunds_view"), async (req, res, next) => {
   try {
     const page   = Math.max(1, parseInt(req.query["page"] as string ?? "1", 10) || 1);
     const limit  = Math.min(100, parseInt(req.query["limit"] as string ?? "20", 10) || 20);
@@ -403,7 +403,7 @@ router.get("/refunds", requireSuperAdmin, async (req, res, next) => {
  * Initiate a Razorpay refund for a payment.
  * Body: { razorpayPaymentId, orderId, amount (paise, integer), speed?, notes? }
  */
-router.post("/refunds", requireSuperAdmin, async (req, res, next) => {
+router.post("/refunds", requirePermission("razorpay_refunds_manage"), async (req, res, next) => {
   try {
     const user = (req as any).user;
     const keyId     = process.env["RAZORPAY_KEY_ID"]     ?? "";
@@ -492,7 +492,7 @@ router.post("/refunds", requireSuperAdmin, async (req, res, next) => {
  * GET /api/admin/razorpay/refunds/:refundId/status
  * Fetch live status of a specific refund from Razorpay.
  */
-router.get("/refunds/:refundId/status", requireSuperAdmin, async (req, res, next) => {
+router.get("/refunds/:refundId/status", requirePermission("razorpay_refunds_view"), async (req, res, next) => {
   try {
     const refundId  = req.params["refundId"] as string;
     const keyId     = process.env["RAZORPAY_KEY_ID"]     ?? "";
@@ -535,7 +535,7 @@ router.get("/refunds/:refundId/status", requireSuperAdmin, async (req, res, next
  * Probe RazorpayX Payouts API and persist the result to system_config.
  * Safe: uses a read-only contacts list call with no financial side effects.
  */
-router.get("/razorpayx/verify", requireSuperAdmin, async (req, res, next) => {
+router.get("/razorpayx/verify", requirePermission("razorpay_capabilities_test"), async (req, res, next) => {
   try {
     const result = await verifyRazorpayXActivation();
 
@@ -569,7 +569,7 @@ router.get("/razorpayx/verify", requireSuperAdmin, async (req, res, next) => {
  * Returns cached Razorpay settlement data from system_config.
  * The cache is populated by the webhook handler when settlement events arrive.
  */
-router.get("/settlement-overview", requirePermission("admin_razorpay"), async (req, res, next) => {
+router.get("/settlement-overview", requirePermission("razorpay_analytics_view"), async (req, res, next) => {
   try {
     const settleKeys = [
       SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_YESTERDAY_AMOUNT,

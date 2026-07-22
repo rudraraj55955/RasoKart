@@ -11452,6 +11452,169 @@ paths:
         "503":
           description: Credentials not configured
 
+  /admin/razorpay/capabilities/{productKey}:
+    patch:
+      operationId: updateRazorpayCapability
+      tags: [system-config]
+      summary: Update a Razorpay product capability entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productKey
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                implNotes:
+                  type: string
+                  nullable: true
+                docsUrl:
+                  type: string
+                  nullable: true
+                capabilityStatus:
+                  type: string
+                  nullable: true
+                isEnabled:
+                  type: boolean
+                  nullable: true
+                approvalReason:
+                  type: string
+                  nullable: true
+                testModeStatus:
+                  type: string
+                  nullable: true
+                liveModeStatus:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: Updated capability row
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  capability:
+                    type: object
+        "404":
+          description: Capability not found
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /admin/razorpay/refunds:
+    get:
+      operationId: listRazorpayRefunds
+      tags: [system-config]
+      summary: List Razorpay refunds (paginated)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Paginated Razorpay refunds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RazorpayRefundsListResponse"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+    post:
+      operationId: initiateRazorpayRefund
+      tags: [system-config]
+      summary: Initiate a Razorpay refund for a payment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [razorpayPaymentId, orderId]
+              properties:
+                razorpayPaymentId:
+                  type: string
+                orderId:
+                  type: integer
+                amount:
+                  type: integer
+                  description: "Amount in paise (integer). Omit for full refund."
+                speed:
+                  type: string
+                  enum: [normal, optimum]
+                notes:
+                  type: string
+                  nullable: true
+      responses:
+        "201":
+          description: Refund initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refund:
+                    $ref: "#/components/schemas/RazorpayRefund"
+        "400":
+          description: Validation error
+        "409":
+          description: Duplicate pending refund
+        "503":
+          description: Razorpay credentials not configured
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /admin/razorpay/refunds/{refundId}/status:
+    get:
+      operationId: getRazorpayRefundStatus
+      tags: [system-config]
+      summary: Fetch live status of a Razorpay refund from the provider
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: refundId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Refund status from Razorpay
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  raw:
+                    type: object
+        "400":
+          description: refundId is required
+        "503":
+          description: Razorpay credentials not configured
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
   /admin/razorpay/webhook-logs:
     get:
       operationId: listRazorpayWebhookLogs
@@ -19822,6 +19985,61 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RazorpayWebhookLogRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    RazorpayRefund:
+      type: object
+      properties:
+        id:
+          type: integer
+        orderId:
+          type: integer
+        razorpayPaymentId:
+          type: string
+        razorpayRefundId:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+        speed:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        initiatedByAdminId:
+          type: integer
+          nullable: true
+        initiatedByEmail:
+          type: string
+          nullable: true
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RazorpayRefundsListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RazorpayRefund"
         total:
           type: integer
         page:

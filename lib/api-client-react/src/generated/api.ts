@@ -166,6 +166,7 @@ import type {
   GetQrCodeStatsParams,
   GetQuietHoursQueueCount200,
   GetRazorpayAnalytics200,
+  GetRazorpayRefundStatus200,
   GetRazorpaySettlementOverview200,
   GetRazorpayStatus200,
   GetReconciliationRunEmailLogs200,
@@ -197,6 +198,8 @@ import type {
   GithubSyncRunLog,
   GithubSyncStatus,
   HealthStatus,
+  InitiateRazorpayRefund201,
+  InitiateRazorpayRefundBody,
   Invoice,
   InvoiceInput,
   InvoiceListResponse,
@@ -249,6 +252,7 @@ import type {
   ListProvidersParams,
   ListQrCodesParams,
   ListQuietHoursQueue200,
+  ListRazorpayRefundsParams,
   ListRazorpayWebhookLogsParams,
   ListReconciliationRunItemsParams,
   ListReconciliationRunsParams,
@@ -367,6 +371,7 @@ import type {
   RazorpayCreateOrderResult,
   RazorpayOrderStatusResult,
   RazorpayOrdersListResponse,
+  RazorpayRefundsListResponse,
   RazorpayVerifyResult,
   RazorpayWebhookLogsResponse,
   ReconciliationItem,
@@ -464,6 +469,8 @@ import type {
   UpdatePayinChargeSettingsInput,
   UpdateProviderIntegrationBody,
   UpdateProviderProductBody,
+  UpdateRazorpayCapability200,
+  UpdateRazorpayCapabilityBody,
   UpdateRazorpayConfigBody,
   UpdateTicketStatusInput,
   UpiGateway,
@@ -32836,6 +32843,310 @@ export function useVerifyRazorpayX<TData = Awaited<ReturnType<typeof verifyRazor
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getVerifyRazorpayXQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateRazorpayCapabilityUrl = (productKey: string,) => {
+
+
+
+
+  return `/api/admin/razorpay/capabilities/${productKey}`
+}
+
+/**
+ * @summary Update a Razorpay product capability entry
+ */
+export const updateRazorpayCapability = async (productKey: string,
+    updateRazorpayCapabilityBody: UpdateRazorpayCapabilityBody, options?: RequestInit): Promise<UpdateRazorpayCapability200> => {
+
+  return customFetch<UpdateRazorpayCapability200>(getUpdateRazorpayCapabilityUrl(productKey),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateRazorpayCapabilityBody,)
+  }
+);}
+
+
+
+
+export const getUpdateRazorpayCapabilityMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRazorpayCapability>>, TError,{productKey: string;data: BodyType<UpdateRazorpayCapabilityBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRazorpayCapability>>, TError,{productKey: string;data: BodyType<UpdateRazorpayCapabilityBody>}, TContext> => {
+
+const mutationKey = ['updateRazorpayCapability'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRazorpayCapability>>, {productKey: string;data: BodyType<UpdateRazorpayCapabilityBody>}> = (props) => {
+          const {productKey,data} = props ?? {};
+
+          return  updateRazorpayCapability(productKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRazorpayCapabilityMutationResult = NonNullable<Awaited<ReturnType<typeof updateRazorpayCapability>>>
+    export type UpdateRazorpayCapabilityMutationBody = BodyType<UpdateRazorpayCapabilityBody>
+    export type UpdateRazorpayCapabilityMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a Razorpay product capability entry
+ */
+export const useUpdateRazorpayCapability = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRazorpayCapability>>, TError,{productKey: string;data: BodyType<UpdateRazorpayCapabilityBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRazorpayCapability>>,
+        TError,
+        {productKey: string;data: BodyType<UpdateRazorpayCapabilityBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateRazorpayCapabilityMutationOptions(options));
+    }
+
+export const getListRazorpayRefundsUrl = (params?: ListRazorpayRefundsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/razorpay/refunds?${stringifiedParams}` : `/api/admin/razorpay/refunds`
+}
+
+/**
+ * @summary List Razorpay refunds (paginated)
+ */
+export const listRazorpayRefunds = async (params?: ListRazorpayRefundsParams, options?: RequestInit): Promise<RazorpayRefundsListResponse> => {
+
+  return customFetch<RazorpayRefundsListResponse>(getListRazorpayRefundsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRazorpayRefundsQueryKey = (params?: ListRazorpayRefundsParams,) => {
+    return [
+    `/api/admin/razorpay/refunds`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListRazorpayRefundsQueryOptions = <TData = Awaited<ReturnType<typeof listRazorpayRefunds>>, TError = ErrorType<void>>(params?: ListRazorpayRefundsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRazorpayRefunds>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRazorpayRefundsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRazorpayRefunds>>> = ({ signal }) => listRazorpayRefunds(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRazorpayRefunds>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRazorpayRefundsQueryResult = NonNullable<Awaited<ReturnType<typeof listRazorpayRefunds>>>
+export type ListRazorpayRefundsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List Razorpay refunds (paginated)
+ */
+
+export function useListRazorpayRefunds<TData = Awaited<ReturnType<typeof listRazorpayRefunds>>, TError = ErrorType<void>>(
+ params?: ListRazorpayRefundsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRazorpayRefunds>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRazorpayRefundsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getInitiateRazorpayRefundUrl = () => {
+
+
+
+
+  return `/api/admin/razorpay/refunds`
+}
+
+/**
+ * @summary Initiate a Razorpay refund for a payment
+ */
+export const initiateRazorpayRefund = async (initiateRazorpayRefundBody: InitiateRazorpayRefundBody, options?: RequestInit): Promise<InitiateRazorpayRefund201> => {
+
+  return customFetch<InitiateRazorpayRefund201>(getInitiateRazorpayRefundUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      initiateRazorpayRefundBody,)
+  }
+);}
+
+
+
+
+export const getInitiateRazorpayRefundMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initiateRazorpayRefund>>, TError,{data: BodyType<InitiateRazorpayRefundBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof initiateRazorpayRefund>>, TError,{data: BodyType<InitiateRazorpayRefundBody>}, TContext> => {
+
+const mutationKey = ['initiateRazorpayRefund'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof initiateRazorpayRefund>>, {data: BodyType<InitiateRazorpayRefundBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  initiateRazorpayRefund(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InitiateRazorpayRefundMutationResult = NonNullable<Awaited<ReturnType<typeof initiateRazorpayRefund>>>
+    export type InitiateRazorpayRefundMutationBody = BodyType<InitiateRazorpayRefundBody>
+    export type InitiateRazorpayRefundMutationError = ErrorType<void>
+
+    /**
+ * @summary Initiate a Razorpay refund for a payment
+ */
+export const useInitiateRazorpayRefund = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initiateRazorpayRefund>>, TError,{data: BodyType<InitiateRazorpayRefundBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof initiateRazorpayRefund>>,
+        TError,
+        {data: BodyType<InitiateRazorpayRefundBody>},
+        TContext
+      > => {
+      return useMutation(getInitiateRazorpayRefundMutationOptions(options));
+    }
+
+export const getGetRazorpayRefundStatusUrl = (refundId: string,) => {
+
+
+
+
+  return `/api/admin/razorpay/refunds/${refundId}/status`
+}
+
+/**
+ * @summary Fetch live status of a Razorpay refund from the provider
+ */
+export const getRazorpayRefundStatus = async (refundId: string, options?: RequestInit): Promise<GetRazorpayRefundStatus200> => {
+
+  return customFetch<GetRazorpayRefundStatus200>(getGetRazorpayRefundStatusUrl(refundId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRazorpayRefundStatusQueryKey = (refundId: string,) => {
+    return [
+    `/api/admin/razorpay/refunds/${refundId}/status`
+    ] as const;
+    }
+
+
+export const getGetRazorpayRefundStatusQueryOptions = <TData = Awaited<ReturnType<typeof getRazorpayRefundStatus>>, TError = ErrorType<void>>(refundId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayRefundStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRazorpayRefundStatusQueryKey(refundId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRazorpayRefundStatus>>> = ({ signal }) => getRazorpayRefundStatus(refundId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(refundId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRazorpayRefundStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRazorpayRefundStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getRazorpayRefundStatus>>>
+export type GetRazorpayRefundStatusQueryError = ErrorType<void>
+
+
+/**
+ * @summary Fetch live status of a Razorpay refund from the provider
+ */
+
+export function useGetRazorpayRefundStatus<TData = Awaited<ReturnType<typeof getRazorpayRefundStatus>>, TError = ErrorType<void>>(
+ refundId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayRefundStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRazorpayRefundStatusQueryOptions(refundId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
