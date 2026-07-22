@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, razorpayPaymentOrdersTable, razorpayWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, RAZORPAY_ORDER_STATUS } from "@workspace/db";
+import { db, razorpayPaymentOrdersTable, razorpayWebhookLogsTable, razorpayRefundsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, RAZORPAY_ORDER_STATUS } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { verifyRazorpayWebhookSignature } from "../helpers/razorpay";
 import { creditWalletForRazorpay } from "./razorpayOrders";
@@ -106,6 +106,65 @@ router.post("/razorpay", async (req, res) => {
       processingResult = "credited";
       safeMessage = "Settlement data updated";
       await insertLog({ webhookEventId, eventType, razorpayOrderId: null, razorpayPaymentId: null, merchantId: null, amount: settledAmount, processingResult, safeMessage });
+      return;
+    }
+
+    // ── refund.created / refund.processed / refund.failed — idempotent upsert ──
+    if (eventType === "refund.created" || eventType === "refund.processed" || eventType === "refund.failed") {
+      const payload2      = body["payload"] as Record<string, unknown> | undefined;
+      const refundEntity  = ((payload2?.["refund"] as Record<string, unknown>)?.["entity"] as Record<string, unknown>) ?? {};
+
+      const providerRefundId  = typeof refundEntity["id"] === "string" ? refundEntity["id"] : null;
+      const refundPaymentId   = typeof refundEntity["payment_id"] === "string" ? refundEntity["payment_id"] : null;
+      const refundOrderId     = typeof refundEntity["order_id"] === "string" ? refundEntity["order_id"] : null;
+      const refundAmountPaise = typeof refundEntity["amount"] === "number" ? refundEntity["amount"] : null;
+      const refundAmountInr   = refundAmountPaise != null ? (refundAmountPaise / 100).toFixed(2) : null;
+      const providerStatus    = (typeof refundEntity["status"] === "string" ? refundEntity["status"] : "").toUpperCase();
+      const dbRefundStatus: "PENDING" | "PROCESSED" | "FAILED" =
+        providerStatus === "PROCESSED" ? "PROCESSED"
+        : providerStatus === "FAILED"  ? "FAILED"
+        : "PENDING";
+
+      if (providerRefundId) {
+        // Resolve our internal integer order ID from the Razorpay order_id string.
+        let internalOrderId = 0;
+        if (refundOrderId) {
+          const [orderRow] = await db
+            .select({ id: razorpayPaymentOrdersTable.id })
+            .from(razorpayPaymentOrdersTable)
+            .where(eq(razorpayPaymentOrdersTable.razorpayOrderId, refundOrderId))
+            .limit(1);
+          if (orderRow) internalOrderId = orderRow.id;
+        }
+        const safeAmount = refundAmountInr ?? "0.00";
+        const providerRaw = JSON.stringify(refundEntity);
+        await db
+          .insert(razorpayRefundsTable)
+          .values({
+            razorpayRefundId:  providerRefundId,
+            razorpayPaymentId: refundPaymentId ?? "",
+            orderId:           internalOrderId,
+            amount:            safeAmount,
+            currency:          typeof refundEntity["currency"] === "string" ? refundEntity["currency"] : "INR",
+            status:            dbRefundStatus,
+            speed:             typeof refundEntity["speed_processed"] === "string" ? refundEntity["speed_processed"] : "normal",
+            providerResponse:  providerRaw,
+            processedAt:       dbRefundStatus === "PROCESSED" ? new Date() : null,
+          })
+          .onConflictDoUpdate({
+            target: razorpayRefundsTable.razorpayRefundId,
+            set: {
+              status:           dbRefundStatus,
+              amount:           safeAmount,
+              providerResponse: providerRaw,
+              processedAt:      dbRefundStatus === "PROCESSED" ? new Date() : null,
+            },
+          });
+      }
+
+      processingResult = "credited";
+      safeMessage = `Refund ${dbRefundStatus.toLowerCase()}`;
+      await insertLog({ webhookEventId, eventType, razorpayOrderId: refundOrderId, razorpayPaymentId: refundPaymentId, merchantId: null, amount: refundAmountInr, processingResult, safeMessage });
       return;
     }
 

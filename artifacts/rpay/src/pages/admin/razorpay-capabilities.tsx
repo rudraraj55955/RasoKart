@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getToken } from "@/lib/auth";
-import { RefreshCw, CheckCircle2, AlertCircle, Clock, ExternalLink, Shield, Info, Search, XCircle } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertCircle, Clock, ExternalLink, Shield, Info, Search, XCircle, Loader2, Zap } from "lucide-react";
 
 const authHeader = () => ({ Authorization: `Bearer ${getToken()}` });
 
@@ -92,6 +92,13 @@ const SUMMARY_ORDER: { key: string; label: string }[] = [
   { key: "UNCHECKED",             label: "Unchecked" },
 ];
 
+interface RazorpayXVerifyResult {
+  activated: boolean;
+  keyConfigured: boolean;
+  message: string;
+  checkedAt?: string;
+}
+
 export default function AdminRazorpayCapabilities() {
   const [products, setProducts] = useState<CapabilityProduct[]>([]);
   const [summary, setSummary] = useState<Summary>({ total: 0 });
@@ -99,6 +106,10 @@ export default function AdminRazorpayCapabilities() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+
+  const [xVerify, setXVerify] = useState<RazorpayXVerifyResult | null>(null);
+  const [xVerifying, setXVerifying] = useState(false);
+  const [xError, setXError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -113,6 +124,21 @@ export default function AdminRazorpayCapabilities() {
       setError(e instanceof Error ? e.message : "Failed to load capabilities");
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const runXVerification = useCallback(async () => {
+    setXVerifying(true);
+    setXError(null);
+    try {
+      const resp = await fetch("/api/admin/razorpay/razorpayx/verify", { headers: authHeader() });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      setXVerify({ ...json, checkedAt: new Date().toISOString() });
+    } catch (e) {
+      setXError(e instanceof Error ? e.message : "Verification failed");
+    } finally {
+      setXVerifying(false);
     }
   }, []);
 
@@ -142,6 +168,73 @@ export default function AdminRazorpayCapabilities() {
           Refresh
         </Button>
       </div>
+
+      {/* RazorpayX Activation Status Card */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" />
+              <CardTitle className="text-sm font-semibold">RazorpayX Activation Status</CardTitle>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={runXVerification}
+              disabled={xVerifying}
+              className="shrink-0"
+            >
+              {xVerifying
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Verifying…</>
+                : <><RefreshCw className="w-3.5 h-3.5 mr-1.5" />Run Verification</>
+              }
+            </Button>
+          </div>
+          <CardDescription className="text-xs">
+            Probe the RazorpayX Payouts API to verify if your account has payout capabilities activated.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {xError && (
+            <div className="flex items-center gap-2 text-sm text-red-400">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {xError}
+            </div>
+          )}
+          {!xVerify && !xError && !xVerifying && (
+            <p className="text-sm text-muted-foreground">Click "Run Verification" to probe the RazorpayX Payouts API.</p>
+          )}
+          {xVerifying && (
+            <p className="text-sm text-muted-foreground animate-pulse">Connecting to RazorpayX API…</p>
+          )}
+          {xVerify && !xVerifying && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center gap-2">
+                {xVerify.activated
+                  ? <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  : <XCircle className="w-5 h-5 text-red-400" />
+                }
+                <span className={cn("text-sm font-semibold", xVerify.activated ? "text-emerald-400" : "text-red-400")}>
+                  {xVerify.activated ? "Activated" : "Not Activated"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Key configured:</span>
+                {xVerify.keyConfigured
+                  ? <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-[11px]">Yes</Badge>
+                  : <Badge variant="outline" className="text-zinc-400 border-zinc-600/30 text-[11px]">No</Badge>
+                }
+              </div>
+              <p className="text-xs text-muted-foreground flex-1">{xVerify.message}</p>
+              {xVerify.checkedAt && (
+                <span className="text-[10px] text-muted-foreground/60 shrink-0">
+                  Checked {new Date(xVerify.checkedAt).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Summary Strip */}
       {!loading && !error && (
