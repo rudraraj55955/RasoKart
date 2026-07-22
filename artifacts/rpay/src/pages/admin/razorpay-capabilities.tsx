@@ -37,12 +37,11 @@ interface CapabilityProduct {
 
 interface Summary {
   total: number;
-  CONFIGURED?: number;
-  TESTED?: number;
-  LIVE?: number;
-  DISABLED?: number;
-  APPROVAL_REQUIRED?: number;
-  VERIFICATION_REQUIRED?: number;
+  ALREADY_LIVE_IN_RASOKART?: number;
+  ALREADY_IMPLEMENTED_NEEDS_TESTING?: number;
+  PARTIALLY_IMPLEMENTED?: number;
+  NEW_INTEGRATION_REQUIRED?: number;
+  RAZORPAY_APPROVAL_REQUIRED?: number;
   DASHBOARD_ONLY?: number;
   NOT_SUPPORTED_BY_API?: number;
   ERROR?: number;
@@ -51,16 +50,15 @@ interface Summary {
 }
 
 const STATUS_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  LIVE:                  { label: "Live",                 color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", icon: <CheckCircle2 className="w-3 h-3" /> },
-  TESTED:                { label: "Tested",               color: "text-blue-400 bg-blue-500/10 border-blue-500/20",         icon: <CheckCircle2 className="w-3 h-3" /> },
-  CONFIGURED:            { label: "Configured",           color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",         icon: <CheckCircle2 className="w-3 h-3" /> },
-  APPROVAL_REQUIRED:     { label: "Approval Required",    color: "text-amber-400 bg-amber-500/10 border-amber-500/20",      icon: <Clock className="w-3 h-3" /> },
-  VERIFICATION_REQUIRED: { label: "Verification Required",color: "text-orange-400 bg-orange-500/10 border-orange-500/20",  icon: <Shield className="w-3 h-3" /> },
-  DASHBOARD_ONLY:        { label: "Dashboard Only",       color: "text-violet-400 bg-violet-500/10 border-violet-500/20",  icon: <Info className="w-3 h-3" /> },
-  NOT_SUPPORTED_BY_API:  { label: "No Public API",        color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20",        icon: <XCircle className="w-3 h-3" /> },
-  DISABLED:              { label: "Disabled",             color: "text-red-400 bg-red-500/10 border-red-500/20",           icon: <XCircle className="w-3 h-3" /> },
-  ERROR:                 { label: "Error",                color: "text-red-500 bg-red-500/15 border-red-500/30",           icon: <AlertCircle className="w-3 h-3" /> },
-  UNCHECKED:             { label: "Unchecked",            color: "text-zinc-500 bg-zinc-800/60 border-zinc-700/30",        icon: <Info className="w-3 h-3" /> },
+  ALREADY_LIVE_IN_RASOKART:          { label: "Live in RasoKart",        color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", icon: <CheckCircle2 className="w-3 h-3" /> },
+  ALREADY_IMPLEMENTED_NEEDS_TESTING: { label: "Needs Testing",           color: "text-blue-400 bg-blue-500/10 border-blue-500/20",          icon: <CheckCircle2 className="w-3 h-3" /> },
+  PARTIALLY_IMPLEMENTED:             { label: "Partial",                 color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",          icon: <Clock className="w-3 h-3" /> },
+  NEW_INTEGRATION_REQUIRED:          { label: "New Integration Required", color: "text-amber-400 bg-amber-500/10 border-amber-500/20",      icon: <Info className="w-3 h-3" /> },
+  RAZORPAY_APPROVAL_REQUIRED:        { label: "Razorpay Approval Needed", color: "text-orange-400 bg-orange-500/10 border-orange-500/20",  icon: <Shield className="w-3 h-3" /> },
+  DASHBOARD_ONLY:                    { label: "Dashboard Only",          color: "text-violet-400 bg-violet-500/10 border-violet-500/20",   icon: <Info className="w-3 h-3" /> },
+  NOT_SUPPORTED_BY_API:              { label: "No Public API",           color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20",         icon: <XCircle className="w-3 h-3" /> },
+  ERROR:                             { label: "Error",                   color: "text-red-500 bg-red-500/15 border-red-500/30",            icon: <AlertCircle className="w-3 h-3" /> },
+  UNCHECKED:                         { label: "Unchecked",               color: "text-zinc-500 bg-zinc-800/60 border-zinc-700/30",         icon: <Info className="w-3 h-3" /> },
 };
 
 function StatusBadge({ status }: { status: string | null }) {

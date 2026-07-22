@@ -1,15 +1,14 @@
 import { pgTable, serial, varchar, text, boolean, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 
 export const CAPABILITY_STATUS = {
-  CONFIGURED:               "CONFIGURED",
-  TESTED:                   "TESTED",
-  LIVE:                     "LIVE",
-  DISABLED:                 "DISABLED",
-  APPROVAL_REQUIRED:        "APPROVAL_REQUIRED",
-  VERIFICATION_REQUIRED:    "VERIFICATION_REQUIRED",
-  DASHBOARD_ONLY:           "DASHBOARD_ONLY",
-  NOT_SUPPORTED_BY_API:     "NOT_SUPPORTED_BY_API",
-  ERROR:                    "ERROR",
+  ALREADY_LIVE_IN_RASOKART:          "ALREADY_LIVE_IN_RASOKART",
+  ALREADY_IMPLEMENTED_NEEDS_TESTING: "ALREADY_IMPLEMENTED_NEEDS_TESTING",
+  PARTIALLY_IMPLEMENTED:             "PARTIALLY_IMPLEMENTED",
+  NEW_INTEGRATION_REQUIRED:          "NEW_INTEGRATION_REQUIRED",
+  RAZORPAY_APPROVAL_REQUIRED:        "RAZORPAY_APPROVAL_REQUIRED",
+  DASHBOARD_ONLY:                    "DASHBOARD_ONLY",
+  NOT_SUPPORTED_BY_API:              "NOT_SUPPORTED_BY_API",
+  ERROR:                             "ERROR",
 } as const;
 export type CapabilityStatus = (typeof CAPABILITY_STATUS)[keyof typeof CAPABILITY_STATUS];
 
