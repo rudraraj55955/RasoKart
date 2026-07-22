@@ -153,8 +153,13 @@ export default function PrivacyPolicy() {
               </p>
               <p className="text-muted-foreground text-sm mt-3">
                 <strong className="text-foreground">CIN:</strong> {CIN} &nbsp;|&nbsp;{" "}
+                <strong className="text-foreground">GSTIN:</strong> 08AALCN0945P1ZT &nbsp;|&nbsp;{" "}
                 <strong className="text-foreground">Incorporated:</strong> {INCORPORATION_DATE}
               </p>
+              <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs text-amber-200 leading-relaxed max-w-2xl">
+                <strong className="text-amber-100">Regulatory Disclosure:</strong>{" "}
+                RasoKart is a software and technology platform operated by Nickey Collection Private Limited. RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds. Regulated payment processing and settlement services are provided through approved banks and payment-service providers, subject to onboarding, KYC, risk approval and applicable terms.
+              </div>
             </div>
 
             {/* Divider */}

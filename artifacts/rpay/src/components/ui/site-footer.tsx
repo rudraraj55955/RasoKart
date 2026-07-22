@@ -47,6 +47,7 @@ const developerLinks = [
 
 const merchantLinks = [
   { label: "Merchant Agreement", href: "/merchant-agreement" },
+  { label: "Payment Partner Disclosure", href: "/payment-partner-disclosure" },
   { label: "Pricing & Fees", href: "/pricing-fees-settlement-policy" },
   { label: "Settlement Policy", href: "/payment-payout-settlement-policy" },
   { label: "Payout Policy", href: "/payout-policy" },
@@ -157,11 +158,19 @@ export function SiteFooter() {
           </Link>
         </div>
 
+        {/* Regulatory Disclosure */}
+        <div className="border-t border-border/40 pt-5 mb-4">
+          <p className="text-xs text-muted-foreground/60 leading-relaxed">
+            <strong className="text-muted-foreground/80">Regulatory Disclosure:</strong>{" "}
+            RasoKart is a software and technology platform operated by Nickey Collection Private Limited (GSTIN: 08AALCN0945P1ZT). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds. Regulated payment processing and settlement services are provided through approved banks and payment-service providers, subject to onboarding, KYC, risk approval and applicable terms.{" "}
+            <a href="/payment-partner-disclosure" className="hover:text-muted-foreground transition-colors underline underline-offset-2">Payment Partner Disclosure</a>
+          </p>
+        </div>
+
         {/* Bottom bar */}
         <div className="border-t border-border/40 pt-5 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground/60 text-center sm:text-left">
-            © {new Date().getFullYear()} {companyName || "Nickey Collection Private Limited"}. All rights reserved. CIN:
-            U47820RJ2025PTC109583.
+            © {new Date().getFullYear()} {companyName || "Nickey Collection Private Limited"}. All rights reserved. CIN: U47820RJ2025PTC109583 · GSTIN: 08AALCN0945P1ZT.
           </p>
           <div className="flex items-center gap-4 text-xs text-muted-foreground/60">
             <Link href="/privacy-policy" className="hover:text-muted-foreground transition-colors">

@@ -14,10 +14,10 @@ const INCORPORATION_DATE = "12 December 2025";
 const REGISTERED_ADDRESS = "P. No. B-46, Damodar Vila, Agarsen Nagar, Kalwad Road, Jhotwara, Jaipur – 302012, Rajasthan, India";
 
 const values = [
-  { icon: Shield, title: "Security First", color: "text-emerald-400", desc: "Every transaction, every API call, every data point is protected with bank-grade encryption and multi-layer fraud detection." },
-  { icon: Zap, title: "Speed & Reliability", color: "text-amber-400", desc: "Our infrastructure is built for 99.9% uptime. Merchants deserve a platform that never lets them down at checkout." },
+  { icon: Shield, title: "Security First", color: "text-emerald-400", desc: "Every API call, merchant record, and data point is protected with encryption and multi-layer security controls." },
+  { icon: Zap, title: "Reliability", color: "text-amber-400", desc: "Our platform is built to be dependable. Merchants deserve software tools that work when they need them." },
   { icon: Users, title: "Merchant Success", color: "text-violet-400", desc: "Our success is measured by the success of every merchant on our platform. We build tools that genuinely move the needle for businesses." },
-  { icon: Globe, title: "Transparency", color: "text-cyan-400", desc: "Clear pricing, honest policies, and real-time dashboards. No hidden fees, no surprises — just a payment partner you can trust." },
+  { icon: Globe, title: "Transparency", color: "text-cyan-400", desc: "Clear pricing, honest policies, and real-time dashboards. No hidden fees, no surprises — just a technology partner you can trust." },
 ];
 
 const milestones = [
@@ -27,20 +27,23 @@ const milestones = [
   { year: "July 2026", title: "Agent Network", desc: "Opened the agent portal, enabling a distributed network to onboard and support merchants across India." },
 ];
 
+const GSTIN = "08AALCN0945P1ZT";
+
 const facts = [
   { label: "Legal Name", value: "Nickey Collection Private Limited" },
   { label: "Brand Name", value: "RasoKart" },
   { label: "CIN", value: CIN },
+  { label: "GSTIN", value: GSTIN },
   { label: "Incorporated", value: INCORPORATION_DATE },
   { label: "Headquarters", value: "Jaipur, Rajasthan, India" },
-  { label: "Category", value: "Payment Gateway / Fintech SaaS" },
+  { label: "Category", value: "Software & Technology Platform" },
 ];
 
 export default function AboutUs() {
   const { companyName, supportEmail, supportPhone } = useCompanySettings();
 
   useEffect(() => {
-    document.title = "About Us — RasoKart Payment Gateway";
+    document.title = "About Us — RasoKart";
   }, []);
 
   return (
@@ -72,12 +75,14 @@ export default function AboutUs() {
             Nickey Collection Private Limited · Est. December 2025
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 max-w-3xl">
-            Powering Payments for <span className="text-primary">Modern India</span>
+            Software & Technology Platform for <span className="text-primary">Merchant Operations</span>
           </h1>
-          <p className="text-muted-foreground text-lg leading-relaxed max-w-2xl mb-8">
-            RasoKart is a secure, reliable payment gateway SaaS platform built by <strong className="text-foreground">Nickey Collection Private Limited</strong>.
-            We help businesses of all sizes collect payments, manage payouts, and grow with confidence — all from a single, intuitive dashboard.
+          <p className="text-muted-foreground text-lg leading-relaxed max-w-2xl mb-4">
+            <strong className="text-foreground">Nickey Collection Private Limited</strong> provides software development, information technology consulting, hosting, infrastructure support, merchant-management technology, payment-service-provider integration support, transaction monitoring, reporting and reconciliation tools through the RasoKart platform.
           </p>
+          <div className="mb-8 rounded-xl border border-amber-400/30 bg-amber-400/10 px-5 py-4 text-sm text-amber-200 leading-relaxed max-w-2xl">
+            RasoKart is a software and technology platform operated by Nickey Collection Private Limited (GSTIN: 08AALCN0945P1ZT). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds. Regulated payment processing and settlement services are provided through approved banks and payment-service providers, subject to onboarding, KYC, risk approval and applicable terms.
+          </div>
           <div className="flex flex-wrap gap-3">
             <Link href="/merchant/login" className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 rounded-lg font-medium text-sm hover:opacity-90 transition-opacity">
               Get Started <ArrowRight className="w-4 h-4" />
@@ -178,12 +183,12 @@ export default function AboutUs() {
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
-            { icon: Shield, color: "text-emerald-400", title: "Payment Gateway", desc: "Accept UPI, QR codes, and virtual account payments with real-time settlement tracking." },
-            { icon: Zap, color: "text-amber-400", title: "Instant Payouts", desc: "Disburse funds to any bank account or UPI handle in seconds, with full audit trails." },
+            { icon: Shield, color: "text-emerald-400", title: "Payment Integration", desc: "Connect and manage approved payment-service-provider integrations through a unified software interface." },
+            { icon: Zap, color: "text-amber-400", title: "Payout Integration", desc: "Initiate eligible payout instructions through approved payout-service partners, subject to account activation and partner approval." },
             { icon: Lock, color: "text-blue-400", title: "Fraud Prevention", desc: "Multi-layer fraud detection and risk scoring to protect every transaction on your platform." },
             { icon: Globe, color: "text-violet-400", title: "White-label Solutions", desc: "Deploy RasoKart infrastructure under your own brand — your domain, your colours, your customers." },
             { icon: Users, color: "text-rose-400", title: "Agent Network", desc: "Build and manage a distributed agent network to onboard merchants across geographies." },
-            { icon: Award, color: "text-cyan-400", title: "Compliance Ready", desc: "KYC, AML, and PCI DSS-aligned infrastructure so you stay compliant without extra work." },
+            { icon: Award, color: "text-cyan-400", title: "Compliance Ready", desc: "KYC, AML, and PCI DSS-aligned software infrastructure so you stay compliant without extra work." },
           ].map(({ icon: Icon, color, title, desc }) => (
             <div key={title} className="rounded-xl border border-border/60 bg-card/40 p-6">
               <div className={`p-2 rounded-lg bg-card border border-border/50 w-fit mb-4`}>

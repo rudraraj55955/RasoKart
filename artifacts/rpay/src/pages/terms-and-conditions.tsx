@@ -58,20 +58,26 @@ export default function TermsAndConditions() {
       badgeText="Terms of Service"
       sections={sections}
       intro={
-        <p className="text-muted-foreground leading-relaxed max-w-2xl mt-3">
-          These Terms and Conditions ("Terms") govern your access to and use of the RasoKart payment gateway
-          platform operated by{" "}
-          <strong className="text-foreground">{companyName}</strong> ("RasoKart", "we", "our",
-          or "us"), CIN {CIN}. By registering as a merchant or otherwise accessing the platform at{" "}
-          <a href={WEBSITE} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-            {WEBSITE}
-          </a>
-          , you agree to be bound by these Terms. If you do not agree, do not use the Platform.
-          <br />
-          <span className="text-xs text-muted-foreground/70 mt-1 block">
-            Effective date: {EFFECTIVE_DATE}
-          </span>
-        </p>
+        <div className="space-y-3 mt-3">
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-5 py-4 text-sm text-amber-200 leading-relaxed max-w-2xl">
+            <strong className="text-amber-100">Regulatory Disclosure:</strong>{" "}
+            RasoKart is a software and technology platform operated by Nickey Collection Private Limited (GSTIN: 08AALCN0945P1ZT). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds. Regulated payment processing and settlement services are provided through approved banks and payment-service providers, subject to onboarding, KYC, risk approval and applicable terms.
+          </div>
+          <p className="text-muted-foreground leading-relaxed max-w-2xl">
+            These Terms and Conditions ("Terms") govern your access to and use of the RasoKart software
+            platform operated by{" "}
+            <strong className="text-foreground">{companyName}</strong> ("RasoKart", "we", "our",
+            or "us"), CIN {CIN}. By registering as a merchant or otherwise accessing the platform at{" "}
+            <a href={WEBSITE} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+              {WEBSITE}
+            </a>
+            , you agree to be bound by these Terms. If you do not agree, do not use the Platform.
+            <br />
+            <span className="text-xs text-muted-foreground/70 mt-1 block">
+              Effective date: {EFFECTIVE_DATE}
+            </span>
+          </p>
+        </div>
       }
     >
       {/* 1. Definitions */}

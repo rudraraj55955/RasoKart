@@ -1050,10 +1050,10 @@ export default function UpiCollectionApi() {
       {/* ── Stats bar ────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Uptime SLA",      value: "99.9%",    color: "text-teal-400" },
           { label: "Median Latency",  value: "<80ms",    color: "text-yellow-400" },
           { label: "Webhook Retry",   value: "5×",       color: "text-violet-400" },
           { label: "Signature Algo",  value: "HMAC-256", color: "text-emerald-400" },
+          { label: "Environment",     value: "Sandbox",  color: "text-teal-400" },
         ].map((s) => (
           <Card key={s.label} className="bg-card/50 border-border/50">
             <CardContent className="pt-4 pb-4 text-center">

@@ -42,6 +42,7 @@ import SecurityPolicyPage from "@/pages/security-policy";
 import DisclaimerPage from "@/pages/disclaimer";
 // Company Pages
 import AboutUs from "@/pages/about-us";
+import PaymentPartnerDisclosure from "@/pages/payment-partner-disclosure";
 import Careers from "@/pages/careers";
 import PressMedia from "@/pages/press-media";
 // New Legal Pages
@@ -613,6 +614,7 @@ function Router() {
       <Route path="/grievance-redressal-policy" component={GrievanceRedressalPolicy} />
       <Route path="/pricing-fees-settlement-policy" component={PricingFeesSettlementPolicy} />
       <Route path="/merchant-agreement" component={MerchantAgreementPage} />
+      <Route path="/payment-partner-disclosure" component={PaymentPartnerDisclosure} />
       <Route path="/prohibited-businesses" component={ProhibitedBusinesses} />
       <Route path="/kyc-aml-policy" component={KycAmlPolicy} />
       <Route path="/payment-payout-settlement-policy" component={PaymentPayoutSettlementPolicy} />

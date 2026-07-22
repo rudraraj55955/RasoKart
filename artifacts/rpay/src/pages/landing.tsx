@@ -51,7 +51,7 @@ const services = [
     icon: QrCode,
     title: "QR Collection",
     description:
-      "Generate dynamic and static QR codes for instant UPI payments. Track every scan and collection in real time.",
+      "Generate dynamic and static QR codes for UPI collections. Track every scan and collection in real time through your merchant dashboard.",
     color: "text-cyan-400",
     bg: "bg-cyan-400/10",
   },
@@ -59,7 +59,7 @@ const services = [
     icon: Landmark,
     title: "Virtual Accounts",
     description:
-      "Assign unique virtual bank accounts to each merchant for seamless NEFT, RTGS, and IMPS collections.",
+      "Assign unique virtual bank accounts to each merchant for NEFT, RTGS, and IMPS collections through integrated banking partners.",
     color: "text-violet-400",
     bg: "bg-violet-400/10",
   },
@@ -67,15 +67,15 @@ const services = [
     icon: Wallet,
     title: "UPI Collection",
     description:
-      "Accept UPI payments via VPA aliases, payment links, or QR — fully reconciled and audited automatically.",
+      "Connect and manage UPI payment-service-provider integrations through a unified software interface with reconciliation and reporting.",
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
   },
   {
     icon: Zap,
-    title: "Payout API",
+    title: "Payout Integration",
     description:
-      "Disburse funds instantly to bank accounts and UPI IDs via a single REST API with webhook callbacks.",
+      "Initiate payout instructions through approved payout-service partners via a single REST API, subject to account activation and partner approval.",
     color: "text-amber-400",
     bg: "bg-amber-400/10",
   },
@@ -83,7 +83,7 @@ const services = [
     icon: FileText,
     title: "Payment Links",
     description:
-      "Create shareable, trackable payment links for invoices, subscriptions, and one-time collections.",
+      "Create shareable, trackable payment links for invoices, subscriptions, and one-time collections through integrated provider services.",
     color: "text-rose-400",
     bg: "bg-rose-400/10",
   },
@@ -91,7 +91,7 @@ const services = [
     icon: BarChart3,
     title: "Reconciliation Engine",
     description:
-      "Automated matching of deposits against settlements with period-overlap logic and full audit trail.",
+      "Maintain transaction records, reconciliation information, and downloadable operational statements with a full audit trail.",
     color: "text-blue-400",
     bg: "bg-blue-400/10",
   },
@@ -111,19 +111,12 @@ const merchantFeatures = [
 const planFeatures = [
   "Unlimited QR code generation",
   "Virtual account provisioning",
-  "UPI collection with auto-reconciliation",
+  "UPI collection with reconciliation",
   "Real-time webhook delivery",
   "API integration with sandbox",
   "Dedicated account manager",
   "24/7 technical support",
-  "SLA-backed uptime guarantee",
-];
-
-const stats = [
-  { value: "₹500Cr+", label: "Processed Monthly" },
-  { value: "10,000+", label: "Active Merchants" },
-  { value: "99.9%", label: "Uptime SLA" },
-  { value: "< 2s", label: "Avg Settlement Time" },
+  "Multi-tier merchant management",
 ];
 
 export default function Landing() {
@@ -246,18 +239,16 @@ export default function Landing() {
         <div className="relative mx-auto w-full max-w-7xl px-4 py-24 sm:px-6 lg:py-32">
           <div className="min-w-0 max-w-3xl">
             <Badge className="mb-6 border-cyan-400/30 bg-cyan-400/10 text-cyan-400" variant="outline">
-              India's Leading Payment Infrastructure
+              Merchant Technology & Payment Integration Platform
             </Badge>
             <h1 className="mb-6 text-4xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
-              Collect Smarter,{" "}
+              Manage Payments, Merchants and{" "}
               <span className="bg-gradient-to-r from-cyan-400 to-violet-400 bg-clip-text text-transparent">
-                Settle Faster
+                Reconciliation from One Platform
               </span>
             </h1>
             <p className="mb-10 max-w-2xl text-base text-muted-foreground sm:text-xl">
-              RasoKart provides enterprise-grade QR, UPI, and virtual account collection infrastructure
-              with real-time reconciliation, instant payouts, and a powerful merchant dashboard — all
-              from a single platform.
+              RasoKart provides software tools for merchant onboarding, payment integration, transaction monitoring, reconciliation, reporting and business operations. Payment processing and settlement services are provided through approved banking and payment-service partners, subject to partner onboarding, KYC, risk approval and applicable terms.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
               <Link href="/merchant/apply">
@@ -275,14 +266,13 @@ export default function Landing() {
             </div>
           </div>
 
-          {/* Stats grid — 2 cols on mobile, 4 cols on sm+ */}
-          <div className="mt-16 grid grid-cols-2 gap-4 sm:mt-20 sm:grid-cols-4 sm:gap-6">
-            {stats.map((s) => (
-              <div key={s.label} className="min-w-0 rounded-2xl border border-border/40 bg-card/40 p-4 backdrop-blur-sm sm:p-5">
-                <div className="text-xl font-bold leading-none text-foreground sm:text-2xl">{s.value}</div>
-                <div className="mt-1.5 text-xs text-muted-foreground sm:text-sm">{s.label}</div>
-              </div>
-            ))}
+          {/* Regulatory Disclosure */}
+          <div className="mt-14 rounded-2xl border border-amber-400/20 bg-amber-400/5 p-5 max-w-3xl">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              <strong className="text-foreground/80">Regulatory Disclosure:</strong>{" "}
+              RasoKart is a software and technology platform operated by Nickey Collection Private Limited (GSTIN: 08AALCN0945P1ZT). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds. Regulated payment processing and settlement services are provided through approved banks and payment-service providers, subject to onboarding, KYC, risk approval and applicable terms.{" "}
+              <a href="/payment-partner-disclosure" className="text-primary hover:underline">Learn more →</a>
+            </p>
           </div>
         </div>
       </section>
@@ -675,7 +665,7 @@ export default function Landing() {
                 Payout Portal
               </Badge>
               <h2 className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl">
-                Instant Payouts,{" "}
+                Payout Integration,{" "}
                 <span className="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
                   Zero Hassle
                 </span>
@@ -688,7 +678,7 @@ export default function Landing() {
               <div className="mb-8 grid grid-cols-2 gap-3">
                 {[
                   { icon: Banknote, label: "Bank + UPI transfers" },
-                  { icon: Clock, label: "T+0 instant settlement" },
+                  { icon: Clock, label: "Partner-settled transfers" },
                   { icon: CheckCircle2, label: "KYC-verified merchants" },
                   { icon: Shield, label: "Dual approval workflow" },
                   { icon: BarChart3, label: "Payout analytics" },

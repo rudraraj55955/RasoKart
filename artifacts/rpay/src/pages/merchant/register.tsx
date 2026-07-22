@@ -368,6 +368,14 @@ export default function MerchantRegister() {
             )}
           />
 
+          <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+            <strong className="text-foreground/80">Note:</strong>{" "}
+            RasoKart is a software and technology platform operated by Nickey Collection Private Limited. Payment processing and settlement services are provided through approved banking and payment-service partners, subject to partner onboarding, KYC, risk approval and applicable terms.{" "}
+            <Link href="/payment-partner-disclosure" className="text-primary hover:underline" target="_blank">
+              Payment Partner Disclosure
+            </Link>
+          </div>
+
           <Button type="submit" className="w-full mt-2" disabled={submitting}>
             {submitting ? "Submitting…" : "Submit Application"}
           </Button>

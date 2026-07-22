@@ -56,10 +56,14 @@ export default function MerchantAgreement() {
       sections={sections}
       intro={
         <div className="space-y-3 mt-3">
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-5 py-4 text-sm text-amber-200 leading-relaxed max-w-2xl">
+            <strong className="text-amber-100">Regulatory Disclosure:</strong>{" "}
+            RasoKart is a software and technology platform operated by Nickey Collection Private Limited (GSTIN: 08AALCN0945P1ZT). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds. Regulated payment processing and settlement services are provided through approved banks and payment-service providers, subject to onboarding, KYC, risk approval and applicable terms.
+          </div>
           <p className="text-muted-foreground leading-relaxed max-w-2xl">
             This Merchant Agreement ("Agreement") is entered into between{" "}
             <strong className="text-foreground">{companyName}</strong> (CIN: {CIN}), operating the RasoKart
-            payment gateway platform ("Company", "we", "us", "our"), and the merchant who registers for
+            software platform ("Company", "we", "us", "our"), and the merchant who registers for
             and uses the Platform ("Merchant", "you").
           </p>
           <p className="text-muted-foreground text-sm leading-relaxed max-w-2xl">
