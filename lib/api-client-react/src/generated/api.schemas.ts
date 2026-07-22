@@ -8482,7 +8482,10 @@ export type GetRazorpaySettlementOverview200 = {
 export type VerifyRazorpayX200 = {
   keyConfigured?: boolean;
   activated?: boolean;
+  fundAccountsAvailable?: boolean;
+  payoutModesAvailable?: string[];
   message?: string;
+  error?: string;
   verifiedAt?: string;
 };
 

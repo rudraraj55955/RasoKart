@@ -10664,7 +10664,10 @@ export const GetRazorpaySettlementOverviewResponse = zod.object({
 export const VerifyRazorpayXResponse = zod.object({
   "keyConfigured": zod.boolean().optional(),
   "activated": zod.boolean().optional(),
+  "fundAccountsAvailable": zod.boolean().optional(),
+  "payoutModesAvailable": zod.array(zod.string()).optional(),
   "message": zod.string().optional(),
+  "error": zod.string().optional(),
   "verifiedAt": zod.string().optional()
 })
 

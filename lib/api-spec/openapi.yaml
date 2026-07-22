@@ -11441,10 +11441,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  keyConfigured: { type: boolean }
-                  activated:     { type: boolean }
-                  message:       { type: string }
-                  verifiedAt:    { type: string }
+                  keyConfigured:         { type: boolean }
+                  activated:             { type: boolean }
+                  fundAccountsAvailable: { type: boolean }
+                  payoutModesAvailable:
+                    type: array
+                    items: { type: string }
+                  message:               { type: string }
+                  error:                 { type: string }
+                  verifiedAt:            { type: string }
         "401":
           description: Unauthorized
         "403":

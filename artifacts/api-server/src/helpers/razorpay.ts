@@ -194,7 +194,10 @@ export async function razorpayFetchRefund(
 export interface RazorpayXVerifyResult {
   activated: boolean;
   keyConfigured: boolean;
+  fundAccountsAvailable: boolean;
+  payoutModesAvailable: string[];
   message: string;
+  error?: string;
   contactsEndpointReachable?: boolean;
   rawStatus?: number;
 }
@@ -213,52 +216,85 @@ export async function verifyRazorpayXActivation(): Promise<RazorpayXVerifyResult
 
   if (!keyId || !keySecret) {
     return {
-      activated: false,
-      keyConfigured: false,
+      activated:             false,
+      keyConfigured:         false,
+      fundAccountsAvailable: false,
+      payoutModesAvailable:  [],
       message: "RAZORPAY_X_KEY_ID or RAZORPAY_X_SECRET environment variable not set. Configure them to enable RazorpayX Payouts.",
+      error: "credentials_missing",
     };
   }
 
   try {
-    const resp = await fetch("https://api.razorpay.com/v1/contacts?count=1", {
-      headers: { Authorization: basicAuth(keyId, keySecret) },
-      signal: AbortSignal.timeout(10_000),
+    const auth = basicAuth(keyId, keySecret);
+    const signal = AbortSignal.timeout(10_000);
+
+    // Probe contacts — READ-ONLY, no financial side effects
+    const contactsResp = await fetch("https://api.razorpay.com/v1/contacts?count=1", {
+      headers: { Authorization: auth },
+      signal,
     });
 
-    if (resp.status === 200) {
+    if (contactsResp.status === 401 || contactsResp.status === 403) {
       return {
-        activated: true,
-        keyConfigured: true,
-        contactsEndpointReachable: true,
-        rawStatus: resp.status,
-        message: "RazorpayX Payouts API is activated and reachable.",
+        activated:             false,
+        keyConfigured:         true,
+        fundAccountsAvailable: false,
+        payoutModesAvailable:  [],
+        contactsEndpointReachable: false,
+        rawStatus: contactsResp.status,
+        message: "RazorpayX credentials are set but the Payouts API is not yet activated on this account. Contact Razorpay support to enable RazorpayX.",
+        error: "not_activated",
       };
     }
 
-    if (resp.status === 401 || resp.status === 403) {
+    if (contactsResp.status !== 200) {
       return {
-        activated: false,
-        keyConfigured: true,
+        activated:             false,
+        keyConfigured:         true,
+        fundAccountsAvailable: false,
+        payoutModesAvailable:  [],
         contactsEndpointReachable: false,
-        rawStatus: resp.status,
-        message: "RazorpayX credentials are set but the Payouts API is not yet activated on this account. Contact Razorpay support to enable RazorpayX.",
+        rawStatus: contactsResp.status,
+        message: `RazorpayX API returned HTTP ${contactsResp.status}. Payouts may not be activated — verify with Razorpay support.`,
+        error: `http_${contactsResp.status}`,
       };
     }
+
+    // Contacts reachable — probe fund_accounts READ-ONLY
+    let fundAccountsAvailable = false;
+    try {
+      const faResp = await fetch("https://api.razorpay.com/v1/fund_accounts?count=1", {
+        headers: { Authorization: auth },
+        signal: AbortSignal.timeout(8_000),
+      });
+      fundAccountsAvailable = faResp.status === 200;
+    } catch {
+      // fund_accounts probe failure is non-fatal
+    }
+
+    // Standard payout modes available when account is activated
+    const payoutModesAvailable = ["IMPS", "NEFT", "RTGS", "UPI"];
 
     return {
-      activated: false,
-      keyConfigured: true,
-      contactsEndpointReachable: false,
-      rawStatus: resp.status,
-      message: `RazorpayX API returned HTTP ${resp.status}. Payouts may not be activated — verify with Razorpay support.`,
+      activated:             true,
+      keyConfigured:         true,
+      fundAccountsAvailable,
+      payoutModesAvailable,
+      contactsEndpointReachable: true,
+      rawStatus: contactsResp.status,
+      message: "RazorpayX Payouts API is activated and reachable.",
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return {
-      activated: false,
-      keyConfigured: true,
+      activated:             false,
+      keyConfigured:         true,
+      fundAccountsAvailable: false,
+      payoutModesAvailable:  [],
       contactsEndpointReachable: false,
       message: `Network error contacting RazorpayX API: ${msg}`,
+      error: "network_error",
     };
   }
 }

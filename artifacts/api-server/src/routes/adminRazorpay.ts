@@ -284,7 +284,7 @@ router.patch("/capabilities/:productKey", requirePermission(["admin_razorpay", "
       res.status(404).json({ error: `Product '${productKey}' not found` });
       return;
     }
-    res.json(updated);
+    res.json({ capability: updated });
   } catch (err) { next(err); }
 });
 
