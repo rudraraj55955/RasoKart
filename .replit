@@ -32,6 +32,10 @@ args = "test-merchant-settings-persistence"
 task = "workflow.run"
 args = "verify-priority-conflict-tests"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "gateway-panel-coverage"
+
 [[workflows.workflow]]
 name = "settings-persistence"
 author = "agent"
@@ -75,6 +79,17 @@ args = "pnpm --filter @workspace/scripts run verify-priority-conflict-tests"
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "gateway-panel-coverage"
+author = "agent"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/rpay && node --import tsx/esm --test src/lib/gateway-panel-coverage.test.ts"
 
 [agent]
 stack = "PNPM_WORKSPACE"
