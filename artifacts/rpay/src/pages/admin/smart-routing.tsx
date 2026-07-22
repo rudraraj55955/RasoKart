@@ -627,7 +627,12 @@ export default function AdminSmartRouting() {
   function openAddRule() {
     setEditingRule(null);
     setRfProviderKey("cashfree_payin");
-    setRfPriority(1); setRfWeight(100); setRfMinAmount(""); setRfMaxAmount(""); setRfModes([]);
+    const takenPriorities = new Set(
+      (rulesQ.data ?? []).filter(r => r.isEnabled).map(r => r.priority)
+    );
+    let nextPriority = 1;
+    while (takenPriorities.has(nextPriority)) nextPriority++;
+    setRfPriority(nextPriority); setRfWeight(100); setRfMinAmount(""); setRfMaxAmount(""); setRfModes([]);
     setRfEnabled(true); setRfFallbackOnly(false); setRfMaxRetries(1); setRfNotes("");
     setRuleSuggestedPriority(null);
     setRuleDialogOpen(true);
