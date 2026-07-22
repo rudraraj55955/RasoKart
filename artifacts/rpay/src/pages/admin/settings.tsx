@@ -2967,7 +2967,18 @@ export default function AdminSettings() {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Window: {entry.windowHours}h · Threshold: {entry.threshold} · Cooldown: {entry.cooldownHours}h · Sent to: {entry.recipientEmails.join(", ")}
+                    Window: {entry.windowHours}h · Threshold: {entry.threshold} · Cooldown:{" "}
+                    {entry.cooldownHours != null ? (
+                      <>{entry.cooldownHours}h</>
+                    ) : (
+                      <span
+                        className="italic"
+                        title="Cooldown value not recorded — this alert was sent before the cooldown field was introduced"
+                      >
+                        —
+                      </span>
+                    )}{" "}
+                    · Sent to: {entry.recipientEmails.join(", ")}
                   </p>
                 </div>
               ))}

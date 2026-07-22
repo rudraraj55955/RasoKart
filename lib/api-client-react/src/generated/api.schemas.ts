@@ -4250,8 +4250,8 @@ export interface SignatureFailureAlertLogEntry {
   windowHours: number;
   /** Failure threshold that triggered this alert */
   threshold: number;
-  /** Cooldown window (hours) that was active when this alert was sent */
-  cooldownHours: number;
+  /** Cooldown window (hours) that was active when this alert was sent. Null for rows that pre-date this column (value would be a meaningless backfill default). */
+  cooldownHours?: number | null;
 }
 
 export interface SignatureFailureAlertHistoryResponse {

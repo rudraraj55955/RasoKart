@@ -16968,7 +16968,7 @@ components:
 
     SignatureFailureAlertLogEntry:
       type: object
-      required: [id, sentAt, failureCount, affectedMerchantCount, recipientCount, recipientEmails, affectedMerchants, windowHours, threshold, cooldownHours]
+      required: [id, sentAt, failureCount, affectedMerchantCount, recipientCount, recipientEmails, affectedMerchants, windowHours, threshold]
       properties:
         id:
           type: integer
@@ -17002,7 +17002,8 @@ components:
           description: Failure threshold that triggered this alert
         cooldownHours:
           type: integer
-          description: Cooldown window (hours) that was active when this alert was sent
+          nullable: true
+          description: Cooldown window (hours) that was active when this alert was sent. Null for rows that pre-date this column (value would be a meaningless backfill default).
 
     SignatureFailureAlertHistoryResponse:
       type: object

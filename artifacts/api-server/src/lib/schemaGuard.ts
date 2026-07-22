@@ -1369,8 +1369,18 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "policy_versions" }, "schema_guard_table_created");
 
-  // ── signature_failure_alert_logs: backfill cooldown_hours column ──────────
-  await db.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER NOT NULL DEFAULT 1`);
+  // ── signature_failure_alert_logs: cooldown_hours column ───────────────────
+  // Add as nullable (no DEFAULT) so rows inserted before this column existed
+  // receive NULL rather than a misleading backfill value of 1.
+  await db.execute(sql`ALTER TABLE signature_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER`);
+  // Drop NOT NULL if the column was previously created with NOT NULL DEFAULT 1
+  // (idempotent on DBs that already had the column added as nullable).
+  await db.execute(sql`ALTER TABLE signature_failure_alert_logs ALTER COLUMN cooldown_hours DROP NOT NULL`);
+  // Drop the column DEFAULT so future inserts that omit the field receive NULL
+  // rather than an implicit 1 (the old backfill value). The insertion path in
+  // signatureFailureAlert.ts always supplies the value explicitly, but removing
+  // the default prevents silent schema drift if that ever changes.
+  await db.execute(sql`ALTER TABLE signature_failure_alert_logs ALTER COLUMN cooldown_hours DROP DEFAULT`);
 
   // ── qr_codes: columns added after initial table creation ──────────────────
   // The original qr_codes table had only the basic columns (id, merchant_id,
