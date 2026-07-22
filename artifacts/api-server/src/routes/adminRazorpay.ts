@@ -93,7 +93,7 @@ router.put("/config", requirePermission(["admin_razorpay", "razorpay_settings_ma
  * GET /api/admin/razorpay/orders
  * Paginated list of Razorpay payment orders with search and filter.
  */
-router.get("/orders", async (req, res, next) => {
+router.get("/orders", requirePermission(["admin_razorpay", "razorpay_analytics_view"]), async (req, res, next) => {
   try {
     const page   = Math.max(1, parseInt(req.query["page"] as string ?? "1", 10) || 1);
     const limit  = Math.min(100, parseInt(req.query["limit"] as string ?? "20", 10) || 20);
@@ -140,7 +140,7 @@ router.get("/orders", async (req, res, next) => {
  * GET /api/admin/razorpay/orders/export/csv
  * CSV export of Razorpay orders.
  */
-router.get("/orders/export/csv", async (req, res, next) => {
+router.get("/orders/export/csv", requirePermission(["admin_razorpay", "razorpay_analytics_view"]), async (req, res, next) => {
   try {
     const status = req.query["status"] as string | undefined;
     const conditions: ReturnType<typeof eq>[] = [];
@@ -299,6 +299,13 @@ router.patch("/capabilities/:productKey", requirePermission(["admin_razorpay", "
  */
 router.get("/analytics", requirePermission(["admin_razorpay", "razorpay_analytics_view"]), async (req, res, next) => {
   try {
+    // Period filter: 7d | 30d | 90d | all (default: all)
+    const periodParam = (req.query["period"] as string | undefined) ?? "all";
+    const periodDays: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90 };
+    const periodWhere = periodDays[periodParam] != null
+      ? gte(razorpayPaymentOrdersTable.createdAt, new Date(Date.now() - periodDays[periodParam]! * 86_400_000))
+      : undefined;
+
     const [kpis] = await db
       .select({
         totalAttempts: sql<number>`count(*)::int`,
@@ -308,7 +315,8 @@ router.get("/analytics", requirePermission(["admin_razorpay", "razorpay_analytic
         totalVolumeInr: sql<string>`coalesce(sum(amount) filter (where status = 'CAPTURED'), 0)::text`,
         refundedCount:  sql<number>`count(*) filter (where status = 'REFUNDED')::int`,
       })
-      .from(razorpayPaymentOrdersTable);
+      .from(razorpayPaymentOrdersTable)
+      .where(periodWhere);
 
     const totalAttempts = kpis?.totalAttempts ?? 0;
     const successful    = kpis?.successful ?? 0;
@@ -316,22 +324,24 @@ router.get("/analytics", requirePermission(["admin_razorpay", "razorpay_analytic
     const totalVol      = parseFloat(kpis?.totalVolumeInr ?? "0");
     const avgTxn        = successful > 0 ? Math.round((totalVol / successful) * 100) / 100 : 0;
 
-    // Error breakdown — group by error_code, top 10
+    // Error breakdown — group by error_code, top 10 (period-scoped)
+    const errorWhere = and(
+      sql`${razorpayPaymentOrdersTable.errorCode} IS NOT NULL`,
+      sql`${razorpayPaymentOrdersTable.errorCode} != ''`,
+      ...(periodWhere ? [periodWhere] : []),
+    );
     const errorBreakdown = await db
       .select({
         errorCode: razorpayPaymentOrdersTable.errorCode,
         count:     sql<number>`count(*)::int`,
       })
       .from(razorpayPaymentOrdersTable)
-      .where(and(
-        sql`${razorpayPaymentOrdersTable.errorCode} IS NOT NULL`,
-        sql`${razorpayPaymentOrdersTable.errorCode} != ''`,
-      ))
+      .where(errorWhere)
       .groupBy(razorpayPaymentOrdersTable.errorCode)
       .orderBy(sql`count(*) desc`)
       .limit(10);
 
-    // Method breakdown — group by payment_method
+    // Method breakdown — group by payment_method (period-scoped)
     const methodBreakdown = await db
       .select({
         method: razorpayPaymentOrdersTable.paymentMethod,
@@ -339,11 +349,26 @@ router.get("/analytics", requirePermission(["admin_razorpay", "razorpay_analytic
         volume: sql<string>`coalesce(sum(amount) filter (where status = 'CAPTURED'), 0)::text`,
       })
       .from(razorpayPaymentOrdersTable)
+      .where(periodWhere)
       .groupBy(razorpayPaymentOrdersTable.paymentMethod)
       .orderBy(sql`count(*) desc`)
       .limit(20);
 
-    // Refund aggregate from razorpay_refunds table
+    // Daily buckets for sparkline — last N days scoped to selected period
+    const sparklineDays = periodDays[periodParam] ?? 30;
+    const sparklineSince = new Date(Date.now() - sparklineDays * 86_400_000);
+    const dailyBuckets = await db
+      .select({
+        day:   sql<string>`date_trunc('day', created_at)::date::text`,
+        count: sql<number>`count(*)::int`,
+        vol:   sql<string>`coalesce(sum(amount) filter (where status = 'CAPTURED'), 0)::text`,
+      })
+      .from(razorpayPaymentOrdersTable)
+      .where(gte(razorpayPaymentOrdersTable.createdAt, sparklineSince))
+      .groupBy(sql`date_trunc('day', created_at)`)
+      .orderBy(sql`date_trunc('day', created_at)`);
+
+    // Refund aggregate — always all-time (refunds reference historical orders)
     const [refundKpis] = await db
       .select({
         refundCount:  sql<number>`count(*)::int`,
@@ -352,6 +377,7 @@ router.get("/analytics", requirePermission(["admin_razorpay", "razorpay_analytic
       .from(razorpayRefundsTable);
 
     res.json({
+      period: periodParam,
       kpis: {
         totalAttempts,
         successful,
@@ -365,6 +391,7 @@ router.get("/analytics", requirePermission(["admin_razorpay", "razorpay_analytic
       },
       errorBreakdown,
       methodBreakdown,
+      dailyBuckets,
     });
   } catch (err) { next(err); }
 });

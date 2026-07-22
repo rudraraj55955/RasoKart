@@ -1,3 +1,4 @@
+- [Razorpay IAM access-envelope guard](razorpay-iam-access-envelope.md) — SA-only Razorpay perms cannot be ALLOW-overridden for non-SA users (→ 403); IAM single-key PUT endpoint requires body { effect: "ALLOW"|"DENY" }, NOT { allow: bool }.
 - [Razorpay capability status taxonomy](razorpay-capability-taxonomy.md) — CAPABILITY_STATUS enum uses user-specified 8-value audit taxonomy; seed.ts onConflictDoUpdate writes capabilityStatus on every restart so taxonomy corrections survive DB resets.
 - [Reports admin env filter pattern](reports-env-filter-pattern.md) — all 7 /api/reports/* admin endpoints default to env=production; inArray subquery on merchantsTable.environment; frontend URL param + Globe Select dropdown in page header.
 - [Deploy recovery block must not rm tracked files](deploy-recovery-tracked-files.md) — after git merge --abort, only rm -rf UNTRACKED paths; removing tracked dirs creates D entries that trip the dirty-tree guard.
