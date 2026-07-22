@@ -265,15 +265,6 @@ export default function Landing() {
               </Link>
             </div>
           </div>
-
-          {/* Regulatory Disclosure */}
-          <div className="mt-14 rounded-2xl border border-amber-400/20 bg-amber-400/5 p-5 max-w-3xl">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              <strong className="text-foreground/80">Regulatory Disclosure:</strong>{" "}
-              RasoKart is a software and technology platform operated by Nickey Collection Private Limited (GSTIN: 08AALCN0945P1ZT). RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds. Regulated payment processing and settlement services are provided through approved banks and payment-service providers, subject to onboarding, KYC, risk approval and applicable terms.{" "}
-              <a href="/payment-partner-disclosure" className="text-primary hover:underline">Learn more →</a>
-            </p>
-          </div>
         </div>
       </section>
 
@@ -855,6 +846,19 @@ export default function Landing() {
       </section>
 
       <PromoBannerSlot placement="pre_footer" />
+
+      {/* REGULATORY DISCLOSURE */}
+      <div className="border-t border-border/30 bg-card/10">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-5">
+          <p className="text-xs text-muted-foreground/70 leading-relaxed text-center sm:text-left">
+            <span className="font-medium text-muted-foreground/90">Regulatory Disclosure:</span>{" "}
+            RasoKart is a software and technology platform operated by Nickey Collection Private Limited. RasoKart is not represented as an RBI-authorised Payment Aggregator and does not independently pool or settle customer or merchant funds. Regulated payment processing and settlement services are provided through approved banks and payment-service providers, subject to onboarding, KYC, risk approval and applicable terms.{" "}
+            <Link href="/payment-partner-disclosure" className="text-primary/80 hover:text-primary underline underline-offset-2 transition-colors">
+              Learn more
+            </Link>
+          </p>
+        </div>
+      </div>
 
       {/* FOOTER */}
       <footer className="border-t border-border/40 bg-card/20 py-12">
