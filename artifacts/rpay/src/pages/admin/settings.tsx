@@ -25,6 +25,17 @@ function formatTimeAgo(isoString: string): string {
   return `${days} day${days !== 1 ? "s" : ""} ago`;
 }
 
+function formatTimeRemaining(expiresAt: string | null | undefined, nowMs: number): string | null {
+  if (!expiresAt) return null;
+  const remaining = new Date(expiresAt).getTime() - nowMs;
+  if (remaining <= 0) return null;
+  const totalMinutes = Math.ceil(remaining / 60_000);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
 async function apiGet(path: string) {
   const res = await fetch(`/api${path}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
@@ -217,6 +228,12 @@ export default function AdminSettings() {
     if (el) {
       setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     }
+  }, []);
+
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
   }, []);
 
   const [financeEmail, setFinanceEmail] = useState<string>("");
@@ -2885,18 +2902,59 @@ export default function AdminSettings() {
           <CardDescription className="text-sm">
             A record of every signature failure alert email dispatched by the platform. Useful for auditing alert frequency and reviewing which merchants were affected.
           </CardDescription>
+          {(() => {
+            const sf = alertCooldownStatus?.signatureFailure;
+            if (!sf) return null;
+            const remaining = sf.cooldownActive && sf.cooldownExpiresAt
+              ? formatTimeRemaining(sf.cooldownExpiresAt, now)
+              : null;
+            if (remaining) {
+              return (
+                <span
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-xs text-amber-400"
+                  title={`Cooldown active — next alert possible after ${new Date(sf.cooldownExpiresAt!).toLocaleString()}`}
+                >
+                  <Clock className="w-3 h-3 shrink-0" />
+                  Cooldown active — next alert in {remaining}
+                </span>
+              );
+            }
+            if (sigFailureHistoryCount > 0) {
+              return (
+                <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 text-xs text-emerald-400">
+                  <CheckCircle2 className="w-3 h-3 shrink-0" />
+                  Ready — no active cooldown
+                </span>
+              );
+            }
+            return null;
+          })()}
         </CardHeader>
         <CardContent>
           {sigFailureHistory.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">No alerts have been sent yet.</p>
           ) : (
             <div className="space-y-2">
-              {sigFailureHistory.map((entry) => (
+              {sigFailureHistory.map((entry, idx) => (
                 <div key={entry.id} className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">
-                      {new Date(entry.sentAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium">
+                        {new Date(entry.sentAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                      </span>
+                      {idx === 0 && alertCooldownStatus?.signatureFailure?.cooldownActive && alertCooldownStatus.signatureFailure.cooldownExpiresAt && (() => {
+                        const remaining = formatTimeRemaining(alertCooldownStatus.signatureFailure!.cooldownExpiresAt, now);
+                        return remaining ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs text-amber-400"
+                            title={`Cooldown from this alert — next alert possible after ${new Date(alertCooldownStatus.signatureFailure!.cooldownExpiresAt!).toLocaleString()}`}
+                          >
+                            <Clock className="w-3 h-3 shrink-0" />
+                            Next in {remaining}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span>{entry.failureCount} failure{entry.failureCount !== 1 ? "s" : ""}</span>
                       <span>{entry.affectedMerchantCount} merchant{entry.affectedMerchantCount !== 1 ? "s" : ""}</span>
