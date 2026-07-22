@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, razorpayPaymentOrdersTable, razorpayWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, providerProductsTable, razorpayRefundsTable } from "@workspace/db";
 import { eq, inArray, desc, and, or, ilike, gte, lte, sql, like } from "drizzle-orm";
 import { razorpayCreateRefund, razorpayFetchRefund, verifyRazorpayXActivation } from "../helpers/razorpay";
-import { requireAuth, requireAdmin, requireSuperAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireSuperAdmin, requirePermission } from "../middlewares/auth";
 
 const router = Router();
 
@@ -297,7 +297,7 @@ router.patch("/capabilities/:productKey", requireSuperAdmin, async (req, res, ne
  * Aggregated Razorpay analytics from razorpay_payment_orders.
  * Includes KPIs, error breakdown, and method breakdown.
  */
-router.get("/analytics", requireSuperAdmin, async (req, res, next) => {
+router.get("/analytics", requirePermission("admin_razorpay"), async (req, res, next) => {
   try {
     const [kpis] = await db
       .select({
@@ -569,7 +569,7 @@ router.get("/razorpayx/verify", requireSuperAdmin, async (req, res, next) => {
  * Returns cached Razorpay settlement data from system_config.
  * The cache is populated by the webhook handler when settlement events arrive.
  */
-router.get("/settlement-overview", requireSuperAdmin, async (req, res, next) => {
+router.get("/settlement-overview", requirePermission("admin_razorpay"), async (req, res, next) => {
   try {
     const settleKeys = [
       SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_YESTERDAY_AMOUNT,
