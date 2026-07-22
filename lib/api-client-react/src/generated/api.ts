@@ -387,6 +387,7 @@ import type {
   ResendReconciliationAlertEmail200,
   ResendReconciliationReportEmail200,
   ResetAdminMerchantReportScheduleFailures200,
+  ResetEkqrStuckAlertCooldown200,
   ResetSignatureFailureAlertCooldown200,
   ResetWebhookFailureAlertCooldown200,
   ResetWebhookFailureAlertCooldownParams,
@@ -22128,6 +22129,76 @@ export const useResetSignatureFailureAlertCooldown = <TError = ErrorType<unknown
         TContext
       > => {
       return useMutation(getResetSignatureFailureAlertCooldownMutationOptions(options));
+    }
+
+export const getResetEkqrStuckAlertCooldownUrl = () => {
+
+
+
+
+  return `/api/system-config/ekqr-stuck-alert/reset-cooldown`
+}
+
+/**
+ * @summary Reset EKQR stuck-QR alert cooldown globally (admin only)
+ */
+export const resetEkqrStuckAlertCooldown = async ( options?: RequestInit): Promise<ResetEkqrStuckAlertCooldown200> => {
+
+  return customFetch<ResetEkqrStuckAlertCooldown200>(getResetEkqrStuckAlertCooldownUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getResetEkqrStuckAlertCooldownMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetEkqrStuckAlertCooldown>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetEkqrStuckAlertCooldown>>, TError,void, TContext> => {
+
+const mutationKey = ['resetEkqrStuckAlertCooldown'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetEkqrStuckAlertCooldown>>, void> = () => {
+
+
+          return  resetEkqrStuckAlertCooldown(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetEkqrStuckAlertCooldownMutationResult = NonNullable<Awaited<ReturnType<typeof resetEkqrStuckAlertCooldown>>>
+
+    export type ResetEkqrStuckAlertCooldownMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reset EKQR stuck-QR alert cooldown globally (admin only)
+ */
+export const useResetEkqrStuckAlertCooldown = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetEkqrStuckAlertCooldown>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetEkqrStuckAlertCooldown>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getResetEkqrStuckAlertCooldownMutationOptions(options));
     }
 
 export const getMarkNotificationReadUrl = (id: number,) => {

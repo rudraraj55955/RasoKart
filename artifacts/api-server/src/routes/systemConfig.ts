@@ -1198,6 +1198,38 @@ router.post("/signature-failure-alert/reset-cooldown", async (req, res, next) =>
   }
 });
 
+// POST /api/system-config/ekqr-stuck-alert/reset-cooldown
+router.post("/ekqr-stuck-alert/reset-cooldown", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+
+    const rows = await db
+      .delete(systemConfigTable)
+      .where(eq(systemConfigTable.key, "ekqr_sync_alert_last_sent_at"))
+      .returning({ key: systemConfigTable.key });
+    const deleted = rows.length;
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "system_config_updated",
+      targetType: "system_config",
+      targetId: null,
+      details: JSON.stringify({
+        section: "ekqr_stuck_alert_cooldown_reset",
+        deleted,
+      }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ deleted }, "EKQR stuck-QR alert cooldown reset");
+
+    res.json({ reset: true, deleted });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/system-config/audit-report-retention
 router.get("/audit-report-retention", async (req, res, next) => {
   try {

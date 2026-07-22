@@ -12,7 +12,7 @@ import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, 
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
-import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useResetSignatureFailureAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetGithubSyncCleanupAlertSnooze, useSetGithubSyncCleanupAlertSnooze, getGetGithubSyncCleanupAlertSnoozeQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
+import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useResetSignatureFailureAlertCooldown, useResetEkqrStuckAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetGithubSyncCleanupAlertSnooze, useSetGithubSyncCleanupAlertSnooze, getGetGithubSyncCleanupAlertSnoozeQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -1025,6 +1025,16 @@ export default function AdminSettings() {
         qc.invalidateQueries({ queryKey: getGetSignatureFailureAlertHistoryQueryKey() });
         qc.invalidateQueries({ queryKey: getGetAlertCooldownStatusQueryKey() });
         void refetchSigFailureHistory();
+      },
+      onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reset cooldown")),
+    },
+  });
+
+  const { mutate: resetEkqrCooldown, isPending: resettingEkqrCooldown } = useResetEkqrStuckAlertCooldown({
+    mutation: {
+      onSuccess: () => {
+        toast.success("EKQR stuck-QR alert cooldown reset — next stuck-QR event will trigger a fresh alert");
+        qc.invalidateQueries({ queryKey: getGetAlertCooldownStatusQueryKey() });
       },
       onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reset cooldown")),
     },
@@ -3434,6 +3444,19 @@ export default function AdminSettings() {
               <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => sendAlertTest("ekqrStuck", "ekqr-stuck-alert")} disabled={getAlertState("ekqrStuck").sending || smtpConfigured === false} title={smtpConfigured === false ? "Save valid SMTP credentials first" : "Send a test EKQR stuck QR alert to opted-in admins"}>
                 <Send className="w-3 h-3 mr-1" />{getAlertState("ekqrStuck").sending ? "Sending…" : "Send test"}
               </Button>
+              {alertCooldownStatus?.ekqr && (alertCooldownStatus.ekqr.cooldownActive || alertCooldownStatus.ekqr.lastSentAt) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => resetEkqrCooldown()}
+                  disabled={resettingEkqrCooldown}
+                  title="Clear the cooldown so the next stuck-QR event triggers a fresh alert email"
+                >
+                  <RotateCcw className="w-3 h-3 mr-1" />
+                  {resettingEkqrCooldown ? "Resetting…" : "Reset Cooldown"}
+                </Button>
+              )}
             </div>
             {renderAlertTestResult("ekqrStuck")}
           </div>

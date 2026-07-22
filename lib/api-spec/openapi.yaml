@@ -7511,6 +7511,25 @@ paths:
                   deleted:
                     type: integer
 
+  /system-config/ekqr-stuck-alert/reset-cooldown:
+    post:
+      operationId: resetEkqrStuckAlertCooldown
+      tags: [system-config]
+      summary: Reset EKQR stuck-QR alert cooldown globally (admin only)
+      responses:
+        "200":
+          description: Cooldown reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reset, deleted]
+                properties:
+                  reset:
+                    type: boolean
+                  deleted:
+                    type: integer
+
   /notifications/{id}/read:
     post:
       operationId: markNotificationRead

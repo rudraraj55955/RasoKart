@@ -8024,6 +8024,11 @@ export type ResetSignatureFailureAlertCooldown200 = {
   deleted: number;
 };
 
+export type ResetEkqrStuckAlertCooldown200 = {
+  reset: boolean;
+  deleted: number;
+};
+
 export type ListSavedFilters200 = {
   data: SavedFilter[];
 };

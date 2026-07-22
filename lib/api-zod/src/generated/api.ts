@@ -7569,6 +7569,15 @@ export const ResetSignatureFailureAlertCooldownResponse = zod.object({
 
 
 /**
+ * @summary Reset EKQR stuck-QR alert cooldown globally (admin only)
+ */
+export const ResetEkqrStuckAlertCooldownResponse = zod.object({
+  "reset": zod.boolean(),
+  "deleted": zod.number()
+})
+
+
+/**
  * @summary Mark a single notification as read
  */
 export const MarkNotificationReadParams = zod.object({
