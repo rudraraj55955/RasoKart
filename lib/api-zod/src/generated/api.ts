@@ -10612,6 +10612,64 @@ export const ExportAdminRazorpayOrdersCsvQueryParams = zod.object({
 
 
 /**
+ * @summary Razorpay analytics — KPIs, error breakdown, method breakdown (super admin only)
+ */
+export const GetRazorpayAnalyticsResponse = zod.object({
+  "kpis": zod.object({
+  "totalAttempts": zod.number().optional(),
+  "successful": zod.number().optional(),
+  "failed": zod.number().optional(),
+  "pending": zod.number().optional(),
+  "successRate": zod.number().optional(),
+  "totalVolumeInr": zod.string().optional(),
+  "avgTransactionValue": zod.string().optional(),
+  "refundCount": zod.number().optional(),
+  "refundAmount": zod.string().optional()
+}).optional(),
+  "errorBreakdown": zod.array(zod.object({
+  "errorCode": zod.string().nullish(),
+  "count": zod.number().optional()
+})).optional(),
+  "methodBreakdown": zod.array(zod.object({
+  "method": zod.string().nullish(),
+  "count": zod.number().optional(),
+  "volume": zod.string().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Razorpay settlement overview and RazorpayX status (super admin only)
+ */
+export const GetRazorpaySettlementOverviewResponse = zod.object({
+  "settlement": zod.object({
+  "yesterdayAmount": zod.string().nullish(),
+  "todayAmount": zod.string().nullish(),
+  "nextDate": zod.string().nullish(),
+  "balance": zod.string().nullish(),
+  "lastUtr": zod.string().nullish(),
+  "lastUpdatedAt": zod.string().nullish()
+}).optional(),
+  "razorpayx": zod.object({
+  "verificationStatus": zod.string().optional(),
+  "verifiedAt": zod.string().nullish(),
+  "activated": zod.boolean().optional()
+}).optional()
+})
+
+
+/**
+ * @summary Verify RazorpayX Payouts API activation (super admin only)
+ */
+export const VerifyRazorpayXResponse = zod.object({
+  "keyConfigured": zod.boolean().optional(),
+  "activated": zod.boolean().optional(),
+  "message": zod.string().optional(),
+  "verifiedAt": zod.string().optional()
+})
+
+
+/**
  * @summary List Razorpay webhook logs (super admin only)
  */
 export const listRazorpayWebhookLogsQueryPageDefault = 1;

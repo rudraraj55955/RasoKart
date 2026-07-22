@@ -165,6 +165,8 @@ import type {
   GetPlatformProfitSummaryParams,
   GetQrCodeStatsParams,
   GetQuietHoursQueueCount200,
+  GetRazorpayAnalytics200,
+  GetRazorpaySettlementOverview200,
   GetRazorpayStatus200,
   GetReconciliationRunEmailLogs200,
   GetReportDeliveryHealth200,
@@ -498,6 +500,7 @@ import type {
   VerificationDocumentsResponse,
   VerificationResponse,
   VerifyRazorpayPaymentBody,
+  VerifyRazorpayX200,
   VirtualAccount,
   VirtualAccountInput,
   VirtualAccountListResponse,
@@ -32602,6 +32605,237 @@ export function useExportAdminRazorpayOrdersCsv<TData = Awaited<ReturnType<typeo
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getExportAdminRazorpayOrdersCsvQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetRazorpayAnalyticsUrl = () => {
+
+
+
+
+  return `/api/admin/razorpay/analytics`
+}
+
+/**
+ * @summary Razorpay analytics — KPIs, error breakdown, method breakdown (super admin only)
+ */
+export const getRazorpayAnalytics = async ( options?: RequestInit): Promise<GetRazorpayAnalytics200> => {
+
+  return customFetch<GetRazorpayAnalytics200>(getGetRazorpayAnalyticsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRazorpayAnalyticsQueryKey = () => {
+    return [
+    `/api/admin/razorpay/analytics`
+    ] as const;
+    }
+
+
+export const getGetRazorpayAnalyticsQueryOptions = <TData = Awaited<ReturnType<typeof getRazorpayAnalytics>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayAnalytics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRazorpayAnalyticsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRazorpayAnalytics>>> = ({ signal }) => getRazorpayAnalytics({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRazorpayAnalytics>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRazorpayAnalyticsQueryResult = NonNullable<Awaited<ReturnType<typeof getRazorpayAnalytics>>>
+export type GetRazorpayAnalyticsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Razorpay analytics — KPIs, error breakdown, method breakdown (super admin only)
+ */
+
+export function useGetRazorpayAnalytics<TData = Awaited<ReturnType<typeof getRazorpayAnalytics>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpayAnalytics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRazorpayAnalyticsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetRazorpaySettlementOverviewUrl = () => {
+
+
+
+
+  return `/api/admin/razorpay/settlement-overview`
+}
+
+/**
+ * @summary Razorpay settlement overview and RazorpayX status (super admin only)
+ */
+export const getRazorpaySettlementOverview = async ( options?: RequestInit): Promise<GetRazorpaySettlementOverview200> => {
+
+  return customFetch<GetRazorpaySettlementOverview200>(getGetRazorpaySettlementOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRazorpaySettlementOverviewQueryKey = () => {
+    return [
+    `/api/admin/razorpay/settlement-overview`
+    ] as const;
+    }
+
+
+export const getGetRazorpaySettlementOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getRazorpaySettlementOverview>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpaySettlementOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRazorpaySettlementOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRazorpaySettlementOverview>>> = ({ signal }) => getRazorpaySettlementOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRazorpaySettlementOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRazorpaySettlementOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getRazorpaySettlementOverview>>>
+export type GetRazorpaySettlementOverviewQueryError = ErrorType<void>
+
+
+/**
+ * @summary Razorpay settlement overview and RazorpayX status (super admin only)
+ */
+
+export function useGetRazorpaySettlementOverview<TData = Awaited<ReturnType<typeof getRazorpaySettlementOverview>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRazorpaySettlementOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRazorpaySettlementOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getVerifyRazorpayXUrl = () => {
+
+
+
+
+  return `/api/admin/razorpay/razorpayx/verify`
+}
+
+/**
+ * @summary Verify RazorpayX Payouts API activation (super admin only)
+ */
+export const verifyRazorpayX = async ( options?: RequestInit): Promise<VerifyRazorpayX200> => {
+
+  return customFetch<VerifyRazorpayX200>(getVerifyRazorpayXUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getVerifyRazorpayXQueryKey = () => {
+    return [
+    `/api/admin/razorpay/razorpayx/verify`
+    ] as const;
+    }
+
+
+export const getVerifyRazorpayXQueryOptions = <TData = Awaited<ReturnType<typeof verifyRazorpayX>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof verifyRazorpayX>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getVerifyRazorpayXQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof verifyRazorpayX>>> = ({ signal }) => verifyRazorpayX({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof verifyRazorpayX>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type VerifyRazorpayXQueryResult = NonNullable<Awaited<ReturnType<typeof verifyRazorpayX>>>
+export type VerifyRazorpayXQueryError = ErrorType<void>
+
+
+/**
+ * @summary Verify RazorpayX Payouts API activation (super admin only)
+ */
+
+export function useVerifyRazorpayX<TData = Awaited<ReturnType<typeof verifyRazorpayX>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof verifyRazorpayX>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getVerifyRazorpayXQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

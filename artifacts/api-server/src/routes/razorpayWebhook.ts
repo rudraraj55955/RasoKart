@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { verifyRazorpayWebhookSignature } from "../helpers/razorpay";
 import { creditWalletForRazorpay } from "./razorpayOrders";
 import { logger } from "../lib/logger";
+import { mapRazorpayError } from "../lib/razorpayErrorMap";
 
 const router = Router();
 
@@ -86,20 +87,32 @@ router.post("/razorpay", async (req, res) => {
     }
 
     if (eventType === "payment.failed") {
+      const rawErrorCode        = (paymentEntity?.["error_code"] as string | undefined) ?? null;
+      const rawErrorDescription = (paymentEntity?.["error_description"] as string | undefined) ?? null;
+      const rawErrorSource      = (paymentEntity?.["error_source"] as string | undefined) ?? null;
+
+      const mapped = mapRazorpayError(rawErrorCode, rawErrorDescription);
+
       const [order] = await db
         .select()
         .from(razorpayPaymentOrdersTable)
         .where(eq(razorpayPaymentOrdersTable.razorpayOrderId, razorpayOrderId))
         .limit(1);
-      if (order && order.status === RAZORPAY_ORDER_STATUS.CREATED || order?.status === RAZORPAY_ORDER_STATUS.PENDING) {
+      if (order && (order.status === RAZORPAY_ORDER_STATUS.CREATED || order.status === RAZORPAY_ORDER_STATUS.PENDING)) {
         await db
           .update(razorpayPaymentOrdersTable)
-          .set({ status: RAZORPAY_ORDER_STATUS.FAILED, failureReason: "Payment declined" })
+          .set({
+            status:           RAZORPAY_ORDER_STATUS.FAILED,
+            failureReason:    mapped.userMessage,
+            errorCode:        rawErrorCode ?? undefined,
+            errorDescription: rawErrorDescription ?? undefined,
+            errorSource:      rawErrorSource ?? undefined,
+          })
           .where(eq(razorpayPaymentOrdersTable.razorpayOrderId, razorpayOrderId));
         merchantId = order?.merchantId ?? null;
       }
       processingResult = "failed_payment";
-      safeMessage = "Payment failed";
+      safeMessage = mapped.userMessage;
       await insertLog({ webhookEventId, eventType, razorpayOrderId, razorpayPaymentId, merchantId, amount, processingResult, safeMessage });
       return;
     }

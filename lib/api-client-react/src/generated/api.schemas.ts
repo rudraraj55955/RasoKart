@@ -8406,6 +8406,62 @@ export type ExportAdminRazorpayOrdersCsvParams = {
 status?: string;
 };
 
+export type GetRazorpayAnalytics200Kpis = {
+  totalAttempts?: number;
+  successful?: number;
+  failed?: number;
+  pending?: number;
+  successRate?: number;
+  totalVolumeInr?: string;
+  avgTransactionValue?: string;
+  refundCount?: number;
+  refundAmount?: string;
+};
+
+export type GetRazorpayAnalytics200ErrorBreakdownItem = {
+  errorCode?: string | null;
+  count?: number;
+};
+
+export type GetRazorpayAnalytics200MethodBreakdownItem = {
+  method?: string | null;
+  count?: number;
+  volume?: string;
+};
+
+export type GetRazorpayAnalytics200 = {
+  kpis?: GetRazorpayAnalytics200Kpis;
+  errorBreakdown?: GetRazorpayAnalytics200ErrorBreakdownItem[];
+  methodBreakdown?: GetRazorpayAnalytics200MethodBreakdownItem[];
+};
+
+export type GetRazorpaySettlementOverview200Settlement = {
+  yesterdayAmount?: string | null;
+  todayAmount?: string | null;
+  nextDate?: string | null;
+  balance?: string | null;
+  lastUtr?: string | null;
+  lastUpdatedAt?: string | null;
+};
+
+export type GetRazorpaySettlementOverview200Razorpayx = {
+  verificationStatus?: string;
+  verifiedAt?: string | null;
+  activated?: boolean;
+};
+
+export type GetRazorpaySettlementOverview200 = {
+  settlement?: GetRazorpaySettlementOverview200Settlement;
+  razorpayx?: GetRazorpaySettlementOverview200Razorpayx;
+};
+
+export type VerifyRazorpayX200 = {
+  keyConfigured?: boolean;
+  activated?: boolean;
+  message?: string;
+  verifiedAt?: string;
+};
+
 export type ListRazorpayWebhookLogsParams = {
 page?: number;
 limit?: number;
