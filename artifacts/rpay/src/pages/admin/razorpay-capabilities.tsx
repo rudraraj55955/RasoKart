@@ -95,7 +95,10 @@ const SUMMARY_ORDER: { key: string; label: string }[] = [
 interface RazorpayXVerifyResult {
   activated: boolean;
   keyConfigured: boolean;
+  fundAccountsAvailable: boolean;
+  payoutModesAvailable: string[];
   message: string;
+  error?: string;
   checkedAt?: string;
 }
 
@@ -110,6 +113,7 @@ export default function AdminRazorpayCapabilities() {
   const [xVerify, setXVerify] = useState<RazorpayXVerifyResult | null>(null);
   const [xVerifying, setXVerifying] = useState(false);
   const [xError, setXError] = useState<string | null>(null);
+  const [xPersistedStatus, setXPersistedStatus] = useState<{ verificationStatus: string; verifiedAt: string | null; activated: boolean } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -140,6 +144,16 @@ export default function AdminRazorpayCapabilities() {
     } finally {
       setXVerifying(false);
     }
+  }, []);
+
+  // Load persisted RazorpayX verification state from system_config on mount
+  useEffect(() => {
+    fetch("/api/admin/razorpay/settlement-overview", { headers: authHeader() })
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        if (json?.razorpayx) setXPersistedStatus(json.razorpayx);
+      })
+      .catch(() => null);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -196,14 +210,37 @@ export default function AdminRazorpayCapabilities() {
         </CardHeader>
         <CardContent>
           {xError && (
-            <div className="flex items-center gap-2 text-sm text-red-400">
+            <div className="flex items-center gap-2 text-sm text-red-400 mb-3">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {xError}
             </div>
           )}
-          {!xVerify && !xError && !xVerifying && (
+
+          {/* Persisted status — shown on load from system_config, replaced by live result after verification */}
+          {!xVerify && !xVerifying && xPersistedStatus && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center gap-2">
+                {xPersistedStatus.activated
+                  ? <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  : <XCircle className="w-5 h-5 text-zinc-400" />
+                }
+                <span className={cn("text-sm font-semibold", xPersistedStatus.activated ? "text-emerald-400" : "text-zinc-400")}>
+                  {xPersistedStatus.activated ? "Activated" : xPersistedStatus.verificationStatus === "not_checked" ? "Not Checked" : "Not Activated"}
+                </span>
+              </div>
+              {xPersistedStatus.verifiedAt && (
+                <span className="text-[10px] text-muted-foreground/60 shrink-0">
+                  Last verified {new Date(xPersistedStatus.verifiedAt).toLocaleString()}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground italic">Stored status — click "Run Verification" to refresh</span>
+            </div>
+          )}
+
+          {!xVerify && !xVerifying && !xPersistedStatus && (
             <p className="text-sm text-muted-foreground">Click "Run Verification" to probe the RazorpayX Payouts API.</p>
           )}
+
           {xVerifying && (
             <p className="text-sm text-muted-foreground animate-pulse">Connecting to RazorpayX API…</p>
           )}
@@ -219,16 +256,31 @@ export default function AdminRazorpayCapabilities() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Key configured:</span>
+                <span className="text-xs text-muted-foreground">Key:</span>
                 {xVerify.keyConfigured
-                  ? <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-[11px]">Yes</Badge>
-                  : <Badge variant="outline" className="text-zinc-400 border-zinc-600/30 text-[11px]">No</Badge>
+                  ? <Badge variant="outline" className="text-emerald-400 border-emerald-500/30 text-[11px]">Configured</Badge>
+                  : <Badge variant="outline" className="text-zinc-400 border-zinc-600/30 text-[11px]">Not set</Badge>
                 }
               </div>
+              {xVerify.fundAccountsAvailable !== undefined && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Fund accounts:</span>
+                  <Badge variant="outline" className={`text-[11px] ${xVerify.fundAccountsAvailable ? "text-emerald-400 border-emerald-500/30" : "text-zinc-400 border-zinc-600/30"}`}>
+                    {xVerify.fundAccountsAvailable ? "Available" : "Unavailable"}
+                  </Badge>
+                </div>
+              )}
+              {xVerify.payoutModesAvailable && xVerify.payoutModesAvailable.length > 0 && (
+                <div className="flex items-center gap-1 flex-wrap">
+                  {xVerify.payoutModesAvailable.map(m => (
+                    <Badge key={m} variant="outline" className="text-[10px] text-sky-400 border-sky-500/30">{m}</Badge>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground flex-1">{xVerify.message}</p>
               {xVerify.checkedAt && (
                 <span className="text-[10px] text-muted-foreground/60 shrink-0">
-                  Checked {new Date(xVerify.checkedAt).toLocaleTimeString()}
+                  {new Date(xVerify.checkedAt).toLocaleTimeString()}
                 </span>
               )}
             </div>

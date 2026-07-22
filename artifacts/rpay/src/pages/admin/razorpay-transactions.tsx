@@ -86,7 +86,7 @@ export default function AdminRazorpayTransactions() {
       const resp = await fetch(`/api/admin/razorpay/refunds?page=${p}&limit=20`, { headers: authHeader() });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
-      setRefunds(json.refunds ?? []);
+      setRefunds(json.data ?? []);
       setRefundTotal(json.total ?? 0);
     } catch (e) {
       setRefundListError(e instanceof Error ? e.message : "Failed to load refunds");
