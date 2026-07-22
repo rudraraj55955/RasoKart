@@ -95,6 +95,21 @@ export const PERMISSIONS = {
   AGENT_COMMISSION: "agent_commission",
   AGENT_PROFILE:    "agent_profile",
 
+  // ── Granular Razorpay ops (Super Admin only by default) ──────────────────
+  // These allow non-SA admins to be granted targeted Razorpay access via IAM.
+  // The umbrella ADMIN_RAZORPAY key (above) also grants all of these for SA.
+  RAZORPAY_CAPABILITIES_VIEW:       "razorpay_capabilities_view",
+  RAZORPAY_CAPABILITIES_TEST:       "razorpay_capabilities_test",
+  RAZORPAY_SETTINGS_VIEW:           "razorpay_settings_view",
+  RAZORPAY_SETTINGS_MANAGE:         "razorpay_settings_manage",
+  RAZORPAY_ANALYTICS_VIEW:          "razorpay_analytics_view",
+  RAZORPAY_WEBHOOKS_VIEW:           "razorpay_webhooks_view",
+  RAZORPAY_WEBHOOKS_REPROCESS:      "razorpay_webhooks_reprocess",
+  RAZORPAY_RECONCILIATION_VIEW:     "razorpay_reconciliation_view",
+  RAZORPAY_RECONCILIATION_MANAGE:   "razorpay_reconciliation_manage",
+  RAZORPAY_REFUNDS_VIEW:            "razorpay_refunds_view",
+  RAZORPAY_REFUNDS_MANAGE:          "razorpay_refunds_manage",
+
   // ── Customer (payment link / checkout consumers) ───────────────────────
   // Customers are not portal users — they interact only through public
   // checkout flows and payment links. They have zero portal permissions by
@@ -122,6 +137,18 @@ export const SUPER_ADMIN_ONLY_PERMISSIONS: Set<string> = new Set([
   PERMISSIONS.ADMIN_PLATFORM_PROFIT,
   PERMISSIONS.IAM_READ,
   PERMISSIONS.IAM_MANAGE,
+  // Granular Razorpay ops — SA-only by default; grant to regular admins via IAM
+  PERMISSIONS.RAZORPAY_CAPABILITIES_VIEW,
+  PERMISSIONS.RAZORPAY_CAPABILITIES_TEST,
+  PERMISSIONS.RAZORPAY_SETTINGS_VIEW,
+  PERMISSIONS.RAZORPAY_SETTINGS_MANAGE,
+  PERMISSIONS.RAZORPAY_ANALYTICS_VIEW,
+  PERMISSIONS.RAZORPAY_WEBHOOKS_VIEW,
+  PERMISSIONS.RAZORPAY_WEBHOOKS_REPROCESS,
+  PERMISSIONS.RAZORPAY_RECONCILIATION_VIEW,
+  PERMISSIONS.RAZORPAY_RECONCILIATION_MANAGE,
+  PERMISSIONS.RAZORPAY_REFUNDS_VIEW,
+  PERMISSIONS.RAZORPAY_REFUNDS_MANAGE,
 ]);
 
 /**

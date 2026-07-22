@@ -143,8 +143,11 @@ router.get("/stats", async (req, res, next) => {
       pendingMerchants = pm.count;
     }
 
-    // demoDataOnly: true when no production merchant exists OR admin explicitly requested demo view.
-    const demoDataOnly = isAdmin && (envParam === "demo" || (envParam === "production" && totalMerchants === 0));
+    // demoDataOnly: true only in non-production environments when no real merchants exist yet
+    // or admin explicitly requested demo view. In production (NODE_ENV=production), always
+    // return false — show real data and proper empty states rather than a "Demo" banner.
+    const isProductionEnv = process.env["NODE_ENV"] === "production";
+    const demoDataOnly = !isProductionEnv && isAdmin && (envParam === "demo" || (envParam === "production" && totalMerchants === 0));
 
     const totalDeposits = Number(depositStats?.total ?? 0);
     const totalWithdrawals = Number(withdrawalStats?.total ?? 0);

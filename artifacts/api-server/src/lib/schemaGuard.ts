@@ -1538,6 +1538,93 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_sound_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_vibration_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
 
+  // ── provider_products: full table + capability audit columns ─────────────
+  // CREATE TABLE handles fresh DBs; ALTER TABLEs below are no-ops on existing tables.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS provider_products (
+      id                   SERIAL PRIMARY KEY,
+      provider_key         VARCHAR(64),
+      product_key          VARCHAR(64) NOT NULL,
+      public_name          VARCHAR(255) NOT NULL,
+      internal_name        VARCHAR(255),
+      description          TEXT,
+      icon_key             VARCHAR(64),
+      is_enabled           BOOLEAN NOT NULL DEFAULT TRUE,
+      status               VARCHAR(32) NOT NULL DEFAULT 'coming_soon',
+      sort_order           INTEGER NOT NULL DEFAULT 0,
+      capability_status    TEXT,
+      official_api_available BOOLEAN,
+      official_sdk_available BOOLEAN,
+      test_mode_status     TEXT,
+      live_mode_status     TEXT,
+      webhook_support      BOOLEAN,
+      webhook_events       JSONB,
+      approval_required    BOOLEAN,
+      approval_reason      TEXT,
+      merchant_access      BOOLEAN,
+      customer_facing_module BOOLEAN,
+      last_test_at         TIMESTAMPTZ,
+      last_fail_at         TIMESTAMPTZ,
+      last_test_response   JSONB,
+      failure_reason       TEXT,
+      impl_notes           TEXT,
+      docs_url             TEXT,
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT provider_products_product_key_uniq UNIQUE (product_key)
+    )
+  `);
+  logger.info({ table: "provider_products" }, "schema_guard_table_created");
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS capability_status TEXT`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS official_api_available BOOLEAN`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS official_sdk_available BOOLEAN`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS test_mode_status TEXT`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS live_mode_status TEXT`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS webhook_support BOOLEAN`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS webhook_events JSONB`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS approval_required BOOLEAN`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS approval_reason TEXT`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS merchant_access BOOLEAN`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS customer_facing_module BOOLEAN`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_test_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_fail_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS last_test_response JSONB`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS failure_reason TEXT`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS impl_notes TEXT`);
+  await db.execute(sql`ALTER TABLE provider_products ADD COLUMN IF NOT EXISTS docs_url TEXT`);
+
+  // ── razorpay_payment_orders: additional analytics columns ─────────────────
+  await db.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_code TEXT`);
+  await db.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_description TEXT`);
+  await db.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS error_source TEXT`);
+  await db.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE razorpay_payment_orders ADD COLUMN IF NOT EXISTS settlement_id TEXT`);
+
+  // ── razorpay_refunds ──────────────────────────────────────────────────────
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS razorpay_refunds (
+      id                    SERIAL PRIMARY KEY,
+      order_id              INTEGER NOT NULL,
+      razorpay_payment_id   TEXT NOT NULL,
+      razorpay_refund_id    TEXT,
+      amount                NUMERIC(18,2) NOT NULL,
+      currency              TEXT NOT NULL DEFAULT 'INR',
+      status                TEXT NOT NULL DEFAULT 'PENDING',
+      speed                 TEXT NOT NULL DEFAULT 'normal',
+      notes                 TEXT,
+      initiated_by_admin_id INTEGER,
+      initiated_by_email    TEXT,
+      provider_response     TEXT,
+      processed_at          TIMESTAMPTZ,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS razorpay_refunds_refund_id_uniq ON razorpay_refunds(razorpay_refund_id) WHERE razorpay_refund_id IS NOT NULL`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS razorpay_refunds_order_id_idx ON razorpay_refunds(order_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS razorpay_refunds_payment_id_idx ON razorpay_refunds(razorpay_payment_id)`);
+  logger.info({ table: "razorpay_refunds" }, "schema_guard_table_created");
+
   // ── IAM tables ─────────────────────────────────────────────────────────────
   // Delegated to the canonical migration file (lib/db/src/migrations/add-iam-rbac.ts).
   // That file owns the DDL and its exported rollback() for emergency use.

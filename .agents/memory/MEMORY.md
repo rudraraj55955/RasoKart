@@ -73,3 +73,4 @@
 - [qr_codes schema guard](qr-codes-schema-guard.md) — full-row SELECT fails on prod if new columns lack ALTER TABLE guards in schemaGuard.ts
 - [PayU UAT integration architecture](payu-integration-arch.md) — Hosted Checkout only; creds encrypted in provider_integrations (not system_config); live mode locked until provider activation; capabilities audit is honest (refund/settlement/payout all false).
 - [CMS seed published status](cms-seed-published-status.md) — seed CMS campaigns as 'published'; draft campaigns are invisible on production even after successful VPS deploy.
+- [Drizzle schema vs schemaGuard ALTER TABLE drift](drizzle-schema-vs-schemaGuard-drift.md) — columns added via schemaGuard ALTER TABLE must also be in the Drizzle schema file or route queries return 500 at runtime.

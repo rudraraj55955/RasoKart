@@ -139,6 +139,18 @@ export const SYSTEM_CONFIG_KEYS = {
   PAYU_MIN_AMOUNT: "payu_min_amount",
   PAYU_MAX_AMOUNT: "payu_max_amount",
   PAYU_DAILY_LIMIT: "payu_daily_limit",
+  // RazorpayX (Payouts) — activation verification status
+  // Credentials in env vars: RAZORPAY_X_KEY_ID, RAZORPAY_X_SECRET
+  RAZORPAY_X_VERIFICATION_STATUS: "razorpay_x_verification_status", // "not_checked" | "pass" | "fail"
+  RAZORPAY_X_VERIFIED_AT: "razorpay_x_verified_at",
+  RAZORPAY_X_FAILURE_REASON: "razorpay_x_failure_reason",
+  // Razorpay settlement overview cache (refreshed by webhook handler)
+  RAZORPAY_SETTLEMENT_YESTERDAY_AMOUNT: "razorpay_settlement_yesterday_amount",
+  RAZORPAY_SETTLEMENT_TODAY_AMOUNT: "razorpay_settlement_today_amount",
+  RAZORPAY_SETTLEMENT_NEXT_DATE: "razorpay_settlement_next_date",
+  RAZORPAY_SETTLEMENT_BALANCE: "razorpay_settlement_balance",
+  RAZORPAY_SETTLEMENT_LAST_UTR: "razorpay_settlement_last_utr",
+  RAZORPAY_SETTLEMENT_LAST_UPDATED_AT: "razorpay_settlement_last_updated_at",
 } as const;
 
 export const SYSTEM_CONFIG_DEFAULTS = {

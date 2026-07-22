@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, numeric, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, numeric, uniqueIndex, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -26,6 +26,12 @@ export const razorpayPaymentOrdersTable = pgTable(
     utr: text("utr"),
     failureReason: text("failure_reason"),
     paidAt: timestamp("paid_at", { withTimezone: true }),
+    // Analytics columns added via schemaGuard ALTER TABLE
+    errorCode: text("error_code"),
+    errorDescription: text("error_description"),
+    errorSource: text("error_source"),
+    capturedAt: timestamp("captured_at", { withTimezone: true }),
+    settlementId: text("settlement_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
