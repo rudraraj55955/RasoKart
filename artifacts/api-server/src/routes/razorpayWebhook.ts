@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, razorpayPaymentOrdersTable, razorpayWebhookLogsTable, RAZORPAY_ORDER_STATUS } from "@workspace/db";
+import { db, razorpayPaymentOrdersTable, razorpayWebhookLogsTable, systemConfigTable, SYSTEM_CONFIG_KEYS, RAZORPAY_ORDER_STATUS } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { verifyRazorpayWebhookSignature } from "../helpers/razorpay";
 import { creditWalletForRazorpay } from "./razorpayOrders";
@@ -77,6 +77,36 @@ router.post("/razorpay", async (req, res) => {
         await insertLog({ webhookEventId, eventType, razorpayOrderId, razorpayPaymentId, merchantId, amount, processingResult, safeMessage });
         return;
       }
+    }
+
+    // ── settlement.processed — update cached settlement keys in system_config ──
+    // Must be checked before the razorpayOrderId guard (settlement events have no order_id)
+    if (eventType === "settlement.processed") {
+      const payload2 = body["payload"] as Record<string, unknown> | undefined;
+      const sEntity = ((payload2?.["settlement"] as Record<string, unknown>)?.["entity"] as Record<string, unknown>) ?? {};
+      const settledAmount = sEntity["amount"] != null ? String(Number(sEntity["amount"]) / 100) : null;
+      const settlementUtr = typeof sEntity["utr"] === "string" ? sEntity["utr"] : null;
+      const now = new Date().toISOString();
+
+      const settleUpdates: Array<{ key: string; value: string }> = [];
+      if (settledAmount != null) {
+        settleUpdates.push({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_YESTERDAY_AMOUNT, value: settledAmount });
+      }
+      if (settlementUtr != null) {
+        settleUpdates.push({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_LAST_UTR, value: settlementUtr });
+      }
+      settleUpdates.push({ key: SYSTEM_CONFIG_KEYS.RAZORPAY_SETTLEMENT_LAST_UPDATED_AT, value: now });
+
+      for (const { key, value } of settleUpdates) {
+        await db.insert(systemConfigTable)
+          .values({ key, value })
+          .onConflictDoUpdate({ target: systemConfigTable.key, set: { value } });
+      }
+
+      processingResult = "credited";
+      safeMessage = "Settlement data updated";
+      await insertLog({ webhookEventId, eventType, razorpayOrderId: null, razorpayPaymentId: null, merchantId: null, amount: settledAmount, processingResult, safeMessage });
+      return;
     }
 
     if (!razorpayOrderId) {

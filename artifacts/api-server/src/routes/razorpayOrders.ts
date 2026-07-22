@@ -3,6 +3,7 @@ import { db, razorpayPaymentOrdersTable, razorpayWebhookLogsTable, merchantWalle
 import { eq, and, inArray, sql, ne } from "drizzle-orm";
 import { razorpayCreateOrder, razorpayFetchPayment, verifyRazorpaySignature } from "../helpers/razorpay";
 import { requireAuth } from "../middlewares/auth";
+import { mapRazorpayError } from "../lib/razorpayErrorMap";
 
 const router = Router();
 
@@ -315,8 +316,25 @@ router.post("/razorpay/verify-payment", requireAuth, async (req, res, next) => {
     }
 
     if (payment.status !== "captured" && payment.status !== "authorized") {
-      req.log.warn({ merchantId: user.merchantId, paymentStatus: payment.status }, "Razorpay payment not captured");
-      res.status(400).json({ error: "Payment is not yet confirmed. Please wait or contact support." });
+      const rawErrorCode        = typeof payment.error_code === "string" ? payment.error_code : null;
+      const rawErrorDescription = typeof payment.error_description === "string" ? payment.error_description : null;
+      const rawErrorSource      = typeof payment.error_source === "string" ? payment.error_source : null;
+      const mapped = mapRazorpayError(rawErrorCode, rawErrorDescription);
+
+      // Store error details on the order record for analytics
+      await db
+        .update(razorpayPaymentOrdersTable)
+        .set({
+          status:           RAZORPAY_ORDER_STATUS.FAILED,
+          failureReason:    mapped.userMessage,
+          errorCode:        rawErrorCode ?? undefined,
+          errorDescription: rawErrorDescription ?? undefined,
+          errorSource:      rawErrorSource ?? undefined,
+        })
+        .where(eq(razorpayPaymentOrdersTable.internalOrderId, internalOrderId));
+
+      req.log.warn({ merchantId: user.merchantId, paymentStatus: payment.status, errorCode: rawErrorCode }, "Razorpay payment not captured");
+      res.status(400).json({ error: mapped.userMessage });
       return;
     }
 
