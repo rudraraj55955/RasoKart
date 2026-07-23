@@ -11,14 +11,16 @@
  * row here becomes the authoritative row the endpoint will check against.
  *
  * Usage:
- *   tsx src/seed-test-otp.ts <identifier> <plainOtp> <purpose> [--backdate]
+ *   tsx src/seed-test-otp.ts <identifier> <plainOtp> <purpose> [--backdate[=<seconds>]]
  *
- *   identifier  Email or mobile number (same string passed to the API)
- *   plainOtp    Plain-text 6-digit code the test will enter in the UI/API
- *   purpose     LOGIN | PASSWORD_RESET
- *   --backdate  Sets created_at to now-120s so the 60-second resend cooldown
- *               window has already elapsed (used in the resend-invalidation
- *               test)
+ *   identifier          Email or mobile number (same string passed to the API)
+ *   plainOtp            Plain-text 6-digit code the test will enter in the UI/API
+ *   purpose             LOGIN | PASSWORD_RESET
+ *   --backdate          Backdates created_at by 120 s (default when no value given)
+ *                       so the 60-second resend cooldown has already elapsed.
+ *   --backdate=<secs>   Backdates created_at by <secs> seconds.  When secs > 600
+ *                       the resulting expiresAt (= createdAt + 10 min) falls in
+ *                       the past, producing a genuinely expired OTP row.
  *
  * Requires:
  *   DATABASE_URL   — Postgres connection string
@@ -45,7 +47,7 @@ const [, , identifier, plainOtp, purpose = "LOGIN", ...flags] = process.argv;
 
 if (!identifier || !plainOtp) {
   process.stderr.write(
-    "Usage: tsx src/seed-test-otp.ts <identifier> <plainOtp> <purpose> [--backdate]\n",
+    "Usage: tsx src/seed-test-otp.ts <identifier> <plainOtp> <purpose> [--backdate[=<seconds>]]\n",
   );
   process.exit(1);
 }
@@ -57,14 +59,32 @@ if (purpose !== "LOGIN" && purpose !== "PASSWORD_RESET") {
   process.exit(1);
 }
 
-const backdate = flags.includes("--backdate");
+// Parse --backdate or --backdate=<seconds>
+// --backdate alone defaults to 120 s (past the 60-second resend cooldown).
+// --backdate=700 (>600 s) makes expiresAt fall in the past → expired OTP.
+let backdateSeconds = 0;
+for (const flag of flags) {
+  if (flag === "--backdate") {
+    backdateSeconds = 120;
+  } else if (flag.startsWith("--backdate=")) {
+    const raw = flag.slice("--backdate=".length);
+    const parsed = parseInt(raw, 10);
+    if (isNaN(parsed) || parsed <= 0) {
+      process.stderr.write(`Invalid --backdate value: "${raw}". Must be a positive integer.\n`);
+      process.exit(1);
+    }
+    backdateSeconds = parsed;
+  }
+}
 
 const identifierHash = hashIdentifier(identifier);
 const otpHash = await bcrypt.hash(plainOtp, 10);
 
 const now = new Date();
-const createdAt = backdate ? new Date(now.getTime() - 120_000) : now;
-const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MS);
+const createdAt = backdateSeconds > 0 ? new Date(now.getTime() - backdateSeconds * 1_000) : now;
+// expiresAt is relative to createdAt so that a large enough backdate produces
+// a genuinely expired row (expiresAt < now when backdateSeconds > 600).
+const expiresAt = new Date(createdAt.getTime() + OTP_EXPIRY_MS);
 
 await db.insert(merchantAuthOtpsTable).values({
   merchantId: null,
@@ -78,6 +98,7 @@ await db.insert(merchantAuthOtpsTable).values({
   createdAt,
 });
 
+const backdateNote = backdateSeconds > 0 ? ` (backdated ${backdateSeconds}s, expiresAt=${expiresAt.toISOString()})` : "";
 console.log(
-  `[seed-test-otp] Inserted ${purpose} OTP for ${identifier}${backdate ? " (backdated 120s)" : ""}`,
+  `[seed-test-otp] Inserted ${purpose} OTP for ${identifier}${backdateNote}`,
 );

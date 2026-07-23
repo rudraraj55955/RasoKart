@@ -52,14 +52,24 @@ const MERCHANT1_EMAIL = "merchant@demo.com";
  * Insert a test OTP row with a known hash into merchant_auth_otps.
  * The endpoint verify logic picks the LATEST row for an identifier+purpose,
  * so this seeded row will be what the API checks.
+ *
+ * opts.backdate      — shorthand for backdateSeconds: 120 (past the resend cooldown)
+ * opts.backdateSeconds — explicit backdate in seconds; when > 600 the resulting
+ *                        expiresAt falls in the past, producing an expired OTP.
  */
 function seedOtp(
   identifier: string,
   otp: string,
   purpose: "LOGIN" | "PASSWORD_RESET",
-  opts: { backdate?: boolean } = {},
+  opts: { backdate?: boolean; backdateSeconds?: number } = {},
 ): void {
-  const args = [identifier, otp, purpose, ...(opts.backdate ? ["--backdate"] : [])];
+  let backdateFlag: string | null = null;
+  if (opts.backdateSeconds != null) {
+    backdateFlag = `--backdate=${opts.backdateSeconds}`;
+  } else if (opts.backdate) {
+    backdateFlag = "--backdate";
+  }
+  const args = [identifier, otp, purpose, ...(backdateFlag ? [backdateFlag] : [])];
   // Quote each argument to handle special chars like @
   const quoted = args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
   execSync(`tsx src/seed-test-otp.ts ${quoted}`, {
@@ -282,7 +292,81 @@ test("forgot password: request reset → seed OTP → reset via UI form → sign
   }
 });
 
-// ── Test group 4: resend invalidates old OTP ──────────────────────────────────
+// ── Test group 4: expired OTP shows error toast ───────────────────────────────
+
+test("forgot password: expired OTP shows error toast, not a dashboard redirect", async ({
+  page,
+}) => {
+  // This test verifies that when a user takes too long and the reset OTP
+  // expires (after 10 minutes), the UI shows a clear error toast instead of
+  // silently failing or navigating away.
+  //
+  // Strategy:
+  //   1. Request a reset code via the UI (advances to the OTP+password form).
+  //   2. Seed an expired OTP row using --backdate=700 (700s > 600s = 10 min
+  //      expiry), making expiresAt fall 100 s in the past.  Because the verify
+  //      endpoint picks the LATEST row, this expired row wins over the real one.
+  //   3. Submit the form with the known code.
+  //   4. Assert an error toast appears and the user is NOT redirected.
+
+  const EXPIRED_OTP = "555321";
+  const ANY_VALID_PASS = "TempExpired@9900";
+
+  // ── Step 1: navigate to Forgot Password tab and request a reset code ──────
+  await page.goto(`${BASE}/merchant/login`);
+  await page.getByRole("tab", { name: "Forgot Password", exact: true }).click();
+  await page.getByLabel("Email or mobile number").fill(MERCHANT3_EMAIL);
+  await page.getByRole("button", { name: "Send reset code" }).click();
+
+  // Wait for the OTP entry stage (the form advances after the API responds)
+  const otpInput = page.locator('input[autocomplete="one-time-code"]');
+  await expect(otpInput).toBeVisible({ timeout: 10_000 });
+
+  // ── Step 2: seed an expired OTP row (700 s > 10-min expiry window) ────────
+  seedOtp(MERCHANT3_EMAIL, EXPIRED_OTP, "PASSWORD_RESET", { backdateSeconds: 700 });
+
+  // ── Step 3: fill the form with the expired code and submit ────────────────
+  await page.evaluate((value: string) => {
+    const fn = (window as unknown as Record<string, unknown>).__testForgotSetOtp;
+    if (typeof fn !== "function")
+      throw new Error(
+        "__testForgotSetOtp not found on window — is the app in DEV mode?",
+      );
+    (fn as (v: string) => void)(value);
+  }, EXPIRED_OTP);
+
+  await page.locator('input[name="newPassword"]').fill(ANY_VALID_PASS);
+  await page.locator('input[name="confirmPassword"]').fill(ANY_VALID_PASS);
+
+  // Intercept the reset request so we can also assert the API returned 400
+  const resetRespPromise = page.waitForResponse(
+    (r) =>
+      r.url().includes("/auth/merchant/password/reset") &&
+      r.request().method() === "POST",
+    { timeout: 20_000 },
+  );
+
+  await page.getByRole("button", { name: "Reset password" }).click();
+  const resetResp = await resetRespPromise;
+
+  // ── Step 4a: API must return 400 for an expired OTP ──────────────────────
+  expect(resetResp.status()).toBe(400);
+
+  // ── Step 4b: an error toast must be visible — not a dashboard redirect ────
+  // Shadcn/sonner toasts are rendered in a [data-sonner-toaster] container.
+  // We match any toast that mentions "expired" or "invalid" (case-insensitive)
+  // to avoid coupling the test to the exact wording.
+  const errorToast = page.locator('[data-sonner-toaster] li').filter({
+    hasText: /expired|invalid|otp|code/i,
+  });
+  await expect(errorToast).toBeVisible({ timeout: 8_000 });
+
+  // User must still be on the login page — no redirect to dashboard
+  await expect(page).not.toHaveURL(/\/merchant\/dashboard/);
+  expect(page.url()).toContain("/merchant/login");
+});
+
+// ── Test group 5: resend invalidates old OTP ──────────────────────────────────
 
 test("old OTP is rejected after resend issues a new one", async () => {
   // Use merchant@demo.com to avoid interfering with the OTP rows from test 2.
