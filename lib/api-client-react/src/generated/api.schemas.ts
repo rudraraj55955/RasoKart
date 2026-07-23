@@ -8565,11 +8565,64 @@ export type GetIamMigrationStatus200 = {
   overrideRows?: number;
 };
 
+/**
+ * Number of non-Super-Admin users per role.
+ */
+export type GetIamMigrationPreview200UsersByRole = {[key: string]: number};
+
+export type GetIamMigrationPreview200UnknownRoleUsersItem = {
+  id?: number;
+  role?: string;
+};
+
+/**
+ * Number of enabled and disabled permissions per role.
+ */
+export type GetIamMigrationPreview200PermissionsPerRole = {[key: string]: {
+  enabled?: number;
+  disabled?: number;
+}};
+
+export type GetIamMigrationPreview200 = {
+  /** Whether the migration has already been run. */
+  alreadyMigrated: boolean;
+  /** Timestamp when the migration was first executed, or null. */
+  migratedAt?: string | null;
+  /** Migration cutoff timestamp, or null if not yet run. */
+  cutoffAt?: string | null;
+  /** Total number of users in the system. */
+  totalUsers: number;
+  /** Number of non-Super-Admin users per role. */
+  usersByRole: GetIamMigrationPreview200UsersByRole;
+  /** Number of Super Admin users (bypasses permission checks). */
+  superAdminCount: number;
+  /** Users whose role is not in the known-roles list and would be skipped. */
+  unknownRoleUsers: GetIamMigrationPreview200UnknownRoleUsersItem[];
+  /** Number of enabled and disabled permissions per role. */
+  permissionsPerRole: GetIamMigrationPreview200PermissionsPerRole;
+  /** Total number of permission keys in the catalog. */
+  catalogSize: number;
+  /** Total number of role_permission rows that would be inserted. */
+  roleTemplateRows: number;
+};
+
+/**
+ * Per-user snapshot captured at cutoff (present in already-migrated responses). Contains roles list, permissionCount, catalogSynced flag, and a per-user array with identity context and inferred effectivePermissions (Super Admins have identity context only, no permission map).
+ */
+export type PostIamMigrationRun200Snapshot = { [key: string]: unknown } | null;
+
 export type PostIamMigrationRun200 = {
   ok?: boolean;
+  /** True when migration had already been run and no changes were made. */
+  alreadyMigrated?: boolean;
   message?: string;
   totalUsers?: number;
   templateRows?: number;
+  catalogRows?: number;
+  cutoffAt?: string | null;
+  migratedAt?: string | null;
+  /** Per-user snapshot captured at cutoff (present in already-migrated responses). Contains roles list, permissionCount, catalogSynced flag, and a per-user array with identity context and inferred effectivePermissions (Super Admins have identity context only, no permission map). */
+  snapshot?: PostIamMigrationRun200Snapshot;
 };
 
 export type PostIamMigrationRollback200 = {

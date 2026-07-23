@@ -10816,17 +10816,50 @@ export const GetIamMigrationStatusResponse = zod.object({
 
 
 /**
- * @summary Run IAM migration (Super Admin only)
+ * Returns what the migration would do: total users, breakdown by role, permissions per role, and any accounts with unknown or missing role mappings. Does not modify the database.
+ * @summary Preview IAM migration plan (dry-run, Super Admin only)
  */
-export const PostIamMigrationRunResponse = zod.object({
-  "ok": zod.boolean().optional(),
-  "message": zod.string().optional(),
-  "totalUsers": zod.number().optional(),
-  "templateRows": zod.number().optional()
+export const GetIamMigrationPreviewResponse = zod.object({
+  "alreadyMigrated": zod.boolean().describe('Whether the migration has already been run.'),
+  "migratedAt": zod.coerce.date().nullish().describe('Timestamp when the migration was first executed, or null.'),
+  "cutoffAt": zod.coerce.date().nullish().describe('Migration cutoff timestamp, or null if not yet run.'),
+  "totalUsers": zod.number().describe('Total number of users in the system.'),
+  "usersByRole": zod.record(zod.string(), zod.number()).describe('Number of non-Super-Admin users per role.'),
+  "superAdminCount": zod.number().describe('Number of Super Admin users (bypasses permission checks).'),
+  "unknownRoleUsers": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "role": zod.string().optional()
+})).describe('Users whose role is not in the known-roles list and would be skipped.'),
+  "permissionsPerRole": zod.record(zod.string(), zod.object({
+  "enabled": zod.number().optional(),
+  "disabled": zod.number().optional()
+})).describe('Number of enabled and disabled permissions per role.'),
+  "catalogSize": zod.number().describe('Total number of permission keys in the catalog.'),
+  "roleTemplateRows": zod.number().describe('Total number of role_permission rows that would be inserted.')
 })
 
 
 /**
+ * Executes the IAM migration — syncs the permission catalog, seeds role templates, and captures a per-user permission snapshot at cutoff. No user-level overrides are written; existing users inherit role defaults. Idempotent — if migration has already run, returns the existing record unchanged with alreadyMigrated=true.
+ * @summary Run IAM migration (Super Admin only, idempotent)
+ */
+export const PostIamMigrationRunResponse = zod.object({
+  "ok": zod.boolean().optional(),
+  "alreadyMigrated": zod.boolean().optional().describe('True when migration had already been run and no changes were made.'),
+  "message": zod.string().optional(),
+  "totalUsers": zod.number().optional(),
+  "templateRows": zod.number().optional(),
+  "catalogRows": zod.number().optional(),
+  "cutoffAt": zod.coerce.date().nullish(),
+  "migratedAt": zod.coerce.date().nullish(),
+  "snapshot": zod.object({
+
+}).passthrough().nullish().describe('Per-user snapshot captured at cutoff (present in already-migrated responses). Contains roles list, permissionCount, catalogSynced flag, and a per-user array with identity context and inferred effectivePermissions (Super Admins have identity context only, no permission map).')
+})
+
+
+/**
+ * Deletes all rows in iam_migration_log, role_permissions, and user_permissions — a broad table-level delete that restores the system to pre-migration state. After rollback, resolveUserPermissions() falls back to code-derived ROLE_DEFAULT_PERMISSIONS (soft-mode). Subsequent calls to /run may re-migrate from scratch.
  * @summary Roll back IAM migration (Super Admin only)
  */
 export const PostIamMigrationRollbackResponse = zod.object({

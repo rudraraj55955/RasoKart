@@ -5,10 +5,18 @@
  * RasoKart Payment Gateway API
  * OpenAPI spec version: 0.1.0
  */
+import type { PostIamMigrationRun200Snapshot } from './postIamMigrationRun200Snapshot';
 
 export type PostIamMigrationRun200 = {
   ok?: boolean;
+  /** True when migration had already been run and no changes were made. */
+  alreadyMigrated?: boolean;
   message?: string;
   totalUsers?: number;
   templateRows?: number;
+  catalogRows?: number;
+  cutoffAt?: Date | null;
+  migratedAt?: Date | null;
+  /** Per-user snapshot captured at cutoff (present in already-migrated responses). Contains roles list, permissionCount, catalogSynced flag, and a per-user array with identity context and inferred effectivePermissions (Super Admins have identity context only, no permission map). */
+  snapshot?: PostIamMigrationRun200Snapshot;
 };

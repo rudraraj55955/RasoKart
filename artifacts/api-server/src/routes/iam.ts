@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, usersTable, iamMigrationLogTable, rolePermissionsTable, userPermissionsTable, permissionsTable, auditLogsTable } from "@workspace/db";
 import { eq, and, count, desc, like } from "drizzle-orm";
 import { requireAuth, requireAdmin, requirePermission } from "../middlewares/auth";
-import { ALL_PERMISSION_KEYS, LEGACY_KEY_MAP, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "../permissions";
+import { ALL_PERMISSION_KEYS, PERMISSIONS, ROLE_DEFAULT_PERMISSIONS, SUPER_ADMIN_ONLY_PERMISSIONS } from "../permissions";
 
 const router = Router();
 
@@ -136,6 +136,84 @@ router.get(
   },
 );
 
+// ── GET /api/iam/migration/preview ──────────────────────────────────────────
+// Dry-run: returns what would happen when migration/run is called.
+// Super Admin only.
+router.get(
+  "/migration/preview",
+  requireAuth,
+  requireAdmin,
+  requirePermission(PERMISSIONS.IAM_READ),
+  async (req, res, next) => {
+    const user = (req as any).user;
+    if (!user.isSuperAdmin) {
+      res.status(403).json({ error: "Only Super Admin can preview IAM migration" });
+      return;
+    }
+    try {
+      // Check if already migrated
+      const [existingMig] = await db
+        .select({ id: iamMigrationLogTable.id, cutoffAt: iamMigrationLogTable.cutoffAt, executedAt: iamMigrationLogTable.executedAt, totalUsers: iamMigrationLogTable.totalUsers })
+        .from(iamMigrationLogTable)
+        .limit(1);
+
+      // Total users
+      const [userCountRow] = await db.select({ c: count() }).from(usersTable);
+      const totalUsers = Number(userCountRow.c);
+
+      // Users by role
+      const allUsers = await db
+        .select({
+          id: usersTable.id,
+          role: usersTable.role,
+          isSuperAdmin: usersTable.isSuperAdmin,
+        })
+        .from(usersTable);
+
+      const usersByRole: Record<string, number> = {};
+      const unknownRoleUsers: Array<{ id: number; role: string }> = [];
+      for (const u of allUsers) {
+        if (u.isSuperAdmin) continue;
+        const r = u.role;
+        if (!KNOWN_ROLES.includes(r)) {
+          unknownRoleUsers.push({ id: u.id, role: r });
+        } else {
+          usersByRole[r] = (usersByRole[r] ?? 0) + 1;
+        }
+      }
+
+      // Permissions per role
+      const permissionsPerRole: Record<string, { enabled: number; disabled: number }> = {};
+      for (const role of KNOWN_ROLES) {
+        const defaults = ROLE_DEFAULT_PERMISSIONS[role] ?? {};
+        let enabled = 0;
+        let disabled = 0;
+        for (const key of ALL_PERMISSION_KEYS) {
+          if (defaults[key]) enabled++;
+          else disabled++;
+        }
+        permissionsPerRole[role] = { enabled, disabled };
+      }
+
+      req.log.info({ totalUsers, unknownRoleUsers: unknownRoleUsers.length }, "iam_migration_preview");
+      res.json({
+        alreadyMigrated: !!existingMig,
+        migratedAt: existingMig?.executedAt ?? null,
+        cutoffAt: existingMig?.cutoffAt ?? null,
+        totalUsers,
+        usersByRole,
+        superAdminCount: allUsers.filter((u) => u.isSuperAdmin).length,
+        unknownRoleUsers: unknownRoleUsers.length > 0 ? unknownRoleUsers : [],
+        permissionsPerRole,
+        catalogSize: ALL_PERMISSION_KEYS.length,
+        roleTemplateRows: KNOWN_ROLES.length * ALL_PERMISSION_KEYS.length,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // ── POST /api/iam/migration/run ─────────────────────────────────────────────
 router.post(
   "/migration/run",
@@ -149,9 +227,27 @@ router.post(
       return;
     }
     try {
-      const [existingMig] = await db.select({ id: iamMigrationLogTable.id }).from(iamMigrationLogTable).limit(1);
+      const [existingMig] = await db
+        .select({
+          id: iamMigrationLogTable.id,
+          cutoffAt: iamMigrationLogTable.cutoffAt,
+          executedAt: iamMigrationLogTable.executedAt,
+          totalUsers: iamMigrationLogTable.totalUsers,
+          snapshotJson: iamMigrationLogTable.snapshotJson,
+        })
+        .from(iamMigrationLogTable)
+        .limit(1);
       if (existingMig) {
-        res.status(409).json({ error: "IAM migration already run. Use rollback first to re-run." });
+        // Idempotent: return existing migration data without error
+        res.json({
+          ok: true,
+          alreadyMigrated: true,
+          message: "IAM migration already run — no changes made.",
+          totalUsers: existingMig.totalUsers,
+          cutoffAt: existingMig.cutoffAt?.toISOString() ?? null,
+          migratedAt: existingMig.executedAt?.toISOString() ?? null,
+          snapshot: existingMig.snapshotJson,
+        });
         return;
       }
 
@@ -169,6 +265,8 @@ router.post(
       }
 
       // 2. Seed role_permissions from ROLE_DEFAULT_PERMISSIONS
+      // Per task spec: no user-level overrides are written during migration —
+      // existing users inherit role defaults which cover everything they had.
       const [userCountRow] = await db.select({ c: count() }).from(usersTable);
       const totalUsers = Number(userCountRow.c);
 
@@ -186,64 +284,29 @@ router.post(
         }
       }
 
-      // 3. Backfill legacy permissionsJson overrides → user_permissions
-      // Pre-cutoff users may have explicit per-key overrides stored in the legacy
-      // users.permissions_json column. We diff each user's stored map against
-      // their role default and create ALLOW/DENY overrides for any deviation,
-      // preserving their exact effective access across the migration boundary.
-      const allUsers = await db
-        .select({
-          id: usersTable.id,
-          role: usersTable.role,
-          isSuperAdmin: usersTable.isSuperAdmin,
-          permissionsJson: usersTable.permissionsJson,
-        })
+      // 3. Write migration log (cutoffAt = now)
+      // user_permission_overrides start empty — users inherit role defaults.
+      // Per-user overrides are added post-migration via the IAM override endpoints.
+      // snapshotJson captures a per-user snapshot at migration time:
+      //   - All users: userId, role, isSuperAdmin (identity context)
+      //   - Non-SA users: effectivePermissions (role defaults at cutoff)
+      //   Super Admins bypass RBAC entirely so no permission map is recorded for them.
+      const allUsersForSnapshot = await db
+        .select({ id: usersTable.id, role: usersTable.role, isSuperAdmin: usersTable.isSuperAdmin })
         .from(usersTable);
 
-      let backfilledUsers = 0;
-      let backfilledOverrides = 0;
-      for (const u of allUsers) {
-        if (u.isSuperAdmin) continue; // SA bypasses permission checks entirely
-        const legacyMap = u.permissionsJson as Record<string, boolean> | null;
-        if (!legacyMap || typeof legacyMap !== "object") continue;
-        const roleDefaults = ROLE_DEFAULT_PERMISSIONS[u.role] ?? {};
-        let userHadOverride = false;
-        for (const [rawKey, legacyValue] of Object.entries(legacyMap)) {
-          // Resolve the canonical key: direct match first, then legacy alias map.
-          // Truly unknown keys are logged for investigation — never silently dropped.
-          let key: string = rawKey;
-          if (!ALL_PERMISSION_KEYS.includes(rawKey as any)) {
-            const mapped = LEGACY_KEY_MAP[rawKey];
-            if (!mapped) {
-              req.log.warn(
-                { userId: u.id, role: u.role, unknownKey: rawKey },
-                "iam_migration_backfill_unknown_legacy_key_skipped",
-              );
-              continue;
-            }
-            key = mapped;
-          }
-          const roleDefault = roleDefaults[key] ?? false;
-          if (legacyValue === roleDefault) continue; // no deviation — skip
-          const effect = legacyValue ? "ALLOW" : "DENY";
-          // Block backfilling SA-only permissions as ALLOW for non-SA users
-          if (effect === "ALLOW" && SUPER_ADMIN_ONLY_PERMISSIONS.has(key)) continue;
-          await db
-            .insert(userPermissionsTable)
-            .values({ userId: u.id, permissionKey: key, effect, updatedByUserId: user.id })
-            .onConflictDoUpdate({
-              target: [userPermissionsTable.userId, userPermissionsTable.permissionKey],
-              set: { effect, updatedByUserId: user.id, updatedAt: new Date() },
-            });
-          backfilledOverrides++;
-          userHadOverride = true;
+      const userSnapshots = allUsersForSnapshot.map((u) => {
+        if (u.isSuperAdmin) {
+          return { userId: u.id, role: u.role, isSuperAdmin: true };
         }
-        if (userHadOverride) backfilledUsers++;
-      }
+        const roleDefaults = ROLE_DEFAULT_PERMISSIONS[u.role] ?? {};
+        const effectivePermissions: Record<string, boolean> = {};
+        for (const key of ALL_PERMISSION_KEYS) {
+          effectivePermissions[key] = (roleDefaults[key] ?? false) === true;
+        }
+        return { userId: u.id, role: u.role, isSuperAdmin: false, effectivePermissions };
+      });
 
-      req.log.info({ backfilledUsers, backfilledOverrides }, "iam_migration_legacy_backfill_done");
-
-      // 4. Write migration log (cutoffAt = now, so all users existing before this point are covered)
       const now = new Date();
       await db.insert(iamMigrationLogTable).values({
         cutoffAt: now,
@@ -253,8 +316,7 @@ router.post(
           roles: KNOWN_ROLES,
           permissionCount: ALL_PERMISSION_KEYS.length,
           catalogSynced: true,
-          backfilledUsers,
-          backfilledOverrides,
+          users: userSnapshots,
         },
       });
 
@@ -262,8 +324,6 @@ router.post(
         totalUsers,
         templateRows: KNOWN_ROLES.length * ALL_PERMISSION_KEYS.length,
         catalogRows: ALL_PERMISSION_KEYS.length,
-        backfilledUsers,
-        backfilledOverrides,
         executedBy: user.email,
         cutoffAt: now.toISOString(),
       });
@@ -271,12 +331,10 @@ router.post(
       req.log.info({ executedBy: user.email, totalUsers, cutoffAt: now }, "iam_migration_run");
       res.json({
         ok: true,
-        message: "IAM migration complete — catalog synced, role templates seeded, legacy overrides backfilled",
+        message: "IAM migration complete — catalog synced, role templates seeded. No user overrides written; existing users inherit role defaults.",
         totalUsers,
         templateRows: KNOWN_ROLES.length * ALL_PERMISSION_KEYS.length,
         catalogRows: ALL_PERMISSION_KEYS.length,
-        backfilledUsers,
-        backfilledOverrides,
         cutoffAt: now.toISOString(),
       });
     } catch (err) {
@@ -304,42 +362,37 @@ router.post(
         return;
       }
 
-      // Capture snapshot before reset for audit
+      // Capture counts for audit log before deletion
       const [templateCount] = await db.select({ c: count() }).from(rolePermissionsTable);
       const [overrideCount] = await db.select({ c: count() }).from(userPermissionsTable);
 
-      // 1. Clear all per-user overrides and role templates
+      // Delete all IAM data created by migration/run:
+      //   1. user_permission_overrides
+      //   2. role_permission_templates
+      //   3. iam_migration_log
+      // After this, resolveUserPermissions() sees no migration log and falls
+      // back to ROLE_DEFAULT_PERMISSIONS from code (soft-mode) — the same
+      // behaviour as before the migration was run. No access is lost.
       await db.delete(userPermissionsTable);
       await db.delete(rolePermissionsTable);
-
-      // 2. Immediately re-seed role templates from code defaults so enforcement
-      //    continues working without requiring a server restart.
-      //    NOTE: We intentionally keep the iam_migration_log row so
-      //    resolveUserPermissions() never returns null and fails-closed.
-      //    Deleting it was the old behaviour that caused a hard-deny window
-      //    for non-SuperAdmin users between rollback and the next restart.
-      for (const role of KNOWN_ROLES) {
-        const defaults = ROLE_DEFAULT_PERMISSIONS[role] ?? {};
-        for (const key of ALL_PERMISSION_KEYS) {
-          const isEnabled = (defaults[key] ?? false) === true;
-          await db
-            .insert(rolePermissionsTable)
-            .values({ role, permissionKey: key, isEnabled, updatedByUserId: user.id })
-            .onConflictDoNothing();
-        }
-      }
+      await db.delete(iamMigrationLogTable);
 
       await writeAuditLog(req, "iam_migration_rollback", "iam", null, {
         executedBy: user.email,
         deletedTemplates: Number(templateCount.c),
         deletedOverrides: Number(overrideCount.c),
-        action: "user_overrides_cleared_role_templates_reset_to_code_defaults",
+        action: "iam_migration_log_and_all_generated_rows_deleted",
       });
 
-      req.log.info({ executedBy: user.email }, "iam_migration_rollback");
+      req.log.info(
+        { executedBy: user.email, deletedTemplates: Number(templateCount.c), deletedOverrides: Number(overrideCount.c) },
+        "iam_migration_rollback",
+      );
       res.json({
         ok: true,
-        message: "IAM overrides and role templates have been reset to code defaults. RBAC enforcement continues — the migration log is preserved to prevent access denial.",
+        message: "IAM migration rolled back — migration log, role templates, and user overrides deleted. System returns to soft-mode (code-derived role defaults).",
+        deletedTemplateRows: Number(templateCount.c),
+        deletedOverrideRows: Number(overrideCount.c),
       });
     } catch (err) {
       next(err);

@@ -11719,15 +11719,96 @@ paths:
         "403":
           description: Forbidden
 
-  /iam/migration/run:
-    post:
+  /iam/migration/preview:
+    get:
+      operationId: getIamMigrationPreview
       tags: [IAM]
-      summary: Run IAM migration (Super Admin only)
+      summary: Preview IAM migration plan (dry-run, Super Admin only)
+      description: "Returns what the migration would do: total users, breakdown by role, permissions per role, and any accounts with unknown or missing role mappings. Does not modify the database."
       security:
         - bearerAuth: []
       responses:
         "200":
-          description: Migration complete
+          description: Migration preview
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - alreadyMigrated
+                  - totalUsers
+                  - usersByRole
+                  - superAdminCount
+                  - unknownRoleUsers
+                  - permissionsPerRole
+                  - catalogSize
+                  - roleTemplateRows
+                properties:
+                  alreadyMigrated:
+                    type: boolean
+                    description: Whether the migration has already been run.
+                  migratedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: Timestamp when the migration was first executed, or null.
+                  cutoffAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: Migration cutoff timestamp, or null if not yet run.
+                  totalUsers:
+                    type: integer
+                    description: Total number of users in the system.
+                  usersByRole:
+                    type: object
+                    description: Number of non-Super-Admin users per role.
+                    additionalProperties:
+                      type: integer
+                  superAdminCount:
+                    type: integer
+                    description: Number of Super Admin users (bypasses permission checks).
+                  unknownRoleUsers:
+                    type: array
+                    description: Users whose role is not in the known-roles list and would be skipped.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        role:
+                          type: string
+                  permissionsPerRole:
+                    type: object
+                    description: Number of enabled and disabled permissions per role.
+                    additionalProperties:
+                      type: object
+                      properties:
+                        enabled:
+                          type: integer
+                        disabled:
+                          type: integer
+                  catalogSize:
+                    type: integer
+                    description: Total number of permission keys in the catalog.
+                  roleTemplateRows:
+                    type: integer
+                    description: Total number of role_permission rows that would be inserted.
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+
+  /iam/migration/run:
+    post:
+      tags: [IAM]
+      summary: Run IAM migration (Super Admin only, idempotent)
+      description: Executes the IAM migration — syncs the permission catalog, seeds role templates, and captures a per-user permission snapshot at cutoff. No user-level overrides are written; existing users inherit role defaults. Idempotent — if migration has already run, returns the existing record unchanged with alreadyMigrated=true.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Migration complete (or already run — check alreadyMigrated)
           content:
             application/json:
               schema:
@@ -11735,23 +11816,39 @@ paths:
                 properties:
                   ok:
                     type: boolean
+                  alreadyMigrated:
+                    type: boolean
+                    description: True when migration had already been run and no changes were made.
                   message:
                     type: string
                   totalUsers:
                     type: integer
                   templateRows:
                     type: integer
+                  catalogRows:
+                    type: integer
+                  cutoffAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  migratedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  snapshot:
+                    type: object
+                    nullable: true
+                    description: Per-user snapshot captured at cutoff (present in already-migrated responses). Contains roles list, permissionCount, catalogSynced flag, and a per-user array with identity context and inferred effectivePermissions (Super Admins have identity context only, no permission map).
         "401":
           description: Unauthorized
         "403":
           description: Forbidden
-        "409":
-          description: Migration already run
 
   /iam/migration/rollback:
     post:
       tags: [IAM]
       summary: Roll back IAM migration (Super Admin only)
+      description: "Deletes all rows in iam_migration_log, role_permissions, and user_permissions — a broad table-level delete that restores the system to pre-migration state. After rollback, resolveUserPermissions() falls back to code-derived ROLE_DEFAULT_PERMISSIONS (soft-mode). Subsequent calls to /run may re-migrate from scratch."
       security:
         - bearerAuth: []
       responses:

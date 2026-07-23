@@ -150,6 +150,7 @@ import type {
   GetCallbackSecretHistoryParams,
   GetIamAudit200,
   GetIamAuditParams,
+  GetIamMigrationPreview200,
   GetIamMigrationStatus200,
   GetIamPermissions200,
   GetIamRoles200,
@@ -33397,6 +33398,84 @@ export function useGetIamMigrationStatus<TData = Awaited<ReturnType<typeof getIa
 
 
 
+export const getGetIamMigrationPreviewUrl = () => {
+
+
+
+
+  return `/api/iam/migration/preview`
+}
+
+/**
+ * Returns what the migration would do: total users, breakdown by role, permissions per role, and any accounts with unknown or missing role mappings. Does not modify the database.
+ * @summary Preview IAM migration plan (dry-run, Super Admin only)
+ */
+export const getIamMigrationPreview = async ( options?: RequestInit): Promise<GetIamMigrationPreview200> => {
+
+  return customFetch<GetIamMigrationPreview200>(getGetIamMigrationPreviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetIamMigrationPreviewQueryKey = () => {
+    return [
+    `/api/iam/migration/preview`
+    ] as const;
+    }
+
+
+export const getGetIamMigrationPreviewQueryOptions = <TData = Awaited<ReturnType<typeof getIamMigrationPreview>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIamMigrationPreview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetIamMigrationPreviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIamMigrationPreview>>> = ({ signal }) => getIamMigrationPreview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIamMigrationPreview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetIamMigrationPreviewQueryResult = NonNullable<Awaited<ReturnType<typeof getIamMigrationPreview>>>
+export type GetIamMigrationPreviewQueryError = ErrorType<void>
+
+
+/**
+ * @summary Preview IAM migration plan (dry-run, Super Admin only)
+ */
+
+export function useGetIamMigrationPreview<TData = Awaited<ReturnType<typeof getIamMigrationPreview>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIamMigrationPreview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetIamMigrationPreviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getPostIamMigrationRunUrl = () => {
 
 
@@ -33406,7 +33485,8 @@ export const getPostIamMigrationRunUrl = () => {
 }
 
 /**
- * @summary Run IAM migration (Super Admin only)
+ * Executes the IAM migration — syncs the permission catalog, seeds role templates, and captures a per-user permission snapshot at cutoff. No user-level overrides are written; existing users inherit role defaults. Idempotent — if migration has already run, returns the existing record unchanged with alreadyMigrated=true.
+ * @summary Run IAM migration (Super Admin only, idempotent)
  */
 export const postIamMigrationRun = async ( options?: RequestInit): Promise<PostIamMigrationRun200> => {
 
@@ -33454,7 +33534,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type PostIamMigrationRunMutationError = ErrorType<void>
 
     /**
- * @summary Run IAM migration (Super Admin only)
+ * @summary Run IAM migration (Super Admin only, idempotent)
  */
 export const usePostIamMigrationRun = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postIamMigrationRun>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -33476,6 +33556,7 @@ export const getPostIamMigrationRollbackUrl = () => {
 }
 
 /**
+ * Deletes all rows in iam_migration_log, role_permissions, and user_permissions — a broad table-level delete that restores the system to pre-migration state. After rollback, resolveUserPermissions() falls back to code-derived ROLE_DEFAULT_PERMISSIONS (soft-mode). Subsequent calls to /run may re-migrate from scratch.
  * @summary Roll back IAM migration (Super Admin only)
  */
 export const postIamMigrationRollback = async ( options?: RequestInit): Promise<PostIamMigrationRollback200> => {
