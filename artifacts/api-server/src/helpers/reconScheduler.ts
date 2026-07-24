@@ -2,7 +2,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import { db, systemConfigTable, systemSettingsTable, SYSTEM_CONFIG_KEYS, SYSTEM_CONFIG_DEFAULTS } from "@workspace/db";
 import { inArray, eq } from "drizzle-orm";
 import { runReconciliation, notifyAdminsOfReconciliationFailure } from "./reconcileEngine";
-import { notifyAdminsOfUnmatchedItems } from "./reconcileEmail";
+import { notifyAdminsOfUnmatchedItems, retryFailedReconEmails } from "./reconcileEmail";
 import { logger } from "../lib/logger";
 
 export type ReconciliationScheduleMode = "daily" | "weekly" | "off";
@@ -145,6 +145,11 @@ async function runAutoReconciliation(): Promise<void> {
     logger.error({ err }, "Scheduled auto-reconciliation failed");
     await notifyAdminsOfReconciliationFailure(runId ?? 0, message);
   }
+
+  // Retry any failed reconciliation report emails whose back-off window has elapsed
+  retryFailedReconEmails().catch(retryErr => {
+    logger.error({ err: retryErr }, "Unexpected error during reconciliation email retry batch");
+  });
 }
 
 export function scheduleReconciliation(cronExpr: string): void {

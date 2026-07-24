@@ -20,6 +20,13 @@ export interface MailOptions {
   }>;
 }
 
+export interface SendResult {
+  ok: boolean;
+  messageId?: string;
+  error?: string;
+  code?: string;
+}
+
 export function getSmtpConfigFromEnv(): SmtpConfig | null {
   const host = process.env["SMTP_HOST"] ?? null;
   const user = process.env["SMTP_USER"] ?? null;
@@ -42,16 +49,19 @@ export function createTransport(cfg: SmtpConfig) {
     port: cfg.port,
     secure,
     auth: { user: cfg.user, pass: cfg.pass },
+    connectionTimeout: 10_000,
+    greetingTimeout: 8_000,
+    socketTimeout: 15_000,
   });
 }
 
 export async function sendMailWithConfig(
   cfg: SmtpConfig,
   opts: MailOptions,
-): Promise<boolean> {
+): Promise<SendResult> {
   const transport = createTransport(cfg);
   try {
-    await transport.sendMail({
+    const info = await transport.sendMail({
       from: cfg.from,
       to: opts.to,
       ...(opts.cc ? { cc: opts.cc } : {}),
@@ -63,8 +73,12 @@ export async function sendMailWithConfig(
         contentType: a.contentType,
       })),
     });
-    return true;
-  } catch {
-    return false;
+    return { ok: true, messageId: info.messageId };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: err?.message ?? String(err),
+      code: err?.code ?? (err?.responseCode ? String(err.responseCode) : undefined),
+    };
   }
 }

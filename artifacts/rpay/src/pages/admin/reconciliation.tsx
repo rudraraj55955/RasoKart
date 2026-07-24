@@ -1012,6 +1012,18 @@ export default function AdminReconciliation() {
     onError: (err: any) => toast.error(`Resend failed: ${err.message}`),
   });
 
+  const retryAllFailedMutation = useMutation({
+    mutationFn: () => apiPost(`/reconciliation/email-logs/retry-all-failed`, {}),
+    onSuccess: () => {
+      toast.success("Retry triggered — check email logs in a moment");
+      qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs"] });
+      if (selectedRunId) {
+        qc.invalidateQueries({ queryKey: ["/api/reconciliation/runs", selectedRunId, "email-logs"] });
+      }
+    },
+    onError: (err: any) => toast.error(`Retry failed: ${err.message}`),
+  });
+
   const runs = data?.data ?? [];
   const historyTotal: number = data?.total ?? 0;
   const failedEmailRuns: any[] = runs.filter((r: any) => r.lastEmail?.status === "failed");
@@ -1164,8 +1176,15 @@ export default function AdminReconciliation() {
                 ? `Run #${failedEmailRuns[0].id} (${failedEmailRuns[0].dateFrom} to ${failedEmailRuns[0].dateTo}) could not deliver its report email to the configured recipients.`
                 : `${failedEmailRuns.length} recent runs could not deliver their report emails (runs ${failedEmailRuns.map((r: any) => `#${r.id}`).join(", ")}).`
               }
-              {" "}Open the run to view the email log and resend.
+              {" "}Open a run to view the full email log and resend individually, or click Retry All below.
             </p>
+            <button
+              onClick={() => retryAllFailedMutation.mutate()}
+              disabled={retryAllFailedMutation.isPending}
+              className="mt-2 text-xs font-medium text-red-300 border border-red-500/40 rounded px-2.5 py-1 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+            >
+              {retryAllFailedMutation.isPending ? "Retrying…" : `Retry All Failed (${failedEmailRuns.length})`}
+            </button>
           </div>
           <button
             onClick={() => setEmailFailureBannerDismissed(true)}
@@ -1672,7 +1691,18 @@ export default function AdminReconciliation() {
 
           {/* Email Delivery Log */}
           {(() => {
-            const emailLogs: Array<{ id: number; emailType: string; recipients: string; status: string; errorMessage: string | null; sentAt: string }> = emailLogsQuery.data?.data ?? [];
+            const emailLogs: Array<{
+              id: number;
+              emailType: string;
+              recipients: string;
+              status: string;
+              errorMessage: string | null;
+              sentAt: string;
+              providerMessageId?: string | null;
+              retryCount?: number | null;
+              failureCode?: string | null;
+              retryAt?: string | null;
+            }> = emailLogsQuery.data?.data ?? [];
             const hasSent = emailLogs.some(l => l.status === "sent");
             const hasFailed = emailLogs.some(l => l.status === "failed");
             const indicatorIcon = hasFailed
@@ -1719,8 +1749,11 @@ export default function AdminReconciliation() {
                               : <MailX className="w-3 h-3 text-red-400 shrink-0" />
                             }
                             <span className={`font-medium ${log.status === "sent" ? "text-emerald-400" : "text-red-400"}`}>
-                              {log.status === "sent" ? "Sent" : "Failed"}
+                              {log.status === "sent" ? "Delivered" : "Failed"}
                             </span>
+                            {log.status === "failed" && (log.retryCount ?? 0) > 0 && (
+                              <span className="text-amber-400/70 text-[10px]">retry #{log.retryCount}</span>
+                            )}
                             <Badge className={`text-[10px] px-1.5 py-0 h-4 border ${
                               log.emailType === "report"
                                 ? "bg-violet-500/10 text-violet-400 border-violet-500/30"
@@ -1728,6 +1761,9 @@ export default function AdminReconciliation() {
                             }`}>
                               {log.emailType === "report" ? "Report" : "Unmatched Alert"}
                             </Badge>
+                            {log.failureCode && (
+                              <code className="text-[9px] text-red-400/60 bg-red-500/10 px-1 rounded font-mono">{log.failureCode}</code>
+                            )}
                             <span className="text-muted-foreground/50 ml-auto whitespace-nowrap">
                               {new Date(log.sentAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                             </span>
@@ -1735,8 +1771,21 @@ export default function AdminReconciliation() {
                           <p className="text-muted-foreground/70 truncate">
                             <span className="text-muted-foreground/40">To: </span>{log.recipients || "—"}
                           </p>
+                          {log.providerMessageId && log.status === "sent" && (
+                            <p className="text-emerald-400/50 mt-0.5 font-mono text-[10px] truncate">
+                              <span className="text-muted-foreground/40">MsgID: </span>{log.providerMessageId}
+                            </p>
+                          )}
                           {log.errorMessage && (
-                            <p className="text-red-400/70 mt-1 italic">{log.errorMessage}</p>
+                            <p className="text-red-400/70 mt-1">{log.errorMessage}</p>
+                          )}
+                          {log.status === "failed" && log.retryAt && (
+                            <p className="text-amber-400/60 mt-0.5 text-[10px]">
+                              Auto-retry scheduled: {new Date(log.retryAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          )}
+                          {log.status === "failed" && !log.retryAt && (log.retryCount ?? 0) >= 3 && (
+                            <p className="text-red-400/50 mt-0.5 text-[10px]">Max retries reached — use Force Resend Report below to try again.</p>
                           )}
                         </div>
                       ))

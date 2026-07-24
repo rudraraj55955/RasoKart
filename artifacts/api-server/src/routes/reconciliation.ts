@@ -5,8 +5,8 @@ import { requireAuth, requireAdmin, requirePermission } from "../middlewares/aut
 import { PERMISSIONS } from "../permissions";
 import { runReconciliation } from "../helpers/reconcileEngine";
 import { loadReconConfig } from "../helpers/reconScheduler";
-import { sendReconciliationReportEmail, notifyAdminsOfUnmatchedItems, buildEmailHtml, buildRunCsv } from "../helpers/reconcileEmail";
-import { sendMail } from "../helpers/mailer";
+import { sendReconciliationReportEmail, notifyAdminsOfUnmatchedItems, buildEmailHtml, buildRunCsv, retryFailedReconEmails } from "../helpers/reconcileEmail";
+import { sendMailRich, humanizeMailError } from "../helpers/mailer";
 
 const router = Router();
 router.use(requireAuth);
@@ -331,32 +331,33 @@ router.post("/runs/:id/send-report", async (req, res, next) => {
 
     const [primaryRecipient, ...ccRecipients] = cleaned;
 
-    let delivered = false;
-    let sendError: string | null = null;
+    // sendMailRich never throws — check result.ok to determine delivery status
+    const result = await sendMailRich({
+      to: primaryRecipient,
+      ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
+      subject,
+      html,
+      attachments: [{ filename, content: csv, contentType: "text/csv" }],
+    });
 
-    try {
-      delivered = await sendMail({
-        to: primaryRecipient,
-        ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
-        subject,
-        html,
-        attachments: [{ filename, content: csv, contentType: "text/csv" }],
-      });
-    } catch (sendErr) {
-      sendError = String(sendErr);
-      req.log.error({ err: sendErr, runId }, "Failed to send manual reconciliation report email");
-    }
+    const isSent = result.ok;
+    const adminFriendlyError = isSent ? null : humanizeMailError(result);
 
     await db.insert(reconciliationEmailLogsTable).values({
       runId,
       emailType: "report",
       recipients: recipientStr,
-      status: delivered ? "sent" : "failed",
-      errorMessage: delivered ? null : (sendError ?? "SMTP not configured or delivery rejected"),
+      status: isSent ? "sent" : "failed",
+      errorMessage: adminFriendlyError,
+      providerMessageId: result.messageId ?? null,
+      retryCount: 0,
+      failureCode: result.code ?? null,
+      idempotencyKey: `manual-report-${runId}-${Date.now()}`,
     });
 
-    if (!delivered) {
-      res.status(500).json({ error: sendError ?? "Email could not be delivered — check SMTP configuration" });
+    if (!isSent) {
+      req.log.error({ runId, error: result.error, code: result.code }, "Manual reconciliation report email failed");
+      res.status(500).json({ error: adminFriendlyError ?? "Email could not be delivered — check SMTP configuration in Settings → Email." });
       return;
     }
 
@@ -430,6 +431,27 @@ router.post("/runs/:id/email-logs/resend-alert", async (req, res, next) => {
     }
 
     res.json({ ok: true, skipped: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/reconciliation/email-logs/retry-all-failed
+// Admin: immediately retry all failed report emails (covers old rows with NULL retry_at)
+router.post("/email-logs/retry-all-failed", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    await retryFailedReconEmails();
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "reconciliation_report_emails_batch_retry",
+      targetType: "reconciliation_run",
+      targetId: null,
+      details: JSON.stringify({ triggeredAt: new Date().toISOString() }),
+      ipAddress: (req as any).ip ?? null,
+    });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

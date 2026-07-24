@@ -1632,6 +1632,14 @@ async function runGuard(): Promise<void> {
   await up(db);
   logger.info({ tables: ["permissions", "role_permissions", "user_permissions", "iam_migration_log"] }, "schema_guard_table_created");
 
+  // ── reconciliation_email_logs: new metadata columns ────────────────────────
+  await db.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS provider_message_id TEXT`);
+  await db.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS failure_code TEXT`);
+  await db.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS retry_at TIMESTAMPTZ`);
+  await db.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS idempotency_key TEXT`);
+  logger.info({ table: "reconciliation_email_logs", migration: "add_email_metadata_columns" }, "schema_guard_column_added");
+
   logger.info("schema_guard_completed");
 }
 

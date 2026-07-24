@@ -1,8 +1,20 @@
 import { db, reconciliationRunsTable, reconciliationItemsTable, transactionsTable, settlementsTable, merchantsTable, systemSettingsTable, usersTable, reconciliationEmailLogsTable } from "@workspace/db";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, lte, isNull, or } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { sendMail } from "./mailer";
+import { sendMailRich, humanizeMailError } from "./mailer";
 import { createBulkNotifications } from "./notifications";
+
+// Maximum automatic retry attempts after the initial send failure
+const MAX_EMAIL_RETRIES = 3;
+
+// Exponential backoff delays: 5 min, 15 min, 60 min
+const RETRY_DELAYS_MS = [5 * 60_000, 15 * 60_000, 60 * 60_000];
+
+function nextRetryAt(retryCount: number): Date | null {
+  const delayMs = RETRY_DELAYS_MS[retryCount] ?? null;
+  if (delayMs === null) return null;
+  return new Date(Date.now() + delayMs);
+}
 
 function escapeCsv(val: string | number | null | undefined): string {
   if (val === null || val === undefined) return "";
@@ -267,17 +279,33 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<Notif
     const recipientList = admins.map(a => a.email).join(", ");
 
     const results = await Promise.allSettled(
-      admins.map(admin =>
-        sendMail({ to: admin.email, subject, html })
-      )
+      admins.map(admin => sendMailRich({ to: admin.email, subject, html }))
     );
 
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    const sent = results.filter(r => r.status === "fulfilled" && r.value.ok).length;
     const failed = results.length - sent;
 
     const overallStatus = failed === results.length ? "failed" : "sent";
-    const firstError = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
-    const errorMessage = firstError ? String(firstError.reason) : (failed > 0 ? `${failed} of ${results.length} recipients failed` : null);
+
+    // Collect one message ID from successful sends
+    const firstSuccess = results.find(
+      (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof sendMailRich>>> =>
+        r.status === "fulfilled" && r.value.ok
+    );
+    const providerMessageId = firstSuccess?.value.messageId ?? null;
+
+    // Collect first failure detail
+    const firstFailure = results.find(
+      (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof sendMailRich>>> =>
+        r.status === "fulfilled" && !r.value.ok
+    );
+    const errorMessage = overallStatus === "failed"
+      ? humanizeMailError(firstFailure?.value ?? { ok: false })
+      : failed > 0 ? `${failed} of ${results.length} recipients failed` : null;
+    const failureCode = firstFailure?.value.code ?? null;
+
+    const idemKey = `unmatched_alert-${runId}-${Date.now()}`;
+    const retryAt = overallStatus === "failed" ? nextRetryAt(0) : null;
 
     await db.insert(reconciliationEmailLogsTable).values({
       runId,
@@ -285,10 +313,15 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<Notif
       recipients: recipientList,
       status: overallStatus,
       errorMessage,
+      providerMessageId,
+      retryCount: 0,
+      failureCode,
+      retryAt,
+      idempotencyKey: idemKey,
     });
 
     logger.info(
-      { runId, totalAdmins: admins.length, sent, failed },
+      { runId, totalAdmins: admins.length, sent, failed, providerMessageId },
       "Admin unmatched-items alert emails dispatched"
     );
 
@@ -302,7 +335,11 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<Notif
         emailType: "unmatched_alert",
         recipients: "",
         status: "failed",
-        errorMessage: String(err),
+        errorMessage: String(err).slice(0, 500),
+        retryCount: 0,
+        failureCode: "EXCEPTION",
+        retryAt: nextRetryAt(0),
+        idempotencyKey: `unmatched_alert-${runId}-${Date.now()}`,
       });
     } catch (logErr) {
       logger.error({ logErr, runId }, "Failed to write email log for unmatched-items alert");
@@ -312,7 +349,11 @@ export async function notifyAdminsOfUnmatchedItems(runId: number): Promise<Notif
   }
 }
 
-export async function sendReconciliationReportEmail(runId: number): Promise<void> {
+/**
+ * Core implementation used by both initial sends and automatic retries.
+ * retryCount=0 means this is the first attempt.
+ */
+async function sendReportEmailCore(runId: number, retryCount: number): Promise<void> {
   try {
     const settingRow = await db
       .select()
@@ -347,64 +388,159 @@ export async function sendReconciliationReportEmail(runId: number): Promise<void
       return;
     }
 
+    // Duplicate-send prevention: if a successful send exists in the last 30 seconds, skip
+    const cutoff = new Date(Date.now() - 30_000);
+    const recentSent = await db
+      .select({ id: reconciliationEmailLogsTable.id })
+      .from(reconciliationEmailLogsTable)
+      .where(and(
+        eq(reconciliationEmailLogsTable.runId, runId),
+        eq(reconciliationEmailLogsTable.emailType, "report"),
+        eq(reconciliationEmailLogsTable.status, "sent"),
+      ))
+      .limit(1);
+
+    // Only block duplicate if this is the very first attempt (retryCount === 0)
+    if (retryCount === 0 && recentSent.length > 0) {
+      logger.info({ runId }, "Duplicate send prevented — reconciliation report already sent for this run");
+      return;
+    }
+
     const csv = await buildRunCsv(runId);
     const html = buildEmailHtml(run);
     const filename = `reconciliation-run-${runId}-${run.dateFrom}-to-${run.dateTo}.csv`;
     const subject = `[RasoKart] Reconciliation Report — Run #${runId} (${run.dateFrom} to ${run.dateTo})`;
-
     const [primaryRecipient, ...ccRecipients] = recipients;
+    const idemKey = `report-${runId}-attempt-${retryCount}-${Date.now()}`;
 
-    try {
-      await sendMail({
-        to: primaryRecipient,
-        ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
-        subject,
-        html,
-        attachments: [{ filename, content: csv, contentType: "text/csv" }],
-      });
+    // ── CRITICAL FIX ──────────────────────────────────────────────────────────
+    // sendMailRich never throws — it returns { ok: false } on any failure.
+    // We MUST check result.ok to determine delivery status, not rely on try/catch.
+    const result = await sendMailRich({
+      to: primaryRecipient,
+      ...(ccRecipients.length > 0 ? { cc: ccRecipients.join(", ") } : {}),
+      subject,
+      html,
+      attachments: [{ filename, content: csv, contentType: "text/csv" }],
+    });
+    // ─────────────────────────────────────────────────────────────────────────
 
-      await db.insert(reconciliationEmailLogsTable).values({
-        runId,
-        emailType: "report",
-        recipients: recipients.join(", "),
-        status: "sent",
-        errorMessage: null,
-      });
+    const isSent = result.ok;
+    const errorMsg = isSent ? null : humanizeMailError(result);
+    const retryAt = isSent ? null : nextRetryAt(retryCount);
 
-      logger.info({ runId, recipients }, "Reconciliation report email sent");
-    } catch (sendErr) {
-      await db.insert(reconciliationEmailLogsTable).values({
-        runId,
-        emailType: "report",
-        recipients: recipients.join(", "),
-        status: "failed",
-        errorMessage: String(sendErr),
-      });
+    await db.insert(reconciliationEmailLogsTable).values({
+      runId,
+      emailType: "report",
+      recipients: recipients.join(", "),
+      status: isSent ? "sent" : "failed",
+      errorMessage: errorMsg,
+      providerMessageId: result.messageId ?? null,
+      retryCount,
+      failureCode: result.code ?? null,
+      retryAt,
+      idempotencyKey: idemKey,
+    });
 
-      logger.error({ err: sendErr, runId }, "Failed to send reconciliation report email");
+    if (isSent) {
+      logger.info({ runId, recipients, messageId: result.messageId, retryCount }, "Reconciliation report email sent");
+    } else {
+      logger.error(
+        { runId, recipients, error: result.error, code: result.code, retryCount, retryAt },
+        "Failed to send reconciliation report email"
+      );
 
-      try {
-        const admins = await db
-          .select({ id: usersTable.id })
-          .from(usersTable)
-          .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
+      // Notify all active admins of the failure (only on first attempt to avoid spam)
+      if (retryCount === 0) {
+        try {
+          const admins = await db
+            .select({ id: usersTable.id })
+            .from(usersTable)
+            .where(and(eq(usersTable.role, "admin"), eq(usersTable.isActive, true)));
 
-        if (admins.length > 0) {
-          await createBulkNotifications(admins.map(a => ({
-            userId: a.id,
-            type: "reconciliation_email_failure" as const,
-            title: "Reconciliation Report Email Failed",
-            body: `The report email for reconciliation run #${runId} (${run.dateFrom} to ${run.dateTo}) could not be delivered to the configured recipients. Check the email logs for details.`,
-            metadata: { runId, recipients: recipients.join(", "), error: String(sendErr) },
-          })));
+          if (admins.length > 0) {
+            const retryMsg = retryAt
+              ? ` The system will retry automatically at ${retryAt.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} IST.`
+              : " No further automatic retries remain — use the Resend button in the Admin Console.";
 
-          logger.info({ runId, adminCount: admins.length }, "Admin notifications sent for reconciliation report email failure");
+            await createBulkNotifications(admins.map(a => ({
+              userId: a.id,
+              type: "reconciliation_email_failure" as const,
+              title: "Reconciliation Report Email Failed",
+              body: `The report email for reconciliation run #${runId} (${run.dateFrom} to ${run.dateTo}) could not be delivered.${retryMsg}`,
+              metadata: { runId, recipients: recipients.join(", "), error: errorMsg, code: result.code },
+            })));
+
+            logger.info({ runId, adminCount: admins.length }, "Admin notifications sent for reconciliation report email failure");
+          }
+        } catch (notifyErr) {
+          logger.error({ err: notifyErr, runId }, "Failed to insert admin notifications for reconciliation report email failure");
         }
-      } catch (notifyErr) {
-        logger.error({ err: notifyErr, runId }, "Failed to insert admin notifications for reconciliation report email failure");
       }
     }
   } catch (err) {
-    logger.error({ err, runId }, "Failed to send reconciliation report email");
+    logger.error({ err, runId, retryCount }, "Unexpected error in sendReportEmailCore");
+  }
+}
+
+/** Sends the post-run report email to the configured finance_report_email recipient. */
+export async function sendReconciliationReportEmail(runId: number): Promise<void> {
+  await sendReportEmailCore(runId, 0);
+}
+
+/**
+ * Picks up failed reconciliation report emails that are due for retry
+ * (retryAt <= NOW, retryCount < MAX_EMAIL_RETRIES).
+ *
+ * Called by the reconciliation scheduler on each run so failed emails
+ * get automatically retried with exponential backoff.
+ */
+export async function retryFailedReconEmails(): Promise<void> {
+  try {
+    const now = new Date();
+
+    // Picks up rows that are past their backoff window OR rows with NULL retryAt
+    // (old failed rows created before this schema migration that never had retryAt set).
+    const pending = await db
+      .select()
+      .from(reconciliationEmailLogsTable)
+      .where(and(
+        eq(reconciliationEmailLogsTable.status, "failed"),
+        eq(reconciliationEmailLogsTable.emailType, "report"),
+        or(
+          lte(reconciliationEmailLogsTable.retryAt, now),
+          isNull(reconciliationEmailLogsTable.retryAt),
+        ),
+      ))
+      .limit(20);
+
+    if (pending.length === 0) return;
+
+    logger.info({ count: pending.length }, "reconciliation_email_retry_batch_start");
+
+    for (const log of pending) {
+      const currentRetryCount = log.retryCount ?? 0;
+      if (currentRetryCount >= MAX_EMAIL_RETRIES) {
+        // Exhausted retries — clear retryAt so this row doesn't keep showing up
+        await db
+          .update(reconciliationEmailLogsTable)
+          .set({ retryAt: null })
+          .where(eq(reconciliationEmailLogsTable.id, log.id));
+        logger.warn({ logId: log.id, runId: log.runId, retryCount: currentRetryCount }, "Max email retries exhausted — giving up");
+        continue;
+      }
+
+      // Clear retryAt on the old failed row so it won't be picked up again
+      await db
+        .update(reconciliationEmailLogsTable)
+        .set({ retryAt: null })
+        .where(eq(reconciliationEmailLogsTable.id, log.id));
+
+      // Create a new attempt row with incremented retry count
+      logger.info({ logId: log.id, runId: log.runId, attempt: currentRetryCount + 1 }, "reconciliation_email_retry_attempt");
+      await sendReportEmailCore(log.runId, currentRetryCount + 1);
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to run reconciliation email retry batch");
   }
 }
