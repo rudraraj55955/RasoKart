@@ -48,6 +48,7 @@ import PressMedia from "@/pages/press-media";
 // New Legal Pages
 import AcceptableUsePolicy from "@/pages/acceptable-use-policy";
 import IntellectualPropertyPolicy from "@/pages/intellectual-property-policy";
+import RegulatoryCompliance from "@/pages/regulatory-compliance";
 import PayoutPolicy from "@/pages/payout-policy";
 // Compliance Pages
 import RiskFraudPrevention from "@/pages/risk-fraud-prevention";
@@ -628,6 +629,7 @@ function Router() {
       <Route path="/chargeback-dispute-policy" component={ChargebackDisputePolicy} />
 
       {/* Compliance pages */}
+      <Route path="/regulatory-compliance" component={RegulatoryCompliance} />
       <Route path="/security-policy" component={SecurityPolicyPage} />
       <Route path="/risk-fraud-prevention" component={RiskFraudPrevention} />
       <Route path="/data-security-policy" component={DataSecurityPolicy} />

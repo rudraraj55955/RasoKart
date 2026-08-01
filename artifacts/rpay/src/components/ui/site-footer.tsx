@@ -22,6 +22,7 @@ const legalLinks = [
 ];
 
 const complianceLinks = [
+  { label: "Regulatory & Compliance", href: "/regulatory-compliance" },
   { label: "KYC & AML Policy", href: "/kyc-aml-policy" },
   { label: "Risk & Fraud Prevention", href: "/risk-fraud-prevention" },
   { label: "Data Security Policy", href: "/data-security-policy" },

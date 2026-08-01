@@ -62,6 +62,11 @@ export default function MerchantPlanPage() {
         <p className="text-muted-foreground mt-1">Your subscription details, usage, and billing history.</p>
       </div>
 
+      {/* PayU compliance notice */}
+      <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+        These are software subscription plans for using the RasoKart platform. They are not financial, lending, investment or deposit products.
+      </div>
+
       {!plan ? (
         <Card className="border-dashed border-muted-foreground/30">
           <CardContent className="py-10 flex flex-col items-center gap-3 text-muted-foreground">

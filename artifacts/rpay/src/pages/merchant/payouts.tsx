@@ -384,6 +384,11 @@ export default function MerchantPayouts() {
         </div>
       </div>
 
+      {/* PayU compliance notice */}
+      <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+        Payout services are available only to approved business merchants after successful KYC and onboarding. All payouts are processed through authorised banking/payment partners.
+      </div>
+
       {/* Wallet balance summary */}
       {wallet && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

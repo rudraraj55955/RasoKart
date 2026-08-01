@@ -464,6 +464,11 @@ export default function MerchantSettlements() {
         </div>
       </div>
 
+      {/* PayU compliance notice */}
+      <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3 text-xs text-muted-foreground leading-relaxed">
+        Settlement information shown on this page is received from authorised payment partners. RasoKart does not independently settle merchant funds.
+      </div>
+
       {/* In-flight settlement warning banner */}
       {inFlightSettlement && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
