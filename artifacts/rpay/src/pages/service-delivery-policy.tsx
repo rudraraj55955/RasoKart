@@ -48,7 +48,7 @@ export default function ServiceDeliveryPolicy() {
         <p className="text-muted-foreground leading-relaxed max-w-2xl mt-3">
           This Service Delivery Policy describes how{" "}
           <strong className="text-foreground">{companyName}</strong> ("RasoKart") delivers its payment
-          gateway services to merchants, including service scope, availability commitments, support
+          integration services to merchants, including service scope, availability commitments, support
           timelines, and service limitations.
         </p>
       }
