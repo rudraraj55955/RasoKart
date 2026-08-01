@@ -6,8 +6,8 @@ const services = [
   "Landline Bill", "Electricity Bill", "Gas Bill", "Water Bill",
   "Insurance Premium", "Money Transfer", "AEPS", "BBPS",
   "FASTag Recharge", "Flight Booking", "Hotel Booking", "Bus Booking",
-  "Gift Vouchers", "Digital Gold", "KYC Verification", "UPI Collection",
-  "Payment Gateway", "Prepaid Cards", "QR Code & UPI", "Payout API",
+  "Gift Vouchers", "Digital Gold", "KYC Verification", "UPI Payment Integration",
+  "Payment Integration", "Prepaid Cards", "QR Code & UPI", "Payout Integration",
   "Virtual Account", "Settlement API", "Webhook API", "Merchant API"
 ];
 
@@ -55,7 +55,7 @@ const apiServices = [
   ["💸", "Money Transfer API", "Bank transfer, payout and wallet movement workflows."],
   ["🚗", "FASTag API", "Recharge and balance check structure for FASTag services."],
   ["✈️", "Travel API", "Flight, hotel and bus booking service modules."],
-  ["🔐", "Payment Gateway", "Cards, UPI, QR, payment links, webhooks and dashboard."]
+  ["🔐", "Payment Integration", "Cards, UPI, QR, payment links, webhooks and dashboard via approved partners."]
 ];
 
 export default function WhitelabelSolutionsPage() {
@@ -284,8 +284,8 @@ export default function WhitelabelSolutionsPage() {
 
       <footer className="wl-footer">
         <div className="wl-wrap wl-foot-grid">
-          <div><a className="wl-brand" href="/"><span className="wl-logo">RK</span><span>RasoKart</span></a><p>White-label payment, collection, payout and fintech service platform for merchants and partners.</p></div>
-          <div><h4>Payments</h4><a>Payment Gateway</a><a>UPI Collection</a><a>QR Code & UPI</a><a>Payout API</a></div>
+          <div><a className="wl-brand" href="/"><span className="wl-logo">RK</span><span>RasoKart</span></a><p>White-label payment integration and fintech technology platform for merchants and partners. Payment processing by approved banking/payment-service partners.</p></div>
+          <div><h4>Payments</h4><a>Payment Integration</a><a>UPI Payment Integration</a><a>QR Code & UPI</a><a>Payout Integration</a></div>
           <div><h4>Utility APIs</h4><a>Recharge API</a><a>BBPS API</a><a>FASTag</a><a>KYC</a></div>
           <div><h4>Travel</h4><a>Flight Booking</a><a>Hotel Booking</a><a>Bus Booking</a></div>
           <div><h4>Developers</h4><a href="/api-docs">API Docs</a><a href="/upi-collection-api">UPI API</a><a href="/merchant">Console Login</a></div>

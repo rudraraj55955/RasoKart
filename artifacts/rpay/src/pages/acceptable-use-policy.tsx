@@ -38,7 +38,7 @@ export default function AcceptableUsePolicy() {
       sections={sections}
       intro={
         <p className="text-muted-foreground leading-relaxed max-w-2xl mt-3">
-          This Acceptable Use Policy ("AUP") sets out the rules governing the use of RasoKart's payment gateway services and platform, operated by <strong className="text-foreground">{companyName}</strong>. All merchants, agents, payout merchants, developers, and users must comply with this policy. Using our services constitutes acceptance of these terms.
+          This Acceptable Use Policy ("AUP") sets out the rules governing the use of RasoKart's payment integration software and platform, operated by <strong className="text-foreground">{companyName}</strong>. All merchants, agents, payout merchants, developers, and users must comply with this policy. Using our services constitutes acceptance of these terms.
         </p>
       }
     >

@@ -78,7 +78,7 @@ export default function PaymentPayoutSettlementPolicy() {
           {[
             { method: "UPI (Unified Payments Interface)", desc: "Via QR codes, UPI IDs, or VPA aliases. Real-time payment confirmation." },
             { method: "NEFT / RTGS / IMPS", desc: "Via virtual account numbers assigned to the merchant. Suitable for larger transfers." },
-            { method: "Payment Links", desc: "Shareable links that redirect the payer to a hosted payment page." },
+            { method: "Payment Link Integration", desc: "Shareable links that redirect the payer to a hosted payment page via an approved payment partner." },
             { method: "QR Code", desc: "Static and dynamic QR codes for in-person and digital UPI collections." },
             { method: "API-based Collection", desc: "Programmatic order creation and payment capture via the RasoKart API (eligible plans)." },
           ].map((m) => (

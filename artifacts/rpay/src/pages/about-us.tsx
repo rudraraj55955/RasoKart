@@ -22,8 +22,8 @@ const values = [
 
 const milestones = [
   { year: "Dec 2025", title: "Company Founded", desc: "Nickey Collection Private Limited incorporated in Jaipur, Rajasthan with a vision to democratise payment infrastructure for Indian businesses." },
-  { year: "Early 2026", title: "Platform Launch", desc: "RasoKart payment gateway platform launched with QR code payments, virtual accounts, and the merchant self-serve portal." },
-  { year: "Mid 2026", title: "Payout Infrastructure", desc: "Launched the full payout engine — enabling merchants and agents to disburse funds at scale with real-time tracking." },
+  { year: "Early 2026", title: "Platform Launch", desc: "RasoKart payment technology platform launched with QR payment integration, virtual account integration, and the merchant self-serve portal." },
+  { year: "Mid 2026", title: "Payout Integration", desc: "Launched the payout integration module — enabling merchants and agents to initiate partner-routed payout requests with real-time tracking." },
   { year: "July 2026", title: "Agent Network", desc: "Opened the agent portal, enabling a distributed network to onboard and support merchants across India." },
 ];
 
@@ -109,13 +109,13 @@ export default function AboutUs() {
               Making payment infrastructure accessible to every business
             </h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              India's payment ecosystem is growing rapidly, but reliable, affordable gateway infrastructure has historically been accessible only to large enterprises. We built RasoKart to change that.
+              India's payment ecosystem is growing rapidly, but reliable, affordable payment integration infrastructure has historically been accessible only to large enterprises. We built RasoKart to change that.
             </p>
             <p className="text-muted-foreground leading-relaxed mb-6">
-              Whether you're a startup accepting your first payment, a merchant scaling from thousands to lakhs of transactions, or an enterprise needing a white-label gateway infrastructure — RasoKart meets you where you are.
+              Whether you're a startup integrating your first payment service, a merchant scaling from thousands to lakhs of transactions, or an enterprise needing a white-label payment integration platform — RasoKart meets you where you are.
             </p>
             <div className="space-y-3">
-              {["Transparent pricing with no hidden charges", "Real-time dashboards and analytics", "Dedicated support for every merchant tier", "Bank-grade security and PCI-compliant infrastructure"].map(item => (
+              {["Transparent pricing with no hidden charges", "Real-time dashboards and analytics", "Dedicated support for every merchant tier", "Secure integration practices and PCI-aligned software infrastructure"].map(item => (
                 <div key={item} className="flex items-center gap-3 text-sm text-muted-foreground">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   {item}
@@ -183,7 +183,7 @@ export default function AboutUs() {
       <section className="mx-auto max-w-7xl px-4 sm:px-6 py-16 w-full">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold tracking-tight mb-3">What RasoKart Offers</h2>
-          <p className="text-muted-foreground max-w-xl mx-auto">A complete payments operating system — from collection to disbursement, all in one place.</p>
+          <p className="text-muted-foreground max-w-xl mx-auto">A complete merchant technology platform — from onboarding to payment integration and reconciliation, all in one place.</p>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[

@@ -97,7 +97,7 @@ export default function PricingFeesSettlementPolicy() {
       intro={
         <p className="text-muted-foreground leading-relaxed max-w-2xl mt-3">
           This policy describes the subscription plans, transaction fees, and settlement terms applicable to
-          merchants using the <strong className="text-foreground">RasoKart</strong> payment gateway platform
+          merchants using the <strong className="text-foreground">RasoKart</strong> payment technology platform
           operated by <strong className="text-foreground">{companyName}</strong>. All fees are subject to
           applicable taxes.
         </p>

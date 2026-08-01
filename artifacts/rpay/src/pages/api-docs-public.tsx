@@ -13,8 +13,8 @@ const BASE_URL = "https://rasokart.com/api";
 
 const sections = [
   { id: "auth", title: "Authentication" },
-  { id: "payments", title: "Payments & Collections" },
-  { id: "payouts", title: "Payouts & Disbursements" },
+  { id: "payments", title: "Payment Integrations" },
+  { id: "payouts", title: "Payout Integrations" },
   { id: "webhooks", title: "Webhooks" },
   { id: "errors", title: "Error Codes" },
 ];
@@ -42,12 +42,12 @@ const payoutEndpoints = [
 ];
 
 const webhookEvents = [
-  { event: "payment.success", desc: "Payment collected successfully" },
-  { event: "payment.failed", desc: "Payment attempt failed" },
-  { event: "payment.refunded", desc: "Refund processed for a transaction" },
-  { event: "payout.completed", desc: "Payout disbursed to beneficiary" },
-  { event: "payout.failed", desc: "Payout disbursement failed" },
-  { event: "payout.reversed", desc: "Payout reversed by provider" },
+  { event: "payment.success", desc: "Payment notification received via partner — transaction confirmed" },
+  { event: "payment.failed", desc: "Payment attempt failed at provider level" },
+  { event: "payment.refunded", desc: "Refund processed by payment partner" },
+  { event: "payout.completed", desc: "Payout processed by payment partner to beneficiary" },
+  { event: "payout.failed", desc: "Payout processing failed at partner level" },
+  { event: "payout.reversed", desc: "Payout reversed by payment partner" },
   { event: "account.kyc_approved", desc: "Merchant KYC approved" },
   { event: "account.suspended", desc: "Merchant account suspended" },
 ];
@@ -139,6 +139,9 @@ export default function ApiDocsPublic() {
               <p className="text-muted-foreground leading-relaxed max-w-2xl">
                 The RasoKart API is a RESTful service over HTTPS. All requests and responses use JSON. Authentication is via JWT Bearer tokens generated from your API key.
               </p>
+              <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200/90 leading-relaxed">
+                <strong className="text-amber-300">Important:</strong> Production payment processing is available only through approved banking/payment-service partners and provider-issued credentials. All API examples on this page are sandbox integration examples — no real money movement occurs in the sandbox environment.
+              </div>
               <div className="mt-4 rounded-xl border border-border/60 bg-card/40 p-4 text-sm">
                 <p className="text-xs text-muted-foreground mb-1">Base URL</p>
                 <code className="font-mono text-cyan-400">{BASE_URL}</code>
@@ -180,7 +183,7 @@ export default function ApiDocsPublic() {
                 <div className="p-2 rounded-lg bg-card border border-border/50">
                   <Globe className="w-4 h-4 text-emerald-400" />
                 </div>
-                <h2 className="text-xl font-semibold">Payments & Collections</h2>
+                <h2 className="text-xl font-semibold">Payment Integrations</h2>
               </div>
               <div className="rounded-xl border border-border/60 overflow-hidden">
                 <table className="w-full text-sm">
@@ -198,7 +201,7 @@ export default function ApiDocsPublic() {
                 <div className="p-2 rounded-lg bg-card border border-border/50">
                   <Zap className="w-4 h-4 text-violet-400" />
                 </div>
-                <h2 className="text-xl font-semibold">Payouts & Disbursements</h2>
+                <h2 className="text-xl font-semibold">Payout Integrations</h2>
               </div>
               <div className="rounded-xl border border-border/60 overflow-hidden">
                 <table className="w-full text-sm">

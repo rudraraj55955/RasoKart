@@ -75,7 +75,7 @@ export default function ServiceDeliveryPolicy() {
           {[
             { title: "QR Payment Technology", desc: "Dynamic and static UPI QR codes for in-person and digital payment collection, processed through authorised payment partners." },
             { title: "Virtual Account Technology", desc: "Unique bank virtual account numbers (VAs) for NEFT, RTGS, and IMPS-based deposits via authorised banking partners." },
-            { title: "Partner-enabled Payment Links", desc: "Shareable, trackable payment links for invoicing and remote collections, processed through authorised payment partners." },
+            { title: "Payment Link Integration", desc: "Shareable, trackable payment links for invoicing and remote requests, processed through authorised payment partners." },
             { title: "Merchant Payout Integration", desc: "Programmatic disbursement of funds to bank accounts and UPI IDs." },
             { title: "Reconciliation Engine", desc: "Automated matching of deposits against settlements with full audit trail." },
             { title: "Merchant Dashboard", desc: "Real-time visibility into transactions, balances, settlements, and analytics." },

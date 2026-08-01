@@ -49,23 +49,23 @@ import { InstallAppButton } from "@/components/ui/install-app-banner";
 const services = [
   {
     icon: QrCode,
-    title: "QR Collection",
+    title: "QR Payment Integration",
     description:
-      "Generate dynamic and static QR codes for UPI collections. Track every scan and collection in real time through your merchant dashboard.",
+      "Configure dynamic and static UPI QR code integrations via approved partners. Track every scan and payment notification in real time through your merchant dashboard.",
     color: "text-cyan-400",
     bg: "bg-cyan-400/10",
   },
   {
     icon: Landmark,
-    title: "Virtual Accounts",
+    title: "Virtual Account Integration",
     description:
-      "Assign unique virtual bank accounts to each merchant for NEFT, RTGS, and IMPS collections through integrated banking partners.",
+      "Assign unique virtual bank accounts to each merchant for NEFT, RTGS, and IMPS deposits through integrated banking partners.",
     color: "text-violet-400",
     bg: "bg-violet-400/10",
   },
   {
     icon: Wallet,
-    title: "UPI Collection",
+    title: "UPI Payment Integration",
     description:
       "Connect and manage UPI payment-service-provider integrations through a unified software interface with reconciliation and reporting.",
     color: "text-emerald-400",
@@ -81,9 +81,9 @@ const services = [
   },
   {
     icon: FileText,
-    title: "Payment Links",
+    title: "Payment Link Integration",
     description:
-      "Create shareable, trackable payment links for invoices, subscriptions, and one-time collections through integrated provider services.",
+      "Create shareable, trackable payment links for invoices, subscriptions, and one-time requests, processed through integrated provider services.",
     color: "text-rose-400",
     bg: "bg-rose-400/10",
   },
@@ -111,7 +111,7 @@ const merchantFeatures = [
 const planFeatures = [
   "Unlimited QR code generation",
   "Virtual account provisioning",
-  "UPI collection with reconciliation",
+  "UPI integration and reconciliation tools",
   "Real-time webhook delivery",
   "API integration with sandbox",
   "Dedicated account manager",
@@ -376,7 +376,7 @@ export default function Landing() {
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
               Plans starting free — scale as you grow with Silver, Gold, Platinum, and custom
-              enterprise tiers. Every plan includes core collection features.
+              enterprise tiers. Every plan includes core software and integration features.
             </p>
           </div>
 
@@ -422,7 +422,7 @@ export default function Landing() {
               <div className="rounded-2xl border border-border/40 bg-card/40 p-6 backdrop-blur-sm">
                 <div className="mb-4 flex items-center justify-between">
                   <span className="text-sm font-semibold">Settlement Overview</span>
-                  <Badge className="border-emerald-400/30 bg-emerald-400/10 text-emerald-400" variant="outline">Live</Badge>
+                  <Badge className="border-amber-400/30 bg-amber-400/10 text-amber-400" variant="outline">Demo Data</Badge>
                 </div>
                 <div className="space-y-3">
                   {[
@@ -441,7 +441,7 @@ export default function Landing() {
                   ))}
                 </div>
                 <div className="mt-4 flex gap-2">
-                  <div className="flex-1 rounded-lg border border-border/30 bg-emerald-500/10 px-3 py-2 text-center text-xs text-emerald-400">Request Settlement</div>
+                  <div className="flex-1 rounded-lg border border-border/30 bg-emerald-500/10 px-3 py-2 text-center text-xs text-emerald-400">View Settlement Status</div>
                   <div className="flex-1 rounded-lg border border-border/30 bg-primary/10 px-3 py-2 text-center text-xs text-primary">View History</div>
                 </div>
               </div>
@@ -453,19 +453,19 @@ export default function Landing() {
                 Settlement Dashboard
               </Badge>
               <h2 className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl">
-                Track Every Rupee,{" "}
+                Track Transactions{" "}
                 <span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
-                  Settle on Schedule
+                  and Settlement Status
                 </span>
               </h2>
               <p className="mb-6 text-muted-foreground">
-                Merchants get a real-time settlement dashboard showing collected funds, pending
-                disbursements, and full balance history — with one-click payout requests.
+                Merchants get a real-time settlement dashboard showing transaction summaries, pending
+                settlement statuses, and full balance history — with partner-routed payout requests.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { icon: IndianRupee, label: "Real-time balance visibility" },
-                  { icon: CheckCircle2, label: "One-click payout requests" },
+                  { icon: CheckCircle2, label: "Partner-routed payout requests" },
                   { icon: BarChart3, label: "Collection trend charts" },
                   { icon: FileText, label: "Downloadable settlement CSV" },
                   { icon: Bell, label: "Settlement status alerts" },
@@ -522,12 +522,15 @@ export default function Landing() {
                 <div className="h-3 w-3 rounded-full bg-rose-500" />
                 <div className="h-3 w-3 rounded-full bg-amber-500" />
                 <div className="h-3 w-3 rounded-full bg-emerald-500" />
-                <span className="ml-2 text-xs text-zinc-500">collect-payment.sh</span>
+                <span className="ml-2 text-xs text-zinc-500">payment-integration-example.sh</span>
+              </div>
+              <div className="mb-3 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-300/80">
+                Sandbox integration example — no real money movement. Production payment processing is available only through approved banking/payment-service partners and provider-issued credentials.
               </div>
               <pre className="overflow-x-auto leading-relaxed text-zinc-300">
 {`curl -X POST https://rasokart.com/api/callbacks \\
   -H "Content-Type: application/json" \\
-  -H "X-Api-Key: rasokart_live_your_key" \\
+  -H "X-Api-Key: rasokart_test_your_key" \\
   -H "X-Signature: sha256=abc123..." \\
   -d '{
     "amount": 50000,
@@ -594,7 +597,7 @@ export default function Landing() {
                 <Link href="/upi-collection-api">
                   <Button className="w-fit gap-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:opacity-90">
                     <Terminal className="h-4 w-4" />
-                    UPI Collection API
+                    UPI Integration API
                   </Button>
                 </Link>
                 <Link href="/merchant/api-docs">
@@ -625,7 +628,7 @@ export default function Landing() {
               <div className="rounded-2xl border border-amber-400/20 bg-card/40 p-6 backdrop-blur-sm">
                 <div className="mb-4 flex items-center justify-between">
                   <span className="text-sm font-semibold text-amber-400">Payout Dashboard</span>
-                  <Badge className="border-amber-400/30 bg-amber-400/10 text-amber-400" variant="outline">Live</Badge>
+                  <Badge className="border-amber-400/30 bg-amber-400/10 text-amber-400" variant="outline">Demo</Badge>
                 </div>
                 <div className="space-y-3">
                   {[
@@ -662,9 +665,7 @@ export default function Landing() {
                 </span>
               </h2>
               <p className="mb-6 text-muted-foreground">
-                RasoKart's Payout Portal is purpose-built for businesses that need to disburse funds at
-                scale — salary payments, vendor settlements, commission payouts, and more.
-                Register, complete KYC, and start sending payouts.
+                RasoKart provides payout workflow and integration software. Actual fund disbursement is performed by approved banking or payment-service partners after KYC, account activation, risk approval and partner approval.
               </p>
               <div className="mb-8 grid grid-cols-2 gap-3">
                 {[
@@ -707,10 +708,10 @@ export default function Landing() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="flex flex-wrap items-center justify-center gap-10 text-muted-foreground">
             {[
-              { icon: Shield, label: "PCI-DSS Compliant" },
-              { icon: Lock, label: "256-bit TLS Encryption" },
-              { icon: Globe, label: "Multi-region Redundancy" },
-              { icon: Users, label: "Dedicated Support Team" },
+              { icon: Shield, label: "Secure integration practices" },
+              { icon: Lock, label: "Encrypted data transmission" },
+              { icon: Globe, label: "Standard security controls" },
+              { icon: Users, label: "Merchant support team" },
             ].map((t) => (
               <div key={t.label} className="flex items-center gap-2 text-sm">
                 <t.icon className="h-4 w-4 text-primary" />
@@ -737,11 +738,10 @@ export default function Landing() {
                 Get Started
               </Badge>
               <h2 className="mb-4 text-4xl font-bold tracking-tight sm:text-5xl">
-                Ready to Accept Payments?
+                Ready to Integrate Payment Services?
               </h2>
               <p className="mb-8 text-muted-foreground">
-                Join thousands of merchants on RasoKart. Apply for an account today — our team will
-                review and onboard you within 24 hours.
+                Apply for a merchant account today — our team will review your application. Onboarding timelines depend on verification and partner approval.
               </p>
               <div className="flex flex-wrap gap-4">
                 <Link href="/merchant/apply">
@@ -771,15 +771,9 @@ export default function Landing() {
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                      <Phone className="h-4 w-4 text-primary" />
-                    </div>
-                    <span>+91 1800 123 4567 (Toll Free)</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                       <MapPin className="h-4 w-4 text-primary" />
                     </div>
-                    <span>Mumbai, Maharashtra, India</span>
+                    <span>Jaipur, Rajasthan, India</span>
                   </div>
                 </div>
               </div>
