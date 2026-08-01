@@ -1248,9 +1248,9 @@ export default function UpiCollectionApi() {
             <QrCode className="w-6 h-6 text-teal-400" />
           </div>
           <div>
-            <h3 className="text-lg font-bold">Ready to start collecting?</h3>
+            <h3 className="text-lg font-bold">Ready to get started?</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Generate your API key and accept your first payment in under 5 minutes.
+              Generate your API key and accept your first partner-processed payment in under 5 minutes.
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-3">

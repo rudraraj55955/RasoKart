@@ -870,8 +870,7 @@ export default function Landing() {
                 <span className="text-lg font-bold">RasoKart</span>
               </div>
               <p className="max-w-xs text-sm text-muted-foreground">
-                India's most trusted payment gateway infrastructure for modern businesses.
-                Collect, reconcile, and settle with confidence.
+                RasoKart provides software and payment technology infrastructure for businesses. Regulated payment processing is provided through approved banking and payment partners.
               </p>
             </div>
 
@@ -889,11 +888,11 @@ export default function Landing() {
             <div>
               <div className="mb-3 text-sm font-semibold">Services</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>QR Code Collection</li>
-                <li>Virtual Accounts</li>
-                <li>UPI Payments</li>
+                <li>QR Payment Technology</li>
+                <li>Virtual Account Technology</li>
+                <li>Partner-enabled UPI Payments</li>
                 <li>Payout API</li>
-                <li>Payment Links</li>
+                <li>Partner-enabled Payment Links</li>
               </ul>
             </div>
 

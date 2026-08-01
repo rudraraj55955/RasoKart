@@ -98,7 +98,7 @@ export function SiteFooter() {
             </Link>
             <p className="text-xs text-muted-foreground leading-relaxed mb-4">
               {footerText ||
-                "Secure, reliable payment gateway infrastructure for modern Indian businesses."}
+                "RasoKart provides software and payment technology infrastructure for businesses. Regulated payment processing is provided through approved banking and payment partners."}
             </p>
             <div className="space-y-1.5">
               {supportPhone && (

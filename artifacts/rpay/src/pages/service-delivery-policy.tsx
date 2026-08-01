@@ -58,11 +58,12 @@ export default function ServiceDeliveryPolicy() {
         <SectionAnchor id="overview" />
         <SectionHeading icon={FileText} title="1. Overview" color="text-cyan-400" id="overview" />
         <p className="text-muted-foreground text-sm leading-relaxed">
-          RasoKart provides a Software-as-a-Service (SaaS) payment gateway platform that enables merchants to
-          collect payments, manage payouts, generate QR codes and virtual accounts, access payment links,
-          and view reconciliation and settlement reports — all through a unified merchant dashboard and API.
-          This policy sets out the standards and commitments we make to our merchants in delivering these
-          services.
+          RasoKart provides a Software-as-a-Service (SaaS) payment technology platform. Payment processing
+          and settlement are provided through approved banking and payment-service partners, subject to
+          onboarding and approval. The platform enables merchants to manage payouts, generate QR codes and
+          virtual accounts, access payment links, and view reconciliation and settlement reports — all through
+          a unified merchant dashboard and API. This policy sets out the standards and commitments we make to
+          our merchants in delivering these services.
         </p>
       </section>
 
@@ -72,9 +73,9 @@ export default function ServiceDeliveryPolicy() {
         <SectionHeading icon={Globe} title="2. Services We Provide" color="text-violet-400" id="services" />
         <div className="grid gap-3 sm:grid-cols-2">
           {[
-            { title: "QR Code Collection", desc: "Dynamic and static UPI QR codes for in-person and digital payment collection." },
-            { title: "Virtual Accounts", desc: "Unique bank virtual account numbers (VAs) for NEFT, RTGS, and IMPS-based deposits." },
-            { title: "Payment Links", desc: "Shareable, trackable payment links for invoicing and remote collections." },
+            { title: "QR Payment Technology", desc: "Dynamic and static UPI QR codes for in-person and digital payment collection, processed through authorised payment partners." },
+            { title: "Virtual Account Technology", desc: "Unique bank virtual account numbers (VAs) for NEFT, RTGS, and IMPS-based deposits via authorised banking partners." },
+            { title: "Partner-enabled Payment Links", desc: "Shareable, trackable payment links for invoicing and remote collections, processed through authorised payment partners." },
             { title: "Payout API", desc: "Programmatic disbursement of funds to bank accounts and UPI IDs." },
             { title: "Reconciliation Engine", desc: "Automated matching of deposits against settlements with full audit trail." },
             { title: "Merchant Dashboard", desc: "Real-time visibility into transactions, balances, settlements, and analytics." },
