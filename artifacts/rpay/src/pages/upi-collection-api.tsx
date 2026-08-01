@@ -1026,7 +1026,7 @@ export default function UpiCollectionApi() {
             REST · JSON · HTTPS
           </Badge>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">UPI Collection API</h1>
+        <h1 className="text-3xl font-bold tracking-tight">UPI Integration API</h1>
         <p className="text-muted-foreground text-base leading-relaxed max-w-2xl">
           Accept UPI payments programmatically. Generate dynamic QR codes, receive real-time webhooks,
           and reconcile deposits automatically — all through a single clean API.

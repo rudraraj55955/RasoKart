@@ -43,7 +43,7 @@ const developerLinks = [
   { label: "API Documentation", href: "/api-docs" },
   { label: "Integration Guide", href: "/integration-guide" },
   { label: "Service Delivery", href: "/service-delivery-policy" },
-  { label: "UPI Collection API", href: "/upi-collection-api" },
+  { label: "UPI Integration API", href: "/upi-collection-api" },
 ];
 
 const merchantLinks = [
@@ -98,7 +98,7 @@ export function SiteFooter() {
             </Link>
             <p className="text-xs text-muted-foreground leading-relaxed mb-4">
               {footerText ||
-                "RasoKart provides software and payment technology infrastructure for businesses. Regulated payment processing is provided through approved banking and payment partners."}
+                "Merchant payment technology platform for onboarding, reconciliation and payment integration. Payment processing and settlement are provided through authorised banking and payment partners."}
             </p>
             <div className="space-y-1.5">
               {supportPhone && (

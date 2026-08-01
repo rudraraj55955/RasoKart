@@ -76,7 +76,7 @@ export default function ServiceDeliveryPolicy() {
             { title: "QR Payment Technology", desc: "Dynamic and static UPI QR codes for in-person and digital payment collection, processed through authorised payment partners." },
             { title: "Virtual Account Technology", desc: "Unique bank virtual account numbers (VAs) for NEFT, RTGS, and IMPS-based deposits via authorised banking partners." },
             { title: "Partner-enabled Payment Links", desc: "Shareable, trackable payment links for invoicing and remote collections, processed through authorised payment partners." },
-            { title: "Payout API", desc: "Programmatic disbursement of funds to bank accounts and UPI IDs." },
+            { title: "Merchant Payout Integration", desc: "Programmatic disbursement of funds to bank accounts and UPI IDs." },
             { title: "Reconciliation Engine", desc: "Automated matching of deposits against settlements with full audit trail." },
             { title: "Merchant Dashboard", desc: "Real-time visibility into transactions, balances, settlements, and analytics." },
           ].map((s) => (
@@ -106,7 +106,7 @@ export default function ServiceDeliveryPolicy() {
           {[
             { label: "Merchant Dashboard", sla: "99.5% monthly uptime", note: "Excludes scheduled maintenance windows" },
             { label: "Payment API (collection)", sla: "99.5% monthly uptime", note: "Excludes banking partner outages and scheduled maintenance" },
-            { label: "Payout API", sla: "99.0% monthly uptime", note: "Subject to banking and settlement partner availability" },
+            { label: "Merchant Payout Integration", sla: "99.0% monthly uptime", note: "Subject to banking and settlement partner availability" },
           ].map((r) => (
             <div key={r.label} className="flex items-start justify-between gap-4 rounded-lg border border-border/50 bg-card/40 px-4 py-3">
               <div>

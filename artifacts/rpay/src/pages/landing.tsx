@@ -870,7 +870,7 @@ export default function Landing() {
                 <span className="text-lg font-bold">RasoKart</span>
               </div>
               <p className="max-w-xs text-sm text-muted-foreground">
-                RasoKart provides software and payment technology infrastructure for businesses. Regulated payment processing is provided through approved banking and payment partners.
+                Merchant payment technology platform for onboarding, reconciliation and payment integration. Payment processing and settlement are provided through authorised banking and payment partners.
               </p>
             </div>
 
@@ -888,18 +888,18 @@ export default function Landing() {
             <div>
               <div className="mb-3 text-sm font-semibold">Services</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>QR Payment Technology</li>
-                <li>Virtual Account Technology</li>
-                <li>Partner-enabled UPI Payments</li>
-                <li>Payout API</li>
-                <li>Partner-enabled Payment Links</li>
+                <li>QR Payment Integration</li>
+                <li>Virtual Account Integration</li>
+                <li>Partner-enabled UPI</li>
+                <li>Merchant Payout Integration</li>
+                <li>Payment Link Integration</li>
               </ul>
             </div>
 
             <div>
               <div className="mb-3 text-sm font-semibold">Developers</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/upi-collection-api" className="transition-colors hover:text-foreground">UPI Collection API</Link></li>
+                <li><Link href="/upi-collection-api" className="transition-colors hover:text-foreground">UPI Integration API</Link></li>
                 <li><Link href="/merchant/api-docs" className="transition-colors hover:text-foreground">Merchant API Docs</Link></li>
               </ul>
             </div>
