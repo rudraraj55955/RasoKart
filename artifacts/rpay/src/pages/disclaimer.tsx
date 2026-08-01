@@ -70,7 +70,7 @@ export default function Disclaimer() {
         <SectionAnchor id="service" />
         <SectionHeading icon={AlertTriangle} title="2. Service Disclaimer" color="text-orange-400" id="service" />
         <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-          RasoKart is a payment gateway technology platform. We are not a bank, financial institution,
+          RasoKart is a merchant software and payment integration platform. We are not a bank, financial institution,
           payment aggregator, payment service provider, or non-banking financial company (NBFC). We do
           not hold, manage, or invest your funds. Funds collected through the Platform are held in
           designated accounts managed by our authorised banking partners.
