@@ -57,7 +57,7 @@ export default function IntellectualPropertyPolicy() {
         <ul className="space-y-2">
           {[
             "The RasoKart name, brand identity, logo, and all visual design elements",
-            "The RasoKart payment gateway platform, including all frontend and backend software",
+            "The RasoKart payment technology platform, including all frontend and backend software",
             "All APIs, SDKs, developer tools, and associated documentation",
             "The merchant portal, admin portal, agent portal, and payout merchant portal UX/UI designs",
             "All written content, policies, guides, and marketing materials published on rasokart.com",

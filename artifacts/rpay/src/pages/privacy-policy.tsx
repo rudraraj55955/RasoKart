@@ -145,7 +145,7 @@ export default function PrivacyPolicy() {
               <p className="text-muted-foreground leading-relaxed max-w-2xl">
                 This Privacy Policy explains how <strong className="text-foreground">{resolvedCompany}</strong>{" "}
                 ("RasoKart", "we", "our", or "us") collects, uses, stores, and protects information
-                when you use our payment gateway platform at{" "}
+                when you use our payment technology platform at{" "}
                 <a href={WEBSITE} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
                   {WEBSITE}
                 </a>

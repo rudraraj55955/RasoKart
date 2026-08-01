@@ -158,7 +158,7 @@ export default function Disclaimer() {
         <SectionAnchor id="regulatory" />
         <SectionHeading icon={Shield} title="7. Regulatory Disclaimer" color="text-emerald-400" id="regulatory" />
         <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-          RasoKart is a technology platform that facilitates payment gateway services. We are not a
+          RasoKart is a technology platform that facilitates payment integration services. We are not a
           bank, insurance company, investment advisor, or regulated financial intermediary. We do not:
         </p>
         <ul className="space-y-2 mb-4">

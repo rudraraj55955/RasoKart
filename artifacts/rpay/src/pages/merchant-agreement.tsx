@@ -84,8 +84,8 @@ export default function MerchantAgreement() {
         <div className="grid gap-3 sm:grid-cols-2 mb-4">
           {[
             { term: "Company", def: `${companyName}, CIN ${CIN}, incorporated in Rajasthan, India, operating the RasoKart platform.` },
-            { term: "Merchant", def: "Any business entity or individual that registers on the Platform to use payment gateway services." },
-            { term: "Platform", def: "The RasoKart payment gateway software, dashboard, APIs, and related services." },
+            { term: "Merchant", def: "Any business entity or individual that registers on the Platform to use payment integration services." },
+            { term: "Platform", def: "The RasoKart payment integration software, dashboard, APIs, and related services." },
             { term: "Services", def: "All payment collection, payout, reconciliation, and related services provided through the Platform." },
             { term: "Customer", def: "The end-user or buyer who makes a payment to the Merchant through the Platform." },
             { term: "Settlement", def: "Transfer of collected funds, net of fees, from the Platform to the Merchant's bank account." },

@@ -64,7 +64,7 @@ export default function RefundCancellationPolicy() {
         <SectionAnchor id="overview" />
         <SectionHeading icon={FileText} title="1. Overview" color="text-cyan-400" id="overview" />
         <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-          RasoKart provides payment gateway infrastructure services to registered merchants. This policy
+          RasoKart provides payment integration infrastructure services to registered merchants. This policy
           addresses two distinct types of refunds:
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
