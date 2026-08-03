@@ -760,6 +760,154 @@ export async function getRoutingStatus(): Promise<{
 
 import { asc } from "drizzle-orm";
 
+// ── Failover event list builder ───────────────────────────────────────────────
+
+export type FailoverEventRow = {
+  id: number;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+};
+
+export type RecoveryEventRow = {
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+};
+
+export type BuiltFailoverEvent = {
+  id: number;
+  eventKind: "chain_exhausted" | "threshold_alert";
+  createdAt: string;
+  failureCount: number | null;
+  windowMinutes: number | null;
+  triggerMerchantId: number | null;
+  triggerAmount: number | null;
+  /** Filled in by the route caller via a DB selectDistinct after this function returns. */
+  providersInvolved: string[];
+  status: "resolved" | "ongoing";
+  resolvedAt: string | null;
+  durationSeconds: number | null;
+  note: string | null;
+};
+
+const FAILOVER_STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+/**
+ * Pure data merge: combine chain-exhausted and threshold-alert notification rows
+ * into a deduplicated, recovery-correlated, newest-first event list.
+ *
+ * Since every admin recipient gets their own notification row, per-admin duplicates
+ * are collapsed using a deterministic dedup key per event kind:
+ *   chain_exhausted  → `chain_exhausted|<createdAt ISO>|<triggerMerchantId>`
+ *   threshold_alert  → `threshold_alert|<createdAt ISO>|<failureCount>|<triggerMerchantId>`
+ *
+ * Recovery status is correlated by matching exhaustedAt (chain events) or
+ * outageStartedAt (threshold events) against the outageStartedAt key in
+ * gateway_recovered notifications — the same ISO string written to
+ * PAYIN_CHAIN_EXHAUSTED_SINCE when the outage first started.
+ *
+ * providersInvolved is always [] in the returned events; callers must enrich it
+ * separately via a selectDistinct on routing_logs.
+ */
+export function buildFailoverEventList(params: {
+  chainRows: FailoverEventRow[];
+  thresholdRows: FailoverEventRow[];
+  recoveryRows: RecoveryEventRow[];
+  now?: number;
+}): BuiltFailoverEvent[] {
+  const { chainRows, thresholdRows, recoveryRows, now = Date.now() } = params;
+
+  type RecoveryInfo = { recoveredAt: string; durationSeconds: number };
+  const recoveryMap = new Map<string, RecoveryInfo>();
+  for (const rec of recoveryRows) {
+    const m = (rec.metadata ?? {}) as {
+      outageStartedAt?: string;
+      recoveredAt?: string;
+      durationSeconds?: number;
+    };
+    if (m.outageStartedAt && m.recoveredAt && m.durationSeconds != null && !recoveryMap.has(m.outageStartedAt)) {
+      recoveryMap.set(m.outageStartedAt, { recoveredAt: m.recoveredAt, durationSeconds: m.durationSeconds });
+    }
+  }
+
+  const seen = new Set<string>();
+  const events: BuiltFailoverEvent[] = [];
+
+  // ── gateway_chain_exhausted — immediate, first-exhaustion-per-outage alerts ─
+  for (const r of chainRows) {
+    const meta = (r.metadata ?? {}) as {
+      triggerMerchantId?: number;
+      triggerAmount?: number;
+      exhaustedAt?: string;
+    };
+    const dedupKey = `chain_exhausted|${r.createdAt.toISOString()}|${meta.triggerMerchantId ?? ""}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    // Recovery keyed by exhaustedAt — the ISO string written to PAYIN_CHAIN_EXHAUSTED_SINCE
+    // when this outage started, and later used as outageStartedAt in the recovery notif.
+    const recovery = meta.exhaustedAt ? (recoveryMap.get(meta.exhaustedAt) ?? null) : null;
+    const isStale = !recovery && (now - r.createdAt.getTime()) > FAILOVER_STALE_THRESHOLD_MS;
+    const status: "resolved" | "ongoing" = (recovery || isStale) ? "resolved" : "ongoing";
+    const note = isStale
+      ? "Auto-closed — no recovery signal was recorded. The server may have restarted during this outage."
+      : null;
+
+    events.push({
+      id: r.id,
+      eventKind: "chain_exhausted",
+      createdAt: r.createdAt.toISOString(),
+      failureCount: null,
+      windowMinutes: null,
+      triggerMerchantId: meta.triggerMerchantId ?? null,
+      triggerAmount: meta.triggerAmount ?? null,
+      providersInvolved: [],
+      status,
+      resolvedAt: recovery?.recoveredAt ?? null,
+      durationSeconds: recovery?.durationSeconds ?? null,
+      note,
+    });
+  }
+
+  // ── gateway_failover_exhausted — rolling-window threshold alerts ───────────
+  for (const r of thresholdRows) {
+    const meta = (r.metadata ?? {}) as {
+      failureCount?: number;
+      windowMinutes?: number;
+      triggerMerchantId?: number;
+      outageStartedAt?: string;
+    };
+    const dedupKey = `threshold_alert|${r.createdAt.toISOString()}|${meta.failureCount ?? 0}|${meta.triggerMerchantId ?? ""}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    const windowMinutes = meta.windowMinutes ?? 60;
+    const recovery = meta.outageStartedAt ? (recoveryMap.get(meta.outageStartedAt) ?? null) : null;
+    const isStale = !recovery && (now - r.createdAt.getTime()) > FAILOVER_STALE_THRESHOLD_MS;
+    const status: "resolved" | "ongoing" = (recovery || isStale) ? "resolved" : "ongoing";
+    const note = isStale
+      ? "Auto-closed — no recovery signal was recorded. The server may have restarted during this outage."
+      : null;
+
+    events.push({
+      id: r.id,
+      eventKind: "threshold_alert",
+      createdAt: r.createdAt.toISOString(),
+      failureCount: meta.failureCount ?? 0,
+      windowMinutes,
+      triggerMerchantId: meta.triggerMerchantId ?? null,
+      triggerAmount: null,
+      providersInvolved: [],
+      status,
+      resolvedAt: recovery?.recoveredAt ?? null,
+      durationSeconds: recovery?.durationSeconds ?? null,
+      note,
+    });
+  }
+
+  events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return events;
+}
+
 // ── Dry-run simulation ────────────────────────────────────────────────────────
 
 export interface SimulateStep {

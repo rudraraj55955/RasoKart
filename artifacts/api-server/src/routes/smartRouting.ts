@@ -32,7 +32,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, asc, ne, gte, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
-import { simulateRouting } from "../helpers/smartRouter";
+import { simulateRouting, buildFailoverEventList } from "../helpers/smartRouter";
 import { usersTable } from "@workspace/db";
 import { createBulkNotifications } from "../helpers/notifications";
 
@@ -668,131 +668,34 @@ router.get("/failover-events", async (req, res, next) => {
         .orderBy(desc(notificationsTable.createdAt)),
     ]);
 
-    // Build a recovery map keyed by outageStartedAt ISO string.
-    // gateway_recovered metadata stores { outageStartedAt, recoveredAt, durationSeconds }.
-    // gateway_failover_exhausted metadata has outageStartedAt (from PAYIN_CHAIN_EXHAUSTED_SINCE).
-    // gateway_chain_exhausted metadata has exhaustedAt (the same value — the ISO string
-    // written to PAYIN_CHAIN_EXHAUSTED_SINCE when the marker was first set).
-    type RecoveryInfo = { recoveredAt: string; durationSeconds: number };
-    const recoveryMap = new Map<string, RecoveryInfo>();
-    for (const rec of recoveryRows) {
-      const m = (rec.metadata ?? {}) as { outageStartedAt?: string; recoveredAt?: string; durationSeconds?: number };
-      if (m.outageStartedAt && m.recoveredAt && m.durationSeconds != null && !recoveryMap.has(m.outageStartedAt)) {
-        recoveryMap.set(m.outageStartedAt, {
-          recoveredAt: m.recoveredAt,
-          durationSeconds: m.durationSeconds,
-        });
-      }
-    }
+    // Merge, dedup, correlate recovery, and sort using the shared pure helper.
+    // providersInvolved comes back as [] per event; enriched below.
+    // Cast: Drizzle infers metadata as `unknown`; the helper treats it as
+    // `Record<string, unknown> | null` which is the correct runtime type.
+    const rawEvents = buildFailoverEventList({
+      chainRows: chainRows as import("../helpers/smartRouter").FailoverEventRow[],
+      thresholdRows: thresholdRows as import("../helpers/smartRouter").FailoverEventRow[],
+      recoveryRows: recoveryRows as import("../helpers/smartRouter").RecoveryEventRow[],
+    });
 
-    const STALE_ONGOING_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
-    const now = Date.now();
-
-    const seen = new Set<string>();
-    const events: {
-      id: number;
-      eventKind: "chain_exhausted" | "threshold_alert";
-      createdAt: string;
-      failureCount: number | null;
-      windowMinutes: number | null;
-      triggerMerchantId: number | null;
-      triggerAmount: number | null;
-      providersInvolved: string[];
-      status: "resolved" | "ongoing";
-      resolvedAt: string | null;
-      durationSeconds: number | null;
-      note: string | null;
-    }[] = [];
-
-    // ── Process gateway_chain_exhausted (immediate, first-exhaustion alerts) ─
-    for (const r of chainRows) {
-      const meta = (r.metadata ?? {}) as {
-        triggerMerchantId?: number;
-        triggerAmount?: number;
-        exhaustedAt?: string;
-      };
-      const dedupKey = `chain_exhausted|${r.createdAt.toISOString()}|${meta.triggerMerchantId ?? ""}`;
-      if (seen.has(dedupKey)) continue;
-      seen.add(dedupKey);
-
-      // Recovery: keyed by exhaustedAt, which is identical to the value written
-      // to PAYIN_CHAIN_EXHAUSTED_SINCE and later read by maybeNotifyGatewayRecovery.
-      const recovery = meta.exhaustedAt ? (recoveryMap.get(meta.exhaustedAt) ?? null) : null;
-      const isStale = !recovery && (now - r.createdAt.getTime()) > STALE_ONGOING_THRESHOLD_MS;
-      const effectiveStatus: "resolved" | "ongoing" = (recovery || isStale) ? "resolved" : "ongoing";
-      const note = isStale
-        ? "Auto-closed — no recovery signal was recorded. The server may have restarted during this outage."
-        : null;
-
-      // Providers involved: look back 1 hour from the exhaustion event
-      const windowStart = new Date(r.createdAt.getTime() - 60 * 60 * 1000);
+    // Enrich each event with the providers that were failing during its window.
+    const events = await Promise.all(rawEvents.map(async (ev) => {
+      const createdAt = new Date(ev.createdAt);
+      const windowMs = ev.eventKind === "threshold_alert" && ev.windowMinutes
+        ? ev.windowMinutes * 60 * 1000
+        : 60 * 60 * 1000; // default: look back 1 hour for chain_exhausted events
+      const windowStart = new Date(createdAt.getTime() - windowMs);
       const providerRows = await db.selectDistinct({ providerKey: routingLogsTable.providerKey })
         .from(routingLogsTable)
         .where(and(
           gte(routingLogsTable.createdAt, windowStart),
-          sql`${routingLogsTable.createdAt} <= ${r.createdAt}`,
+          sql`${routingLogsTable.createdAt} <= ${createdAt}`,
           eq(routingLogsTable.result, "failed"),
         ));
+      return { ...ev, providersInvolved: providerRows.map(p => p.providerKey) };
+    }));
 
-      events.push({
-        id: r.id,
-        eventKind: "chain_exhausted",
-        createdAt: r.createdAt.toISOString(),
-        failureCount: null,
-        windowMinutes: null,
-        triggerMerchantId: meta.triggerMerchantId ?? null,
-        triggerAmount: meta.triggerAmount ?? null,
-        providersInvolved: providerRows.map(p => p.providerKey),
-        status: effectiveStatus,
-        resolvedAt: recovery?.recoveredAt ?? null,
-        durationSeconds: recovery?.durationSeconds ?? null,
-        note,
-      });
-    }
-
-    // ── Process gateway_failover_exhausted (rolling-window threshold alerts) ─
-    for (const r of thresholdRows) {
-      const meta = (r.metadata ?? {}) as { failureCount?: number; windowMinutes?: number; triggerMerchantId?: number; outageStartedAt?: string };
-      const dedupKey = `threshold_alert|${r.createdAt.toISOString()}|${meta.failureCount ?? 0}|${meta.triggerMerchantId ?? ""}`;
-      if (seen.has(dedupKey)) continue;
-      seen.add(dedupKey);
-
-      const windowMinutes = meta.windowMinutes ?? 60;
-      const windowStart = new Date(r.createdAt.getTime() - windowMinutes * 60 * 1000);
-      const providerRows = await db.selectDistinct({ providerKey: routingLogsTable.providerKey })
-        .from(routingLogsTable)
-        .where(and(
-          gte(routingLogsTable.createdAt, windowStart),
-          sql`${routingLogsTable.createdAt} <= ${r.createdAt}`,
-          eq(routingLogsTable.result, "failed"),
-        ));
-
-      const recovery = meta.outageStartedAt ? (recoveryMap.get(meta.outageStartedAt) ?? null) : null;
-      const isStale = !recovery && (now - r.createdAt.getTime()) > STALE_ONGOING_THRESHOLD_MS;
-      const effectiveStatus: "resolved" | "ongoing" = (recovery || isStale) ? "resolved" : "ongoing";
-      const note = isStale
-        ? "Auto-closed — no recovery signal was recorded. The server may have restarted during this outage."
-        : null;
-
-      events.push({
-        id: r.id,
-        eventKind: "threshold_alert",
-        createdAt: r.createdAt.toISOString(),
-        failureCount: meta.failureCount ?? 0,
-        windowMinutes,
-        triggerMerchantId: meta.triggerMerchantId ?? null,
-        triggerAmount: null,
-        providersInvolved: providerRows.map(p => p.providerKey),
-        status: effectiveStatus,
-        resolvedAt: recovery?.recoveredAt ?? null,
-        durationSeconds: recovery?.durationSeconds ?? null,
-        note,
-      });
-    }
-
-    // Sort all events newest-first, then apply the limit
-    events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
+    // buildFailoverEventList already sorts newest-first; apply limit only.
     res.json({ events: events.slice(0, limit) });
   } catch (err) { next(err); }
 });
