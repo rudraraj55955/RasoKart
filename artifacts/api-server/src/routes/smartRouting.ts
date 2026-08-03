@@ -33,6 +33,8 @@ import {
 import { eq, and, desc, asc, ne, gte, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { simulateRouting } from "../helpers/smartRouter";
+import { usersTable } from "@workspace/db";
+import { createBulkNotifications } from "../helpers/notifications";
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -878,6 +880,130 @@ router.get("/status", async (req, res, next) => {
         avgResponseMs: m.avgResponseMs,
       })),
       recentActivity: { successCount24h, failedCount24h },
+    });
+  } catch (err) { next(err); }
+});
+
+// ── Manual Resolve ────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/smart-routing/failover-events/:id/resolve
+ *
+ * Lets an admin manually mark a stuck "Ongoing" failover event as resolved.
+ * Writes a gateway_recovered notification (which the failover-events GET uses
+ * to flip the event to "Resolved") and clears PAYIN_CHAIN_EXHAUSTED_SINCE if
+ * it still matches this event's outageStartedAt.
+ */
+router.post("/failover-events/:id/resolve", async (req, res, next) => {
+  try {
+    const user = (req as any).user;
+    const id = parseInt(req.params["id"] as string);
+    if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid event id" }); return; }
+
+    // Look up the notification row
+    const [row] = await db.select().from(notificationsTable)
+      .where(eq(notificationsTable.id, id)).limit(1);
+    if (!row) { res.status(404).json({ error: "Failover event not found" }); return; }
+
+    const allowedTypes = ["gateway_chain_exhausted", "gateway_failover_exhausted"];
+    if (!allowedTypes.includes(row.type)) {
+      res.status(400).json({ error: "This notification is not a failover event" });
+      return;
+    }
+
+    const meta = (row.metadata ?? {}) as {
+      exhaustedAt?: string;       // gateway_chain_exhausted
+      outageStartedAt?: string;   // gateway_failover_exhausted
+    };
+
+    // exhaustedAt (chain_exhausted) is the same ISO string as outageStartedAt (threshold_alert)
+    // — both are written to PAYIN_CHAIN_EXHAUSTED_SINCE.
+    const outageStartedAt = meta.exhaustedAt ?? meta.outageStartedAt ?? null;
+    if (!outageStartedAt) {
+      res.status(422).json({ error: "Cannot resolve: event has no outageStartedAt timestamp in its metadata" });
+      return;
+    }
+
+    // Check whether a recovery notification already exists for this outage
+    const recoveryRows = await db.select({ metadata: notificationsTable.metadata })
+      .from(notificationsTable)
+      .where(eq(notificationsTable.type, "gateway_recovered"));
+
+    const alreadyResolved = recoveryRows.some(r => {
+      const m = (r.metadata ?? {}) as { outageStartedAt?: string };
+      return m.outageStartedAt === outageStartedAt;
+    });
+
+    if (alreadyResolved) {
+      res.status(409).json({ error: "This outage is already marked as resolved" });
+      return;
+    }
+
+    const recoveredAt = new Date();
+    const exhaustedSince = new Date(outageStartedAt);
+    const durationSeconds = Number.isFinite(exhaustedSince.getTime())
+      ? Math.round((recoveredAt.getTime() - exhaustedSince.getTime()) / 1000)
+      : 0;
+
+    const durationLabel = durationSeconds >= 3600
+      ? `${Math.floor(durationSeconds / 3600)}h ${Math.floor((durationSeconds % 3600) / 60)}m`
+      : durationSeconds >= 60
+        ? `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`
+        : `${durationSeconds}s`;
+
+    // Write gateway_recovered notifications to all active admins
+    const adminUsers = await db.select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.role, "admin"),
+        eq(usersTable.isActive, true),
+      ));
+
+    if (adminUsers.length > 0) {
+      await createBulkNotifications(adminUsers.map(u => ({
+        userId: u.id,
+        type: "gateway_recovered" as const,
+        title: "Gateway Outage Manually Resolved",
+        body: `An admin manually marked a ${durationLabel} gateway outage as resolved. Outage started at ${exhaustedSince.toLocaleString()}.`,
+        metadata: {
+          outageStartedAt,
+          recoveredAt: recoveredAt.toISOString(),
+          durationSeconds,
+          resolvedViaAdminAction: true,
+          resolvedByEmail: user.email,
+        },
+      })), { skipPrefCheck: true });
+    }
+
+    // Clear PAYIN_CHAIN_EXHAUSTED_SINCE if it still matches this outage's start timestamp
+    const [sinceRow] = await db.select()
+      .from(systemConfigTable)
+      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE))
+      .limit(1);
+
+    if (sinceRow && sinceRow.value === outageStartedAt) {
+      await db.delete(systemConfigTable)
+        .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYIN_CHAIN_EXHAUSTED_SINCE));
+      req.log.info({ outageStartedAt }, "PAYIN_CHAIN_EXHAUSTED_SINCE cleared by admin manual resolve");
+    }
+
+    await db.insert(auditLogsTable).values({
+      adminId: user.id,
+      adminEmail: user.email,
+      action: "failover_event_manually_resolved",
+      targetType: "notification",
+      targetId: id,
+      details: JSON.stringify({ outageStartedAt, resolvedAt: recoveredAt.toISOString(), durationSeconds }),
+      ipAddress: (req as any).ip ?? null,
+    });
+
+    req.log.info({ id, outageStartedAt, resolvedByEmail: user.email }, "failover_event_manually_resolved");
+
+    res.json({
+      resolved: true,
+      outageStartedAt,
+      resolvedAt: recoveredAt.toISOString(),
+      durationSeconds,
     });
   } catch (err) { next(err); }
 });

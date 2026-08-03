@@ -607,6 +607,15 @@ export default function AdminSmartRouting() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const resolveEventM = useMutation({
+    mutationFn: (id: number) => apiReq(`/failover-events/${id}/resolve`, "POST"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["smart-routing-failover-events"] });
+      toast.success("Outage marked as resolved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   // Open edit config dialog
   function openEditConfig(cfg: RoutingConfig) {
     setEditingConfig(cfg);
@@ -1469,6 +1478,23 @@ export default function AdminSmartRouting() {
                                 )
                             )}
                           </div>
+                          {ev.status === "ongoing" && (
+                            <div className="shrink-0 self-start pt-0.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-emerald-600/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 text-xs h-7 px-2.5"
+                                disabled={resolveEventM.isPending}
+                                onClick={() => resolveEventM.mutate(ev.id)}
+                              >
+                                {resolveEventM.isPending && resolveEventM.variables === ev.id
+                                  ? <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                  : <CheckCircle2 className="w-3 h-3 mr-1" />
+                                }
+                                Mark as Resolved
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
