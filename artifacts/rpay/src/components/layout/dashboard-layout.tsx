@@ -7,7 +7,7 @@ import { UserRole, useGetMyPlanUsage, useGetCallbackSecret, useListApiKeys, useG
 import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader, SidebarFooter, useSidebar } from "@/components/ui/sidebar";
 import { format } from "date-fns";
 import { Link, useLocation } from "wouter";
-import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, Mail, ChevronDown, ChevronUp, Trash2, Menu, Megaphone } from "lucide-react";
+import { LogOut, LayoutDashboard, Store, ArrowRightLeft, Landmark, FileText, Webhook, KeyRound, Users, Package, Plug, BookOpen, QrCode, Building2, CreditCard, ArrowDownLeft, Activity, Shield, UserCog, Sliders, Eye, LayoutGrid, Lock, Receipt, BookMarked, Zap, GitMerge, Link2, Paintbrush, Settings, ShieldAlert, ShieldCheck, X, Download, ShieldOff, Layers, ToggleLeft, BadgeCheck, BarChart3, Wallet, Headphones, Code2, CheckCircle2, TrendingUp, User, MessageSquare, Mail, ChevronDown, ChevronUp, Trash2, Menu, Megaphone, GitCommit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/notification-bell";
@@ -16,6 +16,7 @@ import { useCompanySettings } from "@/lib/company-settings";
 import { Card, CardContent } from "@/components/ui/card";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { InstallAppButton } from "@/components/ui/install-app-banner";
+import { apiUrl } from "@/lib/api-url";
 
 export const REPORTS_SNOOZE_EVENT = "rasokart-reports-snooze-changed";
 export function getReportSnoozeKey(userId: number | string | undefined): string {
@@ -787,6 +788,40 @@ function GithubSyncAdminAlert() {
   );
 }
 
+function VersionBadge() {
+  const [commit, setCommit] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/healthz"))
+      .then((r) => r.json())
+      .then((data: { commit?: string }) => {
+        if (data?.commit && data.commit !== "unknown") {
+          setCommit(data.commit);
+        }
+      })
+      .catch(() => {
+        // non-critical — silently ignore network errors
+      });
+  }, []);
+
+  if (!commit) return null;
+
+  const shortSha = commit.slice(0, 7);
+
+  return (
+    <a
+      href={`https://github.com/rudraraj55955/RasoKart/commit/${commit}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40 transition-colors w-fit"
+      title={`Running commit ${commit}`}
+    >
+      <GitCommit className="w-3 h-3 shrink-0" />
+      {shortSha}
+    </a>
+  );
+}
+
 export function DashboardLayout({ children, publicMode = false }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
@@ -870,9 +905,12 @@ export function DashboardLayout({ children, publicMode = false }: DashboardLayou
               variant="ghost"
               className="w-full justify-start text-muted-foreground hover:text-foreground text-xs h-8 px-2"
             />
-            <p className="text-[10px] text-muted-foreground/70 truncate px-2" title={`Operated by ${companyName} · Support: ${supportPhone}`}>
-              Operated by {companyName} · {supportPhone}
-            </p>
+            <div className="flex items-center justify-between gap-2 px-2">
+              <p className="text-[10px] text-muted-foreground/70 truncate" title={`Operated by ${companyName} · Support: ${supportPhone}`}>
+                Operated by {companyName} · {supportPhone}
+              </p>
+              {!publicMode && isAdmin && <VersionBadge />}
+            </div>
             {user ? (
               <div className="flex items-center justify-between">
                 <div className="flex flex-col truncate pr-2">
