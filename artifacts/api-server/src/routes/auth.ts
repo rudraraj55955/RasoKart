@@ -1508,7 +1508,7 @@ const otpRequestLimiter = makeRateLimiter({
   message: { error: "Too many OTP requests. Please try again later." },
   keyGenerator: (req) => {
     const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
-    return `otp-req:${safeIpKey(req)}:${identifier}`;
+    return `otp-req:${safeIpKey(req)}:${identifier ? hashIdentifier(identifier) : ""}`;
   },
 });
 
@@ -1543,7 +1543,7 @@ const otpResendLimiter = makeRateLimiter({
   message: { error: "Too many resend requests. Please try again later." },
   keyGenerator: (req) => {
     const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
-    return `otp-resend:${safeIpKey(req)}:${identifier}`;
+    return `otp-resend:${safeIpKey(req)}:${identifier ? hashIdentifier(identifier) : ""}`;
   },
 });
 
@@ -1567,7 +1567,7 @@ const passwordForgotLimiter = makeRateLimiter({
   message: { error: "Too many requests. Please try again later." },
   keyGenerator: (req) => {
     const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
-    return `pwd-forgot:${safeIpKey(req)}:${identifier}`;
+    return `pwd-forgot:${safeIpKey(req)}:${identifier ? hashIdentifier(identifier) : ""}`;
   },
 });
 
