@@ -86,16 +86,16 @@ router.get("/healthz/deep", async (_req, res) => {
     // permissions catalog must not be empty. An empty catalog after migration
     // means the sync step failed and enforcement will be broken.
     try {
-      const migResult = await pool.query<{ c: string }>(
+      const migResult = await (pool.query as (sql: string) => Promise<{ rows: { c: string }[] }>)(
         "SELECT COUNT(*) AS c FROM iam_migration_log",
       );
       const migrated = parseInt(migResult.rows[0]?.c ?? "0", 10) > 0;
       if (migrated) {
-        const catResult = await pool.query<{ c: string }>(
+        const catResult = await (pool.query as (sql: string) => Promise<{ rows: { c: string }[] }>)(
           "SELECT COUNT(*) AS c FROM permissions",
         );
         const catalogRows = parseInt(catResult.rows[0]?.c ?? "0", 10);
-        const roleTemplateResult = await pool.query<{ c: string }>(
+        const roleTemplateResult = await (pool.query as (sql: string) => Promise<{ rows: { c: string }[] }>)(
           "SELECT COUNT(*) AS c FROM role_permissions",
         );
         const roleTemplateRows = parseInt(roleTemplateResult.rows[0]?.c ?? "0", 10);

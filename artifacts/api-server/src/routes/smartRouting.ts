@@ -33,6 +33,7 @@ import {
 import { eq, and, desc, asc, ne, gte, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { simulateRouting, buildFailoverEventList } from "../helpers/smartRouter";
+import type { FailoverEventRow, RecoveryEventRow } from "../helpers/smartRouter";
 import { usersTable } from "@workspace/db";
 import { createBulkNotifications } from "../helpers/notifications";
 
@@ -275,6 +276,8 @@ router.put("/rules/:id", async (req, res, next) => {
         }
       }
     } else if (isEnabled === true && existing.isEnabled === false) {
+      // Re-enabling a disabled rule without changing priority: the effective priority
+      // stays existing.priority, so it can still collide with another already-enabled rule.
       const effectivePriority = priority !== undefined ? priority : existing.priority;
       const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
         .from(routingRulesTable)
@@ -405,8 +408,7 @@ router.get("/configs/:id/coverage-check", async (req, res, next) => {
     const excludeRuleId = req.query["excludeRuleId"] ? parseInt(req.query["excludeRuleId"] as string) : null;
 
     const [config] = await db.select().from(routingConfigsTable)
-      .where(eq(routingConfigsTable.isEnabled, true))
-      .orderBy(asc(routingConfigsTable.id)).limit(1);
+      .where(eq(routingConfigsTable.id, configId)).limit(1);
     if (!config) { res.status(404).json({ error: "Config not found" }); return; }
 
     const allRules = await db.select().from(routingRulesTable)
@@ -415,8 +417,9 @@ router.get("/configs/:id/coverage-check", async (req, res, next) => {
         eq(routingRulesTable.isEnabled, true),
       ));
 
-    const rules = await db.select().from(routingRulesTable)
-      .where(and(eq(routingRulesTable.configId, config.id), eq(routingRulesTable.isEnabled, true)));
+    const rules = excludeRuleId != null
+      ? allRules.filter(r => r.id !== excludeRuleId)
+      : allRules;
 
     const STANDARD_AMOUNTS = [1, 100, 500, 1000, 5000, 10000, 50000, 100000];
     const STANDARD_MODES = ["upi", "card", "netbanking", "wallet", "bnpl", "emi"];
@@ -635,11 +638,10 @@ router.get("/failover-events", async (req, res, next) => {
   try {
     const limit = Math.min(100, Math.max(1, parseInt((req.query["limit"] as string) ?? "20")));
 
-    // ── Fetch both notification types in parallel ─────────────────────────
+    // ── Fetch all notification types in parallel ──────────────────────────
     const [thresholdRows, chainRows, recoveryRows] = await Promise.all([
       db.select({
         id: notificationsTable.id,
-        type: notificationsTable.type,
         metadata: notificationsTable.metadata,
         createdAt: notificationsTable.createdAt,
       })
@@ -649,7 +651,6 @@ router.get("/failover-events", async (req, res, next) => {
 
       db.select({
         id: notificationsTable.id,
-        type: notificationsTable.type,
         metadata: notificationsTable.metadata,
         createdAt: notificationsTable.createdAt,
       })
@@ -666,32 +667,36 @@ router.get("/failover-events", async (req, res, next) => {
         .orderBy(desc(notificationsTable.createdAt)),
     ]);
 
-    // Merge, dedup, correlate recovery, and sort using the shared pure helper.
-    // providersInvolved comes back as [] per event; enriched below.
-    // Cast: Drizzle infers metadata as `unknown`; the helper treats it as
-    // `Record<string, unknown> | null` which is the correct runtime type.
-    const rawEvents = buildFailoverEventList({
-      chainRows: chainRows as import("../helpers/smartRouter").FailoverEventRow[],
-      thresholdRows: thresholdRows as import("../helpers/smartRouter").FailoverEventRow[],
-      recoveryRows: recoveryRows as import("../helpers/smartRouter").RecoveryEventRow[],
-    });
+    // Build the deduplicated, recovery-correlated event list via the shared helper.
+    // providersInvolved is [] in returned events; we enrich it below.
+    // Drizzle types metadata as `unknown`; cast to the shape buildFailoverEventList expects.
+    const typedChainRows = chainRows as FailoverEventRow[];
+    const typedThresholdRows = thresholdRows as FailoverEventRow[];
+    const typedRecoveryRows = recoveryRows as RecoveryEventRow[];
+    const rawEvents = buildFailoverEventList({ chainRows: typedChainRows, thresholdRows: typedThresholdRows, recoveryRows: typedRecoveryRows });
 
-    // Enrich each event with the providers that were failing during its window.
-    const events = await Promise.all(rawEvents.map(async (ev) => {
-      const createdAt = new Date(ev.createdAt);
-      const windowMs = ev.eventKind === "threshold_alert" && ev.windowMinutes
-        ? ev.windowMinutes * 60 * 1000
-        : 60 * 60 * 1000; // default: look back 1 hour for chain_exhausted events
-      const windowStart = new Date(createdAt.getTime() - windowMs);
-      const providerRows = await db.selectDistinct({ providerKey: routingLogsTable.providerKey })
-        .from(routingLogsTable)
-        .where(and(
-          gte(routingLogsTable.createdAt, windowStart),
-          sql`${routingLogsTable.createdAt} <= ${createdAt}`,
-          eq(routingLogsTable.result, "failed"),
-        ));
-      return { ...ev, providersInvolved: providerRows.map(p => p.providerKey) };
-    }));
+    // ── Enrich providersInvolved for each event ───────────────────────────
+    // We need to look up routing_logs around the event's createdAt.  The
+    // window width follows the same convention as the original inline code:
+    //   chain_exhausted  → 1 hour back
+    //   threshold_alert  → windowMinutes back (defaults to 60)
+    const events = await Promise.all(
+      rawEvents.slice(0, limit).map(async (event) => {
+        const eventDate = new Date(event.createdAt);
+        const windowMs = event.eventKind === "threshold_alert"
+          ? (event.windowMinutes ?? 60) * 60 * 1000
+          : 60 * 60 * 1000;
+        const windowStart = new Date(eventDate.getTime() - windowMs);
+        const providerRows = await db.selectDistinct({ providerKey: routingLogsTable.providerKey })
+          .from(routingLogsTable)
+          .where(and(
+            gte(routingLogsTable.createdAt, windowStart),
+            sql`${routingLogsTable.createdAt} <= ${eventDate}`,
+            eq(routingLogsTable.result, "failed"),
+          ));
+        return { ...event, providersInvolved: providerRows.map(p => p.providerKey) };
+      }),
+    );
 
     // Also return current snooze state so the UI can show the active-snooze banner.
     const [snoozeRow] = await db
@@ -704,8 +709,7 @@ router.get("/failover-events", async (req, res, next) => {
       ? rawSnoozedUntil
       : null;
 
-    // buildFailoverEventList already sorts newest-first; apply limit only.
-    res.json({ events: events.slice(0, limit), snoozedUntil });
+    res.json({ events, snoozedUntil });
   } catch (err) { next(err); }
 });
 

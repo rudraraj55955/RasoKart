@@ -153,6 +153,12 @@ jobs:
       - name: Run database migrations (throwaway CI database only)
         run: pnpm --filter @workspace/scripts run db-migrate
 
+      - name: Run unit tests (rpay — scrubbing, UPI, gateway guards)
+        run: pnpm --filter @workspace/rpay test
+
+      - name: Run unit tests (api-server — routing, helpers, schema guard)
+        run: pnpm --filter @workspace/api-server test
+
       - name: Start API server
         run: |
           nohup node --enable-source-maps artifacts/api-server/dist/index.mjs > /tmp/api-server.log 2>&1 &
