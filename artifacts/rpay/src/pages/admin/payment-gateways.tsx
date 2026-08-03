@@ -113,18 +113,47 @@ function RazorpayPayinCard({ onConfigure }: { onConfigure: () => void }) {
 // ── PayU overview card ────────────────────────────────────────────────────────
 
 function PayuCard({ onConfigure }: { onConfigure: () => void }) {
-  const [status, setStatus] = useState<{ enabled: boolean; suspended: boolean; env: string } | null>(null);
+  const [status, setStatus] = useState<{
+    enabled: boolean;
+    env: string;
+    liveVerified: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/admin/payu/config", { headers: authHeader() })
       .then(r => r.ok ? r.json() : null)
       .then((d: any) => {
-        if (d) setStatus({ enabled: d.isEnabled, suspended: false, env: d.environment ?? "uat" });
+        if (d) setStatus({
+          enabled:      d.isEnabled ?? false,
+          env:          d.environment ?? "uat",
+          liveVerified: d.liveVerified ?? false,
+        });
       })
       .catch(() => null)
       .finally(() => setLoading(false));
   }, []);
+
+  // Three-state badge: Disabled → Test/Sandbox → Active·Live
+  function PayuStateBadge() {
+    if (!status) return null;
+    if (!status.enabled) {
+      return <Badge className="bg-zinc-500/10 text-zinc-400 border-zinc-500/30 text-[10px] h-5">Disabled</Badge>;
+    }
+    if (status.env === "live") {
+      return (
+        <div className="flex flex-col items-end gap-1">
+          <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] h-5">Active · Live</Badge>
+          {status.liveVerified && (
+            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px] h-4 px-1.5 flex items-center gap-1">
+              <CheckCircle2 className="w-2.5 h-2.5" />Verified
+            </Badge>
+          )}
+        </div>
+      );
+    }
+    return <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-[10px] h-5">Test · Sandbox</Badge>;
+  }
 
   return (
     <Card className="border-border/50 hover:border-orange-500/30 transition-colors">
@@ -134,8 +163,7 @@ function PayuCard({ onConfigure }: { onConfigure: () => void }) {
             <CreditCard className="w-4 h-4 text-orange-400" />
           </div>
           <div className="flex flex-col items-end gap-1">
-            {!loading && status && <StatusBadge enabled={status.enabled} />}
-            {!loading && status && <EnvBadge env={status.env} />}
+            {!loading && <PayuStateBadge />}
           </div>
         </div>
         <CardTitle className="text-sm font-semibold mt-2">PayU Payin</CardTitle>
@@ -157,19 +185,23 @@ function PayuCard({ onConfigure }: { onConfigure: () => void }) {
 // ── PayU config panel ─────────────────────────────────────────────────────────
 
 const PAYU_ONBOARDING_LABELS: Record<string, { label: string; color: string; desc: string }> = {
-  ONBOARDING_PENDING:       { label: "Onboarding Pending",              color: "zinc",   desc: "Save PayU UAT Key and Salt to begin" },
-  UAT_AVAILABLE:            { label: "UAT / Sandbox Available",         color: "amber",  desc: "Sandbox credentials saved. Enable to test payments." },
-  LIVE_PENDING_ACTIVATION:  { label: "Live Payin Pending Activation",   color: "blue",   desc: "Contact PayU support to activate live payment modes" },
-  PAYOUT_PENDING_ACTIVATION:{ label: "Payout Pending Separate Activation", color: "violet", desc: "PayU Payout requires separate provider agreement" },
+  ONBOARDING_PENDING:         { label: "Onboarding Pending",                    color: "zinc",    desc: "Save PayU UAT Key and Salt to begin" },
+  UAT_AVAILABLE:              { label: "UAT / Sandbox Available",               color: "amber",   desc: "Sandbox credentials saved. Enable to test payments." },
+  LIVE_CREDENTIALS_SAVED:     { label: "Live Credentials Saved",                color: "blue",    desc: "Live Key and Salt saved — run the 4-step activation to unlock live mode" },
+  LIVE_VERIFIED:              { label: "Live Activation Verified",              color: "emerald", desc: "4-step verification passed — switch to Live in Settings to go live" },
+  LIVE_ACTIVE:                { label: "Live Mode Active",                      color: "emerald", desc: "PayU live payments are enabled and verified" },
+  LIVE_PENDING_ACTIVATION:    { label: "Live Payin Pending Activation",         color: "blue",    desc: "Save Live Key and Salt, then run the 4-step activation flow" },
+  PAYOUT_PENDING_ACTIVATION:  { label: "Payout Pending Separate Activation",   color: "violet",  desc: "PayU Payout requires separate provider agreement" },
 };
 
 function PayuOnboardingBadge({ status }: { status: string }) {
   const cfg = PAYU_ONBOARDING_LABELS[status] ?? PAYU_ONBOARDING_LABELS["ONBOARDING_PENDING"]!;
   const colorMap: Record<string, string> = {
-    zinc:   "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
-    amber:  "bg-amber-500/10 text-amber-400 border-amber-500/30",
-    blue:   "bg-blue-500/10 text-blue-400 border-blue-500/30",
-    violet: "bg-violet-500/10 text-violet-400 border-violet-500/30",
+    zinc:    "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
+    amber:   "bg-amber-500/10 text-amber-400 border-amber-500/30",
+    blue:    "bg-blue-500/10 text-blue-400 border-blue-500/30",
+    violet:  "bg-violet-500/10 text-violet-400 border-violet-500/30",
+    emerald: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
   };
   return (
     <div className="flex flex-col gap-0.5">
@@ -180,20 +212,32 @@ function PayuOnboardingBadge({ status }: { status: string }) {
 }
 
 function PayuPanel() {
-  const [config, setConfig]             = useState<any>(null);
-  const [loading, setLoading]           = useState(true);
-  const [key, setKey]                   = useState("");
-  const [salt, setSalt]                 = useState("");
-  const [showKey, setShowKey]           = useState(false);
-  const [showSalt, setShowSalt]         = useState(false);
-  const [enabled, setEnabled]           = useState(false);
-  const [minAmount, setMinAmount]       = useState("1");
-  const [maxAmount, setMaxAmount]       = useState("200000");
-  const [dailyLimit, setDailyLimit]     = useState("1000000");
-  const [saving, setSaving]             = useState(false);
-  const [savingCreds, setSavingCreds]   = useState(false);
-  const [testing, setTesting]           = useState(false);
-  const [initialized, setInitialized]   = useState(false);
+  const [config, setConfig]               = useState<any>(null);
+  const [loading, setLoading]             = useState(true);
+  // UAT creds inputs
+  const [uatKey, setUatKey]               = useState("");
+  const [uatSalt, setUatSalt]             = useState("");
+  const [showUatKey, setShowUatKey]       = useState(false);
+  const [showUatSalt, setShowUatSalt]     = useState(false);
+  // Live creds inputs
+  const [liveKey, setLiveKey]             = useState("");
+  const [liveSalt, setLiveSalt]           = useState("");
+  const [showLiveKey, setShowLiveKey]     = useState(false);
+  const [showLiveSalt, setShowLiveSalt]   = useState(false);
+  // Settings
+  const [enabled, setEnabled]             = useState(false);
+  const [activeEnv, setActiveEnv]         = useState<"uat" | "live">("uat");
+  const [minAmount, setMinAmount]         = useState("1");
+  const [maxAmount, setMaxAmount]         = useState("200000");
+  const [dailyLimit, setDailyLimit]       = useState("1000000");
+  // Loading states
+  const [saving, setSaving]               = useState(false);
+  const [savingUatCreds, setSavingUatCreds]   = useState(false);
+  const [savingLiveCreds, setSavingLiveCreds] = useState(false);
+  const [testing, setTesting]             = useState(false);
+  const [verifying, setVerifying]         = useState(false);
+  const [verifyResult, setVerifyResult]   = useState<any>(null);
+  const [initialized, setInitialized]     = useState(false);
 
   const loadConfig = () => {
     setLoading(true);
@@ -203,6 +247,7 @@ function PayuPanel() {
         setConfig(d);
         if (!initialized) {
           setEnabled(d.isEnabled ?? false);
+          setActiveEnv(d.environment ?? "uat");
           setInitialized(true);
         }
       })
@@ -212,31 +257,51 @@ function PayuPanel() {
 
   useEffect(() => { loadConfig(); }, []);
 
-  const saveCreds = async () => {
-    if (!key.trim() || !salt.trim()) { toast.error("Both Key and Salt are required"); return; }
-    setSavingCreds(true);
+  const saveUatCreds = async () => {
+    if (!uatKey.trim() || !uatSalt.trim()) { toast.error("Both UAT Key and Salt are required"); return; }
+    setSavingUatCreds(true);
     try {
       const r = await fetch("/api/admin/payu/config", {
         method: "PUT", headers: { ...authHeader(), "Content-Type": "application/json" },
-        body: JSON.stringify({ key: key.trim(), salt: salt.trim() }),
+        body: JSON.stringify({ env: "uat", key: uatKey.trim(), salt: uatSalt.trim() }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Failed");
-      toast.success("PayU credentials saved (encrypted)");
-      setKey(""); setSalt("");
+      toast.success("UAT credentials saved (encrypted)");
+      setUatKey(""); setUatSalt("");
       loadConfig();
     } catch (err: any) {
-      toast.error(err.message ?? "Failed to save credentials");
-    } finally { setSavingCreds(false); }
+      toast.error(err.message ?? "Failed to save UAT credentials");
+    } finally { setSavingUatCreds(false); }
   };
 
-  const saveSettings = async () => {
+  const saveLiveCreds = async () => {
+    if (!liveKey.trim() || !liveSalt.trim()) { toast.error("Both Live Key and Salt are required"); return; }
+    setSavingLiveCreds(true);
+    try {
+      const r = await fetch("/api/admin/payu/config", {
+        method: "PUT", headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ env: "live", key: liveKey.trim(), salt: liveSalt.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Failed");
+      toast.success("Live credentials saved — verification has been reset");
+      setLiveKey(""); setLiveSalt("");
+      setVerifyResult(null);
+      loadConfig();
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to save Live credentials");
+    } finally { setSavingLiveCreds(false); }
+  };
+
+  const saveSettings = async (envOverride?: "uat" | "live") => {
     setSaving(true);
+    const targetEnv = envOverride ?? activeEnv;
     try {
       const r = await fetch("/api/admin/payu/settings", {
         method: "PUT", headers: { ...authHeader(), "Content-Type": "application/json" },
         body: JSON.stringify({
-          enabled, environment: "uat",
+          enabled, environment: targetEnv,
           minAmount: parseFloat(minAmount) || 1,
           maxAmount: parseFloat(maxAmount) || 200000,
           dailyLimit: parseFloat(dailyLimit) || 1000000,
@@ -244,7 +309,8 @@ function PayuPanel() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Failed");
-      toast.success("PayU settings saved");
+      toast.success(`PayU settings saved — ${targetEnv.toUpperCase()} mode`);
+      setActiveEnv(targetEnv);
       loadConfig();
     } catch (err: any) {
       toast.error(err.message ?? "Failed to save settings");
@@ -254,9 +320,7 @@ function PayuPanel() {
   const testHash = async () => {
     setTesting(true);
     try {
-      const r = await fetch("/api/admin/payu/test-hash", {
-        method: "POST", headers: authHeader(),
-      });
+      const r = await fetch("/api/admin/payu/test-hash", { method: "POST", headers: authHeader() });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Test failed");
       toast.success(`Hash OK — ${d.hashLength} chars, prefix: ${d.hashPrefix}`);
@@ -265,13 +329,66 @@ function PayuPanel() {
     } finally { setTesting(false); }
   };
 
-  if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground py-8"><Loader2 className="w-4 h-4 animate-spin" />Loading PayU config…</div>;
+  const verifyLive = async () => {
+    setVerifying(true);
+    setVerifyResult(null);
+    try {
+      const r = await fetch("/api/admin/payu/verify-live", { method: "POST", headers: authHeader() });
+      const d = await r.json();
+      setVerifyResult(d);
+      if (d.allPassed) {
+        toast.success("Live activation verified — all 4 steps passed");
+        loadConfig();
+      } else {
+        toast.error("Verification incomplete — check step results below");
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Verification failed");
+    } finally { setVerifying(false); }
+  };
 
-  const keySet  = config?.keySet  ?? false;
-  const saltSet = config?.saltSet ?? false;
-  const primaryStatus = config?.primaryOnboardingStatus ?? "ONBOARDING_PENDING";
+  if (loading) return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
+      <Loader2 className="w-4 h-4 animate-spin" />Loading PayU config…
+    </div>
+  );
+
+  const uatKeySet   = config?.uatKeySet   ?? false;
+  const uatSaltSet  = config?.uatSaltSet  ?? false;
+  const liveKeySet  = config?.liveKeySet  ?? false;
+  const liveSaltSet = config?.liveSaltSet ?? false;
+  const liveVerified    = config?.liveVerified    ?? false;
+  const liveVerifiedAt  = config?.liveVerifiedAt  ?? null;
+  const capabilities    = config?.capabilities    ?? {};
   const onboardingStatuses: string[] = config?.onboardingStatuses ?? ["ONBOARDING_PENDING"];
-  const capabilities = config?.capabilities ?? {};
+  const webhookUrl = config?.webhookUrl ?? "";
+
+  // Stepper state — use verifyResult when fresh; fall back to stored liveVerified when no result yet
+  const step1Pass = liveKeySet && liveSaltSet;
+  const step2Pass = verifyResult ? (verifyResult.steps?.payuApiProbe?.pass   ?? false) : liveVerified;
+  const step3Pass = verifyResult ? (verifyResult.steps?.hashGeneration?.pass ?? false) : liveVerified;
+  const step4Pass = verifyResult ? (verifyResult.steps?.webhookUrl?.pass     ?? false) : liveVerified;
+  const allStepsPass = step1Pass && step2Pass && step3Pass && step4Pass;
+
+  function StepRow({
+    num, label, pass, pending, message,
+  }: { num: number; label: string; pass: boolean; pending?: boolean; message?: string }) {
+    return (
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 mt-0.5">
+          {pending
+            ? <div className="w-4 h-4 rounded-full border border-zinc-500/50 bg-zinc-500/10 flex items-center justify-center text-[9px] text-zinc-400">{num}</div>
+            : pass
+              ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              : <XCircle className="w-4 h-4 text-red-400" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-xs font-medium ${pass ? "text-foreground" : pending ? "text-muted-foreground" : "text-red-300"}`}>{label}</p>
+          {message && <p className="text-[10px] text-muted-foreground mt-0.5 break-words">{message}</p>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -282,9 +399,14 @@ function PayuPanel() {
         </div>
         <div className="flex-1">
           <p className="text-sm font-medium">PayU Hosted Checkout</p>
-          <p className="text-xs text-muted-foreground">UPI, Cards, Netbanking, EMI — credentials stored encrypted in DB</p>
+          <p className="text-xs text-muted-foreground">UPI, Cards, Netbanking, EMI — credentials encrypted (AES-256-GCM)</p>
         </div>
-        <StatusBadge enabled={enabled} />
+        <div className="flex flex-col items-end gap-1">
+          <StatusBadge enabled={enabled} />
+          {enabled && liveVerified && activeEnv === "live" && (
+            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px] h-4 px-1.5">Live · Verified</Badge>
+          )}
+        </div>
       </div>
 
       {/* Onboarding Status */}
@@ -298,7 +420,7 @@ function PayuPanel() {
       {/* Capability Audit */}
       <div className="border border-border/40 rounded-lg p-4 space-y-2">
         <p className="text-sm font-medium">Capability Audit</p>
-        <p className="text-[11px] text-muted-foreground mb-2">Status of each PayU feature — no capability is shown as active without actual provider activation.</p>
+        <p className="text-[11px] text-muted-foreground mb-2">No capability is shown as active without real provider activation.</p>
         <div className="grid grid-cols-2 gap-2">
           {[
             { key: "hostedCheckout", label: "Hosted Checkout" },
@@ -321,78 +443,244 @@ function PayuPanel() {
         )}
       </div>
 
-      {/* Credentials */}
-      <div className="space-y-4 border border-border/40 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium">UAT Credentials</p>
-          <div className="flex gap-1.5">
-            <div className="rounded border border-border/40 px-2 py-1 text-[10px] flex items-center gap-1">
-              <span className="text-muted-foreground">Key:</span>
-              <ConnectedBadge connected={keySet} />
-            </div>
-            <div className="rounded border border-border/40 px-2 py-1 text-[10px] flex items-center gap-1">
-              <span className="text-muted-foreground">Salt:</span>
-              <ConnectedBadge connected={saltSet} />
-            </div>
-          </div>
-        </div>
-        {keySet && config?.keyMasked && (
-          <p className="text-xs text-muted-foreground font-mono">Key: {config.keyMasked}</p>
-        )}
+      {/* Credentials — tabbed UAT / Live */}
+      <div className="border border-border/40 rounded-lg p-4 space-y-4">
+        <p className="text-sm font-medium">Credentials</p>
+        <Tabs defaultValue="uat">
+          <TabsList className="h-8 mb-4">
+            <TabsTrigger value="uat" className="text-xs h-7 px-3">
+              UAT / Sandbox
+              {uatKeySet && uatSaltSet
+                ? <CheckCircle2 className="w-3 h-3 ml-1.5 text-emerald-400" />
+                : <AlertCircle className="w-3 h-3 ml-1.5 text-amber-400" />}
+            </TabsTrigger>
+            <TabsTrigger value="live" className="text-xs h-7 px-3">
+              Live
+              {liveVerified
+                ? <CheckCircle2 className="w-3 h-3 ml-1.5 text-emerald-400" />
+                : liveKeySet && liveSaltSet
+                  ? <AlertCircle className="w-3 h-3 ml-1.5 text-blue-400" />
+                  : <XCircle className="w-3 h-3 ml-1.5 text-zinc-500" />}
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 flex items-start gap-2">
-          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          <span>Enter PayU UAT Key and Salt. Credentials are encrypted with AES-256-GCM using SESSION_SECRET — never stored in plain text.</span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">PayU Key (Merchant Key)</Label>
-            <div className="relative">
-              <Input
-                type={showKey ? "text" : "password"}
-                value={key}
-                onChange={e => setKey(e.target.value)}
-                placeholder={keySet ? "Enter new key to update…" : "PayU UAT Merchant Key"}
-                className="h-8 text-xs pr-8"
-              />
-              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowKey(v => !v)}>
-                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
+          {/* ── UAT Tab ────────────────────────────────────────────────────── */}
+          <TabsContent value="uat" className="space-y-4 mt-0">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-1.5">
+                <div className="rounded border border-border/40 px-2 py-1 text-[10px] flex items-center gap-1">
+                  <span className="text-muted-foreground">Key:</span>
+                  <ConnectedBadge connected={uatKeySet} />
+                </div>
+                <div className="rounded border border-border/40 px-2 py-1 text-[10px] flex items-center gap-1">
+                  <span className="text-muted-foreground">Salt:</span>
+                  <ConnectedBadge connected={uatSaltSet} />
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">PayU Salt</Label>
-            <div className="relative">
-              <Input
-                type={showSalt ? "text" : "password"}
-                value={salt}
-                onChange={e => setSalt(e.target.value)}
-                placeholder={saltSet ? "Enter new salt to update…" : "PayU UAT Salt"}
-                className="h-8 text-xs pr-8"
-              />
-              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowSalt(v => !v)}>
-                {showSalt ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
+            {uatKeySet && config?.uatKeyMasked && (
+              <p className="text-xs text-muted-foreground font-mono">Saved key: {config.uatKeyMasked}</p>
+            )}
+            <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 flex items-start gap-2">
+              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>UAT (Sandbox) credentials for testing. Never exposed in any response — encrypted with AES-256-GCM.</span>
             </div>
-          </div>
-        </div>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">PayU UAT Key (Merchant Key)</Label>
+                <div className="relative">
+                  <Input
+                    type={showUatKey ? "text" : "password"}
+                    value={uatKey}
+                    onChange={e => setUatKey(e.target.value)}
+                    placeholder={uatKeySet ? "Enter new key to update…" : "PayU UAT Merchant Key"}
+                    className="h-8 text-xs pr-8"
+                  />
+                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowUatKey(v => !v)}>
+                    {showUatKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">PayU UAT Salt</Label>
+                <div className="relative">
+                  <Input
+                    type={showUatSalt ? "text" : "password"}
+                    value={uatSalt}
+                    onChange={e => setUatSalt(e.target.value)}
+                    placeholder={uatSaltSet ? "Enter new salt to update…" : "PayU UAT Salt"}
+                    className="h-8 text-xs pr-8"
+                  />
+                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowUatSalt(v => !v)}>
+                    {showUatSalt ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={saveUatCreds} disabled={savingUatCreds || !uatKey.trim() || !uatSalt.trim()} size="sm">
+                {savingUatCreds ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Shield className="w-3.5 h-3.5 mr-1.5" />Save UAT Credentials</>}
+              </Button>
+              {uatKeySet && uatSaltSet && (
+                <Button variant="outline" size="sm" onClick={testHash} disabled={testing}>
+                  {testing ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Testing…</> : <><FlaskConical className="w-3.5 h-3.5 mr-1.5" />Test Hash</>}
+                </Button>
+              )}
+            </div>
+          </TabsContent>
 
-        <div className="flex gap-2">
-          <Button onClick={saveCreds} disabled={savingCreds || !key.trim() || !salt.trim()} size="sm">
-            {savingCreds ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Shield className="w-3.5 h-3.5 mr-1.5" />Save Credentials</>}
-          </Button>
-          {keySet && saltSet && (
-            <Button variant="outline" size="sm" onClick={testHash} disabled={testing}>
-              {testing ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Testing…</> : <><FlaskConical className="w-3.5 h-3.5 mr-1.5" />Test Hash</>}
-            </Button>
-          )}
-        </div>
+          {/* ── Live Tab ───────────────────────────────────────────────────── */}
+          <TabsContent value="live" className="space-y-4 mt-0">
+            {!uatKeySet || !uatSaltSet ? (
+              <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 flex items-start gap-2">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>Save UAT credentials first before configuring live credentials.</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-1.5">
+                    <div className="rounded border border-border/40 px-2 py-1 text-[10px] flex items-center gap-1">
+                      <span className="text-muted-foreground">Key:</span>
+                      <ConnectedBadge connected={liveKeySet} />
+                    </div>
+                    <div className="rounded border border-border/40 px-2 py-1 text-[10px] flex items-center gap-1">
+                      <span className="text-muted-foreground">Salt:</span>
+                      <ConnectedBadge connected={liveSaltSet} />
+                    </div>
+                    {liveVerified && (
+                      <div className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] flex items-center gap-1 text-emerald-400">
+                        <CheckCircle2 className="w-3 h-3" />Verified
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {liveKeySet && config?.liveKeyMasked && (
+                  <p className="text-xs text-muted-foreground font-mono">Saved key: {config.liveKeyMasked}</p>
+                )}
+                {liveVerified && liveVerifiedAt && (
+                  <p className="text-[10px] text-emerald-400">
+                    Verified: {new Date(liveVerifiedAt).toLocaleString()}
+                  </p>
+                )}
+                <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-300 flex items-start gap-2">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>Live credentials are stored separately from UAT. Saving new live credentials resets the verification — run the 4-step flow again to re-verify.</span>
+                </div>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">PayU Live Key (Merchant Key)</Label>
+                    <div className="relative">
+                      <Input
+                        type={showLiveKey ? "text" : "password"}
+                        value={liveKey}
+                        onChange={e => setLiveKey(e.target.value)}
+                        placeholder={liveKeySet ? "Enter new key to update…" : "PayU Live Merchant Key"}
+                        className="h-8 text-xs pr-8"
+                      />
+                      <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowLiveKey(v => !v)}>
+                        {showLiveKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">PayU Live Salt</Label>
+                    <div className="relative">
+                      <Input
+                        type={showLiveSalt ? "text" : "password"}
+                        value={liveSalt}
+                        onChange={e => setLiveSalt(e.target.value)}
+                        placeholder={liveSaltSet ? "Enter new salt to update…" : "PayU Live Salt"}
+                        className="h-8 text-xs pr-8"
+                      />
+                      <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowLiveSalt(v => !v)}>
+                        {showLiveSalt ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <Button onClick={saveLiveCreds} disabled={savingLiveCreds || !liveKey.trim() || !liveSalt.trim()} size="sm">
+                  {savingLiveCreds ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Shield className="w-3.5 h-3.5 mr-1.5" />Save Live Credentials</>}
+                </Button>
+
+                {/* ── Activation Flow Stepper ─────────────────────────────── */}
+                <Separator className="opacity-30" />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">4-Step Live Activation</p>
+                    {allStepsPass && (
+                      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] h-5">All steps passed</Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Complete all 4 steps to unlock live mode. Steps 2–4 run automatically when you click Verify.
+                  </p>
+                  <div className="space-y-3 border border-border/30 rounded-md p-3 bg-muted/10">
+                    <StepRow
+                      num={1} label="Live credentials saved"
+                      pass={step1Pass}
+                      pending={!step1Pass && !verifyResult}
+                      message={step1Pass ? "Live Key and Salt are saved and encrypted" : "Save Live Key and Salt above first"}
+                    />
+                    <StepRow
+                      num={2} label="PayU Live API probe"
+                      pass={step2Pass}
+                      pending={!verifyResult && !liveVerified}
+                      message={verifyResult?.steps?.payuApiProbe?.message ?? (liveVerified ? "PayU Live API accepted credentials" : "Click Verify to probe PayU Live API")}
+                    />
+                    <StepRow
+                      num={3} label="SHA-512 hash generation"
+                      pass={step3Pass}
+                      pending={!verifyResult && !liveVerified}
+                      message={verifyResult?.steps?.hashGeneration?.message ?? (liveVerified ? "Hash generation confirmed" : "Will be tested automatically during verification")}
+                    />
+                    <StepRow
+                      num={4} label="Webhook callback URL"
+                      pass={step4Pass}
+                      pending={!verifyResult && !liveVerified}
+                      message={verifyResult?.steps?.webhookUrl?.message ?? (liveVerified ? `Webhook URL configured${webhookUrl ? `: ${webhookUrl.slice(0, 50)}${webhookUrl.length > 50 ? "…" : ""}` : ""}` : webhookUrl ? `URL: ${webhookUrl.slice(0, 50)}` : "No webhook URL configured in provider integration row")}
+                    />
+                  </div>
+                  {!allStepsPass && (
+                    <Button
+                      onClick={verifyLive}
+                      disabled={verifying || !step1Pass}
+                      size="sm"
+                      variant="outline"
+                      className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                    >
+                      {verifying
+                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Verifying…</>
+                        : <><Activity className="w-3.5 h-3.5 mr-1.5" />Verify with PayU API</>}
+                    </Button>
+                  )}
+                  {allStepsPass && !liveVerified && (
+                    <p className="text-[11px] text-emerald-400">✓ Verification complete. Save settings below with environment set to "Live" to activate.</p>
+                  )}
+                  {liveVerified && (
+                    <p className="text-[11px] text-emerald-400">✓ Previously verified{liveVerifiedAt ? ` on ${new Date(liveVerifiedAt).toLocaleDateString()}` : ""}. Re-run verification any time to re-confirm.</p>
+                  )}
+                  {liveVerified && (
+                    <Button
+                      onClick={verifyLive}
+                      disabled={verifying || !step1Pass}
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted-foreground text-xs h-7"
+                    >
+                      {verifying ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Re-verifying…</> : "Re-run verification"}
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Settings */}
       <div className="space-y-4 border border-border/40 rounded-lg p-4">
-        <p className="text-sm font-medium">Payin Settings (UAT)</p>
+        <p className="text-sm font-medium">Payin Settings</p>
 
         <div className="flex items-center justify-between">
           <div>
@@ -402,15 +690,47 @@ function PayuPanel() {
           <Switch
             checked={enabled}
             onCheckedChange={setEnabled}
-            disabled={!keySet || !saltSet}
+            disabled={!uatKeySet || !uatSaltSet}
           />
         </div>
 
-        {(!keySet || !saltSet) && (
+        {(!uatKeySet || !uatSaltSet) && (
           <p className="text-xs text-amber-400 flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5" />Save credentials before enabling
+            <AlertCircle className="w-3.5 h-3.5" />Save UAT credentials before enabling
           </p>
         )}
+
+        {/* Environment selector */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Active Environment</Label>
+          <Select
+            value={activeEnv}
+            onValueChange={(v) => setActiveEnv(v as "uat" | "live")}
+            disabled={!liveVerified && activeEnv !== "live"}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="uat" className="text-xs">
+                UAT / Sandbox — test.payu.in
+              </SelectItem>
+              <SelectItem value="live" className="text-xs" disabled={!liveVerified}>
+                Live — secure.payu.in {!liveVerified ? "(requires verification)" : ""}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          {activeEnv === "live" && liveVerified && (
+            <p className="text-[10px] text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />Live mode unlocked — all payments will go to PayU production endpoint
+            </p>
+          )}
+          {activeEnv === "live" && !liveVerified && (
+            <p className="text-[10px] text-amber-400 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" />Complete the 4-step verification in the Live Credentials tab first
+            </p>
+          )}
+        </div>
 
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1.5">
@@ -427,14 +747,20 @@ function PayuPanel() {
           </div>
         </div>
 
-        <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-300 flex items-start gap-2">
-          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          <span>Live mode is locked. Contact PayU support and receive live credentials before switching to production. Live activation only after PayU dashboard payment-mode activation.</span>
-        </div>
-
-        <Button onClick={saveSettings} disabled={saving} size="sm">
+        <Button onClick={() => saveSettings()} disabled={saving} size="sm">
           {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</> : <><Save className="w-3.5 h-3.5 mr-1.5" />Save Settings</>}
         </Button>
+
+        {activeEnv === "live" && allStepsPass && (
+          <Button
+            onClick={() => saveSettings("live")}
+            disabled={saving}
+            size="sm"
+            className="ml-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {saving ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Enabling…</> : <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />Enable PayU Payin – Live</>}
+          </Button>
+        )}
       </div>
 
       {/* UAT Test Instructions */}

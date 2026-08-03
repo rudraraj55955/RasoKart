@@ -56,6 +56,16 @@ async function loadPayuCreds(env: PayuEnv): Promise<{ key: string; salt: string 
 
   if (!row) return null;
 
+  if (env === "live") {
+    // Live credentials stored in clientIdEncrypted / clientSecretEncrypted
+    const keyResult  = row.clientIdEncrypted     ? decryptSecret(row.clientIdEncrypted)     : null;
+    const saltResult = row.clientSecretEncrypted ? decryptSecret(row.clientSecretEncrypted) : null;
+    if (!keyResult?.ok || !saltResult?.ok)       return null;
+    if (!keyResult.value || !saltResult.value)   return null;
+    return { key: keyResult.value, salt: saltResult.value };
+  }
+
+  // UAT credentials stored in apiKeyEncrypted / apiSecretEncrypted
   const keyResult  = row.apiKeyEncrypted    ? decryptSecret(row.apiKeyEncrypted)    : null;
   const saltResult = row.apiSecretEncrypted ? decryptSecret(row.apiSecretEncrypted) : null;
 
@@ -148,6 +158,22 @@ router.post("/payu/initiate", requireAuth, async (req, res, next) => {
       res.status(400).json({ error: "PayU payment gateway is not enabled" });
       return;
     }
+
+    // Defense-in-depth: if live mode is active, credentials must be currently verified.
+    // This guards against the window after live credentials are replaced but before re-verification.
+    if (cfg.env === "live") {
+      const [verRow] = await db
+        .select()
+        .from(systemConfigTable)
+        .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED))
+        .limit(1);
+      if (verRow?.value !== "true") {
+        req.log.warn({ merchantId: (req as any).user?.merchantId }, "payu_live_initiate_blocked_unverified");
+        res.status(400).json({ error: "PayU live credentials are pending verification. Please contact support." });
+        return;
+      }
+    }
+
     if (amountNum < cfg.minAmount) {
       res.status(400).json({ error: `Minimum amount is ₹${cfg.minAmount}` });
       return;

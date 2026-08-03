@@ -114,6 +114,14 @@ export interface PayuStatusResult {
   paymentMode?: string;
   errorMessage?: string;
   raw?: string;
+  /**
+   * PayU's own top-level `status` field from the API response (1 = request accepted by PayU,
+   * 0 = rejected / auth error). Present whenever PayU returns parseable JSON.
+   * Use this in the verify-live probe to distinguish "txnid not in DB" (payuApiStatus=1)
+   * from "invalid credentials" (payuApiStatus=0) — both arrive as ok=false/status="not found"
+   * via the transaction_details path but have different top-level status values.
+   */
+  payuApiStatus?: number;
 }
 
 /**
@@ -148,9 +156,13 @@ export async function queryPayuTransactionStatus(p: PayuStatusQueryParams): Prom
           const raw = Buffer.concat(chunks).toString("utf8");
           try {
             const parsed = JSON.parse(raw) as Record<string, unknown>;
+            // PayU top-level `status`: 1 = request accepted (creds valid), 0 = rejected (auth error etc.)
+            const payuApiStatus = typeof parsed["status"] === "number" ? parsed["status"]
+              : typeof parsed["status"] === "string"  ? Number(parsed["status"])
+              : undefined;
             const txnArr = (parsed["transaction_details"] as Record<string, unknown> | undefined)?.[txnid] as Record<string, unknown> | undefined;
             if (!txnArr) {
-              resolve({ ok: false, status: "not found", raw });
+              resolve({ ok: false, status: "not found", payuApiStatus, raw });
               return;
             }
             const txnStatus = (txnArr["status"] as string) ?? "";
@@ -160,6 +172,7 @@ export async function queryPayuTransactionStatus(p: PayuStatusQueryParams): Prom
               mihpayid:    txnArr["mihpayid"] as string | undefined,
               bankRefNo:   txnArr["bank_ref_num"] as string | undefined,
               paymentMode: txnArr["mode"] as string | undefined,
+              payuApiStatus,
               raw,
             });
           } catch {

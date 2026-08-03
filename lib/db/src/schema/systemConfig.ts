@@ -139,6 +139,11 @@ export const SYSTEM_CONFIG_KEYS = {
   PAYU_MIN_AMOUNT: "payu_min_amount",
   PAYU_MAX_AMOUNT: "payu_max_amount",
   PAYU_DAILY_LIMIT: "payu_daily_limit",
+  // PayU Live activation verification status
+  // Written by POST /api/admin/payu/verify-live after all 4 steps pass.
+  // Reset to "false" whenever new live credentials are saved via PUT /api/admin/payu/config.
+  PAYU_LIVE_VERIFIED:    "payu_live_verified",
+  PAYU_LIVE_VERIFIED_AT: "payu_live_verified_at",
   // RazorpayX (Payouts) — activation verification status
   // Credentials in env vars: RAZORPAY_X_KEY_ID, RAZORPAY_X_SECRET
   RAZORPAY_X_VERIFICATION_STATUS: "razorpay_x_verification_status", // "not_checked" | "pass" | "fail"
@@ -237,10 +242,12 @@ export const SYSTEM_CONFIG_DEFAULTS = {
   [SYSTEM_CONFIG_KEYS.RAZORPAY_MIN_AMOUNT]: "100",
   [SYSTEM_CONFIG_KEYS.RAZORPAY_MAX_AMOUNT]: "500000",
   [SYSTEM_CONFIG_KEYS.RAZORPAY_DAILY_LIMIT]: "1000000",
-  [SYSTEM_CONFIG_KEYS.PAYU_ENABLED]:    "false",
-  [SYSTEM_CONFIG_KEYS.PAYU_ENV]:        "uat",
-  [SYSTEM_CONFIG_KEYS.PAYU_SUSPENDED]:  "false",
-  [SYSTEM_CONFIG_KEYS.PAYU_MIN_AMOUNT]: "1",
-  [SYSTEM_CONFIG_KEYS.PAYU_MAX_AMOUNT]: "200000",
-  [SYSTEM_CONFIG_KEYS.PAYU_DAILY_LIMIT]: "1000000",
+  [SYSTEM_CONFIG_KEYS.PAYU_ENABLED]:        "false",
+  [SYSTEM_CONFIG_KEYS.PAYU_ENV]:            "uat",
+  [SYSTEM_CONFIG_KEYS.PAYU_SUSPENDED]:      "false",
+  [SYSTEM_CONFIG_KEYS.PAYU_MIN_AMOUNT]:     "1",
+  [SYSTEM_CONFIG_KEYS.PAYU_MAX_AMOUNT]:     "200000",
+  [SYSTEM_CONFIG_KEYS.PAYU_DAILY_LIMIT]:    "1000000",
+  [SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED]:  "false",
+  [SYSTEM_CONFIG_KEYS.PAYU_LIVE_VERIFIED_AT]: "",
 } as const;

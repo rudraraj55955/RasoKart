@@ -42,8 +42,12 @@ async function loadPayuSaltForEnv(env: PayuEnv): Promise<string | null> {
     .where(eq(providerIntegrationsTable.providerKey, "payu"))
     .limit(1);
 
-  if (!row?.apiSecretEncrypted) return null;
-  const result = decryptSecret(row.apiSecretEncrypted);
+  if (!row) return null;
+
+  // Live Salt → clientSecretEncrypted  |  UAT Salt → apiSecretEncrypted
+  const encrypted = env === "live" ? row.clientSecretEncrypted : row.apiSecretEncrypted;
+  if (!encrypted) return null;
+  const result = decryptSecret(encrypted);
   return result.ok && result.value ? result.value : null;
 }
 
@@ -57,8 +61,12 @@ async function loadPayuKeyForEnv(env: PayuEnv): Promise<string | null> {
     .where(eq(providerIntegrationsTable.providerKey, "payu"))
     .limit(1);
 
-  if (!row?.apiKeyEncrypted) return null;
-  const result = decryptSecret(row.apiKeyEncrypted);
+  if (!row) return null;
+
+  // Live Key → clientIdEncrypted  |  UAT Key → apiKeyEncrypted
+  const encrypted = env === "live" ? row.clientIdEncrypted : row.apiKeyEncrypted;
+  if (!encrypted) return null;
+  const result = decryptSecret(encrypted);
   return result.ok && result.value ? result.value : null;
 }
 

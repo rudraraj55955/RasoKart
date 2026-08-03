@@ -3,12 +3,17 @@ name: PayU UAT integration architecture
 description: Key design decisions for the PayU Hosted Checkout integration — credential storage, hash formula, idempotency, and capability honesty contract.
 ---
 
-## Credential storage
-- PayU Key → `provider_integrations.apiKeyEncrypted` (AES-256-GCM via SESSION_SECRET)
-- PayU Salt → `provider_integrations.apiSecretEncrypted`
-- Salt is NEVER returned to any client in any response — only `keySet: bool` + `keyMasked`
-- Env var override: `PAYU_UAT_KEY` / `PAYU_UAT_SALT` / `PAYU_LIVE_KEY` / `PAYU_LIVE_SALT`
-- Live mode is LOCKED in the admin settings route — returns 400 if env="live" attempted
+## Credential storage — dual-env
+- UAT Key/Salt → `provider_integrations.apiKeyEncrypted` / `apiSecretEncrypted`
+- Live Key/Salt → `provider_integrations.clientIdEncrypted` / `clientSecretEncrypted`
+- **Critical**: the column split applies to ALL three loaders: `loadPayuCreds` (payuOrders.ts) AND `loadPayuKeyForEnv`/`loadPayuSaltForEnv` (payuWebhook.ts). Forgetting the webhook loaders causes live callbacks to fail hash verification.
+- Credentials NEVER returned in any response — only masked first/last 4 chars
+- Env var override: `PAYU_UAT_KEY`/`PAYU_UAT_SALT` (UAT), `PAYU_LIVE_KEY`/`PAYU_LIVE_SALT` (Live)
+- Live mode gated: live creds present + `PAYU_LIVE_VERIFIED === "true"` in system_config
+- `PUT /config` accepts `env: "uat"|"live"` (default "uat"); saving live creds resets verification
+- New keys: `PAYU_LIVE_VERIFIED` ("true"/"false"), `PAYU_LIVE_VERIFIED_AT` (ISO timestamp)
+- `POST /verify-live`: 4-step server probe; writes verification keys only on full pass
+- `lib/db/dist` must be rebuilt (`cd lib/db && npx tsc`) when schema/systemConfig.ts changes — api-server uses compiled `.d.ts` via project references
 
 ## Hash formulas (SHA-512)
 - Payment hash: `sha512(key|txnid|amount|productinfo|firstname|email|udf1|udf2|udf3|udf4|udf5||||||salt)`
