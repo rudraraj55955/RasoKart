@@ -858,6 +858,14 @@ export default function AdminSmartRouting() {
             </TabsTrigger>
             <TabsTrigger value="failover" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
               <AlertTriangle className="w-4 h-4 mr-1.5" /> Failover Events
+              {(() => {
+                const ongoingCount = (failoverEventsQ.data?.events ?? []).filter(e => e.status === "ongoing").length;
+                return ongoingCount > 0 ? (
+                  <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold leading-none w-4 h-4 min-w-[1rem]">
+                    {ongoingCount}
+                  </span>
+                ) : null;
+              })()}
             </TabsTrigger>
             <TabsTrigger value="logs" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400">
               <ScrollText className="w-4 h-4 mr-1.5" /> Routing Logs
