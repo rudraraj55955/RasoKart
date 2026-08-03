@@ -16,6 +16,7 @@ import {
   useRenameMerchantSavedFilter,
   useReorderMerchantSavedFilters,
   useGetPayinStatus,
+  getGetPayinStatusQueryKey,
   useCreatePayinOrder,
   useGetPayinOrderStatus,
   useListNotifications,
@@ -906,8 +907,12 @@ export default function MerchantDeposits() {
   const [checkoutAutoOpenFailed, setCheckoutAutoOpenFailed] = useState(false);
   const checkoutOpenAttempted = useRef(false);
 
-  const { data: payinStatusData } = useGetPayinStatus();
+  const { data: payinStatusData } = useGetPayinStatus(
+    { query: { queryKey: getGetPayinStatusQueryKey(), refetchInterval: 30000 } },
+  );
   const cashfreeEnabled = payinStatusData?.enabled ?? false;
+  // Default to true (no banner) until the first successful fetch so we don't
+  // flash the outage banner on initial load before data arrives.
   const routingHealthy = payinStatusData?.routingHealthy ?? true;
 
   // "Gateways unavailable" banner — set when a deposit attempt hits the 503
@@ -1285,11 +1290,11 @@ export default function MerchantDeposits() {
 
   return (
     <div className="space-y-6">
-      {gatewayOutageSince && (
+      {(gatewayOutageSince || !routingHealthy) && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span className="flex-1">
-            Payment gateways are temporarily unavailable. We'll notify you here as soon as deposits are back online — no need to keep retrying.
+            Payments temporarily unavailable. Our payment infrastructure is experiencing an issue — this is not caused by your account. We'll restore service as quickly as possible.
           </span>
         </div>
       )}

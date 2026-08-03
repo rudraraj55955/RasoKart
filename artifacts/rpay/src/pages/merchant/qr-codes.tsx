@@ -8,6 +8,7 @@ import {
   useGetQrCodeActivity,
   useGetQrCodeStats,
   useGetPayinStatus,
+  getGetPayinStatusQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { getToken } from "@/lib/auth";
@@ -451,7 +452,11 @@ export default function MerchantQrCodes() {
   const { data, isLoading } = useListQrCodes({ type: "dynamic" as any, status: status as any, search, page, limit: 20 });
   const { data: stats } = useGetQrCodeStats();
   const { data: connections } = useListMerchantConnections();
-  const { data: payinStatus } = useGetPayinStatus();
+  const { data: payinStatus } = useGetPayinStatus(
+    { query: { queryKey: getGetPayinStatusQueryKey(), refetchInterval: 30000 } },
+  );
+  // Default to true until first fetch so we don't flash the banner on load.
+  const routingHealthy = payinStatus?.routingHealthy ?? true;
   const createMutation = useCreateQrCode();
   const deleteMutation = useDeleteQrCode();
   const bulkDeleteMutation = useBulkDeleteQrCodes();
@@ -620,6 +625,16 @@ export default function MerchantQrCodes() {
             </a>{" "}
             to generate QR codes.
           </div>
+        </div>
+      )}
+
+      {/* Chain-exhausted outage banner — driven by live polling of /api/merchant/payin/status */}
+      {!routingHealthy && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span className="flex-1">
+            Payments temporarily unavailable. Our payment infrastructure is experiencing an issue — this is not caused by your account. We'll restore service as quickly as possible.
+          </span>
         </div>
       )}
 
