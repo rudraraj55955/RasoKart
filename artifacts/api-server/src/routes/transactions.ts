@@ -610,7 +610,12 @@ router.get("/export/csv", async (req, res) => {
     .select({
       transaction: transactionsTable,
       merchantName: merchantsTable.businessName,
-      connectionProvider: merchantConnectionsTable.provider,
+      // COALESCE mirrors the list-route's effectiveProvider logic: prefer the
+      // joined connection's provider (FK path) and fall back to the direct
+      // transactions.provider field for legacy/direct-tagged rows.  Without
+      // this, rows matched via the transactions.provider fallback path show a
+      // blank Provider cell in the export even though the filter did match them.
+      connectionProvider: sql<string | null>`COALESCE(${merchantConnectionsTable.provider}, ${transactionsTable.provider})`,
     })
     .from(transactionsTable)
     .leftJoin(merchantsTable, eq(transactionsTable.merchantId, merchantsTable.id))
