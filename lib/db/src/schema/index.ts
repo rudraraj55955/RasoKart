@@ -36,6 +36,7 @@ export * from "./callbackLogAttempts";
 export * from "./savedFilters";
 export * from "./credentialEvents";
 export * from "./rateLimitHits";
+export * from "./merchantAuthLocks";
 export * from "./signatureFailureAlertLogs";
 export * from "./webhookFailureAlertLogs";
 export * from "./storageCleanupRuns";

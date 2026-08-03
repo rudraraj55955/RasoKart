@@ -1477,6 +1477,18 @@ async function migrate() {
   // schemaGuard + seed create at runtime. Adding them here makes the IAM
   // schema auditable, diffable, and rollback-able as a standard migration
   // step rather than relying solely on runtime guard execution.
+  // ── Section: merchant_auth_locks ──────────────────────────────────────
+  // Progressive soft-lock table used by the OTP brute-force protection.
+  // Mirrors the in-process guard in schemaGuard.ts (defense-in-depth).
+  await runSection("merchant-auth-locks", sql`
+    CREATE TABLE IF NOT EXISTS merchant_auth_locks (
+      identifier_hash         TEXT PRIMARY KEY,
+      locked_until            TIMESTAMPTZ,
+      window_exhaustion_count INTEGER NOT NULL DEFAULT 0,
+      updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   await runSection("iam-tables", sql`
     CREATE TABLE IF NOT EXISTS permissions (
       id                  SERIAL PRIMARY KEY,

@@ -12,6 +12,7 @@ import { sendPrefChangeUnknownDeviceEmail } from "../helpers/prefChangeEmail";
 import { createNotification } from "../helpers/notifications";
 import { sendMerchantOtpEmail } from "../helpers/merchantOtpEmail";
 import { sendOtpSms, loadOtpSmsSettings } from "../helpers/sendOtpSms";
+import { checkAuthLock, recordWindowExhaustion } from "../helpers/authLock";
 import { verifyGoogleIdToken, isGoogleConfigured } from "../helpers/googleAuth";
 import {
   generateOtp,
@@ -1512,7 +1513,9 @@ const otpRequestLimiter = makeRateLimiter({
   },
 });
 
-// Per-identifier OTP request limiter (5 per hour, survives IP rotation)
+// Per-identifier OTP request limiter (5 per hour, survives IP rotation).
+// When the window is fully exhausted the handler records a window-exhaustion
+// event so the progressive soft-lock can escalate for repeat offenders.
 const otpRequestPerIdentifierLimiter = makeRateLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 5,
@@ -1522,6 +1525,15 @@ const otpRequestPerIdentifierLimiter = makeRateLimiter({
     const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
     if (!identifier) return null;
     return `otp-req-id:${hashIdentifier(identifier)}`;
+  },
+  handler: (req, res) => {
+    const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
+    if (identifier) {
+      recordWindowExhaustion(hashIdentifier(identifier)).catch((err: unknown) => {
+        logger.warn({ err }, "otp_req_lock_record_failed");
+      });
+    }
+    res.status(429).json({ error: "Too many OTP requests for this account. Please try again later." });
   },
 });
 
@@ -1547,7 +1559,8 @@ const otpResendLimiter = makeRateLimiter({
   },
 });
 
-// Per-identifier OTP resend limiter (5 per hour, survives IP rotation)
+// Per-identifier OTP resend limiter (5 per hour, survives IP rotation).
+// Window exhaustion on resend is counted toward the same progressive lock.
 const otpResendPerIdentifierLimiter = makeRateLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 5,
@@ -1557,6 +1570,15 @@ const otpResendPerIdentifierLimiter = makeRateLimiter({
     const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
     if (!identifier) return null;
     return `otp-resend-id:${hashIdentifier(identifier)}`;
+  },
+  handler: (req, res) => {
+    const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
+    if (identifier) {
+      recordWindowExhaustion(hashIdentifier(identifier)).catch((err: unknown) => {
+        logger.warn({ err }, "otp_resend_lock_record_failed");
+      });
+    }
+    res.status(429).json({ error: "Too many resend requests for this account. Please try again later." });
   },
 });
 
@@ -1571,7 +1593,8 @@ const passwordForgotLimiter = makeRateLimiter({
   },
 });
 
-// Per-identifier forgot-password limiter (5 per hour, survives IP rotation)
+// Per-identifier forgot-password limiter (5 per hour, survives IP rotation).
+// Window exhaustion on password-reset is counted toward the progressive lock.
 const passwordForgotPerIdentifierLimiter = makeRateLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 5,
@@ -1581,6 +1604,15 @@ const passwordForgotPerIdentifierLimiter = makeRateLimiter({
     const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
     if (!identifier) return null;
     return `pwd-forgot-id:${hashIdentifier(identifier)}`;
+  },
+  handler: (req, res) => {
+    const identifier = typeof req.body?.identifier === "string" ? normalizeIdentifier(req.body.identifier) : "";
+    if (identifier) {
+      recordWindowExhaustion(hashIdentifier(identifier)).catch((err: unknown) => {
+        logger.warn({ err }, "pwd_forgot_lock_record_failed");
+      });
+    }
+    res.status(429).json({ error: "Too many password reset requests for this account. Please try again later." });
   },
 });
 
@@ -1721,6 +1753,16 @@ router.post("/merchant/otp/resend", otpResendLimiter, otpResendPerIdentifierLimi
       res.status(400).json({ error: "identifier is required" });
       return;
     }
+
+    // Progressive soft-lock check — same semantics as the otp/request route.
+    const resendLockState = await checkAuthLock(hashIdentifier(normalizeIdentifier(identifier)));
+    if (resendLockState.locked) {
+      req.log.warn({ purpose: "LOGIN", reason: "auth_locked" }, "merchant_otp_resend_blocked_by_lock");
+      await padToMinResponseTime(_tOtpStart);
+      res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
+      return;
+    }
+
     const user = await findMerchantUserByIdentifier(identifier);
     if (!user) {
       await padToMinResponseTime(_tOtpStart);
@@ -1760,6 +1802,19 @@ router.post("/merchant/otp/request", otpRequestLimiter, otpRequestPerIdentifierL
       res.status(400).json({ error: "identifier is required" });
       return;
     }
+
+    // Progressive soft-lock: check whether this identifier has been locked
+    // due to repeated window exhaustions (3+ per-hour windows fully consumed).
+    // Return the same safe message as a missing account so timing/content
+    // cannot reveal whether a lock is active.
+    const lockState = await checkAuthLock(hashIdentifier(normalizeIdentifier(identifier)));
+    if (lockState.locked) {
+      req.log.warn({ purpose: "LOGIN", reason: "auth_locked" }, "merchant_otp_blocked_by_lock");
+      await padToMinResponseTime(_tOtpStart);
+      res.json({ message: SAFE_OTP_REQUEST_MESSAGE });
+      return;
+    }
+
     const user = await findMerchantUserByIdentifier(identifier);
     if (!user) {
       req.log.info({ purpose: "LOGIN", hasUser: false }, "merchant_otp_requested");
@@ -1888,6 +1943,16 @@ router.post("/merchant/password/forgot", passwordForgotLimiter, passwordForgotPe
       res.status(400).json({ error: "identifier is required" });
       return;
     }
+
+    // Progressive soft-lock check — mirrors the otp/request route.
+    const forgotLockState = await checkAuthLock(hashIdentifier(normalizeIdentifier(identifier)));
+    if (forgotLockState.locked) {
+      req.log.warn({ purpose: "PASSWORD_RESET", reason: "auth_locked" }, "merchant_pwd_forgot_blocked_by_lock");
+      await padToMinResponseTime(_tOtpStart);
+      res.json({ message: SAFE_PASSWORD_RESET_MESSAGE });
+      return;
+    }
+
     const user = await findMerchantUserByIdentifier(identifier);
     if (!user) {
       req.log.info({ purpose: "PASSWORD_RESET", hasUser: false }, "merchant_otp_requested");

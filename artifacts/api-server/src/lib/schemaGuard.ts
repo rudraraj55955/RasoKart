@@ -1662,6 +1662,21 @@ async function runGuard(): Promise<void> {
   `);
   logger.info({ table: "agent_commission_ledger" }, "schema_guard_table_created");
 
+  // ── merchant_auth_locks ────────────────────────────────────────────────
+  // Progressive soft-lock table for OTP / forgot-password brute-force
+  // protection. Tracks how many consecutive per-hour windows have been
+  // exhausted for an identifier; sets a timed locked_until once the
+  // threshold is reached.  Locks expire automatically with no admin action.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS merchant_auth_locks (
+      identifier_hash        TEXT PRIMARY KEY,
+      locked_until           TIMESTAMPTZ,
+      window_exhaustion_count INTEGER NOT NULL DEFAULT 0,
+      updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  logger.info({ table: "merchant_auth_locks" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 
