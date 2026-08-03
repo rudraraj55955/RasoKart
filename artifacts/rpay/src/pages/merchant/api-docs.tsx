@@ -60,6 +60,7 @@ import {
   Star,
   Trash2,
   Save,
+  Pencil,
   AlertTriangle,
   Share2,
   Clock,
@@ -1098,6 +1099,43 @@ function TryItPanel({
   const [pendingShareExpiry, setPendingShareExpiry] = useState<number | null>(null);
   const [shareCredentialWarnings, setShareCredentialWarnings] = useState<string[]>([]);
   const [presetCredentialWarnings, setPresetCredentialWarnings] = useState<string[]>([]);
+  const [renamingPresetId, setRenamingPresetId] = useState<string | null>(null);
+  const [renamingPresetName, setRenamingPresetName] = useState("");
+  const renamingInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStartRename = useCallback((preset: SavedQueryPreset) => {
+    setRenamingPresetId(preset.id);
+    setRenamingPresetName(preset.name);
+    // Focus happens via useEffect after render
+  }, []);
+
+  useEffect(() => {
+    if (renamingPresetId) {
+      renamingInputRef.current?.focus();
+      renamingInputRef.current?.select();
+    }
+  }, [renamingPresetId]);
+
+  const handleCommitRename = useCallback(() => {
+    if (!renamingPresetId) return;
+    const newName = renamingPresetName.trim();
+    if (newName) {
+      const key = presetsStorageKeyFor(method, path);
+      renamePresetGlobal(key, renamingPresetId, newName);
+      setPresets((prev) =>
+        prev.map((p) => (p.id === renamingPresetId ? { ...p, name: newName } : p))
+      );
+      toast.success(`Renamed preset to "${newName}"`);
+    }
+    setRenamingPresetId(null);
+    setRenamingPresetName("");
+  }, [renamingPresetId, renamingPresetName, method, path]);
+
+  const handleCancelRename = useCallback(() => {
+    setRenamingPresetId(null);
+    setRenamingPresetName("");
+  }, []);
+
   const [presetLoadWarnings, setPresetLoadWarnings] = useState<{
     id: string;
     warnings: string[];
@@ -1407,14 +1445,43 @@ function TryItPanel({
                     key={preset.id}
                     className="flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full border border-border/50 bg-black/30 text-[11px]"
                   >
-                    <button
-                      type="button"
-                      onClick={() => handleLoadPreset(preset)}
-                      className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Star className="w-2.5 h-2.5" />
-                      {preset.name}
-                    </button>
+                    {renamingPresetId === preset.id ? (
+                      <>
+                        <Star className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+                        <input
+                          ref={renamingInputRef}
+                          value={renamingPresetName}
+                          onChange={(e) => setRenamingPresetName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); handleCommitRename(); }
+                            if (e.key === "Escape") { e.preventDefault(); handleCancelRename(); }
+                          }}
+                          onBlur={handleCommitRename}
+                          className="bg-transparent border-b border-primary/60 outline-none text-[11px] w-24 text-foreground"
+                          aria-label="Rename preset"
+                        />
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleLoadPreset(preset)}
+                        onDoubleClick={(e) => { e.preventDefault(); handleStartRename(preset); }}
+                        className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Star className="w-2.5 h-2.5" />
+                        {preset.name}
+                      </button>
+                    )}
+                    {renamingPresetId !== preset.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartRename(preset)}
+                        className="text-muted-foreground hover:text-primary transition-colors p-0.5"
+                        aria-label={`Rename preset ${preset.name}`}
+                      >
+                        <Pencil className="w-2.5 h-2.5" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDeletePreset(preset.id)}
