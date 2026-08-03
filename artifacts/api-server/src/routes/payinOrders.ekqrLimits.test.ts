@@ -429,6 +429,90 @@ describe("POST /api/merchant/payin/orders — EKQR transaction limit enforcement
   );
 
   it(
+    "accepts depositAmount exactly equal to the EKQR minimum (boundary — must not be rejected)",
+    async () => {
+      // The enforcement is `depositAmount < ugCfg.minAmount` (strict less-than),
+      // so depositAmount === minAmount must pass the range guard.
+      installDbMock(0, { minAmount: 100, maxAmount: 50000, dailyLimit: 200000 });
+
+      const originalFetch = global.fetch;
+      global.fetch = async () =>
+        ({
+          text: async () =>
+            JSON.stringify({
+              status: true,
+              msg: "Order created",
+              payment_url: "https://api.ekqr.in/pay/boundary-min-payin",
+            }),
+        }) as Response;
+
+      try {
+        const { status, body } = await post(
+          server,
+          "/api/merchant/payin/orders",
+          { amount: 100, customerPhone: "9876543210", customerName: "Boundary Min" },
+          token,
+        );
+
+        assert.notEqual(
+          status,
+          422,
+          `depositAmount exactly at EKQR min must not be rejected with 422 (got ${status}: ${JSON.stringify(body)})`,
+        );
+        // 200 (success) or 500 (DB insert or other downstream issue in test env)
+        // are both acceptable evidence that the amount-range guard passed.
+        assert.ok(
+          status === 200 || status === 500,
+          `Expected 200 or 500 for boundary-min amount but got ${status}: ${JSON.stringify(body)}`,
+        );
+      } finally {
+        global.fetch = originalFetch;
+      }
+    },
+  );
+
+  it(
+    "accepts depositAmount exactly equal to the EKQR maximum (boundary — must not be rejected)",
+    async () => {
+      // The enforcement is `depositAmount > ugCfg.maxAmount` (strict greater-than),
+      // so depositAmount === maxAmount must pass the range guard.
+      installDbMock(0, { minAmount: 100, maxAmount: 50000, dailyLimit: 200000 });
+
+      const originalFetch = global.fetch;
+      global.fetch = async () =>
+        ({
+          text: async () =>
+            JSON.stringify({
+              status: true,
+              msg: "Order created",
+              payment_url: "https://api.ekqr.in/pay/boundary-max-payin",
+            }),
+        }) as Response;
+
+      try {
+        const { status, body } = await post(
+          server,
+          "/api/merchant/payin/orders",
+          { amount: 50000, customerPhone: "9876543210", customerName: "Boundary Max" },
+          token,
+        );
+
+        assert.notEqual(
+          status,
+          422,
+          `depositAmount exactly at EKQR max must not be rejected with 422 (got ${status}: ${JSON.stringify(body)})`,
+        );
+        assert.ok(
+          status === 200 || status === 500,
+          `Expected 200 or 500 for boundary-max amount but got ${status}: ${JSON.stringify(body)}`,
+        );
+      } finally {
+        global.fetch = originalFetch;
+      }
+    },
+  );
+
+  it(
     "passes through to dispatch when depositAmount is inside the EKQR range with daily headroom",
     async () => {
       // ekqrDailyTotal = 0, dailyLimit = 200 000, amount = 500 → well within cap
