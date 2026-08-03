@@ -197,6 +197,45 @@ function MerchantSidebar() {
     me.settlementStateChangedEmails,
   ].filter(v => v === false).length;
 
+  const [tryItPresetCount, setTryItPresetCount] = useState(() => {
+    try {
+      const raw = localStorage.getItem("rasokart_tryit_presets");
+      if (!raw) return 0;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return 0;
+      return Object.values(parsed as Record<string, unknown[]>).reduce(
+        (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
+        0
+      );
+    } catch {
+      return 0;
+    }
+  });
+
+  useEffect(() => {
+    function syncCount() {
+      try {
+        const raw = localStorage.getItem("rasokart_tryit_presets");
+        if (!raw) { setTryItPresetCount(0); return; }
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") { setTryItPresetCount(0); return; }
+        const count = Object.values(parsed as Record<string, unknown[]>).reduce(
+          (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
+          0
+        );
+        setTryItPresetCount(count);
+      } catch {
+        setTryItPresetCount(0);
+      }
+    }
+    window.addEventListener("rasokart-tryit-presets-changed", syncCount);
+    window.addEventListener("storage", syncCount);
+    return () => {
+      window.removeEventListener("rasokart-tryit-presets-changed", syncCount);
+      window.removeEventListener("storage", syncCount);
+    };
+  }, []);
+
   const navGroups = [
     {
       group: "Overview",
@@ -305,6 +344,11 @@ function MerchantSidebar() {
                         )}
                         {item.href === "/merchant/reports" && hasReportScheduleWarning && (
                           <span className="flex items-center justify-center w-2 h-2 rounded-full bg-amber-400 shrink-0" aria-label="Report schedule issue" />
+                        )}
+                        {item.href === "/merchant/api-docs" && tryItPresetCount > 0 && (
+                          <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-primary/20 text-primary border border-primary/30 text-[10px] font-semibold px-1 leading-none shrink-0">
+                            {tryItPresetCount}
+                          </span>
                         )}
                       </Link>
                     </SidebarMenuButton>
