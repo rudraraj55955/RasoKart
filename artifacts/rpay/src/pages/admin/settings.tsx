@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench, GitBranch, Zap, FlaskConical, ChevronDown, ChevronUp, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
@@ -3959,20 +3960,35 @@ export default function AdminSettings() {
                   Snoozed until {new Date(cleanupAlertSnooze.snoozedUntil).toLocaleDateString()} · Unsnooze
                 </Button>
               ) : (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="shrink-0 text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
-                  disabled={settingCleanupAlertSnooze}
-                  onClick={() => {
-                    setCleanupAlertSnooze({ data: { days: 7 } }, {
-                      onSuccess: () => toast.success("Cleanup failure alert snoozed for 7 days"),
-                    });
-                  }}
-                >
-                  <Clock className="w-3 h-3 mr-1" />
-                  Snooze alert 7 days
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="shrink-0 text-muted-foreground hover:text-foreground h-7 px-2 text-xs"
+                      disabled={settingCleanupAlertSnooze}
+                    >
+                      <Clock className="w-3 h-3 mr-1" />
+                      Snooze alert
+                      <ChevronDown className="w-3 h-3 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="text-xs">
+                    {([1, 7, 30] as const).map((days) => (
+                      <DropdownMenuItem
+                        key={days}
+                        className="text-xs"
+                        onSelect={() => {
+                          setCleanupAlertSnooze({ data: { days } }, {
+                            onSuccess: () => toast.success(`Cleanup failure alert snoozed for ${days} day${days === 1 ? "" : "s"}`),
+                          });
+                        }}
+                      >
+                        {days} day{days === 1 ? "" : "s"}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
           </div>

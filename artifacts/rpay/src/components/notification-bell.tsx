@@ -438,18 +438,21 @@ export function NotificationBell({ isAdmin = false }: NotificationBellProps) {
                           ) : null;
                         })()}
                         {n.type === "cleanup_failure_repeated" && isAdmin && (
-                          <button
-                            type="button"
-                            disabled={snoozingCleanupAlert}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              snoozeCleanupAlert({ data: { days: 7 } });
-                            }}
-                            className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 mt-1 disabled:opacity-50"
-                          >
-                            <Clock className="w-3 h-3" />
-                            Snooze for 7 days
-                          </button>
+                          <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                            <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                            <span className="text-[10px] text-amber-400 mr-0.5">Snooze:</span>
+                            {([1, 7, 30] as const).map((days) => (
+                              <button
+                                key={days}
+                                type="button"
+                                disabled={snoozingCleanupAlert}
+                                onClick={() => snoozeCleanupAlert({ data: { days } })}
+                                className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 disabled:opacity-50 transition-colors"
+                              >
+                                {days}d
+                              </button>
+                            ))}
+                          </div>
                         )}
                         <p className="text-[10px] text-muted-foreground/50 mt-0.5">
                           {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
