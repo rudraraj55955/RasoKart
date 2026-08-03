@@ -94,7 +94,7 @@ router.post("/configs", async (req, res, next) => {
     }).returning();
 
     req.log.info({ configName, strategy }, "Routing config created");
-    res.json({ ...row!, createdAt: row!.createdAt.toISOString(), updatedAt: row!.updatedAt.toISOString() });
+    res.status(201).json({ ...row!, createdAt: row!.createdAt.toISOString(), updatedAt: row!.updatedAt.toISOString() });
   } catch (err) { next(err); }
 });
 
@@ -117,7 +117,7 @@ router.put("/configs/:id", async (req, res, next) => {
     if (isEnabled !== undefined) updateSet.isEnabled = isEnabled;
     if (fallbackEnabled !== undefined) updateSet.fallbackEnabled = fallbackEnabled;
     if (timeoutMs !== undefined) updateSet.timeoutMs = timeoutMs;
-    if (minSuccessRateThreshold !== undefined) updateSet.minSuccessRateThreshold = String(minSuccessRateThreshold);
+    if (minSuccessRateThreshold !== undefined) updateSet.minSuccessRateThreshold = minSuccessRateThreshold != null ? String(minSuccessRateThreshold) : null;
 
     const [updated] = await db.update(routingConfigsTable).set(updateSet as any).where(eq(routingConfigsTable.id, id)).returning();
 
@@ -741,9 +741,9 @@ router.get("/failure-trend", async (req, res, next) => {
       trend: rows.map(r => ({
         day: r.day,
         providerKey: r.providerKey,
-        totalAttempts: r.total,
-        failedAttempts: r.failed,
-        failureRate: r.total > 0 ? Number(((r.failed / r.total) * 100).toFixed(2)) : 0,
+        totalAttempts: Number(r.total),
+        failedAttempts: Number(r.failed),
+        failureRate: Number(r.total) > 0 ? Number(((Number(r.failed) / Number(r.total)) * 100).toFixed(2)) : 0,
       })),
     });
   } catch (err) { next(err); }

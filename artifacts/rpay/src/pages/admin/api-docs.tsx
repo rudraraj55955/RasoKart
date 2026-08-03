@@ -208,6 +208,50 @@ function truncateCredentialValue(value: string, maxLen = 24): string {
   return trimmed.slice(0, maxLen) + "…";
 }
 
+function collectRedactedPlaceholders(
+  queryParams: { key: string; value: string }[],
+  body: string,
+  pathValues: Record<string, string>
+): string[] {
+  const fields: string[] = [];
+  for (const [key, val] of Object.entries(pathValues)) {
+    if (val === "[REDACTED]") {
+      fields.push(`path param "{${key}}"`);
+    }
+  }
+  for (const row of queryParams) {
+    if (row.key.trim() && row.value === "[REDACTED]") {
+      fields.push(`query param "${row.key}"`);
+    }
+  }
+  if (body.trim()) {
+    if (body.trim() === "[REDACTED]") {
+      fields.push("request body");
+    } else {
+      try {
+        const parsed = JSON.parse(body) as unknown;
+        const walk = (value: unknown, path: string) => {
+          if (typeof value === "string") {
+            if (value === "[REDACTED]") {
+              fields.push(path ? `body field "${path}"` : "request body");
+            }
+          } else if (Array.isArray(value)) {
+            value.forEach((item, i) => walk(item, `${path}[${i}]`));
+          } else if (value !== null && typeof value === "object") {
+            for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+              walk(v, path ? `${path}.${k}` : k);
+            }
+          }
+        };
+        walk(parsed, "");
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
+  return fields;
+}
+
 function collectCredentialWarnings(
   queryParams: { key: string; value: string }[],
   body: string,
@@ -851,6 +895,14 @@ function TryItPanel({
     () => getMismatchLineNumbers(body, typeMismatches),
     [body, typeMismatches]
   );
+
+  const filteredQueryParams = queryParams.filter((row) => row.key.trim().length > 0);
+
+  const redactedPlaceholderFields = useMemo(
+    () => collectRedactedPlaceholders(filteredQueryParams, body, pathValues),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queryParams, body, pathValues]
+  );
   const [bodyScrollTop, setBodyScrollTop] = useState(0);
 
   useEffect(() => {
@@ -1475,22 +1527,27 @@ function TryItPanel({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 gap-1.5 text-xs"
-                    onClick={handleCopyCurl}
-                  >
-                    {curlCopied ? (
-                      <Check className="w-3 h-3 text-emerald-400" />
-                    ) : (
-                      <Copy className="w-3 h-3" />
-                    )}
-                    cURL
-                  </Button>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={handleCopyCurl}
+                      disabled={redactedPlaceholderFields.length > 0}
+                    >
+                      {curlCopied ? (
+                        <Check className="w-3 h-3 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
+                      cURL
+                    </Button>
+                  </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
-                  Copy as cURL command
+                  {redactedPlaceholderFields.length > 0
+                    ? `Replace the [REDACTED] placeholder${redactedPlaceholderFields.length > 1 ? "s" : ""} before copying`
+                    : "Copy as cURL command"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
