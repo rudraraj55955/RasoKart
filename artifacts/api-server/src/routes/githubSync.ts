@@ -38,16 +38,35 @@ interface DivergenceState {
   consecutivePollsDiverged: number;
   firstDetectedAt: string | null;
   lastEmailSentPollCount: number;
+  /** Emails of admins who received at least one divergence alert during this incident. Used to send the resolved email only to admins who had context. */
+  alertedAdminEmails: string[];
 }
 
 let divergenceCheckInFlight = false;
+
+/**
+ * Returns the subset of `admins` whose corresponding `sendMail` result was
+ * fulfilled with a truthy value (i.e. the email was actually delivered).
+ * Exported for unit testing.
+ */
+export function filterSuccessfulEmailRecipients(
+  admins: Array<{ email: string }>,
+  results: PromiseSettledResult<boolean>[],
+): string[] {
+  return admins
+    .filter((_, i) => {
+      const r = results[i];
+      return r !== undefined && r.status === "fulfilled" && (r as PromiseFulfilledResult<boolean>).value === true;
+    })
+    .map(a => a.email);
+}
 
 function readDivergenceState(): DivergenceState {
   try {
     const raw = readFileSync(DIVERGENCE_STATE_FILE, "utf-8");
     return JSON.parse(raw) as DivergenceState;
   } catch {
-    return { diverged: false, consecutivePollsDiverged: 0, firstDetectedAt: null, lastEmailSentPollCount: 0 };
+    return { diverged: false, consecutivePollsDiverged: 0, firstDetectedAt: null, lastEmailSentPollCount: 0, alertedAdminEmails: [] };
   }
 }
 
@@ -194,22 +213,18 @@ async function _maybeNotifyDivergenceTransitionImpl(opts: {
 
   if (!nowDiverged) {
     if (state.diverged) {
-      writeDivergenceState({ diverged: false, consecutivePollsDiverged: 0, firstDetectedAt: null, lastEmailSentPollCount: 0 });
+      writeDivergenceState({ diverged: false, consecutivePollsDiverged: 0, firstDetectedAt: null, lastEmailSentPollCount: 0, alertedAdminEmails: [] });
       if (state.lastEmailSentPollCount > 0) {
         try {
-          const admins = await db
-            .select({ email: usersTable.email })
-            .from(usersTable)
-            .where(
-              and(
-                eq(usersTable.role, "admin"),
-                eq(usersTable.isActive, true),
-                eq(usersTable.githubSyncFailureAlertEmails, true),
-              ),
-            );
+          // Only email admins who received the original alert — not the current opted-in set.
+          // This prevents out-of-context "resolved" emails to admins who opted in after the alert,
+          // and ensures admins who opted out mid-incident still get the resolution notice.
+          const recipientEmails: string[] = Array.isArray(state.alertedAdminEmails) && state.alertedAdminEmails.length > 0
+            ? state.alertedAdminEmails
+            : [];
 
-          if (admins.length === 0) {
-            logger.info("GITHUB_SYNC: No admins opted in to sync alert emails — skipping divergence resolved email");
+          if (recipientEmails.length === 0) {
+            logger.info("GITHUB_SYNC: No admins were alerted during this divergence incident — skipping divergence resolved email");
           } else {
             const subject = `[RasoKart] ✅ GitHub Remote Divergence Resolved — ${repo}`;
             const html = buildDivergenceResolvedHtml({
@@ -219,13 +234,13 @@ async function _maybeNotifyDivergenceTransitionImpl(opts: {
             });
 
             const results = await Promise.allSettled(
-              admins.map(a => sendMail({ to: a.email, subject, html })),
+              recipientEmails.map(email => sendMail({ to: email, subject, html })),
             );
 
             const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
             const failed = results.length - sent;
             logger.info(
-              { sent, failed, priorPollCount: state.consecutivePollsDiverged },
+              { sent, failed, priorPollCount: state.consecutivePollsDiverged, recipients: recipientEmails.length },
               "GITHUB_SYNC: Divergence resolved email dispatched",
             );
           }
@@ -258,11 +273,15 @@ async function _maybeNotifyDivergenceTransitionImpl(opts: {
     consecutivePollsDiverged > 1 &&
     (consecutivePollsDiverged - state.lastEmailSentPollCount) % renotifyInterval === 0;
 
+  // Carry forward any admins already alerted during this incident (from prior polls / renotify cadence).
+  const priorAlertedEmails: string[] = Array.isArray(state.alertedAdminEmails) ? state.alertedAdminEmails : [];
+
   const newState: DivergenceState = {
     diverged: true,
     consecutivePollsDiverged,
     firstDetectedAt,
     lastEmailSentPollCount: isFirstDetection || onRenotifyCadence ? consecutivePollsDiverged : state.lastEmailSentPollCount,
+    alertedAdminEmails: priorAlertedEmails,
   };
   writeDivergenceState(newState);
 
@@ -292,12 +311,21 @@ async function _maybeNotifyDivergenceTransitionImpl(opts: {
       admins.map(a => sendMail({ to: a.email, subject, html })),
     );
 
-    const sent = results.filter(r => r.status === "fulfilled" && r.value).length;
+    // Only keep addresses whose sendMail call actually succeeded (fulfilled + truthy).
+    const newlyAlerted = filterSuccessfulEmailRecipients(admins, results);
+
+    const sent = newlyAlerted.length;
     const failed = results.length - sent;
     logger.info(
       { sent, failed, remoteAheadBy, consecutivePollsDiverged },
       "GITHUB_SYNC: Divergence transition alert email dispatched",
     );
+
+    // Union successfully-alerted addresses into the persisted list so the resolved email
+    // goes to everyone who actually received an alert during this incident,
+    // regardless of their current opt-in status at resolution time.
+    const mergedEmails = Array.from(new Set([...priorAlertedEmails, ...newlyAlerted]));
+    writeDivergenceState({ ...newState, alertedAdminEmails: mergedEmails });
   } catch (err) {
     logger.error({ err }, "GITHUB_SYNC: Failed to send divergence transition alert emails");
   }
