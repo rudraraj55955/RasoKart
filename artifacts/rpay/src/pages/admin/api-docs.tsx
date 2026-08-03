@@ -596,6 +596,12 @@ interface SharedTryItPreset {
   body: string;
   expiresAt?: string;
   localToken?: string;
+  /**
+   * Human-readable labels of fields that were blanked to "[REDACTED]" before this link was
+   * encoded. Only present when the sharer left "Strip credentials from link" checked and a
+   * credential-shaped value was detected.
+   */
+  redactedFields?: string[];
 }
 
 interface SharedPresetReadResult {
@@ -687,6 +693,9 @@ function decodeSharedPreset(encoded: string): SharedTryItPreset | null {
         body: parsed.body,
         expiresAt: typeof parsed.expiresAt === "string" ? parsed.expiresAt : undefined,
         localToken: typeof parsed.localToken === "string" ? parsed.localToken : undefined,
+        redactedFields: Array.isArray(parsed.redactedFields)
+          ? parsed.redactedFields.filter((f: unknown): f is string => typeof f === "string")
+          : undefined,
       };
     }
     return null;
@@ -1739,6 +1748,17 @@ function TryItPanel({
             <p className="text-xs text-amber-400/80 mt-2 flex items-start gap-1.5">
               <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
               These values were loaded from a preset — double-check that you intended to share them.
+            </p>
+          )}
+          {!!(
+            sharedMatch?.redactedFields?.length &&
+            shareCredentialWarnings.some((w) =>
+              sharedMatch!.redactedFields!.some((f) => w.startsWith(f))
+            )
+          ) && (
+            <p className="text-xs text-amber-400/80 mt-2 flex items-start gap-1.5">
+              <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+              Some of these values were filled in for [REDACTED] placeholders from the shared link you opened — double-check that you intended to share them.
             </p>
           )}
           <p className="text-xs text-muted-foreground mt-2">
