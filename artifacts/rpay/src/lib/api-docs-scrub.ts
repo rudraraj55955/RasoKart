@@ -24,21 +24,72 @@ export interface ScrubbedShareFields {
 }
 
 /**
+ * Computes the Shannon entropy (bits per character) of `s`.
+ * A purely random string drawn from an N-symbol alphabet has entropy log2(N).
+ * Base64 has 64 symbols → max 6 bits/char; real credentials typically exceed
+ * 3.5 bits/char while short human-readable values stay well below that.
+ */
+function shannonEntropy(s: string): number {
+  const freq: Record<string, number> = {};
+  for (const ch of s) {
+    freq[ch] = (freq[ch] ?? 0) + 1;
+  }
+  const len = s.length;
+  let entropy = 0;
+  for (const count of Object.values(freq)) {
+    const p = count / len;
+    entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
+
+/**
  * Returns true when `value` looks like a live credential that should never
  * appear in an export file or share link.
  *
  * Recognised patterns:
- *  - RasoKart API keys  (`rasokart_live_*` / `rasokart_secret_*`)
- *  - JWTs              (three dot-separated segments where the first two start
- *                       with "ey", the standard base64url header/payload prefix)
+ *  - RasoKart API keys    (`rasokart_live_*` / `rasokart_secret_*`)
+ *  - JWTs                 (three dot-separated segments where the first two
+ *                          start with "ey", the standard base64url prefix)
+ *  - High-entropy base64  (≥ 32 chars, only base64/base64url alphabet, Shannon
+ *                          entropy > 3.5 bits/char — catches third-party API
+ *                          keys such as Cashfree secret keys and PayU salts
+ *                          that don't carry a recognisable prefix)
+ *
+ * Safe values that are explicitly exempted from the high-entropy check:
+ *  - Standard UUIDs        (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+ *  - HTTP/HTTPS URLs
  */
 export function looksLikeCredential(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
+
+  // ── Explicit prefix patterns ─────────────────────────────────────────────
   if (trimmed.startsWith("rasokart_live_") || trimmed.startsWith("rasokart_secret_")) return true;
+
+  // ── JWT (three base64url segments, first two start with "ey") ────────────
   const parts = trimmed.split(".");
   if (parts.length === 3 && parts[0].startsWith("ey") && parts[1].startsWith("ey")) return true;
-  return false;
+
+  // ── High-entropy base64 heuristic ────────────────────────────────────────
+  // Short values are never redacted regardless of entropy.
+  if (trimmed.length < 32) return false;
+
+  // URLs are safe operational values, never credentials.
+  if (/^https?:\/\//i.test(trimmed)) return false;
+
+  // Standard UUIDs (8-4-4-4-12 hex groups) are safe identifiers.
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return false;
+
+  // Only flag values whose alphabet is restricted to base64 / base64url chars
+  // (A-Z a-z 0-9 + / = - _).  Spaces, colons, slashes in paths, etc. disqualify
+  // a string immediately — those are human-readable data, not opaque keys.
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(trimmed)) return false;
+
+  // Finally, require high Shannon entropy — random/encrypted blobs cluster
+  // well above 3.5 bits/char while structured IDs (hex order refs, short
+  // transaction codes) sit comfortably below it.
+  return shannonEntropy(trimmed) > 3.5;
 }
 
 /**

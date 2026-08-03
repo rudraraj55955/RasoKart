@@ -82,6 +82,63 @@ describe("looksLikeCredential", () => {
       assert.ok(!looksLikeCredential("https://example.com/callback"));
     });
   });
+
+  // ── High-entropy base64 heuristic ──────────────────────────────────────────
+  describe("high-entropy base64 credentials (third-party API keys)", () => {
+    // Cashfree secret key shape: long opaque base64url string
+    const CASHFREE_SECRET = "cfsk_ma_prod_Kx9zLmN3pQ7rStUvWxYzAbCdEfGhIj";
+
+    // PayU salt shape: 32-char hex string
+    const PAYU_SALT = "a3f8c2e1d4b76501e9fa3d82c1b05e74";
+
+    // Generic high-entropy base64 key (e.g. arbitrary provider secret)
+    const GENERIC_B64_KEY = "T8kLmN3pQ7rStUvWxYzAbCdEfGhIjKlMnOpQrStUvW=";
+
+    it("detects a Cashfree-style secret key (long base64url with prefix)", () => {
+      assert.ok(looksLikeCredential(CASHFREE_SECRET));
+    });
+
+    it("detects a PayU-style salt (32-char hex string)", () => {
+      assert.ok(looksLikeCredential(PAYU_SALT));
+    });
+
+    it("detects a generic high-entropy base64 key (≥ 32 chars)", () => {
+      assert.ok(looksLikeCredential(GENERIC_B64_KEY));
+    });
+
+    it("detects a 40-char random base64url string", () => {
+      // Simulates a raw provider API key with no recognisable prefix
+      assert.ok(looksLikeCredential("AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AB=="));
+    });
+
+    it("does NOT flag a string shorter than 32 chars even if base64-like", () => {
+      // Too short to be a meaningful secret
+      assert.ok(!looksLikeCredential("AbCdEfGhIjKlMnOpQrS"));
+    });
+
+    it("does NOT flag a standard UUID (low-entropy hex with dashes)", () => {
+      assert.ok(!looksLikeCredential("550e8400-e29b-41d4-a716-446655440000"));
+    });
+
+    it("does NOT flag an HTTPS URL even if it contains high-entropy path segments", () => {
+      assert.ok(!looksLikeCredential("https://example.com/AbCdEfGhIjKlMnOpQrStUvWxYz01234567"));
+    });
+
+    it("does NOT flag a value that contains spaces (human-readable text)", () => {
+      // Spaces disqualify a value from the base64 alphabet check
+      assert.ok(!looksLikeCredential("this is a long enough string but it has spaces in it here"));
+    });
+
+    it("does NOT flag a value with colons (e.g. a JSON-like or SQL string)", () => {
+      // Colons are outside the base64 alphabet so the value is treated as safe data
+      assert.ok(!looksLikeCredential("status:active;region:IN;env:production;tier:gold00000000000"));
+    });
+
+    it("does NOT flag a repetitive low-entropy long string", () => {
+      // Shannon entropy of aaaaa... approaches 0 — clearly not a credential
+      assert.ok(!looksLikeCredential("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

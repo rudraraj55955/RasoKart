@@ -62,6 +62,7 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { looksLikeCredential } from "@/lib/api-docs-scrub";
 
 function CodeBlock({ code, language = "bash" }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
@@ -188,14 +189,6 @@ interface TryItPanelProps {
   expectedBodyKeys?: BodyFieldSchema[];
 }
 
-function looksLikeCredential(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  if (trimmed.startsWith("rasokart_live_") || trimmed.startsWith("rasokart_secret_")) return true;
-  const parts = trimmed.split(".");
-  if (parts.length === 3 && parts[0].startsWith("ey") && parts[1].startsWith("ey")) return true;
-  return false;
-}
 
 function walkJsonStrings(value: unknown, path: string, found: { path: string; value: string }[]) {
   if (typeof value === "string") {
