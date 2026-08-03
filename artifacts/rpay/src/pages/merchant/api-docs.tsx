@@ -2141,6 +2141,7 @@ function parsePresetsExportFile(raw: string): PresetsExportFile | null {
 
 type PresetSortOrder = "endpoint" | "name-asc" | "name-desc" | "newest" | "oldest" | "last-used-recent" | "last-used-stale";
 
+const STALE_THRESHOLD_DAYS = 90;
 function ManagePresetsDialog({
   open,
   onOpenChange,
@@ -2225,6 +2226,28 @@ function ManagePresetsDialog({
     }
     return sorted;
   }, [presets, filterText, sortOrder]);
+
+  const stalePresets = useMemo(() => {
+    const threshold = Date.now() - STALE_THRESHOLD_MS;
+    return presets.filter((item) => {
+      if (item.preset.lastUsedAt) {
+        return new Date(item.preset.lastUsedAt).getTime() < threshold;
+      }
+      // Never used — fall back to creation time encoded in the id
+      const createdAt = parseInt(item.preset.id.split("-")[0] ?? "0", 10);
+      return createdAt > 0 && createdAt < threshold;
+    });
+  }, [presets]);
+
+  const selectAllStale = useCallback(() => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const item of stalePresets) {
+        next.add(`${item.key}::${item.preset.id}`);
+      }
+      return next;
+    });
+  }, [stalePresets]);
 
   useEffect(() => {
     const visibleIds = new Set(visiblePresets.map((item) => `${item.key}::${item.preset.id}`));
@@ -2477,6 +2500,60 @@ function ManagePresetsDialog({
           </p>
         ) : (
           <>
+            {stalePresets.length > 0 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-xs font-medium text-amber-300 flex-1">
+                    {stalePresets.length} preset{stalePresets.length === 1 ? "" : "s"} unused for {STALE_THRESHOLD_DAYS}+ days
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200"
+                    onClick={selectAllStale}
+                  >
+                    Select all
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  {stalePresets.map((item) => {
+                    const cid = `${item.key}::${item.preset.id}`;
+                    const isSelected = selected.has(cid);
+                    return (
+                      <div
+                        key={cid}
+                        className={`flex items-center gap-2 rounded px-2 py-1.5 transition-colors cursor-pointer ${
+                          isSelected ? "bg-amber-500/20" : "bg-black/20 hover:bg-black/30"
+                        }`}
+                        onClick={() => toggleSelect(item)}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelect(item)}
+                          className="shrink-0"
+                          aria-label={`Select stale preset ${item.preset.name}`}
+                        />
+                        <Star className="w-3 h-3 text-amber-400/60 shrink-0" />
+                        <span className="text-xs text-foreground truncate flex-1">{item.preset.name}</span>
+                        <Badge
+                          className={`text-[10px] font-bold shrink-0 ${methodColors[item.method] ?? ""}`}
+                        >
+                          {item.method}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground/60 shrink-0 flex items-center gap-0.5">
+                          <Clock className="w-2.5 h-2.5" />
+                          {item.preset.lastUsedAt
+                            ? formatRelativeTime(item.preset.lastUsedAt)
+                            : "never used"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -3942,3 +4019,5 @@ await fetch("https://your-domain.com/api/callbacks/payment", {
     </SharedPresetContext.Provider>
   );
 }
+
+const STALE_THRESHOLD_MS = STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
