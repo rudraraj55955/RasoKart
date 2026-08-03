@@ -903,6 +903,7 @@ export default function MerchantDeposits() {
   const [cfName, setCfName] = useState("");
   const [cfEmail, setCfEmail] = useState("");
   const [cfCreating, setCfCreating] = useState(false);
+  const [cfCreateError, setCfCreateError] = useState("");
   const [activePayinOrder, setActivePayinOrder] = useState<{ publicOrderId: string; paymentToken: string; checkoutUrl: string | null; amount: number } | null>(null);
   const [checkoutAutoOpenFailed, setCheckoutAutoOpenFailed] = useState(false);
   const checkoutOpenAttempted = useRef(false);
@@ -966,6 +967,7 @@ export default function MerchantDeposits() {
     setCheckoutAutoOpenFailed(false);
     checkoutOpenAttempted.current = false;
     setCfAmount(""); setCfPhone(""); setCfName(""); setCfEmail("");
+    setCfCreateError("");
   };
 
   const resetRazorpayDialog = () => {
@@ -1140,10 +1142,14 @@ export default function MerchantDeposits() {
             : "All payment gateways are currently unavailable. Our team has been notified. Please try again in a few minutes or contact support.",
           { duration: 8000 },
         );
-      } else if (status === 400 && serverError) {
-        toast.error(serverError);
+      } else if ((status === 400 || status === 422) && serverError) {
+        // Rejection due to admin-configured limits (min/max amount, daily cap) or
+        // routing misconfiguration — surface the exact reason inline in the form
+        // so the merchant can correct their input without contacting support.
+        setCfCreateError(serverError);
       } else {
-        toast.error(serverError ?? err?.message ?? "Failed to create deposit order");
+        const msg = serverError ?? err?.message ?? "Failed to create deposit order";
+        setCfCreateError(msg);
       }
     } finally {
       setCfCreating(false);
@@ -2066,7 +2072,7 @@ export default function MerchantDeposits() {
                     placeholder="e.g. 5000"
                     min="1"
                     value={cfAmount}
-                    onChange={e => setCfAmount(e.target.value)}
+                    onChange={e => { setCfAmount(e.target.value); setCfCreateError(""); }}
                   />
                   {payinStatusData?.effectiveMinAmount != null && payinStatusData?.effectiveMaxAmount != null && (
                     <p className="text-xs text-muted-foreground">
@@ -2074,13 +2080,19 @@ export default function MerchantDeposits() {
                     </p>
                   )}
                 </div>
+                {cfCreateError && (
+                  <div className="flex items-start gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <p className="text-sm text-rose-300">{cfCreateError}</p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Customer Phone <span className="text-destructive">*</span></Label>
                   <Input
                     type="tel"
                     placeholder="e.g. 9876543210"
                     value={cfPhone}
-                    onChange={e => setCfPhone(e.target.value)}
+                    onChange={e => { setCfPhone(e.target.value); setCfCreateError(""); }}
                   />
                   <p className="text-xs text-muted-foreground">Required for payment processing</p>
                 </div>

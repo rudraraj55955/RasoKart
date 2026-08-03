@@ -440,6 +440,7 @@ export default function MerchantQrCodes() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkConfirm, setBulkConfirm] = useState<{ ids?: number[]; statusFilter?: string; count: number; label: string } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [createError, setCreateError] = useState("");
 
   const [form, setForm] = useState({
     amount: "",
@@ -527,11 +528,13 @@ export default function MerchantQrCodes() {
         onSuccess: () => {
           toast.success("QR code created");
           setShowCreate(false);
+          setCreateError("");
           setForm({ amount: "", orderId: "", expiresAt: "", callbackUrl: "", merchantReference: "" });
           invalidate();
         },
         onError: (err: unknown) => {
-          toast.error(getApiErrorMessage(err, "Failed to create QR code"));
+          const msg = getApiErrorMessage(err, "Failed to create QR code");
+          setCreateError(msg);
         },
       }
     );
@@ -850,7 +853,7 @@ export default function MerchantQrCodes() {
       )}
 
       {/* Create Dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+      <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) setCreateError(""); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Create Dynamic QR</DialogTitle>
@@ -882,13 +885,19 @@ export default function MerchantQrCodes() {
               <div className="space-y-1.5">
                 <Label>Amount (₹) <span className="text-muted-foreground text-xs">(optional — leave blank for open amount)</span></Label>
                 <Input type="number" step="0.01" placeholder="e.g. 999.00" value={form.amount}
-                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+                  onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); setCreateError(""); }} />
                 {payinStatus?.upigatewayMinAmount != null && payinStatus?.upigatewayMaxAmount != null && (
                   <p className="text-xs text-muted-foreground">
                     Min ₹{payinStatus.upigatewayMinAmount.toLocaleString()} · Max ₹{payinStatus.upigatewayMaxAmount.toLocaleString()}
                   </p>
                 )}
               </div>
+              {createError && (
+                <div className="flex items-start gap-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2.5">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <p className="text-sm text-rose-300">{createError}</p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>Order ID <span className="text-muted-foreground text-xs">(optional)</span></Label>
                 <Input placeholder="e.g. ORD-20240001" value={form.orderId}
