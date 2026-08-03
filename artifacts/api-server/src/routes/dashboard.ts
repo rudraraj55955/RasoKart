@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { db, transactionsTable, merchantsTable, callbackLogsTable, qrCodesTable, virtualAccountsTable, reconciliationRunsTable, settlementsTable, merchantPlansTable, providersTable, systemSettingsTable } from "@workspace/db";
 import { eq, sql, and, gte, count, countDistinct, inArray, notInArray, ne, lte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { readFailureStreak, getCleanupFailureThreshold, CLEANUP_ALERT_SNOOZE_KEY } from "../helpers/githubSyncLogCleanupScheduler";
 
 const router = Router();
 router.use(requireAuth);
@@ -419,6 +420,29 @@ router.get("/notifications", async (req, res, next) => {
         link: "/admin/settings#github-sync",
         createdAt: new Date().toISOString(),
       });
+    }
+
+    // Cleanup streak alert — check if nightly log-cleanup failures have hit threshold and are not snoozed
+    try {
+      const [cleanupStreak, cleanupThreshold, snoozeRow] = await Promise.all([
+        readFailureStreak(),
+        getCleanupFailureThreshold(),
+        db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, CLEANUP_ALERT_SNOOZE_KEY)).limit(1),
+      ]);
+      const snoozedUntil = snoozeRow[0]?.value ?? null;
+      const snoozed = snoozedUntil != null && new Date(snoozedUntil) > new Date();
+      if (!snoozed && cleanupStreak.count >= cleanupThreshold) {
+        notifications.push({
+          id: "github-sync-cleanup-failing",
+          type: "github_sync_cleanup_failing",
+          message: `GitHub sync log cleanup has failed ${cleanupStreak.count} consecutive night${cleanupStreak.count === 1 ? "" : "s"} — orphaned log files may be accumulating`,
+          severity: cleanupStreak.count >= cleanupThreshold * 2 ? "error" : "warning",
+          link: "/admin/settings#github-sync",
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // Non-fatal: cleanup streak check failure should not break the notifications endpoint
     }
 
     res.json({ data: notifications, total: notifications.length });

@@ -3942,6 +3942,20 @@ export default function AdminSettings() {
             </div>
           )}
 
+          {/* Cleanup streak threshold banner */}
+          {githubSyncLastCleanup != null &&
+            (githubSyncLastCleanup.failureStreak ?? 0) >= (githubSyncLastCleanup.failureThreshold ?? 3) &&
+            !cleanupAlertSnooze?.active && (
+            <div className="flex items-start gap-2.5 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Log cleanup threshold reached</strong> — the nightly orphaned-log cleanup has failed{" "}
+                <strong>{githubSyncLastCleanup.failureStreak} consecutive night{githubSyncLastCleanup.failureStreak === 1 ? "" : "s"}</strong>{" "}
+                (threshold: {githubSyncLastCleanup.failureThreshold}). Orphaned log files may be accumulating. Run cleanup now or check server permissions.
+              </span>
+            </div>
+          )}
+
           {/* Log file cleanup */}
           <div id="github-sync-cleanup-row" className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
             <div className="flex-1 min-w-0 mr-4">
