@@ -23,7 +23,7 @@ import {
   SYSTEM_CONFIG_KEYS,
   SYSTEM_CONFIG_DEFAULTS,
   SYSTEM_CONFIG_NO_DEFAULT_KEYS,
-} from "./systemConfig.ts";
+} from "./systemConfig";
 
 const allValues = Object.values(SYSTEM_CONFIG_KEYS) as string[];
 const defaultKeys = new Set(Object.keys(SYSTEM_CONFIG_DEFAULTS));
