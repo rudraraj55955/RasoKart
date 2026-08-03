@@ -35,6 +35,11 @@
  * The label-shift between filter windows (cashfree is "B" unfiltered but "A"
  * when filtered to cashfree-only) is exactly what proves the per-filter path
  * is in use instead of the stable first-use path.
+ *
+ * A companion describe block at the bottom of this file tests the DETAIL route
+ * (GET /api/transactions/:id) covering the same connectionProvider contract for
+ * both connection-backed rows and legacy rows (connectionId=NULL, provider set
+ * directly on the transaction).
  */
 
 import { describe, it, before, after } from "node:test";
@@ -307,6 +312,175 @@ describe(
       // The shift is the key signal: cashfree was "B" in the unfiltered view
       // (CONTRACT 2a above) but is "A" here. This proves the label is derived
       // from the current filtered set, NOT from a pre-computed stable map.
+    });
+  },
+);
+
+/**
+ * Detail route contract: GET /api/transactions/:id
+ *
+ *  CONTRACT D1 — admin detail response always exposes a non-null
+ *    `connectionProvider` equal to the real provider key for a
+ *    connection-backed row (connectionId set, LEFT JOIN resolves the provider).
+ *
+ *  CONTRACT D2 — admin detail response exposes a non-null `connectionProvider`
+ *    even for legacy rows where connectionId=NULL but the `provider` column on
+ *    the transaction row itself is set. The detail route must fall back to
+ *    `transactions.provider` so that ops never sees a blank raw provider key.
+ *
+ *  CONTRACT D3 — merchant detail response never exposes `connectionProvider`
+ *    (white-label privacy). The field must be absent (undefined) for merchant
+ *    users even when the provider is known.
+ */
+describe(
+  "GET /api/transactions/:id — admin detail always exposes raw connectionProvider (real DB)",
+  () => {
+    let server: http.Server;
+    let adminToken: string;
+    let merchantToken: string;
+    let merchantId: number;
+    let merchantUserId: number;
+    let adminUserId: number;
+    let connBackedTxId: number;   // transaction with connectionId set
+    let legacyTxId: number;       // transaction with connectionId=NULL, provider set directly
+
+    const connBackedUtr = generateUtr("DETAIL_CONN");
+    const legacyUtr     = generateUtr("DETAIL_LEGACY");
+
+    before(async () => {
+      server = http.createServer(app);
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+      // Create a dedicated merchant for this suite
+      const email = `admingw-detail-${Date.now()}@example.com`;
+      const [merchant] = await db.insert(merchantsTable).values({
+        businessName: "Admin GW Detail Test Merchant",
+        contactName: "Detail Contact",
+        email,
+        phone: "9999999996",
+        status: "approved",
+        verificationStatus: "approved",
+      }).returning();
+      merchantId = merchant!.id;
+
+      const [merchantUser] = await db.insert(usersTable).values({
+        email,
+        passwordHash: "not-a-real-hash",
+        name: "Admin GW Detail Merchant User",
+        role: "merchant",
+        merchantId,
+      }).returning();
+      merchantUserId = merchantUser!.id;
+      merchantToken = generateToken({ userId: merchantUserId, role: "merchant" });
+
+      const adminEmail = `admingw-detail-admin-${Date.now()}@example.com`;
+      const [adminUser] = await db.insert(usersTable).values({
+        email: adminEmail,
+        passwordHash: "not-a-real-hash",
+        name: "Admin GW Detail Admin User",
+        role: "admin",
+      }).returning();
+      adminUserId = adminUser!.id;
+      adminToken = generateToken({ userId: adminUserId, role: "admin" });
+
+      // CONNECTION-BACKED transaction: has a real merchant_connection row
+      const [conn] = await db.insert(merchantConnectionsTable).values({
+        merchantId,
+        provider: "razorpay",
+        isActive: true,
+      }).returning();
+
+      const [connBacked] = await db.insert(transactionsTable).values({
+        merchantId,
+        connectionId: conn!.id,
+        type: "deposit",
+        status: "success",
+        amount: "500.00",
+        utr: connBackedUtr,
+        createdAt: new Date("2024-03-01T00:00:00Z"),
+      }).returning();
+      connBackedTxId = connBacked!.id;
+
+      // LEGACY transaction: connectionId=NULL, provider set directly on the row
+      const [legacy] = await db.insert(transactionsTable).values({
+        merchantId,
+        connectionId: null,
+        provider: "ekqr",
+        type: "deposit",
+        status: "success",
+        amount: "250.00",
+        utr: legacyUtr,
+        createdAt: new Date("2023-11-01T00:00:00Z"),
+      }).returning();
+      legacyTxId = legacy!.id;
+    });
+
+    after(async () => {
+      await db.delete(transactionsTable).where(eq(transactionsTable.merchantId, merchantId));
+      await db.delete(merchantConnectionsTable).where(eq(merchantConnectionsTable.merchantId, merchantId));
+      await db.delete(usersTable).where(eq(usersTable.id, merchantUserId));
+      await db.delete(usersTable).where(eq(usersTable.id, adminUserId));
+      await db.delete(merchantsTable).where(eq(merchantsTable.id, merchantId));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    /**
+     * CONTRACT D1: connection-backed row.
+     * The LEFT JOIN resolves merchantConnectionsTable.provider; the admin
+     * detail response must expose that value as `connectionProvider`.
+     */
+    it("CONTRACT D1 — admin detail for connection-backed row exposes non-null connectionProvider equal to the connection provider", async () => {
+      const res = await get(server, `/api/transactions/${connBackedTxId}`, adminToken);
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+
+      const body = res.body as Record<string, unknown>;
+      assert.ok(
+        body["connectionProvider"] != null && body["connectionProvider"] !== "",
+        `connectionProvider must be non-null for a connection-backed row; got: ${JSON.stringify(body["connectionProvider"])}`,
+      );
+      assert.equal(
+        body["connectionProvider"],
+        "razorpay",
+        "connectionProvider must equal the provider on the merchant_connection row",
+      );
+    });
+
+    /**
+     * CONTRACT D2: legacy row (connectionId=NULL, provider set directly).
+     * The LEFT JOIN yields NULL for merchantConnectionsTable.provider, so the
+     * detail route must fall back to transactions.provider to populate the
+     * `connectionProvider` field. Without this fallback, admins would see a
+     * blank raw key for every pre-connection transaction.
+     */
+    it("CONTRACT D2 — admin detail for legacy row (connectionId=NULL) falls back to transactions.provider, never blank", async () => {
+      const res = await get(server, `/api/transactions/${legacyTxId}`, adminToken);
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+
+      const body = res.body as Record<string, unknown>;
+      assert.ok(
+        body["connectionProvider"] != null && body["connectionProvider"] !== "",
+        `connectionProvider must be non-null even when connectionId is NULL; got: ${JSON.stringify(body["connectionProvider"])}`,
+      );
+      assert.equal(
+        body["connectionProvider"],
+        "ekqr",
+        "connectionProvider must fall back to transactions.provider for legacy rows",
+      );
+    });
+
+    /**
+     * CONTRACT D3: merchant detail response must never expose connectionProvider.
+     * White-label privacy: merchants see a gateway label, not the raw provider key.
+     */
+    it("CONTRACT D3 — merchant detail response never exposes connectionProvider (white-label privacy)", async () => {
+      const res = await get(server, `/api/transactions/${connBackedTxId}`, merchantToken);
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+
+      const body = res.body as Record<string, unknown>;
+      assert.ok(
+        !("connectionProvider" in body) || body["connectionProvider"] === undefined,
+        `connectionProvider must be absent from merchant detail response; got: ${JSON.stringify(body["connectionProvider"])}`,
+      );
     });
   },
 );

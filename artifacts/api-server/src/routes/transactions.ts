@@ -786,7 +786,14 @@ router.get("/:id", async (req, res, next) => {
       ...r.transaction,
       amount: Number(r.transaction.amount),
       merchantName: r.merchantName ?? null,
-      connectionProvider: isMerchantUser ? undefined : (r.connectionProvider ?? null),
+      // For admins: expose the effective raw provider key — prefer the
+      // connection's provider (joined via connectionId FK), then fall back to
+      // the direct transactions.provider field for legacy rows that have
+      // connectionId=NULL but a provider value set directly.  This ensures
+      // admins always see a non-null provider key regardless of whether the
+      // transaction was created through a connection or the legacy code path.
+      // Merchants receive undefined (white-label privacy).
+      connectionProvider: isMerchantUser ? undefined : (effectiveProvider ?? null),
       payinGatewayLabel,
     });
   } catch (err) {
