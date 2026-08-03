@@ -196,7 +196,24 @@ async function notifyAdminsOfRepeatedCleanupFailure(streak: FailureStreak, error
   }
 }
 
+let cleanupRunInFlight = false;
+
 export async function runGithubSyncLogCleanup(opts?: { source?: "scheduled" | "manual" }): Promise<{ deleted: number; errors: number }> {
+  if (cleanupRunInFlight) {
+    logger.debug(
+      "GitHub sync log cleanup already in flight — skipping concurrent invocation to prevent duplicate streak increments and alerts",
+    );
+    return { deleted: 0, errors: 0 };
+  }
+  cleanupRunInFlight = true;
+  try {
+    return await _runGithubSyncLogCleanupImpl(opts);
+  } finally {
+    cleanupRunInFlight = false;
+  }
+}
+
+async function _runGithubSyncLogCleanupImpl(opts?: { source?: "scheduled" | "manual" }): Promise<{ deleted: number; errors: number }> {
   let history: GithubSyncHistoryEntry[] = [];
   try {
     const raw = readFileSync(HISTORY_FILE, "utf-8");
