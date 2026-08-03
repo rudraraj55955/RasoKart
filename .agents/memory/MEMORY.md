@@ -77,3 +77,5 @@
 - [CMS seed published status](cms-seed-published-status.md) — seed CMS campaigns as 'published'; draft campaigns are invisible on production even after successful VPS deploy.
 - [Drizzle schema vs schemaGuard ALTER TABLE drift](drizzle-schema-vs-schemaGuard-drift.md) — columns added via schemaGuard ALTER TABLE must also be in the Drizzle schema file or route queries return 500 at runtime.
 - [Cashfree payout webhook secret decryption](cashfree-payout-webhook-decrypt.md) — system_config stores secrets encrypted (enc:v1:); webhook route must call decryptSecret() before HMAC — using raw encrypted blob as key causes every signature to fail silently.
+- [VPS SSH key format](vps-ssh-key-format.md) — VPS_SSH_KEY and VPS_SSH_KEY_B64 are malformed (spaces, wrong line wrapping); use VPS_SSH_KEY_B64URL decoded with `tr '_-' '/+' | base64 -d` to get a valid OpenSSH key.
+- [IAM already live in production](iam-production-state.md) — IAM/RBAC migration ran on 2026-07-19T19:32:27Z (cutoff same timestamp); 71 permissions, 497 role_permission rows, all 7 roles seeded; verify-iam-migration passes 16/16; healthz/deep all green.
