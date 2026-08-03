@@ -62,7 +62,7 @@ async function getNextFreePriority(configId: number, conflictingPriority: number
 /** GET /api/smart-routing/configs */
 router.get("/configs", async (req, res, next) => {
   try {
-    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const rows = await db.select().from(routingConfigsTable).orderBy(asc(routingConfigsTable.id));
     res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })));
   } catch (err) { next(err); }
 });
@@ -82,22 +82,19 @@ router.post("/configs", async (req, res, next) => {
       res.status(400).json({ error: "strategy must be priority | percentage | success_rate | round_robin" }); return;
     }
 
-    const [inserted] = await db.insert(routingRulesTable).values({
-      configId,
-      providerKey: providerKey.trim(),
-      priority: priority ?? 1,
-      weightPercent: weightPercent ?? 100,
-      minAmount: minAmount != null ? String(minAmount) : null,
-      maxAmount: maxAmount != null ? String(maxAmount) : null,
-      allowedPaymentModes: allowedPaymentModes ? JSON.stringify(allowedPaymentModes) : null,
-      isEnabled: effectiveEnabled,
-      isFallbackOnly: effectiveFallbackOnly,
-      maxRetries: maxRetries != null ? Math.max(1, Math.min(5, maxRetries)) : 1,
-      notes: notes?.trim() ?? null,
-    } as any).returning();
+    const [row] = await db.insert(routingConfigsTable).values({
+      configName: configName.trim(),
+      description: description?.trim() ?? null,
+      strategy: (strategy ?? "priority") as string,
+      isEnabled: isEnabled ?? true,
+      fallbackEnabled: fallbackEnabled ?? true,
+      timeoutMs: timeoutMs ?? 30000,
+      minSuccessRateThreshold: minSuccessRateThreshold != null ? String(minSuccessRateThreshold) : "80.00",
+      updatedByEmail: user.email,
+    }).returning();
 
     req.log.info({ configName, strategy }, "Routing config created");
-    res.status(201).json({ ...inserted!, createdAt: inserted!.createdAt.toISOString(), updatedAt: inserted!.updatedAt.toISOString() });
+    res.status(201).json({ ...row!, createdAt: row!.createdAt.toISOString(), updatedAt: row!.updatedAt.toISOString() });
   } catch (err) { next(err); }
 });
 
@@ -111,22 +108,18 @@ router.put("/configs/:id", async (req, res, next) => {
       fallbackEnabled?: boolean; timeoutMs?: number; minSuccessRateThreshold?: number;
     };
 
-    const [existing] = await db.select().from(routingRulesTable).where(eq(routingRulesTable.id, id)).limit(1);
+    const [existing] = await db.select().from(routingConfigsTable).where(eq(routingConfigsTable.id, id)).limit(1);
     if (!existing) { res.status(404).json({ error: "Config not found" }); return; }
 
-    const updateSet: Record<string, unknown> = {};
-    if (providerKey !== undefined) updateSet.providerKey = providerKey;
-    if (priority !== undefined) updateSet.priority = priority;
-    if (weightPercent !== undefined) updateSet.weightPercent = weightPercent;
-    if (minAmount !== undefined) updateSet.minAmount = minAmount != null ? String(minAmount) : null;
-    if (maxAmount !== undefined) updateSet.maxAmount = maxAmount != null ? String(maxAmount) : null;
-    if (allowedPaymentModes !== undefined) updateSet.allowedPaymentModes = JSON.stringify(allowedPaymentModes);
+    const updateSet: Record<string, unknown> = { updatedByEmail: user.email };
+    if (description !== undefined) updateSet.description = description;
+    if (strategy !== undefined) updateSet.strategy = strategy;
     if (isEnabled !== undefined) updateSet.isEnabled = isEnabled;
-    if (isFallbackOnly !== undefined) updateSet.isFallbackOnly = isFallbackOnly;
-    if (maxRetries !== undefined) updateSet.maxRetries = Math.max(1, Math.min(5, maxRetries));
-    if (notes !== undefined) updateSet.notes = notes;
+    if (fallbackEnabled !== undefined) updateSet.fallbackEnabled = fallbackEnabled;
+    if (timeoutMs !== undefined) updateSet.timeoutMs = timeoutMs;
+    if (minSuccessRateThreshold !== undefined) updateSet.minSuccessRateThreshold = minSuccessRateThreshold != null ? String(minSuccessRateThreshold) : null;
 
-    const [updated] = await db.update(routingRulesTable).set(updateSet as any).where(eq(routingRulesTable.id, id)).returning();
+    const [updated] = await db.update(routingConfigsTable).set(updateSet as any).where(eq(routingConfigsTable.id, id)).returning();
 
     await db.insert(auditLogsTable).values({
       adminId: user.id, adminEmail: user.email,
@@ -147,7 +140,8 @@ router.get("/configs/:id/rules", async (req, res, next) => {
   try {
     const id = parseInt(req.params["id"] as string);
     const rules = await db.select().from(routingRulesTable)
-      .where(and(eq(routingRulesTable.configId, config.id), eq(routingRulesTable.isEnabled, true)));
+      .where(eq(routingRulesTable.configId, id))
+      .orderBy(asc(routingRulesTable.priority));
     res.json(rules.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })));
   } catch (err) { next(err); }
 });
@@ -158,50 +152,38 @@ router.post("/configs/:id/rules", async (req, res, next) => {
     const configId = parseInt(req.params["id"] as string);
     const { providerKey, priority, weightPercent, minAmount, maxAmount, allowedPaymentModes, isEnabled, isFallbackOnly, maxRetries, notes } = req.body as {
       providerKey?: string; priority?: number; weightPercent?: number;
-      minAmount?: number | null; maxAmount?: number | null; allowedPaymentModes?: string[];
+      minAmount?: number; maxAmount?: number; allowedPaymentModes?: string[];
       isEnabled?: boolean; isFallbackOnly?: boolean; maxRetries?: number; notes?: string;
     };
 
     if (!providerKey?.trim()) { res.status(400).json({ error: "providerKey is required" }); return; }
 
-    const [config] = await db.select().from(routingConfigsTable)
-      .where(eq(routingConfigsTable.isEnabled, true))
-      .orderBy(asc(routingConfigsTable.id)).limit(1);
+    const [existing] = await db.select().from(routingConfigsTable).where(eq(routingConfigsTable.id, configId)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Config not found" }); return; }
 
-    const rulesWhere = excludeRuleId != null
-      ? and(eq(routingRulesTable.configId, configId), eq(routingRulesTable.isEnabled, true), ne(routingRulesTable.id, excludeRuleId))
-      : and(eq(routingRulesTable.configId, configId), eq(routingRulesTable.isEnabled, true));
-    if (!config) { res.status(404).json({ error: "Config not found" }); return; }
-
-        const effectivePriority: number = (req.body as any).priority ?? rule?.priority;
-      const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
-        .from(routingRulesTable)
-        .where(and(
-          eq(routingRulesTable.configId, existing.configId),
-          eq(routingRulesTable.priority, effectivePriority),
-          eq(routingRulesTable.isEnabled, true),
-          ne(routingRulesTable.id, id),
-        )).limit(1);
-      if (conflicting) {
-        const suggestedPriority = rule ? await getNextFreePriority(rule.configId, effectivePriority, ruleId) : undefined;
-        res.status(409).json({
-          error: `Priority ${effectivePriority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`,
-          suggestedPriority,
-        });
-        return;
-      }
+    const effectivePriority = priority ?? 1;
+    const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
+      .from(routingRulesTable)
+      .where(and(
+        eq(routingRulesTable.configId, configId),
+        eq(routingRulesTable.priority, effectivePriority),
+        eq(routingRulesTable.isEnabled, true),
+      )).limit(1);
+    if (conflicting) {
+      const suggestedPriority = await getNextFreePriority(configId, effectivePriority);
+      res.status(409).json({
+        error: `Priority ${effectivePriority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so your new rule would be silently ignored. Use a different priority number.`,
+        suggestedPriority,
+      });
+      return;
     }
 
-    const effectiveEnabled = isEnabled !== undefined ? isEnabled : existing.isEnabled;
-    const effectiveFallbackOnly = isFallbackOnly !== undefined ? isFallbackOnly : existing.isFallbackOnly;
+    const effectiveEnabled = isEnabled ?? true;
+    const effectiveFallbackOnly = isFallbackOnly ?? false;
     if (effectiveEnabled && effectiveFallbackOnly) {
       const otherEnabledRules = await db.select({ isFallbackOnly: routingRulesTable.isFallbackOnly })
         .from(routingRulesTable)
-        .where(and(
-          eq(routingRulesTable.configId, existing.configId),
-          eq(routingRulesTable.isEnabled, true),
-          ne(routingRulesTable.id, id),
-        ));
+        .where(and(eq(routingRulesTable.configId, configId), eq(routingRulesTable.isEnabled, true)));
       const wouldBeAllFallbackOnly = otherEnabledRules.every(r => r.isFallbackOnly);
       if (wouldBeAllFallbackOnly) {
         res.status(422).json({
@@ -211,7 +193,7 @@ router.post("/configs/:id/rules", async (req, res, next) => {
       }
     }
 
-    const [inserted] = await db.insert(routingRulesTable).values({
+    const [row] = await db.insert(routingRulesTable).values({
       configId,
       providerKey: providerKey.trim(),
       priority: priority ?? 1,
@@ -219,14 +201,18 @@ router.post("/configs/:id/rules", async (req, res, next) => {
       minAmount: minAmount != null ? String(minAmount) : null,
       maxAmount: maxAmount != null ? String(maxAmount) : null,
       allowedPaymentModes: allowedPaymentModes ? JSON.stringify(allowedPaymentModes) : null,
-      isEnabled: effectiveEnabled,
-      isFallbackOnly: effectiveFallbackOnly,
+      isEnabled: isEnabled ?? true,
+      isFallbackOnly: isFallbackOnly ?? false,
       maxRetries: maxRetries != null ? Math.max(1, Math.min(5, maxRetries)) : 1,
       notes: notes?.trim() ?? null,
-    } as any).returning();
+    }).returning();
 
     req.log.info({ configId, providerKey, priority, isFallbackOnly, maxRetries }, "Routing rule created");
-    res.status(201).json({ ...inserted!, createdAt: inserted!.createdAt.toISOString(), updatedAt: inserted!.updatedAt.toISOString() });
+    res.json({
+      ...row!,
+      createdAt: row!.createdAt.toISOString(),
+      updatedAt: row!.updatedAt.toISOString(),
+    });
   } catch (err) {
     const pgErr = (err as any)?.code ? (err as any) : (err as any)?.cause;
     const isRoutingPriorityConflict = pgErr?.code === "23505" &&
@@ -239,12 +225,12 @@ router.post("/configs/:id/rules", async (req, res, next) => {
           .from(routingRulesTable)
           .where(and(eq(routingRulesTable.configId, cid), eq(routingRulesTable.priority, p), eq(routingRulesTable.isEnabled, true)))
           .limit(1);
-        const suggestedPriority = rule ? await getNextFreePriority(rule.configId, effectivePriority, ruleId) : undefined;
+        const suggestedPriority = await getNextFreePriority(cid, p);
         res.status(409).json({
           error: conflict
-            ? `Priority ${effectivePriority} is already used by rule for "${conflict.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`
-            : `Priority ${effectivePriority} is already used by another enabled rule in this config. Use a different priority number.`,
-          ...(suggestedPriority !== undefined ? { suggestedPriority } : {}),
+            ? `Priority ${p} is already used by rule for "${conflict.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so your new rule would be silently ignored. Use a different priority number.`
+            : `Priority ${p} is already used by an enabled rule in this config. Use a different priority number.`,
+          suggestedPriority,
         });
       } catch {
         res.status(409).json({ error: "A priority conflict was detected. Use a different priority number." });
@@ -255,8 +241,8 @@ router.post("/configs/:id/rules", async (req, res, next) => {
   }
 });
 
-/** DELETE /api/smart-routing/rules/:id */
-router.delete("/rules/:id", async (req, res, next) => {
+/** PUT /api/smart-routing/rules/:id */
+router.put("/rules/:id", async (req, res, next) => {
   try {
     const id = parseInt(req.params["id"] as string);
     const { providerKey, priority, weightPercent, minAmount, maxAmount, allowedPaymentModes, isEnabled, isFallbackOnly, maxRetries, notes } = req.body as {
@@ -271,16 +257,16 @@ router.delete("/rules/:id", async (req, res, next) => {
     if (priority !== undefined && priority !== existing.priority) {
       const newEnabled = isEnabled !== undefined ? isEnabled : existing.isEnabled;
       if (newEnabled) {
-      const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
-        .from(routingRulesTable)
-        .where(and(
-          eq(routingRulesTable.configId, existing.configId),
-          eq(routingRulesTable.priority, effectivePriority),
-          eq(routingRulesTable.isEnabled, true),
-          ne(routingRulesTable.id, id),
-        )).limit(1);
-      if (conflicting) {
-        const suggestedPriority = rule ? await getNextFreePriority(rule.configId, effectivePriority, ruleId) : undefined;
+        const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
+          .from(routingRulesTable)
+          .where(and(
+            eq(routingRulesTable.configId, existing.configId),
+            eq(routingRulesTable.priority, priority),
+            eq(routingRulesTable.isEnabled, true),
+            ne(routingRulesTable.id, id),
+          )).limit(1);
+        if (conflicting) {
+          const suggestedPriority = await getNextFreePriority(existing.configId, priority, id);
           res.status(409).json({
             error: `Priority ${priority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`,
             suggestedPriority,
@@ -289,7 +275,7 @@ router.delete("/rules/:id", async (req, res, next) => {
         }
       }
     } else if (isEnabled === true && existing.isEnabled === false) {
-        const effectivePriority: number = (req.body as any).priority ?? rule?.priority;
+      const effectivePriority = priority !== undefined ? priority : existing.priority;
       const [conflicting] = await db.select({ id: routingRulesTable.id, providerKey: routingRulesTable.providerKey })
         .from(routingRulesTable)
         .where(and(
@@ -299,7 +285,7 @@ router.delete("/rules/:id", async (req, res, next) => {
           ne(routingRulesTable.id, id),
         )).limit(1);
       if (conflicting) {
-        const suggestedPriority = rule ? await getNextFreePriority(rule.configId, effectivePriority, ruleId) : undefined;
+        const suggestedPriority = await getNextFreePriority(existing.configId, effectivePriority, id);
         res.status(409).json({
           error: `Priority ${effectivePriority} is already used by rule for "${conflicting.providerKey}". Equal-priority rules tie-break to the oldest rule (lowest ID), so this rule would be silently ignored. Use a different priority number.`,
           suggestedPriority,
@@ -430,13 +416,13 @@ router.get("/configs/:id/coverage-check", async (req, res, next) => {
     const amountSet = new Set<number>(STANDARD_AMOUNTS);
     for (const r of rules) {
       if (r.minAmount != null) {
-      const min = uncovered[0];
+        const min = Number(r.minAmount);
         if (min > 1) amountSet.add(min - 1);
         amountSet.add(min);
         amountSet.add(min + 1);
       }
       if (r.maxAmount != null) {
-      const max = uncovered[uncovered.length - 1];
+        const max = Number(r.maxAmount);
         if (max > 1) amountSet.add(max - 1);
         amountSet.add(max);
         amountSet.add(max + 1);
@@ -546,7 +532,9 @@ router.get("/configs/:id/coverage-check", async (req, res, next) => {
 router.get("/metrics", async (req, res, next) => {
   try {
     const timeWindow = (req.query["window"] as string) ?? "24h";
-    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const rows = await db.select().from(providerMetricsTable)
+      .where(eq(providerMetricsTable.timeWindow, timeWindow))
+      .orderBy(desc(providerMetricsTable.successRate));
     res.json(rows.map(r => ({
       ...r,
       successRate: r.successRate != null ? Number(r.successRate) : null,
@@ -564,7 +552,9 @@ router.get("/logs", async (req, res, next) => {
     const limit = Math.min(100, Math.max(1, parseInt((req.query["limit"] as string) ?? "20")));
     const offset = (page - 1) * limit;
 
-    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const rows = await db.select().from(routingLogsTable)
+      .orderBy(desc(routingLogsTable.createdAt))
+      .limit(limit).offset(offset);
 
     const total = await db.$count(routingLogsTable);
 
@@ -702,7 +692,10 @@ router.get("/failover-events", async (req, res, next) => {
       .from(systemConfigTable)
       .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_SNOOZED_UNTIL))
       .limit(1);
-    const snoozedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+    const rawSnoozedUntil = snoozeRow?.value ?? null;
+    const snoozedUntil = rawSnoozedUntil && new Date(rawSnoozedUntil) > new Date()
+      ? rawSnoozedUntil
+      : null;
 
     res.json({ events, snoozedUntil });
   } catch (err) { next(err); }
@@ -720,7 +713,16 @@ router.get("/failure-trend", async (req, res, next) => {
     const days = Math.min(30, Math.max(1, parseInt((req.query["days"] as string) ?? "7")));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const rows = await db.select().from(systemConfigTable).where(inArray(systemConfigTable.key, keys));
+    const rows = await db.select({
+      day: sql<string>`to_char(${routingLogsTable.createdAt}, 'YYYY-MM-DD')`,
+      providerKey: routingLogsTable.providerKey,
+      total: sql<number>`COUNT(*)::int`,
+      failed: sql<number>`COUNT(*) FILTER (WHERE ${routingLogsTable.result} IN ('failed', 'timeout'))::int`,
+    })
+      .from(routingLogsTable)
+      .where(gte(routingLogsTable.createdAt, since))
+      .groupBy(sql`to_char(${routingLogsTable.createdAt}, 'YYYY-MM-DD')`, routingLogsTable.providerKey)
+      .orderBy(sql`to_char(${routingLogsTable.createdAt}, 'YYYY-MM-DD')`);
 
     res.json({
       days,
@@ -743,10 +745,6 @@ router.get("/status", async (req, res, next) => {
     const [config] = await db.select().from(routingConfigsTable)
       .where(eq(routingConfigsTable.isEnabled, true))
       .orderBy(asc(routingConfigsTable.id)).limit(1);
-
-    const rulesWhere = excludeRuleId != null
-      ? and(eq(routingRulesTable.configId, configId), eq(routingRulesTable.isEnabled, true), ne(routingRulesTable.id, excludeRuleId))
-      : and(eq(routingRulesTable.configId, configId), eq(routingRulesTable.isEnabled, true));
 
     if (!config) {
       res.json({ configured: false, configName: null, strategy: null, providerCount: 0, fallbackEnabled: false });
