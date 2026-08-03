@@ -3713,9 +3713,23 @@ export default function AdminSettings() {
       {/* GitHub Sync */}
       <Card id="github-sync" className="border-border/50 scroll-mt-6">
         <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <GitBranch className="w-4 h-4 text-muted-foreground" />
             <CardTitle className="text-base">GitHub Sync</CardTitle>
+            {cleanupAlertSnooze?.active && cleanupAlertSnooze.snoozedUntil && (
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById("github-sync-cleanup-row");
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+                className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                title="Cleanup failure alerts are snoozed — click to jump to the cleanup row"
+              >
+                <Clock className="w-3 h-3 shrink-0" />
+                Alert snoozed until {new Date(cleanupAlertSnooze.snoozedUntil).toLocaleDateString()}
+              </button>
+            )}
           </div>
           <CardDescription className="text-sm">
             Control whether the automated GitHub repository sync job is allowed to run, and what
@@ -3880,7 +3894,7 @@ export default function AdminSettings() {
           )}
 
           {/* Log file cleanup */}
-          <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
+          <div id="github-sync-cleanup-row" className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/5 px-4 py-3">
             <div className="flex-1 min-w-0 mr-4">
               <p className="text-sm font-medium text-foreground">Orphaned log file cleanup</p>
               <p className="text-xs text-muted-foreground mt-0.5">
