@@ -1,7 +1,24 @@
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { getHostnamePortal, roleToPortal, portalLoginPath, portalSubdomainUrl, portalDashboardPath } from "@/lib/subdomain";
+import {
+  getPortal,
+  getPortalLoginPath,
+  getPortalAllowedRoles,
+  getSubdomainForRole,
+} from "@/lib/subdomain";
 import { Spinner } from "@/components/ui/spinner";
+
+function getPortalDashboardPath(role: string): string {
+  switch (role) {
+    case "admin":           return "/admin/dashboard";
+    case "merchant":        return "/merchant/dashboard";
+    case "payout_merchant": return "/payout-merchant/dashboard";
+    case "payout_admin":
+    case "payout_super_admin": return "/payout-admin/dashboard";
+    case "agent":           return "/agent/dashboard";
+    default:                return "/";
+  }
+}
 
 /**
  * SubdomainGuard
@@ -9,52 +26,54 @@ import { Spinner } from "@/components/ui/spinner";
  * Wraps protected pages on role-dedicated subdomains (admin.rasokart.com, etc.).
  * After auth resolves:
  *  - If unauthenticated → send to that subdomain's login page
- *  - If authenticated but wrong role → redirect to the correct portal
+ *  - If authenticated but wrong role → redirect to the correct portal subdomain
  *  - If correct role → render children
  *
- * On the main domain (rasokart.com) this component is a no-op passthrough
- * so existing path-based routing is unaffected.
+ * On the main domain (rasokart.com / public portal) this component is a
+ * no-op passthrough so existing path-based routing is unaffected.
  */
 export function SubdomainGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-  const currentPortal = getHostnamePortal();
+  const currentPortal = getPortal();
 
   useEffect(() => {
-    if (isLoading || currentPortal === "main") return;
+    if (isLoading || currentPortal === "public") return;
 
     if (!user) {
       // Not logged in — send to this subdomain's login page
-      const loginPath = portalLoginPath(currentPortal);
+      const loginPath = getPortalLoginPath(currentPortal);
       if (window.location.pathname !== loginPath) {
         window.location.replace(loginPath);
       }
       return;
     }
 
-    // User is logged in — check if they belong on this subdomain
-    const userPortal = roleToPortal(
-      user.role as string,
-      (user as any).isSuperAdmin as boolean | undefined,
-    );
+    // User is logged in — check if their role is allowed on this subdomain
+    const allowedRoles = getPortalAllowedRoles(currentPortal);
+    if (!allowedRoles) return; // public portal — no restriction
 
-    // superadmin and admin both use admin.rasokart.com (super admin is just
-    // a flag on the admin role, both go to the same portal)
-    const effectiveUserPortal = userPortal === "superadmin" ? "admin" : userPortal;
-    const effectiveCurrentPortal = currentPortal === "superadmin" ? "admin" : currentPortal;
+    const role = user.role as string;
+    const isSuperAdmin = (user as any).isSuperAdmin as boolean | undefined;
 
-    if (effectiveUserPortal !== effectiveCurrentPortal) {
-      // Wrong portal — redirect to their correct one
+    if (!allowedRoles.includes(role)) {
+      // Wrong portal — redirect to the correct subdomain
       const host = window.location.hostname;
       const isRasokart = host === "rasokart.com" || host.endsWith(".rasokart.com");
       if (isRasokart) {
-        const dest = portalSubdomainUrl(userPortal, portalDashboardPath(userPortal));
-        window.location.replace(dest);
+        const dest = getSubdomainForRole(role, isSuperAdmin);
+        const dashPath = getPortalDashboardPath(role);
+        window.location.replace(dest + dashPath);
       }
+    }
+
+    // superadmin subdomain: regular admins without is_super_admin → redirect to admin subdomain
+    if (currentPortal === "superadmin" && role === "admin" && !isSuperAdmin) {
+      window.location.replace("https://admin.rasokart.com/admin/dashboard");
     }
   }, [user, isLoading, currentPortal]);
 
-  // On main domain: no-op
-  if (currentPortal === "main") return <>{children}</>;
+  // On main domain: no-op passthrough
+  if (currentPortal === "public") return <>{children}</>;
 
   if (isLoading) {
     return (
@@ -68,11 +87,10 @@ export function SubdomainGuard({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Lightweight hook: returns true when the current user's role matches the
- * expected portal for this subdomain. Used inside login pages to skip the form
- * and jump straight to the dashboard.
+ * Lightweight hook: returns the detected portal for the current hostname.
+ * Used inside login pages to skip the form and jump straight to the dashboard.
  */
 export function useSubdomainExpectedRole(): { expectedPortal: string; currentPortal: string } {
-  const currentPortal = getHostnamePortal();
+  const currentPortal = getPortal();
   return { expectedPortal: currentPortal, currentPortal };
 }

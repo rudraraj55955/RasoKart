@@ -1640,6 +1640,28 @@ async function runGuard(): Promise<void> {
   await db.execute(sql`ALTER TABLE reconciliation_email_logs ADD COLUMN IF NOT EXISTS idempotency_key TEXT`);
   logger.info({ table: "reconciliation_email_logs", migration: "add_email_metadata_columns" }, "schema_guard_column_added");
 
+  // ── agent_commission_ledger ───────────────────────────────────────────────
+  // One row per credit/debit event on an agent's commission wallet.
+  // type: earned | paid | adjustment
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS agent_commission_ledger (
+      id              SERIAL PRIMARY KEY,
+      agent_id        INTEGER NOT NULL,
+      type            TEXT NOT NULL,
+      amount          NUMERIC(18,2) NOT NULL,
+      balance_before  NUMERIC(18,2) NOT NULL DEFAULT 0,
+      balance_after   NUMERIC(18,2) NOT NULL DEFAULT 0,
+      description     TEXT NOT NULL,
+      reference_id    TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS agent_commission_ledger_agent_created_idx
+      ON agent_commission_ledger(agent_id, created_at)
+  `);
+  logger.info({ table: "agent_commission_ledger" }, "schema_guard_table_created");
+
   logger.info("schema_guard_completed");
 }
 

@@ -241,32 +241,63 @@ ls artifacts/rpay/dist/public/index.html   # confirm
 
 ---
 
-## 9. Configure Nginx
+## 9. Configure Nginx (Multi-Subdomain)
+
+All five role subdomains (`superadmin`, `admin`, `merchant`, `payoutmerchant`, `agent`) serve the
+**same compiled React SPA** static dist. The SPA detects `window.location.hostname` at runtime and
+activates the correct portal — no separate build per subdomain.
+
+The API always lives at `rasokart.com/api`. There is no `api.rasokart.com` split.
+
+Legacy portal paths (`/admin`, `/merchant`, `/agent`, `/payout-admin`) on the apex domain return
+`301` redirects to the matching subdomain so bookmarked URLs still work.
 
 ```nginx
-# /etc/nginx/sites-available/rasokart
+# /etc/nginx/sites-available/rasokart-subdomains
+#
+# Shared SSL config snippet — referenced by all server blocks.
+# Assumes a single multi-SAN cert covering all seven names (see certbot command below).
+
+# ── HTTP → HTTPS redirects ────────────────────────────────────────────────────
 server {
     listen 80;
-    server_name rasokart.com www.rasokart.com;
-    return 301 https://rasokart.com$request_uri;
+    server_name rasokart.com www.rasokart.com
+                superadmin.rasokart.com admin.rasokart.com
+                merchant.rasokart.com payoutmerchant.rasokart.com
+                agent.rasokart.com;
+    return 301 https://$host$request_uri;
 }
 
+# ── Apex domain (rasokart.com) ────────────────────────────────────────────────
 server {
     listen 443 ssl http2;
-    server_name rasokart.com;
+    server_name rasokart.com www.rasokart.com;
 
     ssl_certificate     /etc/letsencrypt/live/rasokart.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/rasokart.com/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:SSL:10m;
 
     # Security headers
-    add_header X-Content-Type-Options nosniff;
-    add_header X-Frame-Options SAMEORIGIN;
-    add_header X-XSS-Protection "1; mode=block";
-    add_header Referrer-Policy strict-origin-when-cross-origin;
+    add_header Strict-Transport-Security  "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options     nosniff                              always;
+    add_header X-Frame-Options            SAMEORIGIN                           always;
+    add_header X-XSS-Protection           "1; mode=block"                      always;
+    add_header Referrer-Policy            strict-origin-when-cross-origin      always;
 
-    # API — proxy to Express
+    # ── Legacy path redirects (bookmarked URLs keep working) ────────────────
+    location = /admin        { return 301 https://admin.rasokart.com/; }
+    location ^~ /admin/      { return 301 https://admin.rasokart.com$request_uri; }
+    location = /merchant     { return 301 https://merchant.rasokart.com/; }
+    location ^~ /merchant/   { return 301 https://merchant.rasokart.com$request_uri; }
+    location = /agent        { return 301 https://agent.rasokart.com/; }
+    location ^~ /agent/      { return 301 https://agent.rasokart.com$request_uri; }
+    location = /payout-admin { return 301 https://payoutmerchant.rasokart.com/; }
+    location ^~ /payout-admin/ { return 301 https://payoutmerchant.rasokart.com$request_uri; }
+
+    # ── API — proxy to Express ───────────────────────────────────────────────
     location /api/ {
         proxy_pass         http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -274,64 +305,72 @@ server {
         proxy_set_header   X-Real-IP         $remote_addr;
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   CF-Connecting-IP  $http_cf_connecting_ip;
         proxy_read_timeout 60s;
         proxy_buffering    off;
     }
 
-    # Frontend — serve static files (React SPA)
-    # Vite outputs to dist/public/ (not dist/ directly)
-    root /var/www/rasokart/artifacts/rpay/dist/public;
+    # ── Frontend — React SPA static files ───────────────────────────────────
+    root  /var/www/rasokart/artifacts/rpay/dist/public;
     index index.html;
 
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # Cache static assets aggressively
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2|woff|ttf)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
 }
-```
 
-```nginx
-# Role subdomains — all 5 serve the same React SPA (same dist/).
-# The SPA detects hostname at runtime and routes to the correct portal.
-# API always lives on rasokart.com/api — no api.* split.
-#
-# Subdomains: superadmin | admin | merchant | payoutmerchant | agent
-# All already point to 167.233.77.68 via Cloudflare (DNS pre-configured).
-# Cloudflare proxies SSL — no certbot certs needed for subdomains.
-# Only rasokart.com/www needs a certbot cert (or use Cloudflare Full-Strict).
-
+# ── Role subdomains — all 5 serve the same SPA ───────────────────────────────
 server {
     listen 443 ssl http2;
-    server_name superadmin.rasokart.com admin.rasokart.com merchant.rasokart.com payoutmerchant.rasokart.com agent.rasokart.com;
+    server_name superadmin.rasokart.com admin.rasokart.com
+                merchant.rasokart.com payoutmerchant.rasokart.com
+                agent.rasokart.com;
 
-    # Use the same cert as the apex domain (or wildcard *.rasokart.com)
     ssl_certificate     /etc/letsencrypt/live/rasokart.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/rasokart.com/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:SSL:10m;
 
     # Security headers
-    add_header X-Content-Type-Options nosniff;
-    add_header X-Frame-Options SAMEORIGIN;
-    add_header X-XSS-Protection "1; mode=block";
-    add_header Referrer-Policy strict-origin-when-cross-origin;
-    # Allow subdomain iframes to access rasokart.com API (CORS handled by Express)
-    add_header Cross-Origin-Opener-Policy same-origin-allow-popups;
+    add_header Strict-Transport-Security  "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options     nosniff                              always;
+    add_header X-Frame-Options            SAMEORIGIN                           always;
+    add_header X-XSS-Protection           "1; mode=block"                      always;
+    add_header Referrer-Policy            strict-origin-when-cross-origin      always;
+    # Required so subdomain JS can call rasokart.com/api (CORS enforced by Express)
+    add_header Cross-Origin-Opener-Policy same-origin-allow-popups             always;
 
-    # Serve same frontend SPA as apex — subdomain portal detection is client-side
-    root /var/www/rasokart/artifacts/rpay/dist/public;
+    # ── API — proxy to Express (same backend as apex) ───────────────────────
+    # Subdomains need the proxy too: the React SPA uses apiUrl() which issues
+    # cross-origin calls to https://rasokart.com/api/* on production subdomains,
+    # but the same relative /api/* path must work in dev/staging where all
+    # subdomains may run on the same server. Keep the proxy here for full parity.
+    location /api/ {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              rasokart.com;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   CF-Connecting-IP  $http_cf_connecting_ip;
+        proxy_read_timeout 60s;
+        proxy_buffering    off;
+    }
+
+    root  /var/www/rasokart/artifacts/rpay/dist/public;
     index index.html;
 
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # Cache static assets aggressively
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2|woff|ttf)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
@@ -340,26 +379,37 @@ server {
 ```
 
 ```bash
-# Enable site
-ln -s /etc/nginx/sites-available/rasokart /etc/nginx/sites-enabled/
+# Enable site and verify config
+ln -sf /etc/nginx/sites-available/rasokart-subdomains /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 
-# Get SSL certificate (www + apex + subdomains — use wildcard)
-# Option A: wildcard cert (recommended — covers all 5 subdomains at once)
-certbot certonly --nginx \
-  -d rasokart.com -d www.rasokart.com -d "*.rasokart.com" \
+# ── SSL certificate — multi-SAN covering all 7 names ─────────────────────────
+# Option A: wildcard cert via DNS-01 challenge (recommended — single cert for all subdomains)
+# Requires Cloudflare/Route53 DNS API credentials for certbot-dns-* plugin.
+certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
+  -d rasokart.com -d "*.rasokart.com" \
   --non-interactive --agree-tos -m admin@rasokart.com
 
-# Option B: individual SANs (if DNS challenge not available)
+# Option B: individual SANs via HTTP-01 (use when DNS challenge is unavailable)
+# All 7 names must resolve to this VPS IP before running.
 certbot --nginx \
   -d rasokart.com -d www.rasokart.com \
   -d superadmin.rasokart.com -d admin.rasokart.com \
-  -d merchant.rasokart.com -d payoutmerchant.rasokart.com -d agent.rasokart.com \
+  -d merchant.rasokart.com -d payoutmerchant.rasokart.com \
+  -d agent.rasokart.com \
   --non-interactive --agree-tos -m admin@rasokart.com
 
-# If using Cloudflare Full (Strict) SSL mode, subdomains are already HTTPS via
-# Cloudflare edge — only the origin-to-Cloudflare cert matters (the apex cert
-# works fine as the origin cert for all subdomains behind Cloudflare proxy).
+# Both options produce a single cert pair at:
+#   /etc/letsencrypt/live/rasokart.com/fullchain.pem
+#   /etc/letsencrypt/live/rasokart.com/privkey.pem
+# Both apex and subdomain server blocks reference the same pair.
+
+# ── If using Cloudflare Full (Strict) SSL ─────────────────────────────────────
+# Subdomains are already HTTPS at the Cloudflare edge — only the origin cert
+# (the apex cert above) matters for the Cloudflare-to-VPS TLS leg.
+# Certbot HTTP-01 challenge still works as long as CF proxy is paused during
+# certificate issuance.
 ```
 
 ---
@@ -372,8 +422,8 @@ curl -s https://rasokart.com/api/healthz
 
 # Deep readiness check — DB connection + every column/table the schema guard
 # manages (users.is_super_admin, company_settings, merchant_auth_otps, UPI
-# gateway columns, routing tables). Returns 503 with a per-check breakdown if
-# anything drifted, instead of a raw 502 the first time a real user hits it.
+# gateway columns, routing tables, agent_commission_ledger). Returns 503 with a
+# per-check breakdown if anything drifted, instead of a raw 502.
 curl -s https://rasokart.com/api/healthz/deep
 
 # Check PM2 status
@@ -401,6 +451,20 @@ curl -s -X POST https://rasokart.com/api/auth/merchant/login \
 
 # Confirm landing page loads
 curl -sI https://rasokart.com | grep HTTP
+
+# ── Subdomain smoke test ──────────────────────────────────────────────────────
+# Checks HTTPS reachability of all 5 subdomains, healthz/deep, and that the auth
+# endpoint returns structured JSON (not HTML) for wrong credentials.
+# Run after every deploy that touches Nginx config or the SPA build.
+bash /var/www/rasokart/scripts/src/verify-subdomains.sh
+
+# ── Legacy redirect verification ─────────────────────────────────────────────
+# Old bookmarked URLs must redirect to the matching subdomain (not 404).
+curl -sI https://rasokart.com/admin       | grep -i location
+curl -sI https://rasokart.com/merchant    | grep -i location
+curl -sI https://rasokart.com/agent       | grep -i location
+curl -sI https://rasokart.com/payout-admin | grep -i location
+# Expected: Location: https://<subdomain>.rasokart.com/
 ```
 
 ### Route verification
@@ -408,13 +472,25 @@ curl -sI https://rasokart.com | grep HTTP
 | URL | Expected |
 |-----|----------|
 | `https://rasokart.com/` | Public landing page |
-| `https://rasokart.com/admin` | Admin login |
-| `https://rasokart.com/merchant` | Merchant login |
-| `https://rasokart.com/agent` | Agent login |
-| `https://rasokart.com/merchant/apply` | Merchant application |
-| `https://rasokart.com/admin/dashboard` | Admin dashboard (after login) |
-| `https://rasokart.com/merchant/dashboard` | Merchant dashboard (after login) |
-| `https://rasokart.com/agent/dashboard` | Agent dashboard (after login) |
+| `https://rasokart.com/admin` | **301 → https://admin.rasokart.com/** |
+| `https://rasokart.com/merchant` | **301 → https://merchant.rasokart.com/** |
+| `https://rasokart.com/agent` | **301 → https://agent.rasokart.com/** |
+| `https://rasokart.com/payout-admin` | **301 → https://payoutmerchant.rasokart.com/** |
+| `https://admin.rasokart.com/` | Admin login portal |
+| `https://superadmin.rasokart.com/` | Super Admin login portal |
+| `https://merchant.rasokart.com/` | Merchant login portal |
+| `https://payoutmerchant.rasokart.com/` | Payout merchant login portal |
+| `https://agent.rasokart.com/` | Agent login portal |
+| `https://rasokart.com/api/healthz/deep` | `{"status":"ok"}` |
+
+### Role isolation verification
+
+| Scenario | Expected |
+|----------|----------|
+| Admin logs in on `admin.rasokart.com` | Allowed — redirects to `/admin/dashboard` |
+| Admin logs in on `superadmin.rasokart.com` without `is_super_admin` | Denied — toast + redirect to `/admin` |
+| Merchant token used on `admin.rasokart.com` | Denied — "wrong portal" toast + redirect to `/merchant` |
+| Agent token used on `merchant.rasokart.com` | Denied — "wrong portal" toast + redirect to `/agent` |
 
 ---
 
@@ -517,6 +593,7 @@ Internet
 | `SESSION_SECRET` | ✅ | 64-char random secret for JWT signing |
 | `PORT` | ✅ | API server port (default 8080) |
 | `NODE_ENV` | ✅ | Set to `production` |
+| `CORS_ALLOWED_ORIGIN` | Optional | Comma-separated extra origins to allow in CORS (beyond `*.rasokart.com`). Useful for staging mirrors or custom domains. Example: `https://staging.example.com` |
 | `SMTP_HOST` | Optional* | SMTP server hostname (e.g. `smtp.sendgrid.net`) |
 | `SMTP_PORT` | Optional* | SMTP port (default 587) |
 | `SMTP_USER` | Optional* | SMTP username / API key username |

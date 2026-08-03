@@ -11,21 +11,21 @@ const app: Express = express();
 app.set("trust proxy", 1);
 
 // ── CORS allowlist ────────────────────────────────────────────────────────────
-// Allow the main domain, every role subdomain, Replit preview domains, and
-// localhost for development. All new subdomains must be added here — the
-// API server is shared across all portals (no api.rasokart.com split).
-const RASOKART_SUBDOMAINS = [
-  "https://rasokart.com",
-  "https://www.rasokart.com",
-  "https://admin.rasokart.com",
-  "https://superadmin.rasokart.com",
-  "https://merchant.rasokart.com",
-  "https://payoutmerchant.rasokart.com",
-  "https://agent.rasokart.com",
-];
+// In production: accept any *.rasokart.com origin (regex) plus an optional
+// CORS_ALLOWED_ORIGIN env var override for edge cases (e.g. staging mirrors).
+// In development/Replit preview: also allow localhost:* and Replit preview URLs.
+// API is shared across all portals — no api.rasokart.com split.
+
+/** Matches https://rasokart.com and https://<subdomain>.rasokart.com */
+const RASOKART_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?rasokart\.com$/;
 
 function buildCorsOriginList(): (string | RegExp)[] {
-  const list: (string | RegExp)[] = [...RASOKART_SUBDOMAINS];
+  const list: (string | RegExp)[] = [RASOKART_ORIGIN_RE];
+  // CORS_ALLOWED_ORIGIN — comma-separated extra origins for edge cases
+  const corsOverride = process.env["CORS_ALLOWED_ORIGIN"] ?? "";
+  for (const o of corsOverride.split(",").map((s) => s.trim()).filter(Boolean)) {
+    list.push(o);
+  }
   // Replit preview domains — present in both dev and publish environments
   const replitDomains = process.env["REPLIT_DOMAINS"] ?? "";
   for (const d of replitDomains.split(",").map((s) => s.trim()).filter(Boolean)) {
@@ -76,6 +76,15 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   }),
 );
+
+// ── Security headers ─────────────────────────────────────────────────────────
+// Applied to every API response. Nginx adds X-Frame-Options / HSTS / Referrer
+// for the static SPA; these headers protect the /api/* surface specifically.
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Vary", "Origin");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
 app.use(express.json({
   verify: (req: any, _res, buf) => {
     req.rawBody = buf;
