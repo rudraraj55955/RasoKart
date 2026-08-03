@@ -201,7 +201,7 @@ rollback() {
   log "!!! Rolling back application code to previous commit $PRE_DEPLOY_COMMIT !!!"
   git reset --hard "$PRE_DEPLOY_COMMIT"
   pnpm install --frozen-lockfile || true
-  pnpm --filter @workspace/api-server run build || true
+  COMMIT_SHA="$PRE_DEPLOY_COMMIT" pnpm --filter @workspace/api-server run build || true
   pm2 restart "$PM2_APP" --update-env || true
   pm2 save || true
   BASE_PATH=/ pnpm --filter @workspace/rpay run build || true
@@ -218,8 +218,8 @@ pnpm install --frozen-lockfile || { rollback; fail "pnpm install failed. Rolled 
 log "Running database migrations (idempotent, no TTY required)..."
 pnpm --filter @workspace/scripts run db-migrate || { rollback; fail "Migration failed. Rolled back application code (migration itself is NOT auto-reverted - idempotent by design)."; }
 
-log "Building API server..."
-pnpm --filter @workspace/api-server run build || { rollback; fail "API server build failed. Rolled back."; }
+log "Building API server (baking COMMIT_SHA=$REMOTE_COMMIT)..."
+COMMIT_SHA="$REMOTE_COMMIT" pnpm --filter @workspace/api-server run build || { rollback; fail "API server build failed. Rolled back."; }
 
 log "Restarting API server via pm2..."
 pm2 restart "$PM2_APP" --update-env || { rollback; fail "pm2 restart failed. Rolled back."; }
@@ -249,6 +249,21 @@ if [ "$HEALTHY" -ne 1 ]; then
 fi
 cat /tmp/deploy-healthz.json | tee -a "$LOG_FILE"
 log "Deep health check passed."
+
+# Assert the running binary was built from the expected commit.  If the build
+# step was ever skipped (e.g. a manual pm2 restart without rebuilding), the
+# baked-in SHA will differ from HEAD and we catch it here before declaring success.
+DEPLOYED_SHA=$(python3 -c "import json,sys; print(json.load(sys.stdin).get('commit',''))" \
+  < /tmp/deploy-healthz.json 2>/dev/null || true)
+if [ -z "$DEPLOYED_SHA" ]; then
+  rollback
+  fail "Could not read 'commit' field from /api/healthz/deep response — stale or misbuilt binary? Rolled back to $PRE_DEPLOY_COMMIT."
+fi
+if [ "$DEPLOYED_SHA" != "$REMOTE_COMMIT" ]; then
+  rollback
+  fail "Commit SHA mismatch: healthz reports '$DEPLOYED_SHA' but expected '$REMOTE_COMMIT'. The running binary was not built from the current commit. Rolled back to $PRE_DEPLOY_COMMIT."
+fi
+log "Commit SHA verified: running binary matches $REMOTE_COMMIT."
 
 log "Verifying documented demo/test credentials..."
 pnpm --filter @workspace/scripts run verify-demo-credentials || { rollback; fail "Demo credential verification failed after deploy. Rolled back."; }

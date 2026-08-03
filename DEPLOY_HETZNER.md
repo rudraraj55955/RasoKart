@@ -18,7 +18,11 @@ cd /home/rasokart/app
 git pull origin main
 pnpm install --frozen-lockfile
 pnpm --filter @workspace/scripts run db-migrate  # idempotent, no TTY required — always safe to run
-pnpm --filter @workspace/api-server run build
+
+# Bake the current commit SHA into the binary so /api/healthz/deep can report it.
+# Always set COMMIT_SHA before building — skipping this means the health check
+# assertion below will fail (intentionally) to catch stale builds.
+COMMIT_SHA=$(git rev-parse HEAD) pnpm --filter @workspace/api-server run build
 pm2 restart rasokart-api
 BASE_PATH=/ pnpm --filter @workspace/rpay run build
 # nginx serves the updated dist/ folder automatically
@@ -26,9 +30,14 @@ BASE_PATH=/ pnpm --filter @workspace/rpay run build
 # Confirm the deploy applied schema/columns correctly AND that every documented
 # demo/test account can authenticate (password hash, role, active). This is the
 # same deep check Replit uses as the autoscale startup gate (see artifact.toml).
-# The response includes a "commit" field with the SHA baked in at build time —
-# compare it against the HEAD of the repo to confirm the correct code is live:
-#   git rev-parse HEAD
+# The response includes a "commit" field baked in at build time — verify it
+# matches the commit you just deployed:
+EXPECTED_SHA=$(git rev-parse HEAD)
+DEPLOYED_SHA=$(curl -s https://rasokart.com/api/healthz/deep | python3 -c "import json,sys; print(json.load(sys.stdin).get('commit',''))")
+if [ "$DEPLOYED_SHA" != "$EXPECTED_SHA" ]; then
+  echo "ERROR: SHA mismatch — running=$DEPLOYED_SHA expected=$EXPECTED_SHA. Rebuild and restart before proceeding."
+  exit 1
+fi
 curl -s https://rasokart.com/api/healthz/deep
 
 # For Hetzner (PM2) deploys, also run the standalone credential check for a
