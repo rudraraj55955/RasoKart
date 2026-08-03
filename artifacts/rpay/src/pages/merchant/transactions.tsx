@@ -578,10 +578,21 @@ export default function MerchantTransactions() {
   // Server-side saved filters sync
   const FILTER_CONTEXT = "merchant_transactions";
   const filtersInitialized = useRef(false);
-  const { data: serverFiltersData, isSuccess: serverFiltersLoaded } = useListMerchantSavedFilters(
+  const savedFiltersErrorToastFired = useRef(false);
+  const { data: serverFiltersData, isSuccess: serverFiltersLoaded, isError: serverFiltersError } = useListMerchantSavedFilters(
     { context: FILTER_CONTEXT },
     { query: { staleTime: Infinity, retry: false } as any },
   );
+
+  useEffect(() => {
+    if (serverFiltersError && !savedFiltersErrorToastFired.current) {
+      savedFiltersErrorToastFired.current = true;
+      toast.warning("Couldn't load saved filter presets", {
+        description: "Your saved search filters are temporarily unavailable. Transactions are unaffected.",
+        duration: 6000,
+      });
+    }
+  }, [serverFiltersError]);
   const { mutateAsync: createFilterMutation } = useCreateMerchantSavedFilter();
   const { mutateAsync: deleteFilterMutation } = useDeleteMerchantSavedFilter();
   const { mutateAsync: renameFilterMutation } = useRenameMerchantSavedFilter();
