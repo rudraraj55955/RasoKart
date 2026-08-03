@@ -9,11 +9,11 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench, GitBranch, Zap, FlaskConical, ChevronDown, ChevronUp, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { getToken } from "@/lib/auth";
 import { getApiErrorMessage } from "@/lib/utils";
 import { useGetMe, useUpdateMyPreferences, getGetMeQueryKey, getListAdminAuditLogsQueryKey, useGetLedgerBackfillLastRun, useRunLedgerBackfill, getGetLedgerBackfillLastRunQueryKey, useRunStorageCleanup, useListStorageCleanupRuns, getListStorageCleanupRunsQueryKey, useGetSignatureFailureAlertHistory, useClearSignatureFailureAlertHistory, getGetSignatureFailureAlertHistoryQueryKey, useGetWebhookFailureAlertHistory, useClearWebhookFailureAlertHistory, getGetWebhookFailureAlertHistoryQueryKey, useGetWebhookFailureAlertConfig, useUpdateWebhookFailureAlertConfig, getGetWebhookFailureAlertConfigQueryKey, useResetWebhookFailureAlertCooldown, useResetSignatureFailureAlertCooldown, useResetEkqrStuckAlertCooldown, useGetCleanupStats, getGetCleanupStatsQueryKey, useGetGithubSyncConfig, useUpdateGithubSyncConfig, getGetGithubSyncConfigQueryKey, useGetGithubSyncStatus, getGetGithubSyncStatusQueryKey, useGetGithubSyncHistory, getGetGithubSyncHistoryQueryKey, useRunGithubSync, useGetGithubSyncRunLog, useGetGithubSyncDivergence, getGetGithubSyncDivergenceQueryKey, useRunGithubSyncLogCleanup, useGetGithubSyncLastCleanup, getGetGithubSyncLastCleanupQueryKey, useGetGithubSyncCleanupAlertSnooze, useSetGithubSyncCleanupAlertSnooze, getGetGithubSyncCleanupAlertSnoozeQueryKey, useGetQrCleanupHistory, useGetVaCleanupHistory, useClearQrCleanupHistory, useClearVaCleanupHistory, getGetQrCleanupHistoryQueryKey, getGetVaCleanupHistoryQueryKey, useListMerchants, useGetQuietHoursFlushConfig, useUpdateQuietHoursFlushConfig, getGetQuietHoursFlushConfigQueryKey, getGetAlertCooldownStatusQueryOptions, getGetAlertCooldownStatusQueryKey, type AdminAuditLog, type StorageCleanupRun, type SignatureFailureAlertLogEntry, type WebhookFailureAlertLogEntry, type CleanupRunHistoryEntry, type GithubSyncHistoryEntry } from "@workspace/api-client-react";
+import { Settings, Mail, Save, CheckCircle2, AlertCircle, Send, Calendar, Bell, Wifi, WifiOff, Trash2, Server, Eye, EyeOff, History, XCircle, HardDrive, RotateCcw, ShieldAlert, KeyRound, RefreshCw, Wrench, GitBranch, Zap, FlaskConical, ChevronDown, ChevronUp, Clock, X } from "lucide-react";
 
 function formatTimeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -1196,6 +1196,38 @@ export default function AdminSettings() {
   const { data: githubSyncDivergenceBanner, isLoading: githubSyncDivergenceBannerLoading } = useGetGithubSyncDivergence({
     query: { refetchInterval: 5 * 60 * 1000, staleTime: 4 * 60 * 1000 },
   } as any);
+
+  // Track divergence→resolved transition for the in-app "Divergence resolved" banner
+  const prevDivergedRef = useRef<boolean | undefined>(undefined);
+  const resolvedWaitingForNextPollRef = useRef(false);
+  const [divergenceJustResolved, setDivergenceJustResolved] = useState(false);
+
+  useEffect(() => {
+    // Only act on successful checks (checked === true). A failed check
+    // (checked: false, e.g. network error or missing token) is inconclusive —
+    // it must never be treated as "resolved" or update the prior known state.
+    if (!githubSyncDivergenceBanner || !githubSyncDivergenceBanner.checked) return;
+
+    const nowDiverged = !!githubSyncDivergenceBanner.diverged;
+
+    if (nowDiverged) {
+      // Gone back to (or still) diverged — clear any resolved banner immediately
+      if (resolvedWaitingForNextPollRef.current) {
+        resolvedWaitingForNextPollRef.current = false;
+        setDivergenceJustResolved(false);
+      }
+    } else if (prevDivergedRef.current === true) {
+      // Transition: last successful check was diverged, this one is not — show banner
+      setDivergenceJustResolved(true);
+      resolvedWaitingForNextPollRef.current = true;
+    } else if (resolvedWaitingForNextPollRef.current) {
+      // Second successful poll after showing the resolved banner — auto-clear
+      resolvedWaitingForNextPollRef.current = false;
+      setDivergenceJustResolved(false);
+    }
+
+    prevDivergedRef.current = nowDiverged;
+  }, [githubSyncDivergenceBanner]);
 
   const handleConfirmGithubSync = () => {
     setGithubSyncConfirmOpen(false);
@@ -3764,6 +3796,22 @@ export default function AdminSettings() {
                 commit{githubSyncDivergenceBanner.remoteAheadBy === 1 ? "" : "s"} not present here (likely pushed directly on GitHub).
                 Resolve this before the next scheduled sync or the run will be skipped.
               </span>
+            </div>
+          )}
+
+          {divergenceJustResolved && (
+            <div className="flex items-start gap-2.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2.5">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span className="flex-1">
+                <strong>Divergence resolved</strong> — the remote is back in sync. Scheduled syncs will proceed normally.
+              </span>
+              <button
+                onClick={() => { resolvedWaitingForNextPollRef.current = false; setDivergenceJustResolved(false); }}
+                className="shrink-0 ml-1 opacity-60 hover:opacity-100 transition-opacity"
+                aria-label="Dismiss divergence resolved banner"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 
