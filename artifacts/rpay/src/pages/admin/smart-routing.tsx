@@ -20,7 +20,7 @@ import {
   GitMerge, Activity, BarChart2, ScrollText, Plus, Pencil, Trash2,
   RefreshCw, ArrowUpDown, CheckCircle2, XCircle, Clock, AlertTriangle,
   ShieldCheck, Zap, Settings2, ChevronsDown, Shield, FlaskConical, Loader2,
-  Copy, Download, Info, CheckCircle,
+  Copy, Download, Info, CheckCircle, BellOff, Bell,
 } from "lucide-react";
 
 import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -476,6 +476,10 @@ export default function AdminSmartRouting() {
   const [alertSettingsDirty, setAlertSettingsDirty] = useState(false);
   const [alertSettingsInitialized, setAlertSettingsInitialized] = useState(false);
 
+  // Acknowledge / snooze dialog state
+  const [acknowledgeDialogOpen, setAcknowledgeDialogOpen] = useState(false);
+  const [snoozeMinutes, setSnoozeMinutes] = useState<number>(60);
+
   // Queries
   const statusQ = useQuery<StatusData>({
     queryKey: ["smart-routing-status"],
@@ -506,7 +510,7 @@ export default function AdminSmartRouting() {
     refetchInterval: 30000,
   });
 
-  const failoverEventsQ = useQuery<{ events: FailoverEvent[] }>({
+  const failoverEventsQ = useQuery<{ events: FailoverEvent[]; snoozedUntil: string | null }>({
     queryKey: ["smart-routing-failover-events"],
     queryFn: () => apiReq(`/failover-events?limit=20`),
     refetchInterval: 30000,
@@ -572,6 +576,18 @@ export default function AdminSmartRouting() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const acknowledgeM = useMutation({
+    mutationFn: (minutes: number) =>
+      apiReq("/failover-events/acknowledge", "POST", { snoozeMinutes: minutes }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["smart-routing-failover-events"] });
+      setAcknowledgeDialogOpen(false);
+      const label = snoozeMinutes >= 60 ? `${snoozeMinutes / 60}h` : `${snoozeMinutes}m`;
+      toast.success(`Failover alerts snoozed for ${label}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const updateConfigM = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => apiReq(`/configs/${id}`, "PUT", data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["smart-routing-configs"] }); qc.invalidateQueries({ queryKey: ["smart-routing-status"] }); setEditConfigOpen(false); toast.success("Routing config updated"); },
@@ -603,15 +619,6 @@ export default function AdminSmartRouting() {
       qc.invalidateQueries({ queryKey: ["smart-routing-coverage", selectedConfigId] });
       setDeleteRuleId(null);
       toast.success("Rule deleted");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const resolveEventM = useMutation({
-    mutationFn: (id: number) => apiReq(`/failover-events/${id}/resolve`, "POST"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["smart-routing-failover-events"] });
-      toast.success("Outage marked as resolved");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1389,16 +1396,57 @@ export default function AdminSmartRouting() {
                 </div>
               ) : null}
 
+              {/* Snooze status banner — shown when alerts are actively snoozed */}
+              {failoverEventsQ.data?.snoozedUntil != null && (
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg bg-violet-500/10 border border-violet-500/25">
+                  <div className="flex items-center gap-2">
+                    <BellOff className="w-4 h-4 text-violet-400 shrink-0" />
+                    <p className="text-sm text-zinc-300">
+                      <span className="text-violet-300 font-medium">Failover alerts snoozed</span>
+                      {" — "}no new notifications until{" "}
+                      <span className="text-white font-semibold">
+                        {new Date(failoverEventsQ.data.snoozedUntil).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                      </span>
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAcknowledgeDialogOpen(true)}
+                    className="border-violet-600/40 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 shrink-0"
+                  >
+                    <Bell className="w-3.5 h-3.5 mr-1.5" />
+                    Extend
+                  </Button>
+                </div>
+              )}
+
               {/* Recent chain-exhaustion events */}
               <Card className="bg-zinc-900 border-zinc-800">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-white text-sm flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-red-400" />
-                    Recent Chain-Exhaustion Events
-                  </CardTitle>
-                  <CardDescription className="text-zinc-500 text-xs">
-                    Two alert types are shown: <span className="text-rose-400 font-medium">Chain Exhausted</span> fires immediately on the first exhaustion of a new outage; <span className="text-amber-400 font-medium">Threshold Alert</span> fires when rolling failures cross the configured window threshold.
-                  </CardDescription>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-white text-sm flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-400" />
+                        Recent Chain-Exhaustion Events
+                      </CardTitle>
+                      <CardDescription className="text-zinc-500 text-xs mt-1">
+                        Two alert types are shown: <span className="text-rose-400 font-medium">Chain Exhausted</span> fires immediately on the first exhaustion of a new outage; <span className="text-amber-400 font-medium">Threshold Alert</span> fires when rolling failures cross the configured window threshold.
+                      </CardDescription>
+                    </div>
+                    {/* Show Acknowledge button in header when there are ongoing events */}
+                    {(failoverEventsQ.data?.events ?? []).some(e => e.status === "ongoing") && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAcknowledgeDialogOpen(true)}
+                        className="border-zinc-700 text-zinc-400 hover:text-white shrink-0"
+                      >
+                        <BellOff className="w-3.5 h-3.5 mr-1.5" />
+                        Acknowledge
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="pt-0">
                   {failoverEventsQ.isLoading ? (
@@ -1486,22 +1534,17 @@ export default function AdminSmartRouting() {
                                 )
                             )}
                           </div>
+                          {/* Per-row Acknowledge button on ongoing events */}
                           {ev.status === "ongoing" && (
-                            <div className="shrink-0 self-start pt-0.5">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-emerald-600/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 text-xs h-7 px-2.5"
-                                disabled={resolveEventM.isPending}
-                                onClick={() => resolveEventM.mutate(ev.id)}
-                              >
-                                {resolveEventM.isPending && resolveEventM.variables === ev.id
-                                  ? <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                  : <CheckCircle2 className="w-3 h-3 mr-1" />
-                                }
-                                Mark as Resolved
-                              </Button>
-                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setAcknowledgeDialogOpen(true)}
+                              className="border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 shrink-0 mt-0.5"
+                            >
+                              <BellOff className="w-3.5 h-3.5 mr-1" />
+                              Silence
+                            </Button>
                           )}
                         </div>
                       ))}
@@ -1661,6 +1704,73 @@ export default function AdminSmartRouting() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* ── Acknowledge / Snooze Dialog ── */}
+      <Dialog open={acknowledgeDialogOpen} onOpenChange={setAcknowledgeDialogOpen}>
+        <DialogContent className="bg-zinc-950 border-zinc-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BellOff className="w-4 h-4 text-violet-400" />
+              Silence Failover Alerts
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-zinc-400">
+              Suppress repeat alert notifications for this ongoing outage. Alerting resumes automatically after the snooze period.
+            </p>
+            <div>
+              <Label className="text-zinc-400 text-xs mb-2 block">Snooze duration</Label>
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { label: "30 min", value: 30 },
+                  { label: "1 hour", value: 60 },
+                  { label: "4 hours", value: 240 },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSnoozeMinutes(opt.value)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                      snoozeMinutes === opt.value
+                        ? "bg-violet-600 border-violet-500 text-white"
+                        : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {failoverEventsQ.data?.snoozedUntil != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-violet-500/10 border border-violet-500/20">
+                <BellOff className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                <p className="text-xs text-zinc-400">
+                  Currently snoozed until{" "}
+                  <span className="text-zinc-300">
+                    {new Date(failoverEventsQ.data.snoozedUntil).toLocaleString("en-IN", { timeStyle: "short" })}
+                  </span>
+                  {" — "}saving will extend the snooze.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAcknowledgeDialogOpen(false)} className="border-zinc-700 text-zinc-400">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => acknowledgeM.mutate(snoozeMinutes)}
+              disabled={acknowledgeM.isPending}
+              className="bg-violet-600 hover:bg-violet-500 text-white"
+            >
+              {acknowledgeM.isPending
+                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</>
+                : <><BellOff className="w-3.5 h-3.5 mr-1.5" />Silence for {snoozeMinutes >= 60 ? `${snoozeMinutes / 60}h` : `${snoozeMinutes}m`}</>
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Edit Config Dialog ── */}
       <Dialog open={editConfigOpen} onOpenChange={setEditConfigOpen}>

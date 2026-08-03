@@ -121,6 +121,9 @@ export const SYSTEM_CONFIG_KEYS = {
   // Failover-exhaustion admin alert tuning
   FAILOVER_ALERT_THRESHOLD: "failover_alert_threshold",
   FAILOVER_ALERT_WINDOW_MINUTES: "failover_alert_window_minutes",
+  // ISO timestamp — alert notifications are suppressed until this time (snooze/acknowledge).
+  // Absent or past value means alerts are not snoozed.
+  FAILOVER_ALERT_SNOOZED_UNTIL: "failover_alert_snoozed_until",
   // Razorpay Payin — credentials are ENV-ONLY, never stored here
   RAZORPAY_ENABLED:    "razorpay_enabled",
   RAZORPAY_MIN_AMOUNT: "razorpay_min_amount",

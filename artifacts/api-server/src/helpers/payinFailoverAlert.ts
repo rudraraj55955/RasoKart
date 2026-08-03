@@ -25,7 +25,7 @@ import {
   usersTable,
   SYSTEM_CONFIG_KEYS,
 } from "@workspace/db";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, sql, inArray } from "drizzle-orm";
 
 type MinLogger = {
   warn: (obj: object, msg: string) => void;
@@ -37,19 +37,34 @@ export async function maybeFireFailoverAlert(
   log: MinLogger,
 ): Promise<void> {
   try {
-    // ── 1. Read threshold & window from system_config ─────────────────────
-    const alertConfigRows = await db
+    // ── 1. Read threshold, window, and snooze from system_config ─────────
+    const configRows = await db
       .select({ key: systemConfigTable.key, value: systemConfigTable.value })
       .from(systemConfigTable)
-      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD));
+      .where(
+        inArray(systemConfigTable.key, [
+          SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD,
+          SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES,
+          SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_SNOOZED_UNTIL,
+        ]),
+      );
+    const configMap = new Map(configRows.map(r => [r.key, r.value]));
 
-    const alertWindowRows = await db
-      .select({ key: systemConfigTable.key, value: systemConfigTable.value })
-      .from(systemConfigTable)
-      .where(eq(systemConfigTable.key, SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES));
+    // Check active snooze before doing any work
+    const rawSnoozedUntil = configMap.get(SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_SNOOZED_UNTIL);
+    if (rawSnoozedUntil) {
+      const snoozedUntil = new Date(rawSnoozedUntil);
+      if (snoozedUntil > new Date()) {
+        log.warn(
+          { event: "payin_failover_alert_snoozed", merchantId, snoozedUntil: rawSnoozedUntil },
+          "payin_failover_alert_snoozed — skipping notification while snooze is active",
+        );
+        return;
+      }
+    }
 
-    const rawThreshold = parseInt(alertConfigRows[0]?.value ?? "5");
-    const rawWindow = parseInt(alertWindowRows[0]?.value ?? "60");
+    const rawThreshold = parseInt(configMap.get(SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_THRESHOLD) ?? "5");
+    const rawWindow = parseInt(configMap.get(SYSTEM_CONFIG_KEYS.FAILOVER_ALERT_WINDOW_MINUTES) ?? "60");
 
     // NaN-guard + minimum-value clamp (must be at least 1)
     const threshold = Number.isFinite(rawThreshold) && rawThreshold >= 1 ? rawThreshold : 5;
