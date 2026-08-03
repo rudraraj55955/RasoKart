@@ -1462,15 +1462,26 @@ function TryItPanel({
                         />
                       </>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleLoadPreset(preset)}
-                        onDoubleClick={(e) => { e.preventDefault(); handleStartRename(preset); }}
-                        className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <Star className="w-2.5 h-2.5" />
-                        {preset.name}
-                      </button>
+                      <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={() => handleLoadPreset(preset)}
+                              onDoubleClick={(e) => { e.preventDefault(); handleStartRename(preset); }}
+                              className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <Star className="w-2.5 h-2.5" />
+                              {preset.name}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">
+                            {preset.lastUsedAt
+                              ? `Last used ${formatRelativeTime(preset.lastUsedAt)}`
+                              : "Never used"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                     {renamingPresetId !== preset.id && (
                       <button
