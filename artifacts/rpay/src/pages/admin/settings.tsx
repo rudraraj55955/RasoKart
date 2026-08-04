@@ -3118,6 +3118,33 @@ export default function AdminSettings() {
               </span>
             )}
           </CardDescription>
+          {(() => {
+            const wf = alertCooldownStatus?.webhookFailure;
+            if (!wf) return null;
+            const remaining = wf.cooldownActive && wf.cooldownExpiresAt
+              ? formatTimeRemaining(wf.cooldownExpiresAt, now)
+              : null;
+            if (remaining) {
+              return (
+                <span
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-xs text-amber-400"
+                  title={`Cooldown active — next alert possible after ${new Date(wf.cooldownExpiresAt!).toLocaleString()}`}
+                >
+                  <Clock className="w-3 h-3 shrink-0" />
+                  Cooldown active — next alert in {remaining}
+                </span>
+              );
+            }
+            if (webhookAlertGlobalCount > 0) {
+              return (
+                <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 text-xs text-emerald-400">
+                  <CheckCircle2 className="w-3 h-3 shrink-0" />
+                  Ready — no active cooldown
+                </span>
+              );
+            }
+            return null;
+          })()}
         </CardHeader>
         <CardContent>
           {webhookAlertHistory.length === 0 && (
@@ -3129,7 +3156,7 @@ export default function AdminSettings() {
           )}
           {webhookAlertHistory.length > 0 && (
             <div className="space-y-2">
-              {webhookAlertHistory.map((entry) => {
+              {webhookAlertHistory.map((entry, idx) => {
                   const merchantName = webhookAlertMerchantMap.get(entry.merchantId);
                   const entryTime = new Date(entry.sentAt).getTime();
                   const isLatestForMerchant = webhookAlertLatestPerMerchant.get(entry.merchantId) === entryTime;
@@ -3138,9 +3165,23 @@ export default function AdminSettings() {
                   return (
                     <div key={entry.id} className="rounded-lg border border-border/50 bg-muted/5 px-4 py-3 space-y-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium">
-                          {new Date(entry.sentAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">
+                            {new Date(entry.sentAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                          </span>
+                          {idx === 0 && inCooldown && (() => {
+                            const remaining = formatTimeRemaining(new Date(cooldownExpiresAt).toISOString(), now);
+                            return remaining ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 text-xs text-amber-400"
+                                title={`Cooldown from this alert — next alert possible after ${new Date(cooldownExpiresAt).toLocaleString()}`}
+                              >
+                                <Clock className="w-3 h-3 shrink-0" />
+                                Next in {remaining}
+                              </span>
+                            ) : null;
+                          })()}
+                        </div>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             {inCooldown && (
