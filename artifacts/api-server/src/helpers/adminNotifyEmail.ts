@@ -409,6 +409,7 @@ export async function notifyAdminsOfWebhookFailureEmail(opts: {
       attemptCount: opts.attempts,
       recipientCount: sent,
       recipientEmails: recipients,
+      cooldownHours,
     });
 
     logger.info(

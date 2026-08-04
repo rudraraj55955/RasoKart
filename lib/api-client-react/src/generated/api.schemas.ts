@@ -4272,6 +4272,8 @@ export interface WebhookFailureAlertLogEntry {
   recipientCount: number;
   /** List of admin email addresses the alert was sent to */
   recipientEmails: string[];
+  /** Cooldown window (hours) that was active when this alert was sent. Null for rows that pre-date this column (value would be a meaningless backfill default). */
+  cooldownHours?: number | null;
 }
 
 export interface WebhookFailureAlertHistoryResponse {

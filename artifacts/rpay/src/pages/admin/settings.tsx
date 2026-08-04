@@ -3172,6 +3172,19 @@ export default function AdminSettings() {
                           {new Date(cooldownExpiresAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
                         </p>
                       )}
+                      <p className="text-xs text-muted-foreground">
+                        Cooldown:{" "}
+                        {entry.cooldownHours != null ? (
+                          <>{entry.cooldownHours}h</>
+                        ) : (
+                          <span
+                            className="italic"
+                            title="Cooldown value not recorded — this alert was sent before the cooldown field was introduced"
+                          >
+                            —
+                          </span>
+                        )}
+                      </p>
                       {entry.recipientEmails.length > 0 && (
                         <p className="text-xs text-muted-foreground">
                           Sent to: {entry.recipientEmails.join(", ")}

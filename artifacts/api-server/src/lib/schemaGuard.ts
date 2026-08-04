@@ -1269,6 +1269,16 @@ async function runGuard(): Promise<void> {
     )
   `);
   logger.info({ table: "webhook_failure_alert_logs" }, "schema_guard_table_created");
+  // Add cooldown_hours as nullable (no DEFAULT) so rows inserted before this
+  // column existed receive NULL rather than a misleading backfill value of 1.
+  await db.execute(sql`ALTER TABLE webhook_failure_alert_logs ADD COLUMN IF NOT EXISTS cooldown_hours INTEGER`);
+  // Drop NOT NULL if the column was previously created with NOT NULL DEFAULT 1
+  // (idempotent on DBs that already had the column added as nullable).
+  await db.execute(sql`ALTER TABLE webhook_failure_alert_logs ALTER COLUMN cooldown_hours DROP NOT NULL`);
+  // Drop the column DEFAULT so future inserts that omit the field receive NULL
+  // rather than an implicit backfill value. The insertion path always supplies
+  // the value explicitly, but removing the default prevents silent schema drift.
+  await db.execute(sql`ALTER TABLE webhook_failure_alert_logs ALTER COLUMN cooldown_hours DROP DEFAULT`);
 
   // ── otp_email_settings (Email OTP provider config — singleton id=1) ────────
   await db.execute(sql`

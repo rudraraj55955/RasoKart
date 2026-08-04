@@ -17434,6 +17434,10 @@ components:
           items:
             type: string
           description: List of admin email addresses the alert was sent to
+        cooldownHours:
+          type: integer
+          nullable: true
+          description: Cooldown window (hours) that was active when this alert was sent. Null for rows that pre-date this column (value would be a meaningless backfill default).
 
     WebhookFailureAlertHistoryResponse:
       type: object

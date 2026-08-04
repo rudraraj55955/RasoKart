@@ -8,6 +8,7 @@ export const webhookFailureAlertLogsTable = pgTable("webhook_failure_alert_logs"
   attemptCount: integer("attempt_count").notNull(),
   recipientCount: integer("recipient_count").notNull().default(0),
   recipientEmails: jsonb("recipient_emails").$type<string[]>().notNull().default([]),
+  cooldownHours: integer("cooldown_hours"),
 });
 
 export type WebhookFailureAlertLog = typeof webhookFailureAlertLogsTable.$inferSelect;
